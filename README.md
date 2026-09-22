@@ -149,6 +149,26 @@ curl -X POST http://localhost:4000/api/v1/tools/call \
 | `GET` | `/api/v1/metrics` | Aggregated metrics (JSON or Prometheus) |
 | `GET` | `/api/v1/requests` | Recent request log |
 
+## Performance Baseline Checklist
+
+Use a repeatable baseline before tuning:
+
+1. **Warm up the gateway** and verify all expected servers appear in `GET /api/v1/health`.
+2. **Run a fixed load profile** against `POST /api/v1/tools/call` (same tool mix, payload size, and duration).
+3. **Capture metrics snapshots** from `GET /api/v1/metrics?window=60000` during the run.
+4. **Track and compare**:
+   - `totalRequests`, `requestsPerMinute`
+   - `successRate`
+   - `avgLatencyMs`, `p95LatencyMs`, `p99LatencyMs`
+   - `errorsByServer`
+
+Recommended production-oriented starting points:
+
+- Per-server `timeout`: `10000-30000` ms depending on upstream SLA
+- Per-server `maxConcurrency`: start at `5-20`, then tune with `p95/p99` latency
+- `rateLimit`: always enable for shared gateways
+- `monitor.retentionHours`: reduce from `24` to lower values on memory-constrained hosts
+
 ## Configuration Reference
 
 ```yaml

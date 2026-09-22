@@ -75,6 +75,27 @@ curl -X POST http://localhost:4000/api/v1/tools/call \
   }'
 ```
 
+## Step 7: Build a Baseline Before Tuning
+
+Collect a simple baseline with current traffic shape before changing config:
+
+```bash
+# 1) capture a 60s metrics window snapshot
+curl "http://localhost:4000/api/v1/metrics?window=60000" | jq
+
+# 2) run your load profile (example placeholder)
+#    keep request mix/payloads stable between runs
+
+# 3) capture metrics again and compare
+curl "http://localhost:4000/api/v1/metrics?window=60000" | jq
+```
+
+When tuning, prioritize:
+
+- `p95LatencyMs` / `p99LatencyMs` and `successRate`
+- `errorsByServer` spikes for unstable upstream MCP servers
+- `requestsPerMinute` changes after timeout/concurrency updates
+
 ## Next Steps
 
 - [Add authentication](./authentication.md)

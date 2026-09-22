@@ -160,6 +160,8 @@ servers:
     args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
     tags: [files, local]
     enabled: true
+    timeout: 15000
+    maxConcurrency: 10
 
   - id: github
     name: GitHub Server
@@ -171,5 +173,7 @@ servers:
       GITHUB_PERSONAL_ACCESS_TOKEN: \${GITHUB_TOKEN}
     tags: [github, vcs]
     enabled: true
+    timeout: 15000
+    maxConcurrency: 10
 `;
 }
