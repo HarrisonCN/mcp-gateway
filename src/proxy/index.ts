@@ -201,7 +201,7 @@ export class McpProxy {
       };
     }
 
-    return queue.add(() =>
+    const queued = await queue.add(async () =>
       this._sendRequest(
         serverId,
         {
@@ -211,8 +211,14 @@ export class McpProxy {
           requestId: nextId(),  // fix BUG-002
         },
         timeout ?? 30_000,
-      )
+      ),
     );
+
+    return queued ?? {
+      success: false,
+      error: { code: -32000, message: `Queue task returned no result for server "${serverId}"` },
+      durationMs: 0,
+    };
   }
 
   // ─── Internal ───────────────────────────────────────────────────────────────
