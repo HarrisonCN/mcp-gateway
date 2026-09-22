@@ -4,7 +4,7 @@
 
 import express from 'express';
 import { createServer } from 'http';
-import type { GatewayConfig } from '../utils/types.js';
+import type { GatewayConfig, McpServerConfig, ToolInfo } from '../utils/types.js';
 import { ServerRegistry } from '../registry/index.js';
 import { McpProxy } from '../proxy/index.js';
 import { MetricsCollector } from '../monitor/index.js';
@@ -55,18 +55,6 @@ export class Gateway {
       });
     });
 
-    // Start metrics collection
-    this.metrics.start();
-
-    // Register and connect all enabled servers
-    await this.connectServers();
-
-    // Start health checks
-    this.registry.startHealthChecks(async (serverId) => {
-      const isConnected = this.proxy.isConnected(serverId);
-      this.registry.updateHealth(serverId, isConnected ? 'online' : 'offline');
-    });
-
     // Start HTTP server
     await new Promise<void>((resolve) => {
       this.server.listen(this.config.port, this.config.host, () => {
@@ -75,6 +63,18 @@ export class Gateway {
         resolve();
       });
     });
+
+    // Start metrics collection
+    this.metrics.start();
+
+    // Start health checks
+    this.registry.startHealthChecks(async (serverId) => {
+      const isConnected = this.proxy.isConnected(serverId);
+      this.registry.updateHealth(serverId, isConnected ? 'online' : 'offline');
+    });
+
+    // Register and connect enabled servers without blocking HTTP availability
+    void this.connectServers();
   }
 
   async stop(): Promise<void> {
@@ -95,21 +95,38 @@ export class Gateway {
     const results = await Promise.allSettled(
       enabled.map(async (serverConfig) => {
         this.registry.register(serverConfig);
-        try {
-          const tools = await this.proxy.connect(serverConfig);
-          this.registry.setTools(serverConfig.id, tools);
-          this.registry.updateHealth(serverConfig.id, 'online', undefined, undefined);
-          logger.info(`✓ ${serverConfig.name} — ${tools.length} tools available`);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          this.registry.updateHealth(serverConfig.id, 'offline', undefined, msg);
-          logger.warn(`✗ ${serverConfig.name} — failed to connect: ${msg}`);
-        }
+        const tools = await this.connectServerWithRetry(serverConfig);
+        this.registry.setTools(serverConfig.id, tools);
       })
     );
 
     const succeeded = results.filter((r) => r.status === 'fulfilled').length;
     const failed = results.length - succeeded;
     logger.info(`Connected: ${succeeded}/${enabled.length} servers (${failed} failed)`);
+  }
+
+  private async connectServerWithRetry(serverConfig: McpServerConfig): Promise<ToolInfo[]> {
+    const attempts = 3;
+    let lastError: string | undefined;
+
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        const tools = await this.proxy.connect(serverConfig);
+        this.registry.updateHealth(serverConfig.id, 'online', undefined, undefined);
+        logger.info(`✓ ${serverConfig.name} — ${tools.length} tools available`);
+        return tools;
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        this.registry.updateHealth(serverConfig.id, 'degraded', undefined, lastError);
+        logger.warn(`✗ ${serverConfig.name} — connect attempt ${attempt}/${attempts} failed: ${lastError}`);
+        if (attempt < attempts) {
+          await new Promise<void>((resolve) => setTimeout(resolve, attempt * 500));
+        }
+      }
+    }
+
+    this.registry.updateHealth(serverConfig.id, 'offline', undefined, lastError);
+    logger.warn(`✗ ${serverConfig.name} — marked offline after ${attempts} attempts`);
+    return [];
   }
 }

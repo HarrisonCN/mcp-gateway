@@ -20,14 +20,7 @@ export function createRateLimiter(config?: RateLimitConfig) {
   const { limit, windowSeconds, perKey = true } = config;
   const windowMs = windowSeconds * 1000;
   const store = new Map<string, WindowEntry>();
-
-  // Periodically clean up expired entries
-  setInterval(() => {
-    const now = Date.now();
-    for (const [key, entry] of store.entries()) {
-      if (entry.resetAt < now) store.delete(key);
-    }
-  }, windowMs);
+  let nextCleanupAt = Date.now() + windowMs;
 
   return (req: Request, res: Response, next: NextFunction) => {
     const clientId = perKey
@@ -35,9 +28,18 @@ export function createRateLimiter(config?: RateLimitConfig) {
       : 'global';
 
     const now = Date.now();
+    if (now >= nextCleanupAt) {
+      for (const [key, value] of store.entries()) {
+        if (value.resetAt <= now) {
+          store.delete(key);
+        }
+      }
+      nextCleanupAt = now + windowMs;
+    }
+
     const entry = store.get(clientId);
 
-    if (!entry || entry.resetAt < now) {
+    if (!entry || entry.resetAt <= now) {
       store.set(clientId, { count: 1, resetAt: now + windowMs });
       setRateLimitHeaders(res, limit, limit - 1, now + windowMs);
       next();

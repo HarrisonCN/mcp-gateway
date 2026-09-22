@@ -17,6 +17,7 @@
  */
 
 import { spawn } from 'child_process';
+import PQueue from 'p-queue';
 import type { McpServerConfig, ProxyRequest, ProxyResponse, ToolInfo } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { Mutex } from '../utils/mutex.js';
@@ -42,6 +43,8 @@ interface StdioSession {
 
 export class McpProxy {
   private sessions = new Map<string, StdioSession>();
+  private readonly serverConfigs = new Map<string, McpServerConfig>();
+  private readonly requestQueues = new Map<string, PQueue>();
   // Per-server spawn mutex (fix BUG-001)
   private spawnLocks = new Map<string, Mutex>();
 
@@ -57,6 +60,8 @@ export class McpProxy {
   async connect(config: McpServerConfig): Promise<ToolInfo[]> {
     // Serialise concurrent connect calls for the same server (fix BUG-001)
     return this.getSpawnLock(config.id).runExclusive(async () => {
+      this.serverConfigs.set(config.id, config);
+
       if (config.transport !== 'stdio') {
         logger.warn(
           `Transport "${config.transport}" not yet fully implemented. Using stdio fallback.`,
@@ -69,6 +74,10 @@ export class McpProxy {
 
       const session = this._spawnSession(config);
       this.sessions.set(config.id, session);
+      this.requestQueues.set(
+        config.id,
+        new PQueue({ concurrency: Math.max(1, config.maxConcurrency ?? 10) }),
+      );
 
       // Initialize the MCP session
       const initResult = await this._sendRequest(
@@ -154,6 +163,7 @@ export class McpProxy {
     if (!proc.killed) proc.kill('SIGKILL');
 
     this.sessions.delete(serverId);
+    this.requestQueues.delete(serverId);
     logger.info(`Disconnected from server: ${serverId}`);
   }
 
@@ -172,22 +182,36 @@ export class McpProxy {
     timeout?: number,
   ): Promise<ProxyResponse> {
     if (!this.sessions.has(serverId)) {
+      const reconnect = await this.reconnect(serverId);
+      if (!reconnect) {
+        return {
+          success: false,
+          error: { code: -32000, message: `Server "${serverId}" is not connected` },
+          durationMs: 0,
+        };
+      }
+    }
+
+    const queue = this.requestQueues.get(serverId);
+    if (!queue) {
       return {
         success: false,
-        error: { code: -32000, message: `Server "${serverId}" is not connected` },
+        error: { code: -32000, message: `No request queue for server "${serverId}"` },
         durationMs: 0,
       };
     }
 
-    return this._sendRequest(
-      serverId,
-      {
+    return queue.add(() =>
+      this._sendRequest(
         serverId,
-        method: 'tools/call',
-        params: { name: toolName, arguments: args },
-        requestId: nextId(),  // fix BUG-002
-      },
-      timeout ?? 30_000,
+        {
+          serverId,
+          method: 'tools/call',
+          params: { name: toolName, arguments: args },
+          requestId: nextId(),  // fix BUG-002
+        },
+        timeout ?? 30_000,
+      )
     );
   }
 
@@ -336,7 +360,30 @@ export class McpProxy {
         timer,
       });
 
-      session.process.stdin?.write(message + '\n');
+      const stdin = session.process.stdin;
+      if (!stdin || stdin.destroyed || !stdin.writable) {
+        clearTimeout(timer);
+        session.pendingRequests.delete(id);
+        resolve({
+          success: false,
+          error: { code: -32000, message: `Server "${serverId}" stdin is not writable` },
+          durationMs: Date.now() - startTime,
+        });
+        return;
+      }
+
+      stdin.write(message + '\n', (err) => {
+        if (!err) {
+          return;
+        }
+        clearTimeout(timer);
+        session.pendingRequests.delete(id);
+        resolve({
+          success: false,
+          error: { code: -32000, message: err.message },
+          durationMs: Date.now() - startTime,
+        });
+      });
     });
   }
 
@@ -353,5 +400,17 @@ export class McpProxy {
 
   isConnected(serverId: string): boolean {
     return this.sessions.has(serverId);
+  }
+
+  private async reconnect(serverId: string): Promise<boolean> {
+    const config = this.serverConfigs.get(serverId);
+    if (!config) return false;
+    try {
+      await this.connect(config);
+      return true;
+    } catch (err) {
+      logger.warn(`Reconnect failed for "${serverId}": ${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    }
   }
 }

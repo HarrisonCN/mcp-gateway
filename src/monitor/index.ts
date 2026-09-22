@@ -9,6 +9,7 @@ export class MetricsCollector extends EventEmitter {
   private metrics: RequestMetric[] = [];
   private readonly retentionMs: number;
   private cleanupInterval?: NodeJS.Timeout;
+  private readonly aggregateCache = new Map<number, AggregatedMetrics>();
 
   constructor(config?: MonitorConfig) {
     super();
@@ -24,6 +25,7 @@ export class MetricsCollector extends EventEmitter {
       timestamp: new Date(),
     };
     this.metrics.push(full);
+    this.aggregateCache.clear();
     this.emit('metric', full);
     return full;
   }
@@ -31,10 +33,35 @@ export class MetricsCollector extends EventEmitter {
   // ─── Aggregation ────────────────────────────────────────────────────────────
 
   aggregate(windowMs?: number): AggregatedMetrics {
-    const cutoff = windowMs ? Date.now() - windowMs : 0;
-    const recent = this.metrics.filter((m) => m.timestamp.getTime() >= cutoff);
+    const cacheKey = windowMs ?? -1;
+    const cached = this.aggregateCache.get(cacheKey);
+    if (cached) return cached;
 
-    if (recent.length === 0) {
+    const cutoff = windowMs ? Date.now() - windowMs : 0;
+    const recentLatencies: number[] = [];
+    const toolCounts = new Map<string, number>();
+    const serverCounts = new Map<string, number>();
+    const errorsByServer: Record<string, number> = {};
+    let totalRequests = 0;
+    let successful = 0;
+    let latencySum = 0;
+
+    for (const metric of this.metrics) {
+      if (metric.timestamp.getTime() < cutoff) {
+        continue;
+      }
+      totalRequests++;
+      if (metric.success) successful++;
+      recentLatencies.push(metric.durationMs);
+      latencySum += metric.durationMs;
+      toolCounts.set(metric.toolName, (toolCounts.get(metric.toolName) ?? 0) + 1);
+      serverCounts.set(metric.serverId, (serverCounts.get(metric.serverId) ?? 0) + 1);
+      if (!metric.success) {
+        errorsByServer[metric.serverId] = (errorsByServer[metric.serverId] ?? 0) + 1;
+      }
+    }
+
+    if (totalRequests === 0) {
       return {
         totalRequests: 0,
         successRate: 1,
@@ -48,30 +75,16 @@ export class MetricsCollector extends EventEmitter {
       };
     }
 
-    const successful = recent.filter((m) => m.success);
-    const latencies = recent.map((m) => m.durationMs).sort((a, b) => a - b);
-    const windowMinutes = windowMs ? windowMs / 60_000 : recent.length;
+    recentLatencies.sort((a, b) => a - b);
+    const windowMinutes = windowMs ? windowMs / 60_000 : totalRequests;
 
-    // Tool counts
-    const toolCounts = new Map<string, number>();
-    const serverCounts = new Map<string, number>();
-    const errorsByServer: Record<string, number> = {};
-
-    for (const m of recent) {
-      toolCounts.set(m.toolName, (toolCounts.get(m.toolName) ?? 0) + 1);
-      serverCounts.set(m.serverId, (serverCounts.get(m.serverId) ?? 0) + 1);
-      if (!m.success) {
-        errorsByServer[m.serverId] = (errorsByServer[m.serverId] ?? 0) + 1;
-      }
-    }
-
-    return {
-      totalRequests: recent.length,
-      successRate: successful.length / recent.length,
-      avgLatencyMs: latencies.reduce((a, b) => a + b, 0) / latencies.length,
-      p95LatencyMs: latencies[Math.floor(latencies.length * 0.95)] ?? 0,
-      p99LatencyMs: latencies[Math.floor(latencies.length * 0.99)] ?? 0,
-      requestsPerMinute: recent.length / Math.max(1, windowMinutes),
+    const aggregated: AggregatedMetrics = {
+      totalRequests,
+      successRate: successful / totalRequests,
+      avgLatencyMs: latencySum / recentLatencies.length,
+      p95LatencyMs: recentLatencies[Math.floor(recentLatencies.length * 0.95)] ?? 0,
+      p99LatencyMs: recentLatencies[Math.floor(recentLatencies.length * 0.99)] ?? 0,
+      requestsPerMinute: totalRequests / Math.max(1, windowMinutes),
       topTools: Array.from(toolCounts.entries())
         .sort((a, b) => b[1] - a[1])
         .slice(0, 10)
@@ -82,6 +95,9 @@ export class MetricsCollector extends EventEmitter {
         .map(([id, count]) => ({ id, count })),
       errorsByServer,
     };
+
+    this.aggregateCache.set(cacheKey, aggregated);
+    return aggregated;
   }
 
   // ─── Prometheus Format ──────────────────────────────────────────────────────
@@ -125,9 +141,11 @@ export class MetricsCollector extends EventEmitter {
       this.metrics = this.metrics.filter((m) => m.timestamp.getTime() >= cutoff);
       const removed = before - this.metrics.length;
       if (removed > 0) {
+        this.aggregateCache.clear();
         // logger.debug(`Cleaned up ${removed} expired metrics`);
       }
     }, 60_000);
+    this.cleanupInterval.unref();
   }
 
   stop(): void {
@@ -142,5 +160,6 @@ export class MetricsCollector extends EventEmitter {
 
   clear(): void {
     this.metrics = [];
+    this.aggregateCache.clear();
   }
 }
