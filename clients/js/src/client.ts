@@ -5,6 +5,13 @@ import type {
   MetricsResponse,
   ReadinessResponse,
   RequestRecord,
+  RequestQuery,
+  RequestPage,
+  Resource,
+  ResourceTemplate,
+  Prompt,
+  ReadResourceResponse,
+  GetPromptResponse,
   ServerDetails,
   ServerSummary,
   Tool,
@@ -163,8 +170,59 @@ export class GatewayClient {
 
   /** `GET /requests` — recent calls (newest first). */
   async requests(limit = 50, options?: RequestOptions): Promise<RequestRecord[]> {
-    const body = await this.request<{ requests: RequestRecord[] }>('GET', `/api/v1/requests?limit=${limit}`, undefined, options);
-    return body.requests;
+    return (await this.history({ limit }, options)).requests;
+  }
+
+  /**
+   * `GET /requests` with filters and cursor paging (from the persistent audit
+   * log when the gateway has it enabled). Pass `nextCursor` back as `cursor`.
+   */
+  history(q: RequestQuery = {}, options?: RequestOptions): Promise<RequestPage> {
+    const time = (v: RequestQuery['since']) => (v instanceof Date ? v.toISOString() : v);
+    return this.request(
+      'GET',
+      `/api/v1/requests${query({
+        limit: q.limit,
+        server: q.server,
+        tool: q.tool,
+        client: q.client,
+        success: q.success === undefined ? undefined : String(q.success),
+        via: q.via,
+        kind: q.kind,
+        since: time(q.since),
+        until: time(q.until),
+        cursor: q.cursor,
+      })}`,
+      undefined,
+      options,
+    );
+  }
+
+  // ─── Resources & prompts (gateway ≥ 0.8) ───────────────────────────────────
+
+  async listResources(filter: { server?: string } = {}, options?: RequestOptions): Promise<Resource[]> {
+    return (await this.request<{ resources: Resource[] }>('GET', `/api/v1/resources${query(filter)}`, undefined, options)).resources;
+  }
+
+  async listResourceTemplates(filter: { server?: string } = {}, options?: RequestOptions): Promise<ResourceTemplate[]> {
+    const body = await this.request<{ resourceTemplates: ResourceTemplate[] }>(
+      'GET', `/api/v1/resources/templates${query(filter)}`, undefined, options,
+    );
+    return body.resourceTemplates;
+  }
+
+  readResource(uri: string, options: CallToolOptions = {}): Promise<ReadResourceResponse> {
+    return this.request('POST', '/api/v1/resources/read', { uri, ...(options.server ? { server: options.server } : {}) }, options);
+  }
+
+  async listPrompts(filter: { server?: string } = {}, options?: RequestOptions): Promise<Prompt[]> {
+    return (await this.request<{ prompts: Prompt[] }>('GET', `/api/v1/prompts${query(filter)}`, undefined, options)).prompts;
+  }
+
+  getPrompt(name: string, args: Record<string, string> = {}, options: CallToolOptions = {}): Promise<GetPromptResponse> {
+    return this.request(
+      'POST', '/api/v1/prompts/get', { name, arguments: args, ...(options.server ? { server: options.server } : {}) }, options,
+    );
   }
 
   // ─── Plumbing ───────────────────────────────────────────────────────────────

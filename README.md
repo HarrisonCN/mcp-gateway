@@ -74,6 +74,8 @@ As [MCP](https://modelcontextprotocol.io) becomes the standard protocol for AI a
 - **Config hot reload** — servers, API keys / auth, rate limits, CORS and reconnect policy apply without a restart (disable with `--no-watch`)
 - **Optional auth for health & metrics** — keep `/health` and `/metrics` public (default) or put them behind auth; the dashboard asks for a key
 - **Tool discovery** — `GET /api/v1/tools` lists all tools across all servers
+- **Resources & prompts** — `resources/*` and `prompts/*` from every server, aggregated on REST and `/mcp`
+- **Persistent audit log** — optional SQLite history (built-in `node:sqlite`, no dependency) queryable via `GET /api/v1/requests` and the dashboard
 - **Tool filtering** — per-server `tools.allow` / `tools.deny` glob patterns hide tools you don't want exposed (and block calls to them)
 - **YAML/JSON config** — simple, declarative configuration with env var overrides
 - **Docker-ready** — official Docker image, Compose examples included
@@ -196,8 +198,9 @@ What the endpoint does:
 
 | | |
 |---|---|
-| `POST /mcp` | JSON-RPC: `initialize`, `ping`, `tools/list` (paginated), `tools/call`, notifications (incl. `notifications/cancelled`). Batches are accepted. Responses are `application/json`. |
-| `GET /mcp` | SSE stream for server→client notifications: `notifications/tools/list_changed` is sent when the aggregated list changes (a server announces new tools, connects, is removed by hot reload, …). |
+| `POST /mcp` | JSON-RPC: `initialize`, `ping`, `tools/list` (paginated), `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`, `prompts/list`, `prompts/get`, notifications (incl. `notifications/cancelled`). Batches are accepted. Responses are `application/json`. |
+| `GET /mcp` | SSE stream for server→client notifications: `notifications/tools/list_changed`, `notifications/resources/list_changed` and `notifications/prompts/list_changed` are sent when the aggregated list a session sees changes (a server announces changes, connects, is removed by hot reload, …). |
+| Resources & prompts | Resource URIs are passed through unchanged; when two servers list the same URI the lowest server id wins. `resources/read` is routed by exact URI, then by resource template, then to the only server with resources. Prompt names follow `toolNaming` like tools. `resources/subscribe` is not offered. |
 | `DELETE /mcp` | Ends the session. |
 | Sessions | `initialize` returns `Mcp-Session-Id`; later requests must send it (`400` if missing, `404` if unknown or expired). A session is bound to the API key / JWT subject that created it. Idle sessions expire after `mcp.sessionIdleTimeoutSeconds`. |
 | Tool names | `toolNaming: auto` (default) keeps a tool's name unless two servers expose the same name; then every copy becomes `<serverId>__<tool>`. `prefix` always uses `<serverId>__<tool>`. Ordering is deterministic (server id, then tool name). In `auto` mode the prefixed form is also accepted by `tools/call`. |
@@ -218,7 +221,12 @@ What the endpoint does:
 | `GET` | `/api/v1/health/live` | Liveness probe — always public, returns only `{"status":"ok"}` |
 | `GET` | `/api/v1/health/ready` | Readiness probe — always public; `200` when servers are ready, else `503` (`?min=N`) |
 | `GET` | `/api/v1/metrics` | Aggregated metrics (JSON or Prometheus) |
-| `GET` | `/api/v1/requests` | Recent request log (`?limit=`, max 500) |
+| `GET` | `/api/v1/resources` | Resources of all servers (`?server=`), duplicate URIs collapsed |
+| `GET` | `/api/v1/resources/templates` | Resource templates (`?server=`) |
+| `POST` | `/api/v1/resources/read` | Read a resource: `{"uri": "...", "server"?: "..."}` |
+| `GET` | `/api/v1/prompts` | Prompts of all servers (`?server=`) |
+| `POST` | `/api/v1/prompts/get` | Get a prompt: `{"name": "...", "server"?: "...", "arguments"?: {...}}` |
+| `GET` | `/api/v1/requests` | Request history, newest first (`?limit=` max 500, `server`, `tool`, `client`, `success`, `via`, `kind`, `since`, `until`, `cursor`) |
 | `POST` `GET` `DELETE` | `/mcp` | MCP Streamable HTTP endpoint (see [above](#use-the-gateway-as-an-mcp-server-mcp)) |
 
 `/health` and `/metrics` are unauthenticated by default; set `auth.protect.health` / `auth.protect.metrics`
@@ -315,6 +323,11 @@ monitor:
 corsOrigins:
   - "https://your-app.com"
 
+audit:                        # persistent request history (SQLite, Node 22.5+; default off)
+  enabled: false
+  path: mcp-gateway-audit.db
+  retentionDays: 30           # 0 = keep forever
+
 mcp:                          # downstream MCP endpoint (Streamable HTTP)
   enabled: true               # restart required to change
   path: /mcp                  # restart required to change; not "/" or under /api, /dashboard
@@ -372,7 +385,7 @@ With `mcp-gateway start` the config file is watched (disable with `--no-watch`).
 | `auth` (strategy, keys, JWT secret, `protect`) | `monitor.retentionHours` |
 | `rateLimit` (counters reset when it changes) | `healthCheckIntervalMs` |
 | `corsOrigins`, `monitor.requestLog`, `monitor.prometheus` | `dashboard` |
-| `reconnect`, `logLevel` | `mcp.enabled`, `mcp.path` |
+| `reconnect`, `logLevel` | `mcp.enabled`, `mcp.path`, `audit` |
 | `mcp.toolNaming`, `mcp.pageSize`, session limits, `mcp.allowedOrigins` | |
 
 An invalid file is rejected and the running config is kept. `MCP_GATEWAY_*` env overrides keep precedence.
@@ -405,6 +418,46 @@ auth:
   `{"sub": "user-1", "mcp_servers": ["github"], "mcp_tools": "read_* github/create_issue"}`. A malformed claim allows nothing.
 - Hot reloadable: changing scopes applies to the next request; open `/mcp` sessions get `notifications/tools/list_changed`,
   and sessions of removed keys are closed.
+
+### Resources & prompts
+
+Servers that announce the `resources` / `prompts` capabilities have their resources, resource templates and
+prompts listed at connect time (and refreshed on `notifications/*/list_changed`). They are available on REST
+(`/api/v1/resources`, `/resources/templates`, `/resources/read`, `/prompts`, `/prompts/get`) and on `/mcp`.
+Reads and gets are forwarded live with the server's `timeout`, counted against the rate limit and recorded in
+metrics / history with `kind: "resource"` or `"prompt"`. Key scopes apply by **server** (`servers` globs);
+`tools` globs and `servers[].tools` filters only concern tools.
+
+```bash
+curl -s localhost:4000/api/v1/resources
+curl -s -X POST localhost:4000/api/v1/resources/read -H 'content-type: application/json' -d '{"uri":"file:///notes/todo.md"}'
+curl -s -X POST localhost:4000/api/v1/prompts/get -H 'content-type: application/json' \
+  -d '{"name":"review-code","server":"github","arguments":{"pr":"42"}}'
+```
+
+### Persistent audit log
+
+By default request history lives in memory (`monitor.retentionHours`). Enable the audit log to keep it in SQLite
+across restarts:
+
+```yaml
+audit:
+  enabled: true
+  path: ./data/mcp-gateway-audit.db   # default mcp-gateway-audit.db (WAL mode)
+  retentionDays: 30                   # pruned hourly; 0 = keep forever
+```
+
+- Uses Node's built-in [`node:sqlite`](https://nodejs.org/api/sqlite.html) (**Node 22.5+**): no extra dependency and
+  nothing native to compile. On Node 20 the gateway refuses to start with `audit.enabled: true` and says why. Node may
+  print an `ExperimentalWarning` for `node:sqlite`.
+- Only metadata is stored: time, server, tool / URI / prompt, kind, duration, success, error message, client id, `via`
+  (`rest` / `mcp`). Arguments and results are never stored.
+- `GET /api/v1/requests` then reads from the database (`"source": "audit"`) and supports filters
+  (`server`, `tool`, `client`, `success=true|false`, `via=rest|mcp`, `kind=tool|resource|prompt`, `since` / `until` as ISO
+  or epoch ms) and paging (`nextCursor` → `?cursor=`). Restricted keys only ever see their own records.
+  The dashboard's *Request History* panel has the same filters and a *Load older* button.
+- Library users can plug in any store: `metrics.setAuditStore(myStore)` with the `AuditStore` interface.
+- Changing `audit` requires a restart.
 
 ### Tool filtering
 
@@ -508,6 +561,8 @@ process.on('SIGTERM', () => gateway.stop());
 
 | Feature | Description |
 |---------|-------------|
+| **Resources & prompts** | `resources/list`, `resources/templates/list`, `resources/read`, `prompts/list`, `prompts/get` aggregated on REST and `/mcp`, with list-changed notifications and scopes |
+| **Audit log** | Optional persistent request history in SQLite (`node:sqlite`), filterable / pageable `GET /api/v1/requests`, dashboard history |
 | **Clients & LLM schemas** | TypeScript client (`clients/js`), Kotlin client (`clients/kotlin`), `GET /api/v1/tools?format=openai\|openai-responses\|anthropic` |
 | **Per-key scopes** | API keys can carry `servers` / `tools` globs and their own `rateLimit`; JWTs carry `mcp_servers` / `mcp_tools` claims. Enforced on REST and `/mcp`, hot reloadable |
 | **`/mcp` endpoint** | The gateway is an MCP server (Streamable HTTP, 2025-06-18): sessions, aggregated + paginated `tools/list`, deterministic collision naming, routed `tools/call`, `list_changed` notifications, cancellation |
@@ -538,11 +593,11 @@ process.on('SIGTERM', () => gateway.stop());
 | Downstream MCP endpoint (`/mcp`) | ✅ Done (unreleased, v0.5) |
 | Per-key scopes and limits | ✅ Done (unreleased, v0.6) |
 | JS / Kotlin clients, OpenAI / Anthropic tool schemas | ✅ Done (unreleased, v0.7) |
-| Resources & prompts passthrough, persistent audit log | 📋 Planned (v0.8) |
+| Resources & prompts passthrough, persistent audit log | ✅ Done (unreleased, v0.8) |
 | Redis-backed rate limiting | 📋 Planned |
 | OAuth2 / OIDC auth | 📋 Planned |
 | Tool-level access control | ✅ Done via per-key scopes (v0.6) |
-| Request replay & debugging | 📋 Planned |
+| Request replay & debugging | 📋 Planned (history is available via the audit log) |
 | Multi-tenant mode | 📋 Planned |
 | OpenTelemetry tracing | 📋 Planned |
 

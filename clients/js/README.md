@@ -65,7 +65,10 @@ await mcp.close();
 | `toolSchemas(format, filter?)` | `GET /api/v1/tools?format=openai\|openai-responses\|anthropic` |
 | `callTool(tool, args?, { server?, signal?, timeoutMs? })` | `POST /api/v1/tools/call` |
 | `callLlmTool(schemas, name, args)` | resolves `schemas.mapping[name]`, then `callTool` (args may be a JSON string) |
-| `requests(limit?)` | `GET /api/v1/requests` |
+| `requests(limit?)` | `GET /api/v1/requests` (records only) |
+| `history({ server?, tool?, client?, success?, via?, kind?, since?, until?, cursor?, limit? })` | `GET /api/v1/requests` with filters; returns `{ requests, nextCursor, source }` |
+| `listResources()` / `listResourceTemplates()` / `readResource(uri, { server? })` | `/api/v1/resources…` (gateway ≥ 0.8) |
+| `listPrompts()` / `getPrompt(name, args, { server? })` | `/api/v1/prompts…` (gateway ≥ 0.8) |
 
 Options: `baseUrl`, `apiKey` or `token` (string or async function, sent as `Authorization: Bearer`),
 `headers`, `fetch` (custom implementation), `timeoutMs` (default 60 000; 0 = none).

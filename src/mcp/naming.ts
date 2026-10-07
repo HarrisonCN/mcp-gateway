@@ -38,30 +38,46 @@ export function prefixedName(serverId: string, toolName: string): string {
   return `${serverId}${TOOL_NAME_SEPARATOR}${toolName}`;
 }
 
-const compare = (a: ToolInfo, b: ToolInfo): number =>
+type Named = { serverId: string; name: string };
+
+const compare = (a: Named, b: Named): number =>
   a.serverId < b.serverId ? -1 : a.serverId > b.serverId ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 
-export function buildToolIndex(tools: readonly ToolInfo[], naming: ToolNaming = 'auto'): ToolIndex {
-  const sorted = [...tools].sort(compare);
+export interface NameIndex<T extends Named> {
+  list: Array<{ name: string; item: T }>;
+  byName: Map<string, T>;
+}
+
+/**
+ * Unique exposed names for items (tools, prompts) that several servers may
+ * share by name; see the module comment for the rules.
+ */
+export function buildNameIndex<T extends Named>(items: readonly T[], naming: ToolNaming = 'auto'): NameIndex<T> {
+  const sorted = [...items].sort(compare);
   const counts = new Map<string, number>();
   for (const t of sorted) counts.set(t.name, (counts.get(t.name) ?? 0) + 1);
 
-  const list: ExposedTool[] = [];
-  const byName = new Map<string, ToolInfo>();
-  for (const tool of sorted) {
+  const list: Array<{ name: string; item: T }> = [];
+  const byName = new Map<string, T>();
+  for (const item of sorted) {
     const name =
-      naming === 'prefix' || (counts.get(tool.name) ?? 0) > 1 ? prefixedName(tool.serverId, tool.name) : tool.name;
+      naming === 'prefix' || (counts.get(item.name) ?? 0) > 1 ? prefixedName(item.serverId, item.name) : item.name;
     if (byName.has(name)) continue;
-    byName.set(name, tool);
-    list.push({ name, tool });
+    byName.set(name, item);
+    list.push({ name, item });
   }
   if (naming === 'auto') {
-    for (const { tool } of list) {
-      const alias = prefixedName(tool.serverId, tool.name);
-      if (!byName.has(alias)) byName.set(alias, tool);
+    for (const { item } of list) {
+      const alias = prefixedName(item.serverId, item.name);
+      if (!byName.has(alias)) byName.set(alias, item);
     }
   }
   return { list, byName };
+}
+
+export function buildToolIndex(tools: readonly ToolInfo[], naming: ToolNaming = 'auto'): ToolIndex {
+  const { list, byName } = buildNameIndex(tools, naming);
+  return { list: list.map(({ name, item }) => ({ name, tool: item })), byName };
 }
 
 /** MCP `Tool` object for an exposed tool. */

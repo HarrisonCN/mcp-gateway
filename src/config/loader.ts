@@ -166,6 +166,14 @@ const GatewayConfigSchema = z.object({
   reconnect: ReconnectSchema.optional(),
   healthCheckIntervalMs: z.number().int().min(1000).default(30_000),
   dashboard: z.object({ enabled: z.boolean().default(true) }).optional(),
+  audit: z
+    .object({
+      enabled: z.boolean().default(false),
+      path: z.string().min(1).default('mcp-gateway-audit.db'),
+      retentionDays: z.number().int().min(0).default(30),
+    })
+    .strict()
+    .optional(),
   mcp: z
     .object({
       enabled: z.boolean().default(true),
@@ -314,6 +322,12 @@ logLevel: info
 #   enabled: true
 #   path: /mcp
 #   toolNaming: auto   # auto = prefix "<server>__" only on name collisions; prefix = always
+
+# Persistent audit log of requests (SQLite via node:sqlite, Node 22.5+; default off)
+# audit:
+#   enabled: true
+#   path: ./data/mcp-gateway-audit.db
+#   retentionDays: 30   # 0 = keep forever
 
 # Monitoring
 monitor:

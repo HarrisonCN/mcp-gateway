@@ -78,6 +78,8 @@ curl -X POST http://localhost:4000/api/v1/tools/call \
 | **配置热更新** | 服务器、API Key / 鉴权、限流、CORS、重连策略修改后无需重启即可生效 |
 | **指标收集** | 兼容 Prometheus 的 `/metrics` 端点 + JSON 聚合 |
 | **工具发现** | `GET /api/v1/tools` 列出所有服务器的所有工具 |
+| **resources 与 prompts** | 所有服务器的 `resources/*`、`prompts/*` 在 REST 与 `/mcp` 上聚合透传 |
+| **持久化审计日志** | 可选 SQLite 请求历史（内置 `node:sqlite`，无新依赖），可通过 `GET /api/v1/requests` 和面板查询 |
 | **LLM 工具 schema** | `GET /api/v1/tools?format=openai\|openai-responses\|anthropic` 直接返回可用于函数调用的工具定义 |
 | **客户端库** | 零依赖 TypeScript 客户端（[`clients/js`](../clients/js)，浏览器 + Node）和 Kotlin/JVM/Android 客户端（[`clients/kotlin`](../clients/kotlin)） |
 | **YAML 配置** | 简洁的声明式配置，支持环境变量覆盖 |
@@ -134,6 +136,39 @@ mcp:
   # allowedOrigins: ["https://your-app.com"]
   # instructions: "ACME 工作区的工具"   # 在 initialize 中返回
 ```
+
+## resources 与 prompts 透传
+
+声明了 `resources` / `prompts` 能力的服务器，会在连接时列出其资源、资源模板和提示词（收到 `notifications/*/list_changed` 时刷新）。
+
+| REST | `/mcp` |
+|---|---|
+| `GET /api/v1/resources`（`?server=`，重复 URI 只保留一份） | `resources/list` |
+| `GET /api/v1/resources/templates` | `resources/templates/list` |
+| `POST /api/v1/resources/read` `{"uri", "server"?}` | `resources/read` |
+| `GET /api/v1/prompts` | `prompts/list`（名字规则同 `toolNaming`） |
+| `POST /api/v1/prompts/get` `{"name", "server"?, "arguments"?}` | `prompts/get` |
+
+- 资源 URI 原样透传；多个服务器列出同一 URI 时，服务器 id 最小的胜出。`resources/read` 依次按精确 URI、资源模板、唯一的资源服务器路由。
+- 读取 / 获取会实时转发（使用服务器的 `timeout`），计入限流，并以 `kind: "resource"` / `"prompt"` 记入指标与历史。
+- Key 的权限范围按**服务器**（`servers`）生效；`tools` 通配和 `servers[].tools` 过滤只作用于工具。
+- `/mcp` 会发送 `notifications/resources/list_changed` 与 `notifications/prompts/list_changed`；不支持 `resources/subscribe`。
+
+## 持久化审计日志
+
+默认请求历史只保存在内存中（`monitor.retentionHours`）。开启审计日志后可跨重启保存在 SQLite 中：
+
+```yaml
+audit:
+  enabled: true
+  path: ./data/mcp-gateway-audit.db   # 默认 mcp-gateway-audit.db（WAL 模式）
+  retentionDays: 30                   # 每小时清理；0 = 永久保留
+```
+
+- 使用 Node 内置的 `node:sqlite`（**Node 22.5+**）：无额外依赖、无需编译原生模块。Node 20 上开启会拒绝启动并说明原因。Node 可能会打印 `ExperimentalWarning`。
+- 只保存元数据：时间、服务器、工具 / URI / 提示词、类型、耗时、成功与否、错误信息、client id、`via`（`rest` / `mcp`）。不保存参数和结果。
+- 开启后 `GET /api/v1/requests` 从数据库读取（`"source": "audit"`），支持过滤（`server`、`tool`、`client`、`success=true|false`、`via=rest|mcp`、`kind=tool|resource|prompt`、`since` / `until`，ISO 或毫秒时间戳）和分页（`nextCursor` → `?cursor=`）。受限 Key 只能看到自己的记录。面板的 *Request History* 提供相同的过滤和 *Load older* 按钮。
+- 修改 `audit` 需要重启。
 
 ## LLM 工具 schema 与客户端库
 
@@ -234,7 +269,7 @@ servers:
 | `auth`（策略、API Key、JWT 密钥、`protect`） | `monitor.retentionHours` |
 | `rateLimit`（变更时计数器重置） | `healthCheckIntervalMs` |
 | `corsOrigins`、`monitor.requestLog`、`monitor.prometheus` | `dashboard` |
-| `reconnect`、`logLevel` | `mcp.enabled`、`mcp.path` |
+| `reconnect`、`logLevel` | `mcp.enabled`、`mcp.path`、`audit` |
 | `mcp.toolNaming` / `pageSize` / 会话设置 / `allowedOrigins` | |
 
 配置文件无效时会被拒绝，继续使用当前配置。
@@ -255,7 +290,7 @@ servers:
 - ✅ 下游 MCP 端点 `/mcp`（未发布，v0.5）
 - ✅ 按 Key 的权限范围与限流（未发布，v0.6）
 - ✅ JS / Kotlin 客户端，OpenAI / Anthropic 工具 schema（未发布，v0.7）
-- 📋 resources / prompts 透传，持久化审计日志（v0.8）
+- ✅ resources / prompts 透传，持久化审计日志（未发布，v0.8）
 - 📋 Redis 限流后端
 - 📋 OAuth2 / OIDC 鉴权
 - ✅ 工具级权限控制（通过按 Key 的 scopes，v0.6）

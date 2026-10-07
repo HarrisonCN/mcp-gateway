@@ -17,6 +17,7 @@
  *    (process exit, socket/stream closed, session expired). Not emitted for
  *    `disconnect()`. The gateway supervisor uses it to reconnect.
  *  - `tools-changed` (serverId, tools) — the server announced a new tool list.
+ *  - `catalog-changed` (serverId, catalog) — new resource / prompt lists.
  *
  * Fixes kept from v0.2.0 / the audit: per-server connect mutex (BUG-001),
  * monotonic ids (BUG-002), no leaked sessions on failed `initialize`, an old
@@ -27,7 +28,15 @@
  */
 
 import { EventEmitter } from 'events';
-import type { McpServerConfig, ProxyResponse, ToolInfo } from '../utils/types.js';
+import type {
+  McpServerConfig,
+  PromptInfo,
+  ProxyResponse,
+  ResourceInfo,
+  ResourceTemplateInfo,
+  ServerCatalog,
+  ToolInfo,
+} from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { Mutex } from '../utils/mutex.js';
 import { Semaphore } from '../utils/semaphore.js';
@@ -96,11 +105,15 @@ interface Session {
   protocolVersion?: string;
   serverInfo?: { name?: string; version?: string };
   connectedAt?: Date;
+  capabilities?: Record<string, unknown>;
+  catalog: ServerCatalog;
 }
 
 export interface SessionInfo {
   transport: string;
   protocolVersion?: string;
+  /** Capabilities the server announced in `initialize`. */
+  capabilities?: Record<string, unknown>;
   serverInfo?: { name?: string; version?: string };
   connectedAt?: Date;
 }
@@ -153,6 +166,7 @@ export class McpProxy extends EventEmitter {
         pendingRequests: new Map(),
         limiter: new Semaphore(config.maxConcurrency ?? Infinity),
         closed: false,
+        catalog: { resources: [], resourceTemplates: [], prompts: [] },
       };
 
       channel.onmessage = (msg) => this._onMessage(session, msg);
@@ -200,7 +214,9 @@ export class McpProxy extends EventEmitter {
     const init = (initResult.result ?? {}) as {
       protocolVersion?: unknown;
       serverInfo?: { name?: string; version?: string };
+      capabilities?: unknown;
     };
+    session.capabilities = isPlainObject(init.capabilities) ? init.capabilities : {};
     if (typeof init.protocolVersion === 'string') {
       session.protocolVersion = init.protocolVersion;
       if (!SUPPORTED_PROTOCOL_VERSIONS.includes(init.protocolVersion)) {
@@ -211,7 +227,85 @@ export class McpProxy extends EventEmitter {
     session.serverInfo = init.serverInfo;
 
     await this._notify(session, 'notifications/initialized');
-    return this._listTools(session);
+    const tools = await this._listTools(session);
+    session.catalog = await this._listCatalog(session);
+    return tools;
+  }
+
+  /** Fetch every page of a list method (`resources/list`, `prompts/list`, …). */
+  private async _listAll(session: Session, method: string, key: string): Promise<Record<string, unknown>[]> {
+    const timeout = session.config.timeout ?? DEFAULT_TIMEOUT_MS;
+    const items: Record<string, unknown>[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < MAX_TOOL_PAGES; page++) {
+      const r = await this._sendRequest(session, method, cursor ? { cursor } : {}, timeout, false);
+      if (!r.success) {
+        logger.warn(`Could not ${method} for "${session.config.id}": ${r.error?.message}`);
+        break;
+      }
+      const result = (r.result ?? {}) as Record<string, unknown>;
+      const list = result[key];
+      if (Array.isArray(list)) for (const it of list) if (isPlainObject(it)) items.push(it);
+      cursor = typeof result.nextCursor === 'string' && result.nextCursor ? result.nextCursor : undefined;
+      if (!cursor) break;
+    }
+    return items;
+  }
+
+  /** Resources, templates and prompts, for servers that announce those capabilities. */
+  private async _listCatalog(session: Session): Promise<ServerCatalog> {
+    const { config } = session;
+    const caps = session.capabilities ?? {};
+    const pick = <T>(o: Record<string, unknown>, keys: string[]): Partial<T> => {
+      const out: Record<string, unknown> = {};
+      for (const k of keys) if (o[k] !== undefined) out[k] = o[k];
+      return out as Partial<T>;
+    };
+    const owner = { serverId: config.id, serverName: config.name };
+    const catalog: ServerCatalog = { resources: [], resourceTemplates: [], prompts: [] };
+    if (caps.resources) {
+      for (const r of await this._listAll(session, 'resources/list', 'resources')) {
+        if (typeof r.uri !== 'string') continue;
+        catalog.resources.push({
+          ...pick<ResourceInfo>(r, ['title', 'description', 'mimeType', 'size', 'annotations']),
+          uri: r.uri,
+          name: typeof r.name === 'string' ? r.name : r.uri,
+          ...owner,
+        });
+      }
+      for (const t of await this._listAll(session, 'resources/templates/list', 'resourceTemplates')) {
+        if (typeof t.uriTemplate !== 'string') continue;
+        catalog.resourceTemplates.push({
+          ...pick<ResourceTemplateInfo>(t, ['title', 'description', 'mimeType', 'annotations']),
+          uriTemplate: t.uriTemplate,
+          name: typeof t.name === 'string' ? t.name : t.uriTemplate,
+          ...owner,
+        });
+      }
+    }
+    if (caps.prompts) {
+      for (const p of await this._listAll(session, 'prompts/list', 'prompts')) {
+        if (typeof p.name !== 'string') continue;
+        catalog.prompts.push({
+          ...pick<PromptInfo>(p, ['title', 'description', 'arguments']),
+          name: p.name,
+          ...owner,
+        });
+      }
+    }
+    return catalog;
+  }
+
+  /** Whether a connected server announced a capability (e.g. "resources"). */
+  hasCapability(serverId: string, capability: string): boolean {
+    const s = this.sessions.get(serverId);
+    return !!s && !s.closed && !!s.capabilities?.[capability];
+  }
+
+  /** Resources, templates and prompts announced by a connected server. */
+  getCatalog(serverId: string): ServerCatalog {
+    const s = this.sessions.get(serverId);
+    return s && !s.closed ? s.catalog : { resources: [], resourceTemplates: [], prompts: [] };
   }
 
   private async _listTools(session: Session): Promise<ToolInfo[]> {
@@ -343,6 +437,7 @@ export class McpProxy extends EventEmitter {
     return {
       transport: s.channel.kind,
       protocolVersion: s.protocolVersion,
+      capabilities: s.capabilities,
       serverInfo: s.serverInfo,
       connectedAt: s.connectedAt,
     };
@@ -384,6 +479,11 @@ export class McpProxy extends EventEmitter {
         this._answerServerRequest(session, msg.id, msg.method);
       } else if (msg.method === 'notifications/tools/list_changed') {
         this._refreshTools(session);
+      } else if (
+        msg.method === 'notifications/resources/list_changed' ||
+        msg.method === 'notifications/prompts/list_changed'
+      ) {
+        this._refreshCatalog(session);
       }
       return;
     }
@@ -408,6 +508,18 @@ export class McpProxy extends EventEmitter {
         if (!session.closed) this.emit('tools-changed', session.config.id, tools);
       },
       (err: unknown) => logger.warn(`[${session.config.id}] could not refresh tools: ${String(err)}`),
+    );
+  }
+
+  private _refreshCatalog(session: Session): void {
+    if (!session.connectedAt) return;
+    void this._listCatalog(session).then(
+      (catalog) => {
+        if (session.closed) return;
+        session.catalog = catalog;
+        this.emit('catalog-changed', session.config.id, catalog);
+      },
+      (err: unknown) => logger.warn(`[${session.config.id}] could not refresh resources/prompts: ${String(err)}`),
     );
   }
 

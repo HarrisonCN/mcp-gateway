@@ -68,3 +68,35 @@ describe('JS client against a real gateway', () => {
     expect(gw!.getMcpEndpoint()!.getSessions()).toHaveLength(0);
   });
 });
+
+describe('JS client: resources, prompts and history (gateway ≥ 0.8)', () => {
+  it('lists / reads / gets and pages history', async () => {
+    const { startStreamableHttpServer } = await import('./fixtures/remote-servers.js');
+    const h = await startStreamableHttpServer();
+    try {
+      gw = new Gateway({
+        port: 0, host: '127.0.0.1', logLevel: 'error', monitor: { requestLog: false },
+        servers: [{ id: 'h', name: 'H', transport: 'streamable-http', url: h.url, timeout: 3000 }],
+      });
+      await gw.start();
+      const c = new GatewayClient({ baseUrl: `http://127.0.0.1:${gw.address()!.port}` });
+      expect((await c.listResources()).map((r) => r.uri)).toEqual(['docs://readme']);
+      expect((await c.listResourceTemplates({ server: 'h' }))[0]!.uriTemplate).toBe('notes://{id}');
+      expect((await c.readResource('notes://3')).result.contents[0]!.text).toBe('note 3');
+      expect((await c.listPrompts())[0]!.name).toBe('greet');
+      const p = await c.getPrompt('greet', { name: 'Zed' });
+      expect(JSON.stringify(p.result.messages)).toContain('Hello, Zed!');
+      await c.callTool('echo', { msg: 'x' });
+      const page1 = await c.history({ limit: 2 });
+      expect(page1.source).toBe('memory');
+      expect(page1.requests.map((r) => r.kind ?? 'tool')).toEqual(['tool', 'prompt']);
+      const page2 = await c.history({ limit: 2, cursor: page1.nextCursor });
+      expect(page2.requests.map((r) => r.kind)).toEqual(['resource']);
+      expect((await c.history({ kind: 'prompt', since: new Date(0) })).requests).toHaveLength(1);
+    } finally {
+      await gw?.stop();
+      gw = undefined;
+      await h.close();
+    }
+  });
+});
