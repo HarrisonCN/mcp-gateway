@@ -174,6 +174,47 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
 ```
 `kind` is present for resources and prompts. Invalid parameters → `400`.
 
+### Live data (dashboard)
+
+Both endpoints require auth (like `/servers`). Clients restricted by a scope only see their own calls and
+in-scope servers, the same rule as `GET /requests`. Both read the in-memory log (`monitor.retentionHours`).
+
+#### `GET /stats`
+Windowed time series and breakdowns, computed on request.
+
+| Query | |
+|---|---|
+| `window` | ms, 10 000 – 86 400 000, default 900 000 (15 min) |
+| `bucket` | ms, default `window / 60`; clamped so there are at most 360 buckets (min 1 000) |
+
+```json
+{ "windowMs": 900000, "bucketMs": 15000, "now": 1791380000000,
+  "summary": { "total": 222, "errors": 10, "errorRate": 0.045, "requestsPerMinute": 14.8, "p50": 53, "p95": 163, "p99": 181 },
+  "series":  [ { "t": 1791379115000, "count": 4, "errors": 0, "p50": 41, "p95": 120 } ],
+  "tools":   [ { "name": "get_weather", "serverId": "weather", "count": 108, "errors": 4, "p95": 67 } ],
+  "servers": [ { "id": "weather", "count": 131, "errors": 5, "p95": 66 } ],
+  "clients": [ { "id": "key:admin", "count": 120, "errors": 5, "lastSeen": 1791379988000 } ] }
+```
+Buckets are aligned to `bucket`; the last one is the current, partial bucket. Percentiles use nearest rank.
+`tools` is the top 10, `clients` the top 20 (calls without a client id count as `anonymous`).
+
+#### `GET /events`
+[Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html) stream
+(`text/event-stream`). Takes the same `window` / `bucket` as `/stats` for its snapshots.
+
+| Event | `data` |
+|---|---|
+| `request` | one request record, same shape as in `GET /requests`, as soon as it is recorded |
+| `snapshot` | every 2 s: `{ now, health: [ServerHealth…], summary, last }` (`summary` as in `/stats`, `last` = current bucket) |
+
+A `: ping` comment is sent every 15 s; `retry: 3000` is sent first. At most 50 streams are open at once (`503`
+beyond that). Streams end when the gateway shuts down. Browsers cannot set headers on `EventSource`, so the
+dashboard reads the stream with `fetch()`; with curl:
+
+```bash
+curl -N -H "Authorization: Bearer $KEY" http://localhost:4000/api/v1/events
+```
+
 ---
 
 ## MCP endpoint (`/mcp`)

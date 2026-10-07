@@ -228,6 +228,8 @@ What the endpoint does:
 | `GET` | `/api/v1/prompts` | Prompts of all servers (`?server=`) |
 | `POST` | `/api/v1/prompts/get` | Get a prompt: `{"name": "...", "server"?: "...", "arguments"?: {...}}` |
 | `GET` | `/api/v1/requests` | Request history, newest first (`?limit=` max 500, `server`, `tool`, `client`, `success`, `via`, `kind`, `since`, `until`, `cursor`) |
+| `GET` | `/api/v1/stats` | Live dashboard data: time series (count, errors, p50/p95 per bucket), summary, top tools, per-server and per-key usage (`?window=`, `?bucket=` ms) |
+| `GET` | `/api/v1/events` | Server-Sent Events: a `request` event per call, a `snapshot` (health + summary) every 2 s |
 | `POST` `GET` `DELETE` | `/mcp` | MCP Streamable HTTP endpoint (see [above](#use-the-gateway-as-an-mcp-server-mcp)) |
 
 `/health` and `/metrics` are unauthenticated by default; set `auth.protect.health` / `auth.protect.metrics`
@@ -538,10 +540,18 @@ readinessProbe:
 
 ## Dashboard
 
-Open `http://localhost:4000/dashboard`. When auth is enabled, paste an API key (or JWT) in the header:
-it is kept in the browser tab (`sessionStorage`, or `localStorage` with “remember”) and sent as
-`Authorization: Bearer …` on every API call. The page itself contains no data; set `dashboard.enabled: false`
-to stop serving it.
+Open `http://localhost:4000/dashboard`. The first visit opens a short guided setup: connect with an API key,
+see the upstream servers, call a tool from a form generated from its JSON schema, and copy a ready-made
+config for Claude Desktop, Cursor, Claude Code, the JS / Kotlin clients or curl. Reopen it any time with the
+**?** button. After that the dashboard shows live request rate, p50 / p95 latency, error rate, top tools,
+usage per key, a live request stream, server health (with reconnect) and the filterable request history.
+It is one static file with no build step and no CDN; English / 中文, dark / light, and it works on phones.
+
+![Dashboard overview](docs/images/dashboard-overview.png)
+
+When auth is enabled the key is kept in the browser tab (`sessionStorage`, or `localStorage` with
+“remember”) and sent as `Authorization: Bearer …` on every API call. The page itself contains no data; set
+`dashboard.enabled: false` to stop serving it. See [dashboard/README.md](dashboard/README.md).
 
 ## Embed as a Library
 
