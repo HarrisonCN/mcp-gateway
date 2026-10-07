@@ -57,6 +57,7 @@ export class Gateway {
     // Builds auth/rate-limit; throws on insecure misconfiguration (fail closed)
     this.router = createApiRouter(this.config, this.registry, this.proxy, this.metrics, {
       supervisor: this.supervisor,
+      isShuttingDown: () => this.stopping !== undefined,
     });
 
     this.app.disable('x-powered-by');

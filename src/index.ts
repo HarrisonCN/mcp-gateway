@@ -4,6 +4,8 @@
  */
 
 export { Gateway } from './gateway/index.js';
+export { computeReadiness } from './gateway/api.js';
+export type { Readiness } from './gateway/api.js';
 export { ServerRegistry } from './registry/index.js';
 export { McpProxy, defaultChannelFactory, MCP_PROTOCOL_VERSION } from './proxy/index.js';
 export type { ProxyOptions, SessionInfo } from './proxy/index.js';

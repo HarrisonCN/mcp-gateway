@@ -28,6 +28,44 @@ export type ApiRouter = express.Router & {
 export interface ApiRouterOptions {
   /** Enables POST /servers/:id/reconnect and reconnect info. */
   supervisor?: ServerSupervisor;
+  /** Makes GET /health/ready answer 503 while the gateway is shutting down. */
+  isShuttingDown?: () => boolean;
+}
+
+export interface Readiness {
+  ready: boolean;
+  /** Enabled servers that are connected and not `degraded`. */
+  readyServers: number;
+  /** Enabled servers. */
+  totalServers: number;
+  /** Servers that must be ready (`?min=`, default: all of them). */
+  required: number;
+  shuttingDown: boolean;
+}
+
+/**
+ * Readiness for load balancers / Kubernetes: ready when at least `min`
+ * enabled servers (default: every one) are connected and answering pings.
+ * A gateway with no enabled servers is ready; a shutting-down one never is.
+ */
+export function computeReadiness(
+  registry: ServerRegistry,
+  proxy: McpProxy,
+  min?: number,
+  shuttingDown = false,
+): Readiness {
+  const enabled = registry.getEnabledServers();
+  const readyServers = enabled.filter(
+    (s) => proxy.isConnected(s.id) && registry.getHealth(s.id)?.status !== 'degraded',
+  ).length;
+  const required = min === undefined ? enabled.length : min;
+  return {
+    ready: !shuttingDown && readyServers >= required,
+    readyServers,
+    totalServers: enabled.length,
+    required,
+    shuttingDown,
+  };
 }
 
 /** Wrap async handlers so a thrown error reaches the error middleware instead
@@ -148,6 +186,26 @@ export function createApiRouter(
   // Liveness probe: always public, reveals nothing (for Docker / k8s).
   router.get('/health/live', (_req, res) => {
     res.json({ status: 'ok' });
+  });
+
+  // Readiness probe: always public, reveals only counts (for k8s / load balancers).
+  // ?min=N requires at least N ready servers instead of all of them.
+  router.get('/health/ready', (req, res) => {
+    const rawMin = req.query.min;
+    let min: number | undefined;
+    if (rawMin !== undefined) {
+      min = typeof rawMin === 'string' && /^\d+$/.test(rawMin) ? Number(rawMin) : NaN;
+      if (!Number.isSafeInteger(min)) {
+        res.status(400).json({ error: 'Bad Request', message: '"min" must be a non-negative integer' });
+        return;
+      }
+    }
+    const r = computeReadiness(registry, proxy, min, options.isShuttingDown?.() ?? false);
+    res.set('Cache-Control', 'no-store');
+    res.status(r.ready ? 200 : 503).json({
+      status: r.ready ? 'ready' : r.shuttingDown ? 'shutting_down' : 'not_ready',
+      servers: { ready: r.readyServers, total: r.totalServers, required: r.required },
+    });
   });
 
   router.get('/health', protectable('health'), (_req, res) => {

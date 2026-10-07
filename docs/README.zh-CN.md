@@ -94,7 +94,7 @@ auth:
   strategy: api-key
   apiKeys: ["your-secret-key"]
   protect:
-    health: false             # true → /api/v1/health 需要鉴权（/api/v1/health/live 始终公开）
+    health: false             # true → /api/v1/health 需要鉴权（/api/v1/health/live 与 /api/v1/health/ready 始终公开）
     metrics: false            # true → /api/v1/metrics 需要鉴权（需为 Prometheus 配置凭据）
 
 servers:

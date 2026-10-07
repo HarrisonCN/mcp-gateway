@@ -153,11 +153,12 @@ curl -X POST http://localhost:4000/api/v1/tools/call \
 | `POST` | `/api/v1/tools/call` | Invoke a tool |
 | `POST` | `/api/v1/servers/:id/reconnect` | Reconnect a server now (resets backoff) |
 | `GET` | `/api/v1/health/live` | Liveness probe — always public, returns only `{"status":"ok"}` |
+| `GET` | `/api/v1/health/ready` | Readiness probe — always public; `200` when servers are ready, else `503` (`?min=N`) |
 | `GET` | `/api/v1/metrics` | Aggregated metrics (JSON or Prometheus) |
 | `GET` | `/api/v1/requests` | Recent request log (`?limit=`, max 500) |
 
 `/health` and `/metrics` are unauthenticated by default; set `auth.protect.health` / `auth.protect.metrics`
-to require auth for them too (`/health/live` always stays public for Docker / Kubernetes probes).
+to require auth for them too (`/health/live` and `/health/ready` always stay public for Docker / Kubernetes probes).
 Every other route requires auth when it is enabled.
 `/metrics` returns JSON by default (`?window=<ms>`); with `monitor.prometheus: true` it returns the
 Prometheus text format when the client asks for `text/plain` (as Prometheus does) or passes `?format=prometheus`.
@@ -289,6 +290,31 @@ GATEWAY_API_KEY=change-me docker compose up
 
 The image's `HEALTHCHECK` uses the always-public `/api/v1/health/live`, so it keeps working when
 `auth.protect.health` is on.
+
+### Liveness vs. readiness (Kubernetes, load balancers)
+
+| Probe | Answers | Use it for |
+|-------|---------|------------|
+| `GET /api/v1/health/live` | always `200 {"status":"ok"}` while the process serves HTTP | restart a hung container |
+| `GET /api/v1/health/ready` | `200` when the upstream servers are ready, otherwise `503` | only route traffic to gateways that can serve tool calls |
+
+A server counts as ready when it is enabled, connected and not `degraded` (failing health pings).
+By default **every** enabled server must be ready; `?min=N` requires at least `N` instead (useful when
+some servers are optional). With no servers configured the gateway is ready. While shutting down it
+answers `503 {"status":"shutting_down"}` so load balancers drain it first. The body only carries counts:
+
+```json
+{ "status": "not_ready", "servers": { "ready": 1, "total": 2, "required": 2 } }
+```
+
+```yaml
+# Kubernetes
+livenessProbe:
+  httpGet: { path: /api/v1/health/live, port: 4000 }
+readinessProbe:
+  httpGet: { path: /api/v1/health/ready, port: 4000 }   # or /api/v1/health/ready?min=1
+  periodSeconds: 10
+```
 
 ## Dashboard
 
