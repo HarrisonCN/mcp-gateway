@@ -20,7 +20,9 @@ const COLORS: Record<LogLevel, string> = {
 
 const RESET = '\x1b[0m';
 
-class Logger {
+export type { LogLevel };
+
+export class Logger {
   private level: LogLevel = 'info';
 
   setLevel(level: LogLevel): void {
@@ -34,7 +36,7 @@ class Logger {
     const color = process.stdout.isTTY ? COLORS[level] : '';
     const reset = process.stdout.isTTY ? RESET : '';
     const prefix = `${color}[${level.toUpperCase().padEnd(5)}]${reset}`;
-    const metaStr = meta ? ` ${JSON.stringify(meta)}` : '';
+    const metaStr = meta ? ` ${safeStringify(meta)}` : '';
 
     const output = `${ts} ${prefix} ${message}${metaStr}`;
 
@@ -59,6 +61,14 @@ class Logger {
 
   error(message: string, meta?: Record<string, unknown>): void {
     this.log('error', message, meta);
+  }
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
+  } catch {
+    return '[unserializable meta]';
   }
 }
 

@@ -24,7 +24,14 @@ const McpServerSchema = z.object({
   tags: z.array(z.string()).optional(),
   enabled: z.boolean().default(true),
   timeout: z.number().positive().default(30000),
-  maxConcurrency: z.number().positive().default(10),
+  maxConcurrency: z.number().int().positive().default(10),
+}).superRefine((s, ctx) => {
+  if (s.transport === 'stdio' && !s.command) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['command'], message: 'required for stdio transport' });
+  }
+  if ((s.transport === 'sse' || s.transport === 'websocket') && !s.url) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['url'], message: `required for ${s.transport} transport` });
+  }
 });
 
 const GatewayConfigSchema = z.object({
@@ -36,10 +43,21 @@ const GatewayConfigSchema = z.object({
       apiKeys: z.array(z.string()).optional(),
       jwtSecret: z.string().optional(),
     })
+    .superRefine((a, ctx) => {
+      if (a.strategy === 'api-key' && !(a.apiKeys ?? []).some((k) => k.length > 0)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['apiKeys'], message: 'at least one key is required for api-key strategy' });
+      }
+      if (a.strategy === 'jwt' && !a.jwtSecret) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['jwtSecret'], message: 'required for jwt strategy' });
+      }
+      if (a.strategy === 'oauth2') {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['strategy'], message: 'oauth2 is not implemented yet (refusing to start without auth)' });
+      }
+    })
     .optional(),
   rateLimit: z
     .object({
-      limit: z.number().positive().default(100),
+      limit: z.number().int().positive().default(100),
       windowSeconds: z.number().positive().default(60),
       perKey: z.boolean().default(true),
     })
@@ -54,6 +72,14 @@ const GatewayConfigSchema = z.object({
   servers: z.array(McpServerSchema).default([]),
   corsOrigins: z.array(z.string()).optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+}).superRefine((c, ctx) => {
+  const seen = new Set<string>();
+  c.servers.forEach((s, i) => {
+    if (seen.has(s.id)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['servers', i, 'id'], message: `duplicate server id "${s.id}"` });
+    }
+    seen.add(s.id);
+  });
 });
 
 // ─── Loader ───────────────────────────────────────────────────────────────────
@@ -66,18 +92,27 @@ const CONFIG_SEARCH_PATHS = [
   '.mcp-gateway.yaml',
 ];
 
-export async function loadConfig(configPath?: string): Promise<GatewayConfig> {
-  let raw: unknown = {};
+/**
+ * Resolve the config file that `loadConfig` would read: the explicit path if
+ * given, otherwise the first match in the default search paths.
+ */
+export function resolveConfigPath(configPath?: string): string | undefined {
+  if (configPath) return resolve(configPath);
+  for (const searchPath of CONFIG_SEARCH_PATHS) {
+    if (existsSync(searchPath)) return resolve(searchPath);
+  }
+  return undefined;
+}
 
-  if (configPath) {
-    raw = await readConfigFile(resolve(configPath));
-  } else {
-    for (const searchPath of CONFIG_SEARCH_PATHS) {
-      if (existsSync(searchPath)) {
-        raw = await readConfigFile(resolve(searchPath));
-        break;
-      }
+export async function loadConfig(configPath?: string): Promise<GatewayConfig> {
+  const filePath = resolveConfigPath(configPath);
+  let raw: unknown = filePath ? await readConfigFile(filePath) : {};
+  // An empty YAML file parses to null
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    if (raw !== null && raw !== undefined) {
+      throw new Error(`Invalid configuration: ${filePath} must contain a mapping/object at the top level`);
     }
+    raw = {};
   }
 
   // Apply environment variable overrides
@@ -117,7 +152,7 @@ function applyEnvOverrides(config: Record<string, unknown>): Record<string, unkn
     overrides.auth = {
       ...(overrides.auth as Record<string, unknown> ?? {}),
       strategy: 'api-key',
-      apiKeys: process.env.MCP_GATEWAY_API_KEYS.split(',').map((k) => k.trim()),
+      apiKeys: process.env.MCP_GATEWAY_API_KEYS.split(',').map((k) => k.trim()).filter(Boolean),
     };
   }
 

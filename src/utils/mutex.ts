@@ -13,24 +13,42 @@ export class Mutex {
   private _queue: Array<() => void> = [];
   private _locked = false;
 
-  async acquire(): Promise<() => void> {
+  /**
+   * Acquire the lock. The returned release function is idempotent: calling it
+   * more than once is a no-op (previously a double release could unlock the
+   * mutex while another holder was still inside the critical section).
+   */
+  acquire(): Promise<() => void> {
     return new Promise((resolve) => {
-      const tryAcquire = () => {
-        if (!this._locked) {
-          this._locked = true;
-          resolve(this._release.bind(this));
-        } else {
-          this._queue.push(tryAcquire);
-        }
+      const grant = () => {
+        let released = false;
+        resolve(() => {
+          if (released) return;
+          released = true;
+          this._release();
+        });
       };
-      tryAcquire();
+      if (!this._locked) {
+        this._locked = true;
+        grant();
+      } else {
+        this._queue.push(grant);
+      }
     });
   }
 
+  /** Hand the lock directly to the next waiter, or unlock if none. */
   private _release(): void {
-    this._locked = false;
     const next = this._queue.shift();
-    if (next) next();
+    if (next) {
+      next(); // lock stays held, ownership transfers
+    } else {
+      this._locked = false;
+    }
+  }
+
+  get isLocked(): boolean {
+    return this._locked;
   }
 
   async runExclusive<T>(fn: () => Promise<T>): Promise<T> {

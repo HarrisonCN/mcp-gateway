@@ -77,6 +77,15 @@ export class ServerRegistry extends EventEmitter {
   // ─── Tool Registry ──────────────────────────────────────────────────────────
 
   setTools(serverId: string, tools: ToolInfo[]): void {
+    for (const t of tools) {
+      const owners = this.findTools(t.name).filter((o) => o.serverId !== serverId);
+      if (owners.length > 0) {
+        logger.warn(
+          `Tool "${t.name}" is exposed by multiple servers (${[serverId, ...owners.map((o) => o.serverId)].join(', ')}); ` +
+            'callers must pass "server" to disambiguate',
+        );
+      }
+    }
     this.tools.set(serverId, tools);
     this.emit('tools-updated', serverId, tools);
   }
@@ -87,6 +96,16 @@ export class ServerRegistry extends EventEmitter {
 
   getAllTools(): ToolInfo[] {
     return Array.from(this.tools.values()).flat();
+  }
+
+  /** Every server's entry for a tool name (more than one means the name is ambiguous). */
+  findTools(toolName: string): ToolInfo[] {
+    const found: ToolInfo[] = [];
+    for (const tools of this.tools.values()) {
+      const t = tools.find((x) => x.name === toolName);
+      if (t) found.push(t);
+    }
+    return found;
   }
 
   findTool(toolName: string): ToolInfo | undefined {
@@ -125,15 +144,22 @@ export class ServerRegistry extends EventEmitter {
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
   startHealthChecks(checkFn: (serverId: string) => Promise<void>): void {
-    this.healthCheckInterval = setInterval(async () => {
-      for (const server of this.getEnabledServers()) {
-        try {
-          await checkFn(server.id);
-        } catch (err) {
-          logger.debug(`Health check failed for ${server.id}: ${String(err)}`);
-        }
-      }
+    this.stopHealthChecks(); // never stack multiple intervals
+    let running = false;
+    this.healthCheckInterval = setInterval(() => {
+      if (running) return; // skip a tick rather than overlap slow checks
+      running = true;
+      void Promise.allSettled(
+        this.getEnabledServers().map((server) =>
+          checkFn(server.id).catch((err: unknown) => {
+            logger.debug(`Health check failed for ${server.id}: ${String(err)}`);
+          }),
+        ),
+      ).finally(() => {
+        running = false;
+      });
     }, this.healthCheckMs);
+    this.healthCheckInterval.unref();
   }
 
   stopHealthChecks(): void {

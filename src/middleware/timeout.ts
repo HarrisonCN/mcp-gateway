@@ -22,6 +22,9 @@ export function timeoutMiddleware(timeoutMs: number) {
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
+      // The handler may have started streaming; nothing safe to send then.
+      if (res.headersSent) return;
+      res.set('Retry-After', String(Math.max(1, Math.ceil(timeoutMs / 1000))));
       next(
         new GatewayError(
           504,

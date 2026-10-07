@@ -62,10 +62,12 @@ As [MCP](https://modelcontextprotocol.io) becomes the standard protocol for AI a
 ## Features
 
 - **Unified API endpoint** — one URL for all your MCP tools, auto-routed by tool name
-- **Authentication** — API key, JWT, or no-auth modes
-- **Rate limiting** — per-key sliding window, with standard `X-RateLimit-*` headers
-- **Health monitoring** — automatic health checks with configurable intervals
-- **Metrics** — Prometheus-compatible `/metrics` endpoint + JSON aggregation
+- **Authentication** — API key (constant-time compare), JWT (HS256/384/512), or no-auth; misconfiguration fails closed
+- **Rate limiting** — per-key sliding-window counter, with standard `X-RateLimit-*` headers
+- **Concurrency limits** — per-server `maxConcurrency`, queued requests count against `timeout`
+- **Health monitoring** — periodic health checks (every 30 s)
+- **Metrics** — Prometheus-compatible `/metrics` endpoint (monotonic counters) + JSON aggregation
+- **Config hot reload** — add, change or remove servers by editing the config file (disable with `--no-watch`)
 - **Tool discovery** — `GET /api/v1/tools` lists all tools across all servers
 - **YAML/JSON config** — simple, declarative configuration with env var overrides
 - **Docker-ready** — official Docker image, Compose examples included
@@ -147,7 +149,24 @@ curl -X POST http://localhost:4000/api/v1/tools/call \
 | `GET` | `/api/v1/tools` | List all tools (filterable by `?server=` or `?tag=`) |
 | `POST` | `/api/v1/tools/call` | Invoke a tool |
 | `GET` | `/api/v1/metrics` | Aggregated metrics (JSON or Prometheus) |
-| `GET` | `/api/v1/requests` | Recent request log |
+| `GET` | `/api/v1/requests` | Recent request log (`?limit=`, max 500) |
+
+`/health` and `/metrics` are unauthenticated; every other route requires auth when it is enabled.
+`/metrics` returns JSON by default (`?window=<ms>`); with `monitor.prometheus: true` it returns the
+Prometheus text format when the client asks for `text/plain` (as Prometheus does) or passes `?format=prometheus`.
+
+`POST /api/v1/tools/call` responses:
+
+| Status | Meaning |
+|--------|---------|
+| `200` | Tool returned a result |
+| `400` | Invalid body (`tool` must be a string, `arguments` an object) or malformed JSON |
+| `404` | Unknown tool or server |
+| `409` | Tool name is exposed by several servers — pass `"server"` to choose |
+| `429` | Rate limited (see `Retry-After`) |
+| `502` | The MCP server returned an error |
+| `503` | Server is not connected |
+| `504` | The MCP server did not answer within `timeout` |
 
 ## Configuration Reference
 
@@ -157,7 +176,7 @@ host: 0.0.0.0                 # Bind address (env: MCP_GATEWAY_HOST)
 logLevel: info                # debug | info | warn | error
 
 auth:
-  strategy: api-key           # none | api-key | jwt
+  strategy: api-key           # none | api-key | jwt   (oauth2 is not implemented and is rejected)
   apiKeys:
     - "your-secret-key"
 
@@ -177,15 +196,15 @@ corsOrigins:
 servers:
   - id: my-server             # Unique identifier
     name: My Server           # Display name
-    transport: stdio          # stdio | sse | websocket
+    transport: stdio          # stdio (sse / websocket: transport classes exist but are not routable yet)
     command: npx
     args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
     env:
       MY_VAR: "${ENV_VAR}"    # Environment variable substitution
     tags: [files, local]
     enabled: true
-    timeout: 30000            # ms
-    maxConcurrency: 10
+    timeout: 30000            # ms, includes time queued behind maxConcurrency
+    maxConcurrency: 10        # max in-flight tool calls for this server
 ```
 
 ## Docker
@@ -221,9 +240,9 @@ process.on('SIGTERM', () => gateway.stop());
 
 | Feature | Description |
 |---------|-------------|
-| **SSE Transport** | Connect to MCP servers via Server-Sent Events |
-| **WebSocket Transport** | Full-duplex WS transport with keep-alive pings |
-| **Config Hot Reload** | Edit `mcp-gateway.yml` without restarting |
+| **SSE Transport** | Transport class (`src/transport/sse.ts`); not yet wired into the proxy |
+| **WebSocket Transport** | Transport class (`src/transport/websocket.ts`); not yet wired into the proxy |
+| **Config Hot Reload** | Edit the server list in `mcp-gateway.yml` without restarting |
 | **Request Tracing** | `X-Request-Id` on every request & response |
 | **CORS Middleware** | Configurable cross-origin support |
 | **Web Dashboard** | Live monitoring UI at `/dashboard` |
@@ -234,8 +253,8 @@ process.on('SIGTERM', () => gateway.stop());
 | Feature | Status |
 |---------|--------|
 | stdio transport | ✅ Done |
-| SSE transport | ✅ Done (v0.2.0) |
-| WebSocket transport | ✅ Done (v0.2.0) |
+| SSE transport | 🚧 Transport class done, proxy routing pending |
+| WebSocket transport | 🚧 Transport class done, proxy routing pending |
 | Config hot reload | ✅ Done (v0.2.0) |
 | Web dashboard UI | ✅ Done (v0.2.0) |
 | Redis-backed rate limiting | 📋 Planned |
@@ -253,6 +272,7 @@ Contributions are welcome! See [CONTRIBUTING.md](docs/CONTRIBUTING.md).
 git clone https://github.com/HarrisonCN/mcp-gateway.git
 cd mcp-gateway
 npm install
+npm run typecheck && npm test
 npm run dev -- start -c examples/basic/mcp-gateway.yml
 ```
 

@@ -50,7 +50,7 @@ Currently, only `stdio` transport is fully implemented. To add `sse` or `websock
 
 1. Add the connection logic in `src/proxy/index.ts`
 2. Handle the new transport type in the `connect()` method
-3. Add tests in `src/proxy/index.test.ts`
+3. Add tests in `test/proxy.test.ts` (see `test/fixtures/fake-mcp-server.mjs`)
 
 ## Pull Request Guidelines
 

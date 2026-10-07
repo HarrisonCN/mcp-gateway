@@ -1,3 +1,4 @@
+# package-lock.json is required by `npm ci`
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -22,6 +23,10 @@ COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
+COPY dashboard/index.html ./dashboard/index.html
+
+# Drop root privileges
+USER node
 
 EXPOSE 4000
 
