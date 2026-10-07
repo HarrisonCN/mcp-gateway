@@ -67,6 +67,7 @@ As [MCP](https://modelcontextprotocol.io) becomes the standard protocol for AI a
 - **Automatic reconnect** — crashed or disconnected servers are reconnected with exponential backoff + jitter; state is visible in `/servers`, `/health`, the dashboard and Prometheus
 - **Authentication** — API key (constant-time compare), JWT (HS256/384/512), or no-auth; misconfiguration fails closed
 - **Rate limiting** — per-key sliding-window counter, with standard `X-RateLimit-*` headers
+- **Per-key scopes** — restrict an API key (or a JWT via claims) to some servers / tools and give it its own rate limit; enforced on REST and `/mcp`
 - **Concurrency limits** — per-server `maxConcurrency`, queued requests count against `timeout`
 - **Health monitoring** — periodic MCP `ping` health checks with latency (every 30 s, configurable)
 - **Metrics** — Prometheus-compatible `/metrics` endpoint (monotonic counters) + JSON aggregation
@@ -230,7 +231,7 @@ Prometheus text format when the client asks for `text/plain` (as Prometheus does
 |--------|---------|
 | `200` | Tool returned a result |
 | `400` | Invalid body (`tool` must be a string, `arguments` an object) or malformed JSON |
-| `403` | The tool is hidden by the server's `tools` filter (also when `"server"` is passed explicitly) |
+| `403` | The tool is hidden by the server's `tools` filter (also when `"server"` is passed explicitly), or outside the caller's scope |
 | `404` | Unknown tool or server |
 | `409` | Tool name is exposed by several servers — pass `"server"` to choose |
 | `429` | Rate limited (see `Retry-After`) |
@@ -248,7 +249,12 @@ logLevel: info                # debug | info | warn | error
 auth:
   strategy: api-key           # none | api-key | jwt   (oauth2 is not implemented and is rejected)
   apiKeys:
-    - "your-secret-key"
+    - "your-secret-key"       # full access
+    - key: "${APP_KEY}"       # scoped key (see "Per-key scopes")
+      name: app
+      servers: ["github"]
+      tools: ["read_*"]
+      rateLimit: { limit: 30, windowSeconds: 60 }
   protect:
     health: false             # true → /api/v1/health requires auth
     metrics: false            # true → /api/v1/metrics requires auth (configure your scraper)
@@ -339,6 +345,35 @@ With `mcp-gateway start` the config file is watched (disable with `--no-watch`).
 | `mcp.toolNaming`, `mcp.pageSize`, session limits, `mcp.allowedOrigins` | |
 
 An invalid file is rejected and the running config is kept. `MCP_GATEWAY_*` env overrides keep precedence.
+
+### Per-key scopes
+
+Give each app its own key and only the tools it needs. Plain string keys keep full access;
+object entries can be restricted (all fields except `key` are optional):
+
+```yaml
+auth:
+  strategy: api-key
+  apiKeys:
+    - "admin-key"                       # unrestricted
+    - key: ${AURA_GATEWAY_KEY}          # ${VAR} is expanded in object keys
+      name: aura                        # client id "key:aura" in logs, metrics and sessions (unique)
+      servers: ["github", "fs-*"]       # server id globs
+      tools: ["read_*", "github/create_issue"]   # tool globs; "server/tool" when the pattern has a "/"
+      rateLimit: { limit: 30, windowSeconds: 60 } # own bucket instead of the global rateLimit
+```
+
+- A tool must pass the server's own `tools` filter **and** the key's `servers` **and** `tools` lists.
+  An absent list means no restriction; an empty list allows nothing.
+- **Discovery hides** what a key may not use: `GET /tools`, `GET /servers`, `GET /servers/:id` (→ `404`), `/mcp` `tools/list`.
+- **Calls are refused**: `POST /tools/call` and `POST /servers/:id/reconnect` → `403`; `/mcp` `tools/call` → JSON-RPC error `-32003`.
+  Auto-routing only considers servers the key may use, so a name that collides elsewhere can still be called without `"server"`.
+- On `/mcp`, collision prefixes are computed from what the key can see (a key scoped to one server sees bare names).
+- Restricted keys only see their own entries in `GET /requests`.
+- **JWT**: put globs in the `mcp_servers` / `mcp_tools` claims (array, or a space/comma-separated string), e.g.
+  `{"sub": "user-1", "mcp_servers": ["github"], "mcp_tools": "read_* github/create_issue"}`. A malformed claim allows nothing.
+- Hot reloadable: changing scopes applies to the next request; open `/mcp` sessions get `notifications/tools/list_changed`,
+  and sessions of removed keys are closed.
 
 ### Tool filtering
 
@@ -442,6 +477,7 @@ process.on('SIGTERM', () => gateway.stop());
 
 | Feature | Description |
 |---------|-------------|
+| **Per-key scopes** | API keys can carry `servers` / `tools` globs and their own `rateLimit`; JWTs carry `mcp_servers` / `mcp_tools` claims. Enforced on REST and `/mcp`, hot reloadable |
 | **`/mcp` endpoint** | The gateway is an MCP server (Streamable HTTP, 2025-06-18): sessions, aggregated + paginated `tools/list`, deterministic collision naming, routed `tools/call`, `list_changed` notifications, cancellation |
 
 ## What's New in v0.2.0
@@ -468,12 +504,12 @@ process.on('SIGTERM', () => gateway.stop());
 | Config hot reload | ✅ Done (v0.2.0) |
 | Web dashboard UI | ✅ Done (v0.2.0) |
 | Downstream MCP endpoint (`/mcp`) | ✅ Done (unreleased, v0.5) |
-| Per-key scopes and limits | 📋 Planned (v0.6) |
+| Per-key scopes and limits | ✅ Done (unreleased, v0.6) |
 | JS / Kotlin clients, OpenAI / Anthropic tool schemas | 📋 Planned (v0.7) |
 | Resources & prompts passthrough, persistent audit log | 📋 Planned (v0.8) |
 | Redis-backed rate limiting | 📋 Planned |
 | OAuth2 / OIDC auth | 📋 Planned |
-| Tool-level access control (RBAC) | 📋 Planned |
+| Tool-level access control | ✅ Done via per-key scopes (v0.6) |
 | Request replay & debugging | 📋 Planned |
 | Multi-tenant mode | 📋 Planned |
 | OpenTelemetry tracing | 📋 Planned |

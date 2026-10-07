@@ -79,6 +79,7 @@ export class Gateway {
         authenticate: router.authenticate,
         takeRateLimit: (req) => router.takeRateLimit(req),
         corsOrigins: () => this.config.corsOrigins,
+        resolveClient: (clientId) => router.resolveClient(clientId),
         requestLog: () => this.config.monitor?.requestLog !== false,
       });
       this.app.use(this.mcp.router());
@@ -240,7 +241,10 @@ export class Gateway {
 
       // Router-level settings (auth may be rejected and kept; the router logs that).
       this.router?.update(next);
-      if (!same(this.config.auth, next.auth)) applied.push('auth');
+      if (!same(this.config.auth, next.auth)) {
+        applied.push('auth');
+        this.mcp?.refreshClients();
+      }
       if (!same(this.config.rateLimit, next.rateLimit)) applied.push('rateLimit');
       if (!same(this.config.monitor, next.monitor)) applied.push('monitor');
       if (!same(this.config.mcp, next.mcp)) {

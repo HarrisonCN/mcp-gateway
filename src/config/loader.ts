@@ -9,6 +9,7 @@ import { resolve } from 'path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import type { GatewayConfig } from '../utils/types.js';
+import { expandEnv } from '../transport/channel.js';
 
 // ─── Zod Schema ───────────────────────────────────────────────────────────────
 
@@ -79,13 +80,44 @@ const McpServerSchema = z.object({
   }
 });
 
+const PatternList = z.array(z.string().min(1, 'patterns must be non-empty'));
+
+const RateLimitSchema = z.object({
+  limit: z.number().int().positive().default(100),
+  windowSeconds: z.number().positive().default(60),
+  perKey: z.boolean().default(true),
+});
+
+const ApiKeySchema = z.union([
+  z.string(),
+  z
+    .object({
+      // ${VAR} references are expanded from the gateway's environment.
+      key: z
+        .string()
+        .min(1)
+        .transform((k) => expandEnv(k)),
+      name: z
+        .string()
+        .regex(/^[A-Za-z0-9._-]{1,64}$/, 'letters, digits, ".", "_" or "-" (max 64)')
+        .optional(),
+      servers: PatternList.optional(),
+      tools: PatternList.optional(),
+      rateLimit: z
+        .object({ limit: z.number().int().positive(), windowSeconds: z.number().positive() })
+        .strict()
+        .optional(),
+    })
+    .strict(),
+]);
+
 const GatewayConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(4000),
   host: z.string().default('0.0.0.0'),
   auth: z
     .object({
       strategy: z.enum(['none', 'api-key', 'jwt', 'oauth2']).default('none'),
-      apiKeys: z.array(z.string()).optional(),
+      apiKeys: z.array(ApiKeySchema).optional(),
       jwtSecret: z.string().optional(),
       protect: z
         .object({
@@ -95,7 +127,21 @@ const GatewayConfigSchema = z.object({
         .optional(),
     })
     .superRefine((a, ctx) => {
-      if (a.strategy === 'api-key' && !(a.apiKeys ?? []).some((k) => k.length > 0)) {
+      const keyOf = (k: string | { key: string }) => (typeof k === 'string' ? k : k.key);
+      const names = new Set<string>();
+      (a.apiKeys ?? []).forEach((k, i) => {
+        if (typeof k === 'string' || !k.name) return;
+        if (names.has(k.name)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['apiKeys', i, 'name'], message: `duplicate key name "${k.name}"` });
+        }
+        names.add(k.name);
+      });
+      (a.apiKeys ?? []).forEach((k, i) => {
+        if (typeof k !== 'string' && k.key.length === 0) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['apiKeys', i, 'key'], message: 'is empty (unset environment variable?)' });
+        }
+      });
+      if (a.strategy === 'api-key' && !(a.apiKeys ?? []).some((k) => keyOf(k).length > 0)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['apiKeys'], message: 'at least one key is required for api-key strategy' });
       }
       if (a.strategy === 'jwt' && !a.jwtSecret) {
@@ -106,13 +152,7 @@ const GatewayConfigSchema = z.object({
       }
     })
     .optional(),
-  rateLimit: z
-    .object({
-      limit: z.number().int().positive().default(100),
-      windowSeconds: z.number().positive().default(60),
-      perKey: z.boolean().default(true),
-    })
-    .optional(),
+  rateLimit: RateLimitSchema.optional(),
   monitor: z
     .object({
       prometheus: z.boolean().default(false),
@@ -243,7 +283,12 @@ logLevel: info
 # auth:
 #   strategy: api-key
 #   apiKeys:
-#     - your-secret-key-here
+#     - your-secret-key-here          # full access
+#     - key: \${AURA_GATEWAY_KEY}      # scoped key; \${VAR} is expanded (patterns are globs)
+#       name: aura
+#       servers: ["github", "fs-*"]
+#       tools: ["read_*", "github/create_issue"]
+#       rateLimit: { limit: 30, windowSeconds: 60 }
 #   protect:
 #     health: false    # true = /api/v1/health requires a key (/health/live stays public)
 #     metrics: false   # true = /api/v1/metrics requires a key (configure your scraper)

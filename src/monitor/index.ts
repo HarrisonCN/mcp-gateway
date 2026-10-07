@@ -261,6 +261,15 @@ export class MetricsCollector extends EventEmitter {
     return this.metrics.slice(-Math.floor(limit)).reverse();
   }
 
+  /** Newest-first records matching `pred`, at most `limit`. */
+  getRecentWhere(limit: number, pred: (m: RequestMetric) => boolean): RequestMetric[] {
+    const out: RequestMetric[] = [];
+    for (let i = this.metrics.length - 1; i >= 0 && out.length < limit; i--) {
+      if (pred(this.metrics[i]!)) out.push(this.metrics[i]!);
+    }
+    return out;
+  }
+
   clear(): void {
     this.metrics = [];
     this.counters.clear();

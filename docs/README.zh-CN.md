@@ -73,6 +73,7 @@ curl -X POST http://localhost:4000/api/v1/tools/call \
 | **鉴权** | 支持 API Key（常量时间比较）、JWT（HS256/384/512）或无鉴权模式；配置错误时拒绝启动 |
 | **可选保护 health / metrics** | `/health`、`/metrics` 默认公开，可通过 `auth.protect` 要求鉴权；面板支持输入 API Key |
 | **限流** | 按 Key 的滑动窗口限流，标准 `X-RateLimit-*` 响应头 |
+| **按 Key 的权限范围** | 可将 API Key（或通过 claims 的 JWT）限制在部分服务器 / 工具上，并设置独立限流；REST 与 `/mcp` 均生效 |
 | **健康监控** | 基于 MCP `ping` 的周期性健康检查（含延迟），间隔可配置 |
 | **配置热更新** | 服务器、API Key / 鉴权、限流、CORS、重连策略修改后无需重启即可生效 |
 | **指标收集** | 兼容 Prometheus 的 `/metrics` 端点 + JSON 聚合 |
@@ -131,6 +132,30 @@ mcp:
   # allowedOrigins: ["https://your-app.com"]
   # instructions: "ACME 工作区的工具"   # 在 initialize 中返回
 ```
+
+## 按 Key 的权限范围（scopes）
+
+为每个应用分配独立的 Key，只开放它需要的工具。纯字符串 Key 保持完全访问；对象形式可以加以限制（除 `key` 外都可选）：
+
+```yaml
+auth:
+  strategy: api-key
+  apiKeys:
+    - "admin-key"                       # 不受限
+    - key: ${AURA_GATEWAY_KEY}          # 对象形式的 key 支持 ${VAR} 展开
+      name: aura                        # 日志、指标、会话中的 client id 为 "key:aura"（需唯一）
+      servers: ["github", "fs-*"]       # 服务器 id 通配
+      tools: ["read_*", "github/create_issue"]   # 工具名通配；含 "/" 时匹配 "server/tool"
+      rateLimit: { limit: 30, windowSeconds: 60 } # 独立限流桶，替代全局 rateLimit
+```
+
+- 工具必须同时通过服务器自身的 `tools` 过滤、Key 的 `servers` 和 `tools` 列表。未配置列表表示不限制；空列表表示全部禁止。
+- **发现接口隐藏**无权使用的内容：`GET /tools`、`GET /servers`、`GET /servers/:id`（→ `404`）、`/mcp` 的 `tools/list`。
+- **调用被拒绝**：`POST /tools/call`、`POST /servers/:id/reconnect` → `403`；`/mcp` 的 `tools/call` → JSON-RPC 错误 `-32003`。自动路由只在该 Key 可用的服务器中查找。
+- `/mcp` 的同名冲突前缀按该 Key 可见的工具计算（只限一个服务器的 Key 看到的是原始名字）。
+- 受限 Key 在 `GET /requests` 中只能看到自己的请求。
+- **JWT**：在 `mcp_servers` / `mcp_tools` claims 中放通配（数组，或空格/逗号分隔的字符串），格式错误的 claim 视为全部禁止。
+- 支持热更新：修改后下一个请求即生效；已打开的 `/mcp` 会话会收到 `notifications/tools/list_changed`，被删除 Key 的会话会被关闭。
 
 ## 远程服务器与自动重连
 
@@ -202,12 +227,12 @@ servers:
 - ✅ 配置热更新（服务器、鉴权、限流、CORS）
 - ✅ Web 可视化面板
 - ✅ 下游 MCP 端点 `/mcp`（未发布，v0.5）
-- 📋 按 Key 的权限范围与限流（v0.6）
+- ✅ 按 Key 的权限范围与限流（未发布，v0.6）
 - 📋 JS / Kotlin 客户端，OpenAI / Anthropic 工具 schema（v0.7）
 - 📋 resources / prompts 透传，持久化审计日志（v0.8）
 - 📋 Redis 限流后端
 - 📋 OAuth2 / OIDC 鉴权
-- 📋 工具级 RBAC 权限控制
+- ✅ 工具级权限控制（通过按 Key 的 scopes，v0.6）
 - 📋 OpenTelemetry 追踪
 
 ## 许可证
