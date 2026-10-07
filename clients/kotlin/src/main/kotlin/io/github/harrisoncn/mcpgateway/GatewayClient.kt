@@ -26,7 +26,18 @@ public class GatewayException(
     public val body: String? = null,
     public val retryAfterSeconds: Long? = null,
     cause: Throwable? = null,
-) : IOException(message, cause)
+) : IOException(message, cause) {
+    /** Gateway error code from the body (`-32003` policy denied, `-32004` approval rejected, `-32005` output blocked). */
+    public val code: Int? by lazy {
+        runCatching {
+            (Json.parseToJsonElement(body ?: "") as? JsonObject)?.get("code")
+                ?.let { (it as? JsonPrimitive)?.content?.toIntOrNull() }
+        }.getOrNull()
+    }
+
+    /** True when a gateway policy (rule, approval or output filter) refused the call. */
+    public val isPolicyError: Boolean get() = code == -32003 || code == -32004 || code == -32005
+}
 
 /**
  * Typed client for the mcp-gateway REST API (`/api/v1`).
@@ -104,6 +115,19 @@ public class GatewayClient(
         val args = if (argumentsJson.isNullOrBlank()) JsonObject(emptyMap()) else json.parseToJsonElement(argumentsJson).jsonObject
         return callTool(target.tool, args, target.server)
     }
+
+    // ─── Approvals (gateway ≥ 1.6, operator keys) ────────────────────────────
+
+    /** `GET /api/v1/approvals` — pending and recently decided held tool calls. */
+    public fun approvals(): Approvals = get("api/v1/approvals")
+
+    /** `POST /api/v1/approvals/{id}/approve`. */
+    public fun approve(id: String, reason: String? = null): ApprovalRequest =
+        send("POST", "api/v1/approvals/${encode(id)}/approve", json.encodeToString(ReasonBody.serializer(), ReasonBody(reason)))
+
+    /** `POST /api/v1/approvals/{id}/deny`. */
+    public fun deny(id: String, reason: String? = null): ApprovalRequest =
+        send("POST", "api/v1/approvals/${encode(id)}/deny", json.encodeToString(ReasonBody.serializer(), ReasonBody(reason)))
 
     // ─── Requests ────────────────────────────────────────────────────────────
 

@@ -1,0 +1,82 @@
+name: Publish clients
+
+# Publishes the JS client to npm and the Kotlin client to Maven Central when a
+# release is published. Each job is skipped when its secrets are not configured:
+#   NPM_TOKEN                                   → npm (@winstonsayno/mcp-gateway-client)
+#   MAVEN_CENTRAL_USERNAME / MAVEN_CENTRAL_PASSWORD (Central Portal user token)
+#   SIGNING_KEY / SIGNING_PASSWORD (ASCII-armored PGP key) → Maven Central
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish (defaults to the release tag without "v")
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    defaults:
+      run:
+        working-directory: clients/js
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Skip without NPM_TOKEN
+        if: env.NODE_AUTH_TOKEN == ''
+        run: echo "::notice::NPM_TOKEN not configured — skipping npm publish"
+      - if: env.NODE_AUTH_TOKEN != ''
+        run: npm ci && npm test && npm run build
+      - if: env.NODE_AUTH_TOKEN != ''
+        run: |
+          V="${{ inputs.version || github.event.release.tag_name }}"; V="${V#v}"
+          npm version "$V" --no-git-tag-version --allow-same-version
+          TAG=latest; case "$V" in *-*) TAG=next;; esac
+          npm publish --access public --provenance --tag "$TAG" || echo "::warning::npm publish failed (version may already exist)"
+
+  maven-central:
+    runs-on: ubuntu-latest
+    env:
+      CENTRAL_USER: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+      CENTRAL_PASS: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+      ORG_GRADLE_PROJECT_signingKey: ${{ secrets.SIGNING_KEY }}
+      ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.SIGNING_PASSWORD }}
+    defaults:
+      run:
+        working-directory: clients/kotlin
+    steps:
+      - uses: actions/checkout@v7
+      - name: Skip without Maven Central secrets
+        if: env.CENTRAL_USER == '' || env.ORG_GRADLE_PROJECT_signingKey == ''
+        run: echo "::notice::Maven Central secrets not configured — skipping"
+      - uses: actions/setup-java@v6
+        if: env.CENTRAL_USER != '' && env.ORG_GRADLE_PROJECT_signingKey != ''
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+        if: env.CENTRAL_USER != '' && env.ORG_GRADLE_PROJECT_signingKey != ''
+      - name: Build, sign and stage
+        if: env.CENTRAL_USER != '' && env.ORG_GRADLE_PROJECT_signingKey != ''
+        run: |
+          V="${{ inputs.version || github.event.release.tag_name }}"; V="${V#v}"
+          ./gradlew test publishAllPublicationsToStagingRepository -PreleaseVersion="$V" --no-daemon
+      - name: Upload bundle to the Central Portal
+        if: env.CENTRAL_USER != '' && env.ORG_GRADLE_PROJECT_signingKey != ''
+        run: |
+          cd build/staging-deploy
+          find . -type f ! -name '*.md5' ! -name '*.sha1' ! -name '*.sha256' ! -name '*.sha512' ! -name '*.asc' | while read -r f; do
+            md5sum "$f" | cut -d' ' -f1 > "$f.md5"; sha1sum "$f" | cut -d' ' -f1 > "$f.sha1"
+          done
+          zip -qr ../bundle.zip .
+          curl -fsS -u "$CENTRAL_USER:$CENTRAL_PASS" -F bundle=@../bundle.zip \
+            "https://central.sonatype.com/api/v1/publisher/upload?publishingType=AUTOMATIC"

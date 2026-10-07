@@ -69,12 +69,14 @@ await mcp.close();
 | `history({ server?, tool?, client?, success?, via?, kind?, since?, until?, cursor?, limit? })` | `GET /api/v1/requests` with filters; returns `{ requests, nextCursor, source }` |
 | `listResources()` / `listResourceTemplates()` / `readResource(uri, { server? })` | `/api/v1/resources…` (gateway ≥ 0.8) |
 | `listPrompts()` / `getPrompt(name, args, { server? })` | `/api/v1/prompts…` (gateway ≥ 0.8) |
+| `approvals()` / `approve(id, reason?)` / `deny(id, reason?)` | `/api/v1/approvals…` (gateway ≥ 1.6, operator keys) |
 
 Options: `baseUrl`, `apiKey` or `token` (string or async function, sent as `Authorization: Bearer`),
 `headers`, `fetch` (custom implementation), `timeoutMs` (default 60 000; 0 = none).
 
 Errors: non-2xx responses throw `GatewayError` with `status`, the parsed `body` and `retryAfter`
-(seconds, for 429 / 503). Network errors and timeouts have `status: 0`. MCP JSON-RPC errors throw `McpError` with `code`.
+(seconds, for 429 / 503), plus `code` (gateway error code) and `isPolicyError` (`-32003` denied by policy,
+`-32004` approval rejected, `-32005` output blocked). Network errors and timeouts have `status: 0`. MCP JSON-RPC errors throw `McpError` with `code`.
 
 ## Development
 

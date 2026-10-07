@@ -223,3 +223,29 @@ internal data class JsonRpcResponse(
     val error: JsonRpcError? = null,
     @SerialName("method") val method: String? = null,
 )
+
+/** A tool call held by a policy rule with `effect: approve` (`GET /api/v1/approvals`, gateway ≥ 1.6). */
+@Serializable
+public data class ApprovalRequest(
+    val id: String,
+    val status: String,
+    val clientId: String? = null,
+    val serverId: String? = null,
+    val tool: String? = null,
+    val arguments: JsonElement? = null,
+    val rule: String? = null,
+    val message: String? = null,
+    val via: String? = null,
+    val createdAt: String? = null,
+    val expiresAt: String? = null,
+    val decidedAt: String? = null,
+    val decidedBy: String? = null,
+    val reason: String? = null,
+)
+
+/** `GET /api/v1/approvals`. */
+@Serializable
+public data class Approvals(val pending: List<ApprovalRequest> = emptyList(), val recent: List<ApprovalRequest> = emptyList())
+
+@Serializable
+internal data class ReasonBody(val reason: String? = null)

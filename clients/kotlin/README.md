@@ -4,7 +4,16 @@ JVM / Android client for [mcp-gateway](https://github.com/HarrisonCN/mcp-gateway
 [OkHttp](https://square.github.io/okhttp/) and [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization).
 Java 11 bytecode, Kotlin 1.9, no reflection — works on Android (API 21+) and any JVM 11+.
 
-> Not published to Maven Central yet. Use it as an included build / module, or copy `src/main/kotlin`.
+> Maven coordinates: `io.github.harrisoncn:mcp-gateway-client:1.7.0` (published to Maven Central by
+> `.github/workflows/clients-publish.yml` once the repository's Central Portal and signing secrets are configured).
+> Until it is on Central, use it as an included build / module, or copy `src/main/kotlin`.
+
+```kotlin
+dependencies { implementation("io.github.harrisoncn:mcp-gateway-client:1.7.0") }
+```
+
+Approvals (gateway ≥ 1.6): `client.approvals()`, `client.approve(id, reason)`, `client.deny(id, reason)`;
+policy refusals throw `GatewayException` with `code` (`-32003` / `-32004` / `-32005`) and `isPolicyError`.
 
 ```kotlin
 // settings.gradle.kts of your app
