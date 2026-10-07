@@ -125,6 +125,7 @@ export class Gateway {
       metrics: this.metrics,
       tracer: () => this.tracer,
       requestLog: () => this.config.monitor?.requestLog !== false,
+      policy: () => this.config.policy,
     });
 
     // Builds auth/rate-limit; throws on insecure misconfiguration (fail closed)
@@ -326,6 +327,7 @@ export class Gateway {
   }
 
   private async shutdownInternals(): Promise<void> {
+    this.invoker?.approvals.close();
     this.mcp?.close();
     this.live?.close();
     this.supervisor.stop();
@@ -374,6 +376,7 @@ export class Gateway {
       });
 
       const applied: string[] = [];
+      const prevPolicy = this.config.policy;
       for (const field of ['port', 'host', 'healthCheckIntervalMs', 'dashboard', 'audit', 'state', 'observability'] as const) {
         if (!same(this.config[field], next[field])) {
           logger.warn(`Config "${field}" changed — restart required for it to take effect`);
@@ -436,7 +439,12 @@ export class Gateway {
         reconnect: next.reconnect,
         mcp: next.mcp,
         security: next.security,
+        policy: next.policy,
       };
+      if (!same(prevPolicy, next.policy)) {
+        this.invoker?.refreshPolicy();
+        applied.push('policy');
+      }
       if (applied.includes('security')) {
         try {
           this.applyTrustProxy();

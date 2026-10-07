@@ -419,6 +419,10 @@ tbody tr:hover { background: var(--surface-2); }
         <button type="button" data-w="300000">5m</button><button type="button" data-w="900000" aria-pressed="true">15m</button><button type="button" data-w="3600000">1h</button><button type="button" data-w="21600000">6h</button>
       </div>
     </div>
+    <div class="card" id="approvalsCard" hidden style="margin-bottom:14px">
+      <h2><span data-i18n="approvals">Pending approvals</span><span class="right" id="approvalsNote"></span></h2>
+      <ul class="stream" id="approvals"></ul>
+    </div>
     <div class="grid kpis stagger" id="kpis"></div>
     <div class="grid two" style="margin-top:14px">
       <div class="card">
@@ -565,7 +569,7 @@ const I18N = {
     remember: 'Remember on this device', saveConnect: 'Save & connect', clear: 'Clear', close: 'Close',
     tabOverview: 'Overview', tabServers: 'Servers', tabPlayground: 'Playground', tabHistory: 'History', tabConnect: 'Connect',
     ovTitle: 'Overview', ovSub: 'Live traffic through the gateway', window: 'Time window',
-    reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server',
+    reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server', approvals: 'Pending approvals', approve: 'Approve', deny: 'Deny', approved: 'Approved', denied: 'Denied', expires: 'expires',
     errRate: 'Error rate', liveStream: 'Live requests', pause: 'Pause', health: 'Server health',
     kRpm: 'Requests / min', kP50: 'p50 latency', kP95: 'p95 latency', kErr: 'Error rate', kSrv: 'Servers online',
     kTotal: '{n} in window', kP99: 'p99 {v}', kErrN: '{n} failed', kTools: '{n} tools',
@@ -610,7 +614,7 @@ const I18N = {
     remember: '在此设备上记住', saveConnect: '保存并连接', clear: '清除', close: '关闭',
     tabOverview: '总览', tabServers: '服务器', tabPlayground: '调试台', tabHistory: '历史', tabConnect: '接入',
     ovTitle: '总览', ovSub: '网关实时流量', window: '时间范围',
-    reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用',
+    reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用', approvals: '待审批调用', approve: '批准', deny: '拒绝', approved: '已批准', denied: '已拒绝', expires: '到期',
     errRate: '错误率', liveStream: '实时请求', pause: '暂停', health: '服务器健康',
     kRpm: '每分钟请求', kP50: 'p50 延迟', kP95: 'p95 延迟', kErr: '错误率', kSrv: '在线服务器',
     kTotal: '窗口内 {n} 次', kP99: 'p99 {v}', kErrN: '{n} 次失败', kTools: '{n} 个工具',
@@ -939,6 +943,30 @@ async function loadStats() {
   renderOverview();
   return s;
 }
+// Human approvals (policy rules with effect "approve"): hidden unless something is pending.
+async function loadApprovals() {
+  const card = $('#approvalsCard');
+  let r;
+  try { r = await api('/approvals'); } catch { card.hidden = true; return; }
+  const list = r.pending || [];
+  card.hidden = list.length === 0;
+  $('#approvalsNote').textContent = list.length ? String(list.length) : '';
+  $('#approvals').innerHTML = list.map((a) => `<li><div style="flex:1;min-width:0"><b class="mono">${esc(a.serverId)}/${esc(a.tool)}</b>
+    <span class="muted"> · ${esc(a.clientId || 'anonymous')} · ${esc(t('expires'))} ${esc(fmtTime(Date.parse(a.expiresAt)))}</span>
+    <div class="mono muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(JSON.stringify(a.arguments))}</div></div>
+    <button class="btn sm primary" type="button" data-approve="${esc(a.id)}">${esc(t('approve'))}</button>
+    <button class="btn sm" type="button" data-deny="${esc(a.id)}">${esc(t('deny'))}</button></li>`).join('');
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-approve],[data-deny]');
+  if (!b) return;
+  const id = b.dataset.approve || b.dataset.deny;
+  const ok = !!b.dataset.approve;
+  try { await api(`/approvals/${encodeURIComponent(id)}/${ok ? 'approve' : 'deny'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); toast(t(ok ? 'approved' : 'denied')); }
+  catch (err) { toast(err.message || String(err)); }
+  loadApprovals();
+});
+
 async function loadServers() {
   const btn = $('#srvRefresh'); btn.classList.add('loading');
   try {
@@ -1615,6 +1643,7 @@ reloadAll().then(() => {
   if (!store.get(LS.onboarded) || state.auth === 'needed' || new URLSearchParams(location.search).has('guide')) openGuide();
 });
 // Refresh the slower-moving pieces in the background.
+setInterval(() => { if (!document.hidden) loadApprovals(); }, 3000);
 setInterval(() => { if (!document.hidden) { loadServers(); if (state.live === 'live') loadStats().catch(() => {}); } }, 10000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && state.live !== 'live') startLive(); });
 })();

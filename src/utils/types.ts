@@ -129,6 +129,8 @@ export interface GatewayConfig {
   state?: StateConfig;
   /** Tracing (OpenTelemetry / OTLP). */
   observability?: ObservabilityConfig;
+  /** Tool policy: argument rules, human approval, output filtering. */
+  policy?: ToolPolicyConfig;
 }
 
 // ─── Security ────────────────────────────────────────────────────────────────
@@ -145,6 +147,66 @@ export interface TracingConfig {
   /** Fraction of new traces recorded (0–1, default 1). Incoming sampled `traceparent`s are always followed. */
   sampleRatio?: number;
   flushIntervalMs?: number;
+}
+
+/** One argument condition of a policy rule (all given operators must hold). */
+export interface PolicyArgMatcher {
+  /** Dotted path into the tool arguments (`path`, `options.mode`, `files.0`). */
+  path: string;
+  exists?: boolean;
+  equals?: string | number | boolean;
+  in?: Array<string | number | boolean>;
+  /** Value matches one of these globs. */
+  glob?: string[];
+  /** Value is present and matches none of these globs. */
+  notGlob?: string[];
+  regex?: string;
+  /** Value is present and does not match this regex. */
+  notRegex?: string;
+  /** String form is longer than this. */
+  longerThan?: number;
+  /** Path (normalised, `..` resolved) is inside one of these directories. */
+  under?: string[];
+  /** Path (normalised) is present and outside all of these directories. */
+  notUnder?: string[];
+}
+
+export interface PolicyRule {
+  name?: string;
+  effect: 'allow' | 'deny' | 'approve';
+  /** Globs on the client id (`key:aura`, `oauth:*`, `anonymous`). */
+  clients?: string[];
+  servers?: string[];
+  /** Globs on tool names; patterns containing `/` match `<server>/<tool>`. */
+  tools?: string[];
+  args?: PolicyArgMatcher[];
+  /** Shown to the client when the rule denies / holds a call. */
+  message?: string;
+}
+
+export interface OutputFilterConfig {
+  enabled?: boolean;
+  /** `redact` (default), `flag` or `block`. */
+  action?: 'flag' | 'redact' | 'block';
+  /** Use the built-in prompt-injection detectors (default true). */
+  builtins?: boolean;
+  /** Extra regexes (case-insensitive). */
+  patterns?: string[];
+  /** Only filter these tools (globs, `<server>/<tool>` allowed). Default: all. */
+  tools?: string[];
+}
+
+export interface ToolPolicyConfig {
+  rules?: PolicyRule[];
+  /** Decision when no rule matches (default `allow`). */
+  default?: 'allow' | 'deny' | 'approve';
+  approval?: {
+    /** How long a held call waits for a decision (default 300 s; then denied). */
+    timeoutSeconds?: number;
+    /** Allow a client to approve its own call (default false). */
+    allowSelfApproval?: boolean;
+  };
+  outputFilter?: OutputFilterConfig;
 }
 
 export interface ObservabilityConfig {

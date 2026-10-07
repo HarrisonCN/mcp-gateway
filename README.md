@@ -579,6 +579,16 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v1.6
+
+| Feature | Description |
+|---------|-------------|
+| **Tool policy** | `policy.rules`: allow / deny / approve per client, server, tool and argument (`regex`, `glob`, `notUnder` path sandboxing, …) |
+| **Human approval** | flagged calls wait for an operator: dashboard *Pending approvals* card, `POST /api/v1/approvals/:id/approve` |
+| **Output filtering** | prompt-injection detectors on tool results: `redact`, `flag` or `block` |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v1.5
 
 | Feature | Description |
@@ -673,7 +683,8 @@ unknown fields). Deep imports, log format, the dashboard and the audit database 
 | OAuth 2.1 / OIDC auth (MCP authorization spec) | ✅ Done (v1.3) |
 | Streamable HTTP resumability (`Last-Event-ID`) | ✅ Done (v1.3) |
 | Forwarding sampling / elicitation / roots requests to downstream clients | 📋 Planned |
-| Tool-level access control | ✅ Done via per-key scopes (v0.6) |
+| Tool-level access control | ✅ Done via per-key scopes (v0.6) and tool policy (v1.6) |
+| Argument rules, human approval, output filtering | ✅ Done (v1.6) |
 | Request replay & debugging | 📋 Planned (history is available via the audit log) |
 | Multi-tenant mode | 📋 Planned |
 | OpenTelemetry tracing, Prometheus histogram | ✅ Done (v1.5) |

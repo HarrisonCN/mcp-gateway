@@ -23,7 +23,7 @@
  * @module mcp/endpoint
  */
 
-import { ToolInvoker } from '../gateway/invoker.js';
+import { ToolInvoker, ERR_OUTPUT_BLOCKED } from '../gateway/invoker.js';
 import type { StateStore } from '../state/store.js';
 import express from 'express';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
@@ -986,6 +986,8 @@ export class McpEndpoint {
         return toolError(`Tool "${name}" timed out after ${result.durationMs}ms`);
       case ERR_NOT_CONNECTED:
         return toolError(`Server "${serverId}" is not connected: ${err.message}`);
+      case ERR_OUTPUT_BLOCKED:
+        return { jsonrpc: '2.0', id, result: (err.data as { result?: unknown } | undefined)?.result ?? { content: [], isError: true } };
       default:
         // Upstream JSON-RPC error: forward unchanged.
         return rpcError(id, err);

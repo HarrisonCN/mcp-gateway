@@ -25,7 +25,12 @@ export {
   toOtlpJson,
 } from './observability/tracing.js';
 export type { Tracer, Span, SpanExporter } from './observability/tracing.js';
-export { ToolInvoker } from './gateway/invoker.js';
+export { ToolInvoker, ERR_POLICY_DENIED, ERR_APPROVAL_REJECTED, ERR_OUTPUT_BLOCKED } from './gateway/invoker.js';
+export { evaluatePolicy, argMatches, isUnder } from './policy/tool-policy.js';
+export type { PolicyDecision, PolicyRequest, PolicyEffect } from './policy/tool-policy.js';
+export { ApprovalQueue, ApprovalError } from './policy/approvals.js';
+export type { ApprovalRequest, ApprovalStatus } from './policy/approvals.js';
+export { OutputFilter, BUILTIN_INJECTION_PATTERNS } from './policy/output-filter.js';
 export type { InvokeContext, InvokeResult } from './gateway/invoker.js';
 export { LATENCY_BUCKETS_SECONDS } from './monitor/index.js';
 export {
@@ -100,6 +105,10 @@ export type {
   OAuthConfig,
   StateConfig,
   TracingConfig,
+  ToolPolicyConfig,
+  PolicyRule,
+  PolicyArgMatcher,
+  OutputFilterConfig,
   ObservabilityConfig,
   ResourceInfo,
   ResourceTemplateInfo,
