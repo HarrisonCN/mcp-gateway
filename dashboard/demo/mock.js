@@ -13,6 +13,11 @@
   const VERSION = '1.2.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
+  // Two workspaces so the tenants card can be tried out.
+  const demoTenants = [
+    { id: 'platform', name: 'Platform team', role: 'operator', servers: ['github', 'filesystem'], serverIds: ['github', 'filesystem'], members: [{ client: 'key:alice', role: 'owner' }, { client: 'key:ci', role: 'viewer' }] },
+    { id: 'research', name: 'Research', role: 'operator', servers: ['search*'], serverIds: [], members: [{ client: 'jwt:bob', role: 'admin' }] },
+  ];
   // One held tool call so the approvals card can be tried out.
   let demoApprovals = [{ id: 'demo-approval-1', status: 'pending', serverId: 'github', tool: 'create_issue', clientId: 'key:aura', via: 'mcp', rule: 'review-github-writes', arguments: { repo: 'HarrisonCN/aura', title: 'Crash on launch' }, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600e3).toISOString() }];
   const rnd = (a, b) => a + Math.random() * (b - a);
@@ -230,6 +235,15 @@
     if (p === '/tools') return json({ tools: SERVERS.filter((s) => isUp(s.id)).flatMap((s) => s.tools.map((t) => ({ ...t, serverId: s.id, serverName: s.name }))), total: SERVERS.reduce((a, s) => a + (isUp(s.id) ? s.tools.length : 0), 0) });
     let m;
     if (p === '/approvals') return json({ pending: demoApprovals, recent: [] });
+    if (p === '/tenants') return json({ clientId: 'key:demo', operator: true, tenants: demoTenants });
+    if ((m = p.match(/^\/tenants\/([^/]+)\/members$/)) && method === 'PUT') {
+      const tn = demoTenants.find((x) => x.id === decodeURIComponent(m[1]));
+      if (!tn) return json({ error: 'Tenant not found' }, 404);
+      const b = JSON.parse(init?.body || '{}');
+      const mem = tn.members.find((x) => x.client === b.client);
+      if (mem) mem.role = b.role; else tn.members.push({ client: b.client, role: b.role });
+      return json(tn);
+    }
     if ((m = p.match(/^\/approvals\/([^/]+)\/(approve|deny)$/)) && method === 'POST') {
       const a = demoApprovals.find((x) => x.id === decodeURIComponent(m[1]));
       if (!a) return json({ error: 'Approval request not found' }, 404);

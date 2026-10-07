@@ -165,6 +165,8 @@ export interface GatewayConfig {
   observability?: ObservabilityConfig;
   /** Tool policy: argument rules, human approval, output filtering. */
   policy?: ToolPolicyConfig;
+  /** Tenants / workspaces with owner / admin / viewer roles. */
+  tenants?: TenantConfig[];
   /** Tool result caching (per-tool opt-in) and in-flight de-duplication. */
   cache?: CacheConfig;
   /** Plugins (hooks: onRequest, onToolCall before policy, onResponse after the output filter). */
@@ -652,4 +654,22 @@ export interface CacheConfig {
   defaultTtlSeconds?: number;
   /** First matching rule wins; tools that match no rule are never cached. */
   rules?: CacheRule[];
+}
+
+// ─── Tenants ─────────────────────────────────────────────────────────────────
+
+export type TenantRole = 'owner' | 'admin' | 'viewer';
+
+export interface TenantMember {
+  /** Client id glob: `key:<api key name>`, `jwt:<sub>`, `oauth:<sub>`, … */
+  client: string;
+  role: TenantRole;
+}
+
+export interface TenantConfig {
+  id: string;
+  name?: string;
+  /** Server id globs that belong to the tenant. */
+  servers: string[];
+  members?: TenantMember[];
 }

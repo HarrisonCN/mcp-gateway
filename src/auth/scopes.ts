@@ -28,6 +28,12 @@ export interface AccessScope {
   tools?: string[];
   /** Own rate limit for this client (replaces the global `rateLimit`). */
   rateLimit?: RateLimitConfig;
+  /** Tenant confinement: union of the client's tenants' server globs (see auth/tenants). */
+  tenantServers?: string[];
+  /** Servers of tenants where the client is admin / owner (tool calls allowed). */
+  writableServers?: string[];
+  /** The client's tenant memberships. */
+  tenants?: Array<{ id: string; role: 'owner' | 'admin' | 'viewer' }>;
 }
 
 export const JWT_SERVERS_CLAIM = 'mcp_servers';
@@ -37,6 +43,7 @@ const matches = (value: string, patterns: readonly string[]) => patterns.some((p
 
 /** Whether the scope lets the client use `serverId` at all. */
 export function isServerInScope(scope: AccessScope | undefined, serverId: string): boolean {
+  if (scope?.tenantServers && !matches(serverId, scope.tenantServers)) return false;
   if (!scope?.servers) return true;
   return matches(serverId, scope.servers);
 }
@@ -54,13 +61,13 @@ export function filterToolsByScope<T extends Pick<ToolInfo, 'serverId' | 'name'>
   scope: AccessScope | undefined,
   tools: readonly T[],
 ): T[] {
-  if (!scope || (!scope.servers && !scope.tools)) return [...tools];
+  if (!isRestricted(scope)) return [...tools];
   return tools.filter((t) => isToolInScope(scope, t.serverId, t.name));
 }
 
 /** Whether a scope restricts anything (unrestricted clients skip filtering). */
 export function isRestricted(scope: AccessScope | undefined): boolean {
-  return !!scope && (scope.servers !== undefined || scope.tools !== undefined);
+  return !!scope && (scope.servers !== undefined || scope.tools !== undefined || scope.tenantServers !== undefined);
 }
 
 function claimList(value: unknown): string[] | undefined {

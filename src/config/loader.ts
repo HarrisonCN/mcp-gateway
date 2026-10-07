@@ -4,6 +4,7 @@
  */
 
 import { invalidPolicy } from '../policy/tool-policy.js';
+import { invalidTenants } from '../auth/tenants.js';
 import { invalidFilterPattern } from '../policy/output-filter.js';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
@@ -411,6 +412,22 @@ const GatewayConfigSchema = z.object({
     .strict()
     .superRefine((pol, ctx) => {
       const bad = invalidPolicy(pol) ?? (invalidFilterPattern(pol.outputFilter?.patterns) && `outputFilter.patterns: invalid regex ${invalidFilterPattern(pol.outputFilter?.patterns)}`);
+      if (bad) ctx.addIssue({ code: z.ZodIssueCode.custom, message: bad });
+    })
+    .optional(),
+  tenants: z
+    .array(
+      z
+        .object({
+          id: z.string().min(1).regex(/^[A-Za-z0-9._-]+$/, 'letters, digits, ".", "_" and "-" only'),
+          name: z.string().min(1).optional(),
+          servers: z.array(z.string().min(1)),
+          members: z.array(z.object({ client: z.string().min(1), role: z.enum(['owner', 'admin', 'viewer']) }).strict()).optional(),
+        })
+        .strict(),
+    )
+    .superRefine((ts, ctx) => {
+      const bad = invalidTenants(ts);
       if (bad) ctx.addIssue({ code: z.ZodIssueCode.custom, message: bad });
     })
     .optional(),

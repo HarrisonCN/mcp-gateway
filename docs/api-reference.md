@@ -182,6 +182,17 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
 ```
 `kind` is present for resources and prompts. Invalid parameters → `400`.
 
+### Tenants
+
+| | |
+|---|---|
+| `GET /tenants` | `{ tenants: [{ id, name, role, servers, serverIds, members? }], clientId, operator }` — all tenants for operators, own memberships otherwise; `members` for admins / owners |
+| `GET /tenants/:id` | one tenant (404 when not a member) |
+| `PUT /tenants/:id/members` | `{ "client": "key:dave", "role": "viewer" }` — owners / operators; runtime only |
+| `DELETE /tenants/:id/members/:client` | 409 when it would remove the last owner |
+
+Viewers get `403` (REST) / `-32003` (`/mcp`) on tool calls.
+
 ### Cache
 
 `GET /api/v1/cache` (operator) → `{ "enabled": true, "entries": 12, "maxEntries": 1000, "hits": 40, "misses": 12, "deduped": 3, "evictions": 0 }`.

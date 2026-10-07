@@ -175,6 +175,34 @@ JWT: claims `mcp_servers` / `mcp_tools` (array, or a space/comma-separated strin
 
 Scopes stack with each server's `tools` filter. Resources and prompts are scoped by `servers` only.
 
+## Tenants and roles (RBAC)
+
+```yaml
+tenants:
+  - id: platform
+    name: Platform team
+    servers: ['github', 'fs-*']        # server id globs that belong to the workspace
+    members:                           # client id globs: key:<api key name>, jwt:<sub>, oauth:<sub>
+      - { client: 'key:alice', role: owner }
+      - { client: 'key:ci-*',  role: admin }
+      - { client: 'jwt:*',     role: viewer }
+```
+
+| Role | Sees the tenant's servers, tools, resources | Calls tools, decides approvals | Manages members |
+|---|:-:|:-:|:-:|
+| `viewer` | ✓ | | |
+| `admin` | ✓ | ✓ | |
+| `owner` | ✓ | ✓ | ✓ |
+
+- A client that is a member of at least one tenant is confined to the union of its tenants' servers, on top of its own
+  key / token scope; tool calls (REST and `/mcp`) need `admin` or `owner` on the target server's tenant.
+- Clients that belong to no tenant keep full (operator) access, so adding tenants never locks operators out.
+- Approvals: tenant admins / owners see and decide held calls for their tenants' servers only.
+- API: `GET /api/v1/tenants`, `GET /api/v1/tenants/:id`, `PUT /api/v1/tenants/:id/members` `{client, role}`,
+  `DELETE /api/v1/tenants/:id/members/:client` (owners and operators; a tenant keeps at least one owner). Runtime
+  member changes are **not written back** to the config file. The dashboard shows a *Workspaces* card with role
+  selectors for owners. Hot reloadable.
+
 ## Load balancing and failover
 
 A server can be backed by several upstream endpoints. The primary keeps the server id; each entry in `replicas`
