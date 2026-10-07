@@ -11,8 +11,13 @@
  *    the policy rules: it may rewrite `call.arguments`, refuse the call
  *    (`{ deny: 'reason' }`) or answer it without contacting the server
  *    (`{ respond: result }`);
- *  - `onResponse(call, result)` — runs AFTER the output filter; it may return a
- *    replacement result.
+ *  - `onResponse(call, result, ctx)` — runs AFTER the output filter; it may return a
+ *    replacement result;
+ *  - `onError(call, error, ctx)` (API v2) — observe-only, runs for every failed call after `onResponse`;
+ *    exceptions are logged, never fail the call.
+ *
+ * Plugin API v2 (3.0): every hook receives a {@link PluginHookContext} as its last argument and plugins declare
+ * `apiVersion: 2`. Plugins without `apiVersion` (v1) still load with a deprecation warning; v1 is removed in 4.0.
  *
  * Hooks run in configuration order; the first refusal / short-circuit wins.
  * A hook that throws fails the call (`-32006`) — plugins fail closed.
@@ -20,6 +25,7 @@
  * @module plugins
  */
 
+import { DEPRECATIONS, deprecate } from '../utils/deprecations.js';
 import { isAbsolute, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import type { NextFunction, Request, Response } from 'express';
@@ -28,7 +34,10 @@ import { logger, type Logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
 
 /** Version of the plugin contract implemented by this gateway. */
-export const PLUGIN_API_VERSION = 1;
+export const PLUGIN_API_VERSION = 2;
+
+/** Oldest plugin contract still loaded (with a deprecation warning). */
+export const PLUGIN_API_MIN_VERSION = 1;
 
 /** Call refused (or failed) by a plugin hook. */
 export const ERR_PLUGIN_REJECTED = -32006;
@@ -54,13 +63,29 @@ export type ToolCallOutcome =
   | { deny: string }
   | { respond: unknown };
 
+/** Passed as the last argument of every hook (plugin API v2). */
+export interface PluginHookContext {
+  /** The plugin's own name. */
+  plugin: string;
+  logger: Logger;
+  gatewayVersion: string;
+  apiVersion: number;
+}
+
+export interface PluginCallError {
+  code?: number;
+  message: string;
+}
+
 export interface GatewayPlugin {
   name: string;
-  /** Plugin contract version the plugin was written for (default 1). */
+  /** Plugin contract version the plugin was written for (default 1 — deprecated; declare 2). */
   apiVersion?: number;
-  onRequest?: (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
-  onToolCall?: (call: PluginCall) => ToolCallOutcome | Promise<ToolCallOutcome>;
-  onResponse?: (call: PluginCall, result: ProxyResponse) => ProxyResponse | void | Promise<ProxyResponse | void>;
+  onRequest?: (req: Request, res: Response, next: NextFunction, ctx: PluginHookContext) => void | Promise<void>;
+  onToolCall?: (call: PluginCall, ctx: PluginHookContext) => ToolCallOutcome | Promise<ToolCallOutcome>;
+  onResponse?: (call: PluginCall, result: ProxyResponse, ctx: PluginHookContext) => ProxyResponse | void | Promise<ProxyResponse | void>;
+  /** API v2: observe failed calls (after `onResponse`). Never changes the result. */
+  onError?: (call: PluginCall, error: PluginCallError, ctx: PluginHookContext) => void | Promise<void>;
   /** Called on gateway stop and when the plugin is unloaded by a config reload. */
   close?: () => void | Promise<void>;
 }
@@ -87,6 +112,8 @@ async function instantiate(src: unknown, ctx: PluginContext, label: string): Pro
   if (v > PLUGIN_API_VERSION) {
     throw new Error(`Plugin "${value.name}" needs plugin API v${v}; this gateway implements v${PLUGIN_API_VERSION}`);
   }
+  if (v < PLUGIN_API_MIN_VERSION) throw new Error(`Plugin "${value.name}" declares unsupported plugin API v${v}`);
+  if (v < 2) deprecate(DEPRECATIONS.pluginApiV1, `plugin "${value.name}"`);
   return value;
 }
 
@@ -113,6 +140,16 @@ export class PluginError extends Error {
     super(message);
     this.name = 'PluginError';
   }
+}
+
+const hookCtx = new WeakMap<GatewayPlugin, PluginHookContext>();
+function ctxOf(p: GatewayPlugin): PluginHookContext {
+  let c = hookCtx.get(p);
+  if (!c) {
+    c = { plugin: p.name, logger, gatewayVersion: VERSION, apiVersion: PLUGIN_API_VERSION };
+    hookCtx.set(p, c);
+  }
+  return c;
 }
 
 /** The ordered set of active plugins and the hook runners. */
@@ -160,7 +197,7 @@ export class PluginHost {
         const p = chain[i++];
         if (!p) return next();
         try {
-          const r = p.onRequest!(req, res, step);
+          const r = p.onRequest!(req, res, step, ctxOf(p));
           if (r && typeof (r as Promise<void>).catch === 'function') (r as Promise<void>).catch(step);
         } catch (e) {
           step(e);
@@ -176,7 +213,7 @@ export class PluginHost {
       if (!p.onToolCall) continue;
       let out: ToolCallOutcome;
       try {
-        out = await p.onToolCall(call);
+        out = await p.onToolCall(call, ctxOf(p));
       } catch (err) {
         throw new PluginError(`Plugin "${p.name}" failed: ${err instanceof Error ? err.message : String(err)}`, p.name);
       }
@@ -194,10 +231,21 @@ export class PluginHost {
     for (const p of this.plugins) {
       if (!p.onResponse) continue;
       try {
-        const next = await p.onResponse(call, current);
+        const next = await p.onResponse(call, current, ctxOf(p));
         if (next) current = next;
       } catch (err) {
         throw new PluginError(`Plugin "${p.name}" failed: ${err instanceof Error ? err.message : String(err)}`, p.name);
+      }
+    }
+    if (!current.success) {
+      const error = { code: current.error?.code, message: current.error?.message ?? 'Call failed' };
+      for (const p of this.plugins) {
+        if (!p.onError) continue;
+        try {
+          await p.onError(call, error, ctxOf(p));
+        } catch (err) {
+          logger.warn(`Plugin "${p.name}" onError failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
     }
     return current;

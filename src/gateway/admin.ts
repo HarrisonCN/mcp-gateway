@@ -152,7 +152,7 @@ export function createAdminRouter(deps: AdminDeps): express.Router {
   });
 
   router.get('/admin/deprecations', ...guard, (_req, res) => {
-    res.json({ removedIn: '3.0.0', config: deps.config().deprecations ?? [], runtime: runtimeDeprecations() });
+    res.json({ config: deps.config().deprecations ?? [], runtime: runtimeDeprecations() });
   });
 
   return router;

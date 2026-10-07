@@ -47,11 +47,11 @@ export function securityWarnings(config: GatewayConfig, now = Date.now()): Secur
         'through a rebound DNS name. Enable security.dnsRebindingProtection or configure auth.',
     );
   }
-  const mcpOrigins = config.mcp?.allowedOrigins ?? config.corsOrigins;
+  const mcpOrigins = config.mcp?.allowedOrigins ?? config.cors?.origins;
   if (config.mcp?.enabled !== false && (!mcpOrigins || mcpOrigins.includes('*')) && !sec.dnsRebindingProtection) {
     add(
       'mcp-any-origin',
-      'The /mcp endpoint accepts browser requests from any Origin. Set mcp.allowedOrigins (or corsOrigins), ' +
+      'The /mcp endpoint accepts browser requests from any Origin. Set mcp.allowedOrigins (or cors.origins), ' +
         'or enable security.dnsRebindingProtection to allow only same-origin and loopback origins.',
     );
   }
@@ -94,8 +94,8 @@ export function securityWarnings(config: GatewayConfig, now = Date.now()): Secur
   }
   if (sec.headers === false) add('headers-disabled', 'Security headers are disabled (security.headers: false).');
   if (sec.exposeErrorDetails) add('error-details', 'security.exposeErrorDetails is on: internal error messages and stack traces reach clients.');
-  if (config.corsOrigins?.includes('*') && strategy !== 'none') {
-    add('cors-wildcard', 'corsOrigins contains "*": any web page may call the API with a key it holds. List your dashboard origins instead.');
+  if (config.cors?.origins?.includes('*') && strategy !== 'none') {
+    add('cors-wildcard', 'cors.origins contains "*": any web page may call the API with a key it holds. List your dashboard origins instead.');
   }
   return out;
 }

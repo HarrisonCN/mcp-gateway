@@ -326,7 +326,7 @@ MCP Streamable HTTP, protocol **2025-06-18** (2025-03-26 accepted). Path configu
 
 **Session.** `initialize` returns `Mcp-Session-Id`; every later request must send it (`400` missing, `404`
 unknown / expired / created by another client). `MCP-Protocol-Version`, when sent, must be a supported version
-(`400`). Requests with an `Origin` header must match `mcp.allowedOrigins` (default `corsOrigins`), else `403`;
+(`400`). Requests with an `Origin` header must match `mcp.allowedOrigins` (default `cors.origins`), else `403`;
 with `security.dnsRebindingProtection` only same-origin, loopback and explicitly listed origins pass.
 
 **Server capabilities:** `tools`, `resources` (`subscribe: true`), `prompts` — all with `listChanged: true` —

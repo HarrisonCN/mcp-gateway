@@ -27,8 +27,9 @@ hot reload is rejected and the running configuration kept.
 | `port` | `4000` | restart | HTTP port |
 | `host` | `0.0.0.0` | restart | bind address |
 | `logLevel` | `info` | ✓ | `debug` \| `info` \| `warn` \| `error` |
-| `corsOrigins` | `["*"]` | ✓ | allowed browser origins: exact values, `*`, or `/regex/` |
-| `healthCheckIntervalMs` | `30000` | restart | MCP `ping` interval (min 1000) |
+| `version` | — | | config schema version; optional, must be `3` when set |
+| `cors.origins` | `["*"]` | ✓ | allowed browser origins: exact values, `*`, or `/regex/` |
+| `health.intervalMs` | `30000` | restart | MCP `ping` interval (min 1000) |
 | `dashboard.enabled` | `true` | restart | serve `/dashboard` |
 | `servers` | `[]` | ✓ | see [Servers](#servers) |
 | `auth` | none | ✓ | see [Authentication](#authentication) |
@@ -285,7 +286,7 @@ servers:
       ejectMs: 30000
 ```
 
-Health checks: the periodic ping (`healthCheckIntervalMs`) runs on every member; members that are disconnected,
+Health checks: the periodic ping (`health.intervalMs`) runs on every member; members that are disconnected,
 `degraded` / `offline`, or ejected are skipped. When all members are unhealthy, all are tried in order. Each member
 reconnects on its own with the `reconnect` policy. Tools come from the primary, or from a replica while the primary
 has none. `GET /api/v1/load-balancing` shows members, health, latency (EWMA) and ejections. Hot reloadable.
@@ -325,8 +326,8 @@ admin:
   configApi: true   # allow PUT /api/v1/admin/config and POST /api/v1/admin/reload (default false)
 ```
 
-See [Declarative config](guides/declarative-config.md). From 2.9 `cors.origins` and `health.intervalMs` replace the
-deprecated `corsOrigins` and `healthCheckIntervalMs` (removed in 3.0).
+See [Declarative config](guides/declarative-config.md). 3.0 removed `corsOrigins` and `healthCheckIntervalMs` — use
+`cors.origins` and `health.intervalMs` ([migration guide](guides/migrating-to-v3.md)).
 
 ## Bridges (OpenAI / A2A)
 
@@ -483,7 +484,7 @@ mcp:
   pageSize: 500                # items per list page (1–10000)
   sessionIdleTimeoutSeconds: 1800
   maxSessions: 1000            # least recently used idle session evicted beyond this
-  allowedOrigins: ["https://app.example.com"]   # default: corsOrigins
+  allowedOrigins: ["https://app.example.com"]   # default: cors.origins
   instructions: "Tools for the ACME workspace"  # returned from initialize
   eventBufferSize: 256         # events kept per session for Last-Event-ID replay (0 = off)
 ```
@@ -555,7 +556,7 @@ Everything hot reloads.
 | `trustProxy` | decides `req.ip`, used by rate limits, lockout, the IP allowlist and logs. Leave `false` unless a proxy you control sets `X-Forwarded-For`. |
 | `ipAllowlist` | other clients get `403`. `/api/v1/health/live` and `/health/ready` stay open for probes. |
 | `allowedHosts` | requests with another `Host` get `403` (probes excepted). |
-| `dnsRebindingProtection` | `Host` must be in `allowedHosts` (default: `localhost`, `127.0.0.1`, `[::1]` and the bind address), and `/mcp` accepts browser requests only from the same origin, loopback origins and origins listed in `mcp.allowedOrigins` / `corsOrigins` (`*` ignored). Recommended for a local gateway without auth. |
+| `dnsRebindingProtection` | `Host` must be in `allowedHosts` (default: `localhost`, `127.0.0.1`, `[::1]` and the bind address), and `/mcp` accepts browser requests only from the same origin, loopback origins and origins listed in `mcp.allowedOrigins` / `cors.origins` (`*` ignored). Recommended for a local gateway without auth. |
 | `maxBodyBytes` | larger bodies get `413` (REST) / `413` + JSON-RPC error (`/mcp`). |
 | `maxToolArgumentsBytes` | REST: `413`; `/mcp`: JSON-RPC `-32602`. |
 | `authLockout` | after `maxFailures` failed authentications (`401`) from one IP within `windowSeconds`, that IP gets `429` + `Retry-After` for `lockoutSeconds` on every authenticated route, including `/mcp`. A success resets the count. In-memory, per instance. Only active with an auth strategy. |
@@ -570,7 +571,7 @@ credentials / query values and secret-looking `args` (`--token x`, `--api-key=x`
 At startup the gateway logs warnings (and hints) for risky settings; `mcp-gateway validate` prints them and
 `GET /api/v1/security` returns them. Warnings: auth disabled on a non-loopback bind (`auth-disabled-public-bind`),
 local gateway without auth or DNS-rebinding protection (`dns-rebinding`), `/mcp` open to any origin
-(`mcp-any-origin`), API keys expiring within 7 days (`api-keys-expiring`), `corsOrigins: ["*"]` with auth
+(`mcp-any-origin`), API keys expiring within 7 days (`api-keys-expiring`), `cors.origins: ["*"]` with auth
 (`cors-wildcard`), `security.headers: false` (`headers-disabled`), `exposeErrorDetails: true` (`error-details`).
 Hints: plain-text or short API keys (`plaintext-api-keys`, `short-api-keys`), JWT without issuer / audience or
 `requireExp` (`jwt-no-issuer-audience`, `jwt-no-exp`), no `authLockout` (`no-auth-lockout`).

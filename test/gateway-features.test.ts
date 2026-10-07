@@ -215,12 +215,12 @@ describe('hot reload of auth, rate limits and CORS', () => {
   });
 
   it('applies new CORS origins', async () => {
-    const config: GatewayConfig = { ...base, corsOrigins: ['https://a.example'] };
+    const config: GatewayConfig = { ...base, cors: { origins: ['https://a.example'] } };
     const url = await start(config);
     const origin = async (o: string) =>
       (await fetch(`${url}/api/v1/health`, { headers: { origin: o } })).headers.get('access-control-allow-origin');
     expect(await origin('https://b.example')).toBeNull();
-    await gw!.reload({ ...config, corsOrigins: ['https://b.example'] });
+    await gw!.reload({ ...config, cors: { origins: ['https://b.example'] } });
     expect(await origin('https://b.example')).toBe('https://b.example');
   });
 

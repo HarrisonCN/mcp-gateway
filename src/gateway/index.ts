@@ -92,11 +92,11 @@ export class Gateway {
     private config: GatewayConfig,
     private readonly options: GatewayOptions = {},
   ) {
-    this.registry = new ServerRegistry(config.healthCheckIntervalMs ?? 30_000);
+    this.registry = new ServerRegistry(config.health?.intervalMs ?? 30_000);
     this.proxy = new McpProxy();
     this.metrics = new MetricsCollector(config.monitor);
     this.supervisor = new ServerSupervisor(this.proxy, this.registry, { reconnect: config.reconnect });
-    this.cors = corsMiddleware({ origins: config.corsOrigins ?? ['*'] });
+    this.cors = corsMiddleware({ origins: config.cors?.origins ?? ['*'] });
     this.jsonParser = express.json({ limit: this.maxBodyBytes() });
     configureRedaction(config.security?.redactPatterns);
     this.ipFilter = config.security?.ipAllowlist ? ipAllowlistMiddleware(config.security.ipAllowlist) : undefined;
@@ -226,7 +226,7 @@ export class Gateway {
         metrics: this.metrics,
         authenticate: router.authenticate,
         takeRateLimit: (req) => router.takeRateLimit(req),
-        corsOrigins: () => this.config.corsOrigins,
+        corsOrigins: () => this.config.cors?.origins,
         resolveClient: (clientId) => router.resolveClient(clientId),
         requestLog: () => this.config.monitor?.requestLog !== false,
         strictOrigins: () => this.config.security?.dnsRebindingProtection === true,
@@ -458,7 +458,7 @@ export class Gateway {
    *    `security` (headers, trustProxy, ipAllowlist, allowedHosts,
    *    dnsRebindingProtection, body / argument limits, lockout, redaction)
    *    take effect immediately.
-   * port, host, monitor.retentionHours, healthCheckIntervalMs and dashboard
+   * port, host, monitor.retentionHours, health and dashboard
    * still require a restart.
    */
   async reload(next: GatewayConfig): Promise<void> {
@@ -482,7 +482,7 @@ export class Gateway {
       const prevCache = this.config.cache;
       const prevTenants = this.config.tenants;
       const prevCatalog = this.config.catalog;
-      for (const field of ['port', 'host', 'healthCheckIntervalMs', 'dashboard', 'audit', 'state', 'observability'] as const) {
+      for (const field of ['port', 'host', 'health', 'dashboard', 'audit', 'state', 'observability'] as const) {
         if (!same(this.config[field], next[field])) {
           logger.warn(`Config "${field}" changed — restart required for it to take effect`);
         }
@@ -503,9 +503,9 @@ export class Gateway {
         this.mcp?.update(next.mcp);
         applied.push('mcp');
       }
-      if (!same(this.config.corsOrigins, next.corsOrigins)) {
-        this.cors = corsMiddleware({ origins: next.corsOrigins ?? ['*'] });
-        applied.push('corsOrigins');
+      if (!same(this.config.cors?.origins, next.cors?.origins)) {
+        this.cors = corsMiddleware({ origins: next.cors?.origins ?? ['*'] });
+        applied.push('cors');
       }
       if (!same(this.config.security, next.security)) {
         const sec = next.security;
@@ -540,7 +540,7 @@ export class Gateway {
         auth: next.auth,
         rateLimit: next.rateLimit,
         monitor: next.monitor ? { ...next.monitor, retentionHours: this.config.monitor?.retentionHours } : next.monitor,
-        corsOrigins: next.corsOrigins,
+        cors: next.cors,
         reconnect: next.reconnect,
         mcp: next.mcp,
         security: next.security,

@@ -126,7 +126,7 @@ describe('A2A bridge', () => {
     expect(card.name).toBe('my-agent');
     expect(card.url).toBe(`${root}/a2a`);
     expect(card.skills.map((s) => s.id)).toContain('echo');
-    expect((await fetch(`${root}/.well-known/agent.json`)).status).toBe(200);
+    expect((await fetch(`${root}/.well-known/agent.json`)).status).toBe(404); // removed in 3.0
 
     const send = (await (await post(`${root}/a2a`, {
       jsonrpc: '2.0', id: 1, method: 'message/send',

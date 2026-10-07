@@ -210,7 +210,7 @@ What the endpoint does:
 | Tool names | `toolNaming: auto` (default) keeps a tool's name unless two servers expose the same name; then every copy becomes `<serverId>__<tool>`. `prefix` always uses `<serverId>__<tool>`. Ordering is deterministic (server id, then tool name). In `auto` mode the prefixed form is also accepted by `tools/call`. |
 | Errors | Unknown tool / bad params → JSON-RPC `-32602`; rate limit → `-32029` with `data.retryAfter`; server offline or timed out → a normal result with `isError: true` (so the model sees it); upstream JSON-RPC errors are forwarded unchanged; cancelled → `-32800`. |
 | Cancellation | `notifications/cancelled` (or the client dropping the HTTP request) cancels the upstream call, which receives its own `notifications/cancelled`. |
-| Security | Same `auth` as the REST API (`Authorization: Bearer …` or `X-API-Key`). Requests with an `Origin` header are rejected (`403`) unless it matches `mcp.allowedOrigins` (default: `corsOrigins`) — set this when the gateway listens on a reachable address. |
+| Security | Same `auth` as the REST API (`Authorization: Bearer …` or `X-API-Key`). Requests with an `Origin` header are rejected (`403`) unless it matches `mcp.allowedOrigins` (default: `cors.origins`) — set this when the gateway listens on a reachable address. |
 
 ## API Reference
 
@@ -314,7 +314,8 @@ reconnect:                    # automatic reconnect of crashed / disconnected se
   jitter: 0.2                 # ±20 % randomisation
   maxAttempts: 0              # 0 = retry forever; else give up (status: offline)
 
-healthCheckIntervalMs: 30000  # MCP ping interval
+health:
+  intervalMs: 30000           # MCP ping interval
 dashboard:
   enabled: true               # serve /dashboard
 
@@ -334,8 +335,9 @@ security:                     # hardening (see docs/configuration.md#security)
   ipAllowlist: ["10.0.0.0/8"]
   maxToolArgumentsBytes: 262144
 
-corsOrigins:
-  - "https://your-app.com"
+cors:
+  origins:
+    - "https://your-app.com"
 
 audit:                        # persistent request history (SQLite, Node 22.5+; default off)
   enabled: false
@@ -349,7 +351,7 @@ mcp:                          # downstream MCP endpoint (Streamable HTTP)
   pageSize: 500               # tools per tools/list page
   sessionIdleTimeoutSeconds: 1800
   maxSessions: 1000           # least recently used idle session is evicted beyond this
-  # allowedOrigins: ["https://your-app.com"]   # browser origins allowed on /mcp (default: corsOrigins)
+  # allowedOrigins: ["https://your-app.com"]   # browser origins allowed on /mcp (default: cors.origins)
   # instructions: "Tools for the ACME workspace"  # returned from initialize
 
 servers:
@@ -397,8 +399,8 @@ With `mcp-gateway start` the config file is watched (disable with `--no-watch`).
 |---------------------|-----------------|
 | `servers` (added / changed / removed / disabled) | `port`, `host` |
 | `auth` (strategy, keys, JWT secret, `protect`) | `monitor.retentionHours` |
-| `rateLimit` (counters reset when it changes) | `healthCheckIntervalMs` |
-| `corsOrigins`, `monitor.requestLog`, `monitor.prometheus` | `dashboard` |
+| `rateLimit` (counters reset when it changes) | `health.intervalMs` |
+| `cors.origins`, `monitor.requestLog`, `monitor.prometheus` | `dashboard` |
 | `reconnect`, `logLevel` | `mcp.enabled`, `mcp.path`, `audit` |
 | `mcp.toolNaming`, `mcp.pageSize`, session limits, `mcp.allowedOrigins` | |
 
@@ -579,13 +581,26 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v3.0
+
+**Breaking:** config schema v3 (`cors.origins`, `health.intervalMs`), plugin API v2 — see the
+[migration guide](docs/guides/migrating-to-v3.md) and the [roadmap](docs/ROADMAP.md).
+
+| Feature | Description |
+|---------|-------------|
+| **Config schema v3** | `corsOrigins` / `healthCheckIntervalMs` removed; `version: 3` |
+| **Plugin API v2** | Hook context argument, new `onError` hook; v1 deprecated |
+| **Docs** | Refreshed for v3, [migrating to 3.0](docs/guides/migrating-to-v3.md), [roadmap 3.1 – 4.0](docs/ROADMAP.md) |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v2.9
 
 | Feature | Description |
 |---------|-------------|
 | **Admin API** | Read, validate, diff and hot-apply the config over REST (`/api/v1/admin`) |
 | **Declarative config** | `mcp-gateway diff` / `apply` — [guide](docs/guides/declarative-config.md) |
-| **3.0 deprecations** | `corsOrigins` → `cors.origins`, `healthCheckIntervalMs` → `health.intervalMs` (warnings now) |
+| **3.0 deprecations** | `corsOrigins` → `cors.origins`, `healthCheckIntervalMs` → `health.intervalMs` (warnings in 2.9, removed in 3.0) |
 
 Details: [CHANGELOG](CHANGELOG.md).
 
@@ -757,7 +772,7 @@ Details and upgrade notes: [CHANGELOG](CHANGELOG.md#120---2026-10-07).
 
 ## API stability
 
-mcp-gateway follows [Semantic Versioning](https://semver.org/) since **1.0.0**. Within 1.x the REST API under
+mcp-gateway follows [Semantic Versioning](https://semver.org/) since **1.0.0**. Within a major version (3.x now) the REST API under
 `/api/v1`, the `/mcp` endpoint behaviour, configuration keys, CLI commands / flags, root library exports and Prometheus
 metric names only change in backward-compatible ways (new fields, endpoints and options may be added — ignore
 unknown fields). Deep imports, log format, the dashboard and the audit database schema are not covered. Details:
@@ -765,31 +780,10 @@ unknown fields). Deep imports, log format, the dashboard and the audit database 
 
 ## Roadmap
 
-| Feature | Status |
-|---------|--------|
-| stdio transport | ✅ Done |
-| SSE transport | ✅ Done |
-| WebSocket transport | ✅ Done |
-| Streamable HTTP transport | ✅ Done (standalone GET notification stream not yet used) |
-| Automatic reconnect with backoff | ✅ Done |
-| Config hot reload | ✅ Done (v0.2.0) |
-| Web dashboard UI | ✅ Done (v0.2.0) |
-| Downstream MCP endpoint (`/mcp`) | ✅ Done (v1.0) |
-| Per-key scopes and limits | ✅ Done (v1.0) |
-| JS / Kotlin clients, OpenAI / Anthropic tool schemas | ✅ Done (v1.0) |
-| Resources & prompts passthrough, persistent audit log | ✅ Done (v1.0) |
-| Stable API, docs, container image | ✅ Done (v1.0) |
-| Security hardening (hashed keys, JWKS, lockout, DNS-rebinding guard, CSP) | ✅ Done (v1.2) |
-| Progress, logging, completions, resource subscriptions on `/mcp` | ✅ Done (v1.2) |
-| Redis-backed shared state (rate limits, lockouts, sessions) | ✅ Done (v1.4) |
-| OAuth 2.1 / OIDC auth (MCP authorization spec) | ✅ Done (v1.3) |
-| Streamable HTTP resumability (`Last-Event-ID`) | ✅ Done (v1.3) |
-| Forwarding sampling / elicitation / roots requests to downstream clients | 📋 Planned |
-| Tool-level access control | ✅ Done via per-key scopes (v0.6) and tool policy (v1.6) |
-| Argument rules, human approval, output filtering | ✅ Done (v1.6) |
-| Request replay & debugging | 📋 Planned (history is available via the audit log) |
-| Multi-tenant mode | 📋 Planned |
-| OpenTelemetry tracing, Prometheus histogram | ✅ Done (v1.5) |
+3.0 completes the 1.x / 2.x plan (transports, `/mcp` endpoint, security, OAuth, tenants, policy, caching, plugins,
+edge runtimes, bridges, policy as code, declarative config). What comes next — sampling / elicitation passthrough,
+request replay, WASM plugins, smart routing, secrets management, federation, compliance, a developer portal and 4.0 —
+is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Contributing
 
