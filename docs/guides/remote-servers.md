@@ -78,7 +78,8 @@ auth:
 ```
 
 `GET /api/v1/health/live` always stays public and returns only `{"status":"ok"}` — use it
-for Docker / Kubernetes liveness probes. For Prometheus, configure a bearer token
+for Docker / Kubernetes liveness probes. `GET /api/v1/health/ready` is public too and answers
+`503` until the upstream servers are connected (`?min=N` to require only some) — use it for readiness probes. For Prometheus, configure a bearer token
 (see `examples/docker/prometheus.yml`).
 
 ## Hot reload
