@@ -135,6 +135,34 @@ const JwtSchema = z
   })
   .strict();
 
+const OAuthSchema = z
+  .object({
+    authorizationServers: z.array(z.string().url()).min(1),
+    resource: z.string().url().optional(),
+    issuer: z.union([z.string(), z.array(z.string())]).optional(),
+    audience: z.union([z.string(), z.array(z.string())]).optional(),
+    jwksUrl: z.string().url().optional(),
+    jwksCacheSeconds: z.number().int().positive().optional(),
+    algorithms: z.array(z.string()).optional(),
+    clockToleranceSeconds: z.number().int().min(0).optional(),
+    introspection: z
+      .object({
+        url: z.string().url(),
+        clientId: z.string().optional(),
+        clientSecret: z.string().optional(),
+        cacheSeconds: z.number().int().min(0).optional(),
+        requireAudience: z.boolean().optional(),
+        preferForJwt: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+    scopesSupported: z.array(z.string()).optional(),
+    requiredScopes: z.array(z.string()).optional(),
+    resourceName: z.string().optional(),
+    documentation: z.string().url().optional(),
+  })
+  .strict();
+
 const LockoutSchema = z
   .object({
     maxFailures: z.number().int().min(1).optional(),
@@ -185,6 +213,7 @@ const GatewayConfigSchema = z.object({
       apiKeys: z.array(ApiKeySchema).optional(),
       jwtSecret: z.string().optional(),
       jwt: JwtSchema.optional(),
+      oauth: OAuthSchema.optional(),
       protect: z
         .object({
           health: z.boolean().default(false),
@@ -239,7 +268,7 @@ const GatewayConfigSchema = z.object({
         }
       }
       if (a.strategy === 'oauth2') {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['strategy'], message: 'oauth2 is not implemented yet (refusing to start without auth)' });
+        if (!a.oauth) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['oauth'], message: 'oauth2 strategy needs auth.oauth (authorizationServers, jwksUrl or introspection)' });
       }
     })
     .optional(),
@@ -279,6 +308,7 @@ const GatewayConfigSchema = z.object({
       maxSessions: z.number().int().positive().default(1000),
       allowedOrigins: z.array(z.string()).optional(),
       instructions: z.string().optional(),
+      eventBufferSize: z.number().int().min(0).max(100_000).default(256),
     })
     .strict()
     .optional(),

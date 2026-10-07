@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-07
+
+MCP authorization (OAuth 2.1) and resumable streams.
+
+### Added
+- **`auth.strategy: oauth2`** — the gateway is an OAuth 2.1 protected resource per the MCP authorization spec
+  (2025-06-18):
+  - RFC 9728 *Protected Resource Metadata* at `/.well-known/oauth-protected-resource` and
+    `/.well-known/oauth-protected-resource/<mcp path>` (`resource`, `authorization_servers`, `scopes_supported`,
+    `bearer_methods_supported`, `resource_signing_alg_values_supported`).
+  - Bearer token validation: JWTs against `auth.oauth.jwksUrl` or the `jwks_uri` discovered from the issuer's RFC 8414 /
+    OpenID metadata (asymmetric algorithms only, `exp` required, `iss` and `aud` = resource URI per RFC 8707), or RFC
+    7662 token introspection for opaque tokens (client-secret basic auth, cached up to `cacheSeconds` / token expiry).
+  - RFC 6750 challenges: `401` + `WWW-Authenticate: Bearer resource_metadata="…"` (with `error="invalid_token"` when a
+    token was presented), `403` + `error="insufficient_scope", scope="…"` for missing `requiredScopes`.
+  - `mcp_servers` / `mcp_tools` claims scope OAuth clients like JWT clients; client ids are `oauth:<sub>`.
+  - `GET /api/v1/security` reports OAuth settings; new `oauth-no-resource` hint.
+- **Streamable HTTP resumability**: events on the `GET` SSE stream carry session-wide ids and are buffered per session
+  (`mcp.eventBufferSize`, default 256, `0` = off). Reconnecting with `Last-Event-ID` replays missed events, including
+  ones emitted while no stream was open (previously dropped).
+- `docs/configuration.md`: *OAuth 2.1* section and resumability notes.
+
+### Changed
+- `auth.strategy: oauth2` now requires `auth.oauth`; the old unused `auth.oauth2 { issuer, audience }` type was removed
+  (it was never accepted by the config loader).
+
 ## [1.2.0] - 2026-10-07
 
 Security hardening and more of the MCP spec on `/mcp`. Every new protection that could reject traffic that 1.1

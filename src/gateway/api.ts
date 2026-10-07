@@ -176,7 +176,8 @@ export function createApiRouter(
   const router = express.Router() as ApiRouter;
   let cfg = config;
   // Built eagerly so a misconfiguration fails at startup (fail closed).
-  let authMw: AuthMiddleware = createAuthMiddleware(cfg.auth);
+  const authOptions = { mcpPath: () => cfg.mcp?.path ?? '/mcp' };
+  let authMw: AuthMiddleware = createAuthMiddleware(cfg.auth, authOptions);
   let rateLimiter = createRateLimiter(cfg.rateLimit);
   // Keys with their own `rateLimit` get their own limiter (created lazily).
   let keyLimiters = new Map<string, RateLimiter>();
@@ -227,7 +228,7 @@ export function createApiRouter(
     let nextAuth = cfg.auth;
     if (!same(cfg.auth, next.auth)) {
       try {
-        authMw = createAuthMiddleware(next.auth);
+        authMw = createAuthMiddleware(next.auth, authOptions);
         nextAuth = next.auth;
         resetKeyLimiters();
         logger.info(`Auth settings reloaded (strategy: ${next.auth?.strategy ?? 'none'})`);
@@ -302,6 +303,15 @@ export function createApiRouter(
         redactPatterns: sec.redactPatterns?.length ?? 0,
         authLockout: lo ?? null,
       },
+      oauth:
+        cfg.auth?.strategy === 'oauth2' && cfg.auth.oauth
+          ? {
+              authorizationServers: cfg.auth.oauth.authorizationServers,
+              resource: cfg.auth.oauth.resource ?? null,
+              validation: cfg.auth.oauth.jwksUrl ? 'jwks' : cfg.auth.oauth.introspection ? 'introspection' : 'jwks-discovery',
+              requiredScopes: cfg.auth.oauth.requiredScopes ?? [],
+            }
+          : null,
       lockout: lockout ? lockout.status() : null,
     });
   });

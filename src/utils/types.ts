@@ -199,6 +199,8 @@ export interface McpEndpointConfig {
   allowedOrigins?: string[];
   /** Optional `instructions` returned from `initialize`. */
   instructions?: string;
+  /** Events kept per session for `Last-Event-ID` resumability (default 256, 0 = off). */
+  eventBufferSize?: number;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -227,11 +229,44 @@ export interface AuthConfig {
     /** Require auth for GET /api/v1/metrics, incl. Prometheus scrapes (default false). */
     metrics?: boolean;
   };
-  /** For oauth2: provider config */
-  oauth2?: {
-    issuer: string;
-    audience: string;
+  /** For oauth2: OAuth 2.1 resource-server settings (MCP authorization spec). */
+  oauth?: OAuthConfig;
+}
+
+/** `auth.oauth` — the gateway as an OAuth 2.1 protected resource (RFC 9728 / RFC 8707 / RFC 7662). */
+export interface OAuthConfig {
+  /** Authorization server issuer URLs advertised in the protected-resource metadata. */
+  authorizationServers: string[];
+  /** Canonical resource URI (default: `<scheme>://<host><mcp.path>` of the request). */
+  resource?: string;
+  /** Accepted `iss` values (default: `authorizationServers`). */
+  issuer?: string | string[];
+  /** Accepted `aud` values (default: the resource URI). */
+  audience?: string | string[];
+  /** JWKS for JWT access tokens (default: `jwks_uri` discovered from the issuer metadata). */
+  jwksUrl?: string;
+  jwksCacheSeconds?: number;
+  /** Accepted JWT algorithms (asymmetric only; default RS/PS/ES/EdDSA). */
+  algorithms?: string[];
+  clockToleranceSeconds?: number;
+  /** RFC 7662 token introspection for opaque tokens. */
+  introspection?: {
+    url: string;
+    clientId?: string;
+    clientSecret?: string;
+    /** Cache active results (seconds, default 60, capped at token expiry). */
+    cacheSeconds?: number;
+    /** Reject introspected tokens without `aud` (default true). */
+    requireAudience?: boolean;
+    /** Introspect JWTs too instead of verifying them locally. */
+    preferForJwt?: boolean;
   };
+  /** `scopes_supported` in the metadata. */
+  scopesSupported?: string[];
+  /** Scopes every token must carry (else 403 insufficient_scope). */
+  requiredScopes?: string[];
+  resourceName?: string;
+  documentation?: string;
 }
 
 export interface JwtConfig {

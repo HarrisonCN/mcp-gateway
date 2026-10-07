@@ -82,6 +82,13 @@ export function securityWarnings(config: GatewayConfig, now = Date.now()): Secur
     }
     if (!jwt.requireExp) add('jwt-no-exp', 'JWTs without an "exp" claim are accepted forever: set auth.jwt.requireExp: true.', 'info');
   }
+  if (strategy === 'oauth2' && !config.auth?.oauth?.resource) {
+    add(
+      'oauth-no-resource',
+      'auth.oauth.resource is not set: the resource URI is derived from the Host header. Set it to the public /mcp URL.',
+      'info',
+    );
+  }
   if (strategy !== 'none' && !sec.authLockout) {
     add('no-auth-lockout', 'No brute-force protection: set security.authLockout: true to lock out IPs after repeated failures.', 'info');
   }

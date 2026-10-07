@@ -28,6 +28,7 @@ import { Mutex } from '../utils/mutex.js';
 import { VERSION } from '../utils/version.js';
 import { McpEndpoint } from '../mcp/endpoint.js';
 import { SqliteAuditStore } from '../monitor/audit.js';
+import { PROTECTED_RESOURCE_METADATA_PATH, protectedResourceMetadata } from '../auth/oauth.js';
 
 function findDashboard(): string | undefined {
   // src/gateway → ../../dashboard (tsx) and dist/gateway → ../../dashboard (built)
@@ -107,6 +108,18 @@ export class Gateway {
     // Access-Control-Allow-Origin value, which browsers reject.
     // Indirection so CORS origins can be hot reloaded.
     this.app.use((req, res, next) => this.cors(req, res, next));
+
+    // OAuth 2.1 Protected Resource Metadata (RFC 9728), public. Served at the
+    // root well-known URL and at the path-suffixed form for the MCP endpoint.
+    const mcpPath = () => this.config.mcp?.path ?? '/mcp';
+    this.app.get([PROTECTED_RESOURCE_METADATA_PATH, `${PROTECTED_RESOURCE_METADATA_PATH}/*`], (req, res, next) => {
+      const auth = this.config.auth;
+      if (auth?.strategy !== 'oauth2' || !auth.oauth) return next();
+      const suffix = req.path.slice(PROTECTED_RESOURCE_METADATA_PATH.length);
+      if (suffix && suffix !== mcpPath()) return next();
+      res.set('Cache-Control', 'public, max-age=300');
+      res.json(protectedResourceMetadata(auth.oauth, req, mcpPath()));
+    });
 
     // Downstream MCP endpoint (parses its own body so JSON errors become JSON-RPC errors).
     if (this.config.mcp?.enabled !== false) {
