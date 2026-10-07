@@ -182,6 +182,15 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
 ```
 `kind` is present for resources and prompts. Invalid parameters → `400`.
 
+### Usage and quotas
+
+| | |
+|---|---|
+| `GET /usage` | `{ group, rows: [{ <group dims>, calls, errors, durationMs }], generatedAt }`; `group` = comma list of `client`, `tenant`, `server`, `tool`, `hour`, `day`; filters `since`, `until` (ISO or ms), `client`, `tenant`, `server`; `format=csv` for a CSV download |
+| `GET /quotas` | `{ rules, usage: [{ rule, period, limit, subject, used, resetsAt }] }` |
+
+Tool calls over a quota: `429` + `Retry-After`, `{ code: -32007, quota: { quota, limit, resetsAt } }`.
+
 ### Catalog
 
 | | |

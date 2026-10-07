@@ -33,6 +33,8 @@ import { createTracer, NOOP_TRACER, type Tracer } from '../observability/tracing
 import { ToolInvoker } from './invoker.js';
 import { LoadBalancer, expandReplicas } from './balancer.js';
 import { ToolCache } from './cache.js';
+import { UsageMeter } from './usage.js';
+import { membershipsOf } from '../auth/tenants.js';
 import { Catalog, InstalledServers, buildServerConfig, type InstallRequest } from '../catalog/index.js';
 import { PluginHost, type PluginSource } from '../plugins/index.js';
 import { PROTECTED_RESOURCE_METADATA_PATH, protectedResourceMetadata } from '../auth/oauth.js';
@@ -149,6 +151,8 @@ export class Gateway {
       policy: () => this.config.policy,
       plugins: this.plugins,
       cache: new ToolCache(() => this.config.cache),
+      usage: new UsageMeter(() => this.config.quotas),
+      tenantsOf: (clientId) => (this.config.tenants?.length ? membershipsOf(this.config.tenants, clientId).map((m) => m.tenant) : []),
       balancer: new LoadBalancer({
         servers: () => this.registry.getAllServers(),
         isConnected: (id) => this.proxy.isConnected(id),
@@ -494,6 +498,7 @@ export class Gateway {
         cache: next.cache,
         tenants: next.tenants,
         catalog: next.catalog,
+        quotas: next.quotas,
         configDir: next.configDir ?? this.config.configDir,
       };
       if (!same(prevCatalog, next.catalog)) {

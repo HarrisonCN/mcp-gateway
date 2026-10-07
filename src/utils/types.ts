@@ -165,6 +165,8 @@ export interface GatewayConfig {
   observability?: ObservabilityConfig;
   /** Tool policy: argument rules, human approval, output filtering. */
   policy?: ToolPolicyConfig;
+  /** Usage quotas and metering export. */
+  quotas?: QuotasConfig;
   /** Upstream catalog (one-click add of well-known MCP servers). */
   catalog?: CatalogConfig;
   /** Tenants / workspaces with owner / admin / viewer roles. */
@@ -687,4 +689,27 @@ export interface CatalogConfig {
   install?: boolean;
   /** JSON file where installed servers are kept (relative to the config file). Absent = runtime only. */
   serversFile?: string;
+}
+
+// ─── Quotas / metering ───────────────────────────────────────────────────────
+
+export interface QuotaRule {
+  name?: string;
+  /** Tool calls allowed per period. */
+  limit: number;
+  period: 'hour' | 'day' | 'month';
+  /** Count per client (default) or per tenant. */
+  per?: 'client' | 'tenant';
+  /** Client id globs (per client) — default all. */
+  clients?: string[];
+  /** Tenant id globs — default all (per tenant), or only clients in these tenants (per client). */
+  tenants?: string[];
+  servers?: string[];
+  tools?: string[];
+}
+
+export interface QuotasConfig {
+  rules?: QuotaRule[];
+  /** How long hourly metering buckets are kept (days, default 35). */
+  meteringRetentionDays?: number;
 }

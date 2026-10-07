@@ -415,6 +415,28 @@ const GatewayConfigSchema = z.object({
       if (bad) ctx.addIssue({ code: z.ZodIssueCode.custom, message: bad });
     })
     .optional(),
+  quotas: z
+    .object({
+      rules: z
+        .array(
+          z
+            .object({
+              name: z.string().min(1).optional(),
+              limit: z.number().int().min(0),
+              period: z.enum(['hour', 'day', 'month']),
+              per: z.enum(['client', 'tenant']).optional(),
+              clients: z.array(z.string().min(1)).optional(),
+              tenants: z.array(z.string().min(1)).optional(),
+              servers: z.array(z.string().min(1)).optional(),
+              tools: z.array(z.string().min(1)).optional(),
+            })
+            .strict(),
+        )
+        .optional(),
+      meteringRetentionDays: z.number().int().positive().optional(),
+    })
+    .strict()
+    .optional(),
   catalog: z
     .object({
       builtins: z.boolean().optional(),

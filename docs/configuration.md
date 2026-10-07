@@ -175,6 +175,35 @@ JWT: claims `mcp_servers` / `mcp_tools` (array, or a space/comma-separated strin
 
 Scopes stack with each server's `tools` filter. Resources and prompts are scoped by `servers` only.
 
+## Quotas and metering
+
+```yaml
+quotas:
+  meteringRetentionDays: 35        # hourly usage buckets kept for the export
+  rules:                            # every matching rule must have room
+    - name: per-key-daily
+      limit: 10000
+      period: day                   # hour | day | month (UTC calendar periods)
+    - name: free-tier
+      clients: ['key:free-*']
+      servers: [search]
+      tools: ['search_*']
+      limit: 100
+      period: month
+    - name: team-pool
+      per: tenant                   # one counter per tenant (shared by its members)
+      tenants: [acme]
+      limit: 50000
+      period: month
+```
+
+- Over quota → JSON-RPC `-32007`; REST `429` with `Retry-After` (seconds to the period reset) and `quota` details.
+  Quotas are checked after the policy, before the cache and the upstream server.
+- **Metering export**: `GET /api/v1/usage?group=client,tenant,server,tool,hour,day&since=&until=&client=&tenant=&server=`
+  as JSON, or `&format=csv` (RFC 4180, formula-injection safe). `GET /api/v1/quotas` — current counters per rule and
+  subject with `resetsAt`. Operators see everything; tenant admins / owners see their tenant (`?tenant=`).
+- Counters and buckets are in memory per instance (reset on restart).
+
 ## Upstream catalog
 
 ```yaml

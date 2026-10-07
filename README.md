@@ -579,6 +579,15 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v2.5
+
+| Feature | Description |
+|---------|-------------|
+| **Usage quotas** | per key or per tenant, hour / day / month, scoped by server / tool — `429` + `Retry-After` |
+| **Metering export** | `GET /api/v1/usage` as JSON or CSV, grouped by key / tenant / server / tool / hour / day |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v2.4
 
 | Feature | Description |
