@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { fileURLToPath } from 'url';
-import { McpProxy, ERR_TIMEOUT, ERR_CANCELLED } from '../src/proxy/index.js';
+import { McpProxy, ERR_TIMEOUT, ERR_CANCELLED, ERR_NOT_CONNECTED } from '../src/proxy/index.js';
 import type { McpServerConfig } from '../src/utils/types.js';
 import { logger } from '../src/utils/logger.js';
 
@@ -41,6 +41,22 @@ describe('McpProxy (stdio)', () => {
     proxy = new McpProxy();
     await expect(proxy.connect(cfg({ env: { FAIL_INIT: '1' } }))).rejects.toThrow(/initialize/);
     expect(proxy.isConnected('fake')).toBe(false);
+  });
+
+  it('does not report a server as connected (or forward requests) while the handshake is in progress', async () => {
+    proxy = new McpProxy();
+    const connecting = proxy.connect(cfg({ env: { INIT_DELAY_MS: '400' } }));
+    // wait until the channel is up and the session exists, but initialize has not been answered yet
+    const deadline = Date.now() + 3000;
+    while (!proxy.getLoad('fake') && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+    expect(proxy.getLoad('fake')).toBeDefined();
+    expect(proxy.isConnected('fake')).toBe(false);
+    const early = await proxy.callTool('fake', 'echo', {});
+    expect(early.success).toBe(false);
+    expect(early.error?.code).toBe(ERR_NOT_CONNECTED);
+    await connecting;
+    expect(proxy.isConnected('fake')).toBe(true);
+    expect((await proxy.callTool('fake', 'echo', {})).success).toBe(true);
   });
 
   it('rejects unknown transports clearly', async () => {

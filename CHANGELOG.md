@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-07
+
+Bug-fix release; no API or configuration changes.
+
+### Fixed
+- A server whose MCP handshake (`initialize` → `notifications/initialized` → `tools/list`) was still in progress was already reported as connected: `mcp_gateway_server_up` / `up` in `/api/v1/metrics` showed `1`, `/health/ready` counted it, and REST / `/mcp` calls could be forwarded to it before `initialize` had been answered. `McpProxy#isConnected` and `McpProxy#request` now require a completed handshake (calls during it get the usual "not connected" / `503`).
+- Flaky tests: `GET /api/v1/tools?format=mcp` assertion depended on server connect order; the reconnect-metrics test could observe a handshaking server as up (fixed by the above).
+
+### Changed (maintenance)
+- Dependabot ignores semver-major updates (npm root + JS client, Gradle) and keeps the Docker base image on Node 22; majors are adopted deliberately.
+
 ## [1.0.0] - 2026-10-07
 
 First stable release. From here on mcp-gateway follows semver: `/api/v1`, `/mcp`, configuration keys, CLI and
