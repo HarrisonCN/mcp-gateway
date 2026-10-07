@@ -8,6 +8,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg)](https://nodejs.org)
+[![npm version](https://img.shields.io/npm/v/@winstonsayno/mcp-gateway.svg)](https://www.npmjs.com/package/@winstonsayno/mcp-gateway)
 
 [English](../README.md) · **中文** · [文档](.) · [示例](../examples/)
 
@@ -278,6 +279,18 @@ servers:
 
 访问 `http://localhost:4000/dashboard`。开启鉴权后，在页头输入 API Key（或 JWT）：默认只保存在当前标签页（`sessionStorage`），勾选 “remember” 则保存在 `localStorage`，并以 `Authorization: Bearer …` 发送给每个 API 请求。设置 `dashboard.enabled: false` 可关闭面板。
 
+## 文档
+
+- [API 参考](api-reference.md)（REST、`/mcp`、错误码、稳定性策略）
+- [配置参考](configuration.md)
+- [部署指南](deployment.md)（Docker、Kubernetes、反向代理、安全清单）
+
+Docker 镜像：每次发布都会构建多架构镜像 `ghcr.io/harrisoncn/mcp-gateway:<版本>`（`1.0.0`、`1.0`、`1`、`latest`，基于 Node 22）。
+
+## API 稳定性
+
+自 **1.0.0** 起遵循[语义化版本](https://semver.org/lang/zh-CN/)。1.x 期间，`/api/v1` REST API、`/mcp` 端点行为、配置项、CLI 命令与参数、包根导出以及 Prometheus 指标名只做向后兼容的改动（可能新增字段、端点和选项——请忽略未知字段）。深层导入路径、日志格式、面板以及审计数据库表结构不在保证范围内。详见 [api-reference.md#stability-and-versioning](api-reference.md#stability-and-versioning)。
+
 ## 路线图
 
 - ✅ stdio 传输
@@ -287,10 +300,11 @@ servers:
 - ✅ 自动重连（指数退避）
 - ✅ 配置热更新（服务器、鉴权、限流、CORS）
 - ✅ Web 可视化面板
-- ✅ 下游 MCP 端点 `/mcp`（未发布，v0.5）
-- ✅ 按 Key 的权限范围与限流（未发布，v0.6）
-- ✅ JS / Kotlin 客户端，OpenAI / Anthropic 工具 schema（未发布，v0.7）
-- ✅ resources / prompts 透传，持久化审计日志（未发布，v0.8）
+- ✅ 下游 MCP 端点 `/mcp`（v1.0）
+- ✅ 按 Key 的权限范围与限流（v1.0）
+- ✅ JS / Kotlin 客户端，OpenAI / Anthropic 工具 schema（v1.0）
+- ✅ resources / prompts 透传，持久化审计日志（v1.0）
+- ✅ 稳定 API、文档、容器镜像（v1.0）
 - 📋 Redis 限流后端
 - 📋 OAuth2 / OIDC 鉴权
 - ✅ 工具级权限控制（通过按 Key 的 scopes，v0.6）

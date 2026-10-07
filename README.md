@@ -11,10 +11,11 @@ Route · Authenticate · Rate-limit · Monitor — all your [Model Context Proto
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue.svg)](https://www.typescriptlang.org)
-[![npm version](https://img.shields.io/badge/npm-v0.2.0-blue.svg)](https://www.npmjs.com/package/mcp-gateway)
-[![Docker](https://img.shields.io/badge/docker-ghcr.io-blue.svg)](https://ghcr.io/HarrisonCN/mcp-gateway)
+[![npm version](https://img.shields.io/npm/v/@winstonsayno/mcp-gateway.svg)](https://www.npmjs.com/package/@winstonsayno/mcp-gateway)
+[![CI](https://github.com/HarrisonCN/mcp-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/HarrisonCN/mcp-gateway/actions/workflows/ci.yml)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io-blue.svg)](https://github.com/HarrisonCN/mcp-gateway/pkgs/container/mcp-gateway)
 
-[English](#) · [中文](docs/README.zh-CN.md) · [Docs](docs/) · [Examples](examples/)
+[English](#) · [中文](docs/README.zh-CN.md) · [API reference](docs/api-reference.md) · [Configuration](docs/configuration.md) · [Deployment](docs/deployment.md) · [Examples](examples/)
 
 </div>
 
@@ -500,7 +501,7 @@ Prometheus series added: `mcp_gateway_server_up`, `mcp_gateway_server_status{sta
 docker run -p 4000:4000 \
   -v $(pwd)/mcp-gateway.yml:/app/mcp-gateway.yml \
   -e GITHUB_TOKEN=ghp_... \
-  ghcr.io/harrisonCN/mcp-gateway:latest
+  ghcr.io/harrisoncn/mcp-gateway:latest
 
 # Or with Docker Compose (gateway + Prometheus; see examples/docker)
 cd examples/docker
@@ -545,7 +546,7 @@ to stop serving it.
 ## Embed as a Library
 
 ```typescript
-import { Gateway, loadConfig } from 'mcp-gateway';
+import { Gateway, loadConfig } from '@winstonsayno/mcp-gateway';
 
 const config = await loadConfig('./mcp-gateway.yml');
 const gateway = new Gateway(config);
@@ -557,10 +558,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
-## What's New (unreleased)
+## What's New in v1.0
 
 | Feature | Description |
 |---------|-------------|
+| **Stable API** | Semver from 1.0: `/api/v1`, `/mcp`, config keys, CLI and root exports are stable (see [stability](#api-stability)) |
+| **Docs** | [API reference](docs/api-reference.md), [configuration reference](docs/configuration.md), [deployment guide](docs/deployment.md) (Docker, Kubernetes, reverse proxy) |
+| **Container image** | Multi-arch `ghcr.io/harrisoncn/mcp-gateway` built on every release (Node 22) |
 | **Resources & prompts** | `resources/list`, `resources/templates/list`, `resources/read`, `prompts/list`, `prompts/get` aggregated on REST and `/mcp`, with list-changed notifications and scopes |
 | **Audit log** | Optional persistent request history in SQLite (`node:sqlite`), filterable / pageable `GET /api/v1/requests`, dashboard history |
 | **Clients & LLM schemas** | TypeScript client (`clients/js`), Kotlin client (`clients/kotlin`), `GET /api/v1/tools?format=openai\|openai-responses\|anthropic` |
@@ -579,6 +583,14 @@ process.on('SIGTERM', () => gateway.stop());
 | **Web Dashboard** | Live monitoring UI at `/dashboard` |
 | **4 Bug Fixes** | Concurrency, id collision, handle leaks, timeouts |
 
+## API stability
+
+mcp-gateway follows [Semantic Versioning](https://semver.org/) since **1.0.0**. Within 1.x the REST API under
+`/api/v1`, the `/mcp` endpoint behaviour, configuration keys, CLI commands / flags, root library exports and Prometheus
+metric names only change in backward-compatible ways (new fields, endpoints and options may be added — ignore
+unknown fields). Deep imports, log format, the dashboard and the audit database schema are not covered. Details:
+[docs/api-reference.md#stability-and-versioning](docs/api-reference.md#stability-and-versioning).
+
 ## Roadmap
 
 | Feature | Status |
@@ -590,10 +602,11 @@ process.on('SIGTERM', () => gateway.stop());
 | Automatic reconnect with backoff | ✅ Done |
 | Config hot reload | ✅ Done (v0.2.0) |
 | Web dashboard UI | ✅ Done (v0.2.0) |
-| Downstream MCP endpoint (`/mcp`) | ✅ Done (unreleased, v0.5) |
-| Per-key scopes and limits | ✅ Done (unreleased, v0.6) |
-| JS / Kotlin clients, OpenAI / Anthropic tool schemas | ✅ Done (unreleased, v0.7) |
-| Resources & prompts passthrough, persistent audit log | ✅ Done (unreleased, v0.8) |
+| Downstream MCP endpoint (`/mcp`) | ✅ Done (v1.0) |
+| Per-key scopes and limits | ✅ Done (v1.0) |
+| JS / Kotlin clients, OpenAI / Anthropic tool schemas | ✅ Done (v1.0) |
+| Resources & prompts passthrough, persistent audit log | ✅ Done (v1.0) |
+| Stable API, docs, container image | ✅ Done (v1.0) |
 | Redis-backed rate limiting | 📋 Planned |
 | OAuth2 / OIDC auth | 📋 Planned |
 | Tool-level access control | ✅ Done via per-key scopes (v0.6) |

@@ -1,5 +1,6 @@
 # package-lock.json is required by `npm ci`
-FROM node:20-alpine AS builder
+# Node 22: needed for the optional audit log (built-in node:sqlite)
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -13,7 +14,11 @@ RUN npm run build
 
 # ─── Production image ─────────────────────────────────────────────────────────
 
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
+
+LABEL org.opencontainers.image.source="https://github.com/HarrisonCN/mcp-gateway" \
+      org.opencontainers.image.description="Gateway for MCP servers: routing, auth, rate limits, monitoring, /mcp endpoint" \
+      org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
 
@@ -24,6 +29,10 @@ RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 COPY dashboard/index.html ./dashboard/index.html
+
+# Writable location for the optional audit log (audit.path: /app/data/audit.db)
+RUN mkdir -p /app/data && chown node:node /app/data
+VOLUME ["/app/data"]
 
 # Drop root privileges
 USER node

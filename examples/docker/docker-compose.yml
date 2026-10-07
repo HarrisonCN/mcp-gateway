@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   mcp-gateway:
-    image: ghcr.io/harrisonCN/mcp-gateway:latest
+    image: ghcr.io/harrisoncn/mcp-gateway:latest
     # Or build locally:
     # build:
     #   context: ../..

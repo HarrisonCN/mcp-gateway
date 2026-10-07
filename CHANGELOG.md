@@ -9,7 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-07
+
+First stable release. From here on mcp-gateway follows semver: `/api/v1`, `/mcp`, configuration keys, CLI and
+root library exports only change in backward-compatible ways within 1.x (see
+[docs/api-reference.md#stability-and-versioning](docs/api-reference.md#stability-and-versioning)).
+This release contains everything developed as v0.5 – v0.8.
+
 ### Added
+- **Documentation** in `docs/`: API reference (REST, `/mcp`, error codes, stability policy), configuration reference and deployment guide (Docker, Kubernetes manifests, reverse proxy, security checklist, systemd).
+- **Container image** workflow `.github/workflows/docker.yml`: on release publish, builds `linux/amd64` + `linux/arm64` and pushes `ghcr.io/<owner>/mcp-gateway` tagged `<version>`, `<major>.<minor>`, `<major>` and `latest` (with provenance + SBOM).
+- Dependabot config (npm root + JS client, Gradle Kotlin client, GitHub Actions, Docker), pull-request template, issue-template links, `SECURITY.md`.
 - **Resources & prompts passthrough**: resources, resource templates and prompts of servers announcing those capabilities are listed at connect time and refreshed on `notifications/resources|prompts/list_changed`. REST: `GET /api/v1/resources`, `GET /api/v1/resources/templates`, `POST /api/v1/resources/read`, `GET /api/v1/prompts`, `POST /api/v1/prompts/get` (auto-routing, `409` on ambiguous prompt names, `403` out of scope, `502` / `503` / `504` like tool calls). `/mcp`: `resources/list`, `resources/templates/list`, `resources/read`, `prompts/list`, `prompts/get` (paginated; prompt names follow `toolNaming`; duplicate resource URIs collapsed, lowest server id wins; reads routed by URI, then template, then the only resource server), `resources` / `prompts` capabilities with `list_changed` notifications. Scopes apply by server. Rate limited and recorded with `kind: "resource" | "prompt"`.
 - **Persistent audit log** (`audit: { enabled, path, retentionDays }`, default off): every request record is also written to SQLite through the built-in `node:sqlite` (Node 22.5+, no new dependency; clear startup error on older Node). Metadata only, never arguments or results. Hourly retention pruning.
 - `GET /api/v1/requests` filters (`server`, `tool`, `client`, `success`, `via`, `kind`, `since`, `until`) and cursor paging (`nextCursor`), from the audit log when enabled, else the in-memory log; responses carry `source`. The dashboard's *Request History* panel has filters and *Load older*.
@@ -30,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CORS allows the `Mcp-Session-Id`, `MCP-Protocol-Version` and `Last-Event-ID` request headers and exposes `Mcp-Session-Id`.
 
 ### Changed
+- Docker image is based on `node:22-alpine` (was 20) so the optional audit log works; it has a writable `/app/data` volume and OCI labels. The npm package still supports Node 20+.
+- README: npm badge points at `@winstonsayno/mcp-gateway`, CI badge, ghcr image name lowercased (`ghcr.io/harrisoncn/mcp-gateway`), library import uses the scoped package name, API-stability section.
 - `AuthConfig.apiKeys` is typed `Array<string | ApiKeyConfig>` (was `string[]`); existing configs are unchanged. `createAuthMiddleware()` returns an `AuthMiddleware` (a `RequestHandler` with an optional `resolveClient`).
 
 ## [0.4.0] - 2026-10-07

@@ -1,0 +1,40 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+    commit-message: { prefix: "chore(deps)" }
+
+  - package-ecosystem: npm
+    directory: /clients/js
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 3
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+    commit-message: { prefix: "chore(deps-js-client)" }
+
+  - package-ecosystem: gradle
+    directory: /clients/kotlin
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 3
+    commit-message: { prefix: "chore(deps-kotlin-client)" }
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message: { prefix: "ci" }
+
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly }
+    commit-message: { prefix: "chore(docker)" }
