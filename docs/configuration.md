@@ -175,6 +175,34 @@ JWT: claims `mcp_servers` / `mcp_tools` (array, or a space/comma-separated strin
 
 Scopes stack with each server's `tools` filter. Resources and prompts are scoped by `servers` only.
 
+## Upstream catalog
+
+```yaml
+catalog:
+  builtins: true                 # reference servers: filesystem, memory, everything, sequential-thinking, fetch, git, time, github
+  sources:                       # extra catalogs: JSON files (relative to this file) or http(s) URLs
+    - ./catalog.json
+    - https://example.com/mcp-catalog.json
+  install: true                  # allow one-click install via API / dashboard (default false — it spawns processes)
+  serversFile: installed-servers.json   # keep installed servers across restarts (default: runtime only)
+```
+
+A catalog source is `[...]` or `{ "entries": [...] }` of:
+
+```json
+{ "id": "my-db", "name": "My DB", "description": "…", "homepage": "https://…", "tags": ["db"],
+  "template": { "transport": "stdio", "command": "npx", "args": ["-y", "my-db-mcp"] },
+  "env": [{ "name": "DB_URL", "required": true, "secret": true }],
+  "args": [{ "name": "schema", "default": "public" }] }
+```
+
+- `GET /api/v1/catalog` — entries plus where each is installed; `POST /api/v1/catalog/:id/install`
+  `{ serverId?, name?, env?, args?, tags? }` → `201 { server, connected, persisted }`; `DELETE /api/v1/catalog/servers/:id`.
+  Operator keys only (scoped / tenant-confined keys get `403`).
+- `env` values go to the process environment (stdio) or replace `${VAR}` in the template's `url` / `headers` (remote).
+- Installed servers are tagged `catalog` and `catalog:<entry id>`; ids from the config file win on clashes; they survive
+  hot reloads. The dashboard's *Servers* tab has an *Add a server* card.
+
 ## Tenants and roles (RBAC)
 
 ```yaml

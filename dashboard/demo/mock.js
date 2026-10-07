@@ -235,6 +235,11 @@
     if (p === '/tools') return json({ tools: SERVERS.filter((s) => isUp(s.id)).flatMap((s) => s.tools.map((t) => ({ ...t, serverId: s.id, serverName: s.name }))), total: SERVERS.reduce((a, s) => a + (isUp(s.id) ? s.tools.length : 0), 0) });
     let m;
     if (p === '/approvals') return json({ pending: demoApprovals, recent: [] });
+    if (p === '/catalog') return json({ install: false, installedServers: [], entries: [
+      { id: 'filesystem', name: 'Filesystem', description: 'Read, write and search files in allowed directories', template: { transport: 'stdio' }, installed: ['filesystem'] },
+      { id: 'memory', name: 'Memory', description: 'Knowledge-graph based persistent memory', template: { transport: 'stdio' }, installed: [] },
+      { id: 'github', name: 'GitHub', description: 'GitHub repositories, issues and pull requests (remote server)', template: { transport: 'streamable-http' }, installed: ['github'] },
+    ] });
     if (p === '/tenants') return json({ clientId: 'key:demo', operator: true, tenants: demoTenants });
     if ((m = p.match(/^\/tenants\/([^/]+)\/members$/)) && method === 'PUT') {
       const tn = demoTenants.find((x) => x.id === decodeURIComponent(m[1]));

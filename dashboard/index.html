@@ -460,6 +460,10 @@ tbody tr:hover { background: var(--surface-2); }
     <div class="page-head"><div><h1 data-i18n="srvTitle">Servers & tools</h1><p data-i18n="srvSub">Upstream MCP servers behind this gateway</p></div>
       <button class="btn sm" id="srvRefresh" type="button"><svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/></svg><span data-i18n="refresh">Refresh</span></button></div>
     <div class="grid servers stagger" id="servers"></div>
+    <div class="card" id="catalogCard" hidden style="margin-top:14px">
+      <h2><span data-i18n="catalog">Add a server</span><span class="right muted" id="catalogNote"></span></h2>
+      <ul class="stream" id="catalog"></ul>
+    </div>
   </section>
 
   <!-- Playground -->
@@ -573,7 +577,7 @@ const I18N = {
     remember: 'Remember on this device', saveConnect: 'Save & connect', clear: 'Clear', close: 'Close',
     tabOverview: 'Overview', tabServers: 'Servers', tabPlayground: 'Playground', tabHistory: 'History', tabConnect: 'Connect',
     ovTitle: 'Overview', ovSub: 'Live traffic through the gateway', window: 'Time window',
-    reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server', approvals: 'Pending approvals', tenants: 'Workspaces', role: 'Role', members: 'members', roleSaved: 'Role updated', approve: 'Approve', deny: 'Deny', approved: 'Approved', denied: 'Denied', expires: 'expires',
+    reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server', approvals: 'Pending approvals', tenants: 'Workspaces', catalog: 'Add a server', add: 'Add', added: 'Server added', installOff: 'read-only (catalog.install is off)', installedAs: 'installed as', role: 'Role', members: 'members', roleSaved: 'Role updated', approve: 'Approve', deny: 'Deny', approved: 'Approved', denied: 'Denied', expires: 'expires',
     errRate: 'Error rate', liveStream: 'Live requests', pause: 'Pause', health: 'Server health',
     kRpm: 'Requests / min', kP50: 'p50 latency', kP95: 'p95 latency', kErr: 'Error rate', kSrv: 'Servers online',
     kTotal: '{n} in window', kP99: 'p99 {v}', kErrN: '{n} failed', kTools: '{n} tools',
@@ -618,7 +622,7 @@ const I18N = {
     remember: '在此设备上记住', saveConnect: '保存并连接', clear: '清除', close: '关闭',
     tabOverview: '总览', tabServers: '服务器', tabPlayground: '调试台', tabHistory: '历史', tabConnect: '接入',
     ovTitle: '总览', ovSub: '网关实时流量', window: '时间范围',
-    reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用', approvals: '待审批调用', tenants: '工作区', role: '角色', members: '成员', roleSaved: '角色已更新', approve: '批准', deny: '拒绝', approved: '已批准', denied: '已拒绝', expires: '到期',
+    reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用', approvals: '待审批调用', tenants: '工作区', catalog: '添加服务器', add: '添加', added: '已添加服务器', installOff: '只读（未开启 catalog.install）', installedAs: '已安装为', role: '角色', members: '成员', roleSaved: '角色已更新', approve: '批准', deny: '拒绝', approved: '已批准', denied: '已拒绝', expires: '到期',
     errRate: '错误率', liveStream: '实时请求', pause: '暂停', health: '服务器健康',
     kRpm: '每分钟请求', kP50: 'p50 延迟', kP95: 'p95 延迟', kErr: '错误率', kSrv: '在线服务器',
     kTotal: '窗口内 {n} 次', kP99: 'p99 {v}', kErrN: '{n} 次失败', kTools: '{n} 个工具',
@@ -998,6 +1002,41 @@ document.addEventListener('change', async (e) => {
     toast(t('roleSaved'));
   } catch (err) { toast(err.message || String(err)); }
   loadTenants();
+});
+
+// Upstream catalog: one-click add of well-known MCP servers (operators; needs catalog.install: true).
+async function loadCatalog() {
+  const card = $('#catalogCard');
+  let r;
+  try { r = await api('/catalog'); } catch { card.hidden = true; return; }
+  const list = r.entries || [];
+  card.hidden = list.length === 0;
+  state.catalog = r;
+  $('#catalogNote').textContent = r.install ? '' : t('installOff');
+  $('#catalog').innerHTML = list.map((e) => `<li><div style="flex:1;min-width:0"><b>${esc(e.name)}</b> <span class="badge">${esc(e.template.transport)}</span>
+    ${(e.installed || []).length ? `<span class="badge ok">${esc(t('installedAs'))} ${esc(e.installed.join(', '))}</span>` : ''}
+    <div class="muted" style="font-size:12.5px">${esc(e.description || '')}${e.homepage ? ` · <a href="${esc(e.homepage)}" target="_blank" rel="noopener noreferrer">docs</a>` : ''}</div></div>
+    ${r.install ? `<button class="btn sm primary" type="button" data-install="${esc(e.id)}">${esc(t('add'))}</button>` : ''}</li>`).join('');
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-install]');
+  if (!b) return;
+  const entry = (state.catalog?.entries || []).find((x) => x.id === b.dataset.install);
+  if (!entry) return;
+  const serverId = prompt('Server id', entry.installed && entry.installed.length ? `${entry.id}-2` : entry.id);
+  if (!serverId) return;
+  const env = {};
+  for (const v of entry.env || []) { const val = prompt(`${v.name}${v.description ? ` — ${v.description}` : ''}`, ''); if (val === null) return; if (val) env[v.name] = val; }
+  const args = [];
+  for (const a of entry.args || []) { const val = prompt(`${a.name}${a.description ? ` — ${a.description}` : ''}`, a.default || ''); if (val === null) return; args.push(val); }
+  b.classList.add('loading');
+  try {
+    await api(`/catalog/${encodeURIComponent(entry.id)}/install`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ serverId, env, args }) });
+    toast(t('added'));
+    loadServers();
+  } catch (err) { toast(err.message || String(err)); }
+  b.classList.remove('loading');
+  loadCatalog();
 });
 
 async function loadServers() {
@@ -1678,6 +1717,7 @@ reloadAll().then(() => {
 // Refresh the slower-moving pieces in the background.
 setInterval(() => { if (!document.hidden) loadApprovals(); }, 3000);
 loadTenants();
+loadCatalog();
 setInterval(() => { if (!document.hidden) loadTenants(); }, 30000);
 setInterval(() => { if (!document.hidden) { loadServers(); if (state.live === 'live') loadStats().catch(() => {}); } }, 10000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && state.live !== 'live') startLive(); });

@@ -33,6 +33,7 @@ import { createTracer, NOOP_TRACER, type Tracer } from '../observability/tracing
 import { ToolInvoker } from './invoker.js';
 import { LoadBalancer, expandReplicas } from './balancer.js';
 import { ToolCache } from './cache.js';
+import { Catalog, InstalledServers, buildServerConfig, type InstallRequest } from '../catalog/index.js';
 import { PluginHost, type PluginSource } from '../plugins/index.js';
 import { PROTECTED_RESOURCE_METADATA_PATH, protectedResourceMetadata } from '../auth/oauth.js';
 
@@ -70,6 +71,11 @@ export class Gateway {
   private tracer: Tracer = NOOP_TRACER;
   private invoker?: ToolInvoker;
   private readonly plugins = new PluginHost();
+  private readonly catalog = new Catalog(() => this.config.catalog, () => this.config.configDir);
+  private readonly installed = new InstalledServers(() => {
+    const f = this.config.catalog?.serversFile;
+    return f ? resolve(this.config.configDir ?? process.cwd(), f) : undefined;
+  });
 
   constructor(
     private config: GatewayConfig,
@@ -157,6 +163,17 @@ export class Gateway {
       shared,
       invoker: this.invoker,
       onTenantsChanged: () => this.mcp?.refreshClients(),
+      catalog: {
+        installEnabled: () => this.catalog.installEnabled(),
+        entries: () =>
+          this.catalog.list().map((e) => ({
+            ...e,
+            installed: this.withInstalled(this.config.servers).filter((s) => s.tags?.includes(`catalog:${e.id}`)).map((s) => s.id),
+          })),
+        install: (id, req) => this.installFromCatalog(id, req),
+        uninstall: (id) => this.uninstallCatalogServer(id),
+        installedIds: () => this.installed.list().map((s) => s.id),
+      },
     });
 
     this.app.disable('x-powered-by');
@@ -266,7 +283,9 @@ export class Gateway {
       }
     }
 
-    await this.connectServers(expandReplicas(this.config.servers));
+    this.installed.load();
+    await this.catalog.refresh();
+    await this.connectServers(expandReplicas(this.withInstalled(this.config.servers)));
 
     this.registry.startHealthChecks((serverId) => this.checkHealth(serverId));
 
@@ -392,8 +411,8 @@ export class Gateway {
       if (this.stopping) return;
       const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
       const key = (s: McpServerConfig) => JSON.stringify(s);
-      const current = new Map(expandReplicas(this.config.servers).filter((s) => s.enabled !== false).map((s) => [s.id, s]));
-      const wanted = new Map(expandReplicas(next.servers).filter((s) => s.enabled !== false).map((s) => [s.id, s]));
+      const current = new Map(expandReplicas(this.withInstalled(this.config.servers)).filter((s) => s.enabled !== false).map((s) => [s.id, s]));
+      const wanted = new Map(expandReplicas(this.withInstalled(next.servers)).filter((s) => s.enabled !== false).map((s) => [s.id, s]));
 
       const toRemove = [...current.keys()].filter((id) => !wanted.has(id));
       const reconnectChanged = !same(this.config.reconnect, next.reconnect);
@@ -407,6 +426,7 @@ export class Gateway {
       const prevPlugins = this.config.plugins;
       const prevCache = this.config.cache;
       const prevTenants = this.config.tenants;
+      const prevCatalog = this.config.catalog;
       for (const field of ['port', 'host', 'healthCheckIntervalMs', 'dashboard', 'audit', 'state', 'observability'] as const) {
         if (!same(this.config[field], next[field])) {
           logger.warn(`Config "${field}" changed — restart required for it to take effect`);
@@ -473,8 +493,13 @@ export class Gateway {
         plugins: next.plugins,
         cache: next.cache,
         tenants: next.tenants,
+        catalog: next.catalog,
         configDir: next.configDir ?? this.config.configDir,
       };
+      if (!same(prevCatalog, next.catalog)) {
+        await this.catalog.refresh();
+        applied.push('catalog');
+      }
       if (!same(prevTenants, next.tenants)) {
         this.mcp?.refreshClients();
         applied.push('tenants');
@@ -531,6 +556,49 @@ export class Gateway {
   /** The downstream MCP endpoint (undefined when `mcp.enabled` is false or before start). */
   getMcpEndpoint(): McpEndpoint | undefined {
     return this.mcp;
+  }
+
+  /** Configured servers plus the ones installed from the catalog (config wins on id clashes). */
+  private withInstalled(servers: McpServerConfig[]): McpServerConfig[] {
+    const ids = new Set(servers.map((s) => s.id));
+    return [...servers, ...this.installed.list().filter((s) => !ids.has(s.id))];
+  }
+
+  /** Install a catalog entry as a new server and connect it. */
+  async installFromCatalog(entryId: string, req: InstallRequest): Promise<{ status: number; body: Record<string, unknown> }> {
+    if (!this.catalog.installEnabled()) return { status: 403, body: { error: 'Forbidden', message: 'Installing from the catalog is disabled (catalog.install: true enables it)' } };
+    const entry = this.catalog.get(entryId);
+    if (!entry) return { status: 404, body: { error: 'Not Found', message: `Catalog entry "${entryId}" not found` } };
+    let server: McpServerConfig;
+    try {
+      server = buildServerConfig(entry, req);
+    } catch (err) {
+      return { status: 400, body: { error: 'Bad Request', message: err instanceof Error ? err.message : String(err) } };
+    }
+    server.tags = [...(server.tags ?? []), `catalog:${entry.id}`];
+    return this.reloadLock.runExclusive(async () => {
+      if (this.registry.getServer(server.id) || this.withInstalled(this.config.servers).some((s) => s.id === server.id)) {
+        return { status: 409, body: { error: 'Conflict', message: `Server "${server.id}" already exists` } };
+      }
+      await this.installed.add(server);
+      await this.connectServers([server]);
+      logger.info(`Installed "${server.id}" from catalog entry "${entry.id}"`);
+      return { status: 201, body: { server: server.id, entry: entry.id, connected: this.proxy.isConnected(server.id), persisted: !!this.config.catalog?.serversFile } };
+    });
+  }
+
+  /** Remove a server that was installed from the catalog. */
+  async uninstallCatalogServer(id: string): Promise<boolean> {
+    return this.reloadLock.runExclusive(async () => {
+      if (!this.installed.list().some((s) => s.id === id)) return false;
+      await this.installed.remove(id);
+      if (!this.config.servers.some((s) => s.id === id)) {
+        this.supervisor.forget(id);
+        await this.proxy.disconnect(id);
+        this.registry.unregister(id);
+      }
+      return true;
+    });
   }
 
   /** Active plugins (in hook order). */

@@ -579,6 +579,15 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v2.4
+
+| Feature | Description |
+|---------|-------------|
+| **Upstream catalog** | built-in reference servers + your own JSON catalogs (`catalog.sources`) |
+| **One-click add** | dashboard *Add a server* / `POST /api/v1/catalog/:id/install`, optional persistence (`serversFile`) |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v2.3
 
 | Feature | Description |

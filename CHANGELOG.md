@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-07
+
+Upstream catalog / registry with one-click add.
+
+### Added
+- **`catalog:`** — built-in entries for the reference MCP servers (filesystem, memory, everything,
+  sequential-thinking, fetch, git, time, GitHub remote) plus `sources` (JSON files or URLs) merged by id.
+- **One-click install** (`catalog.install: true`, off by default): `POST /api/v1/catalog/:id/install` with `serverId`,
+  `env` (process env for stdio, `${VAR}` substitution for remote `url` / `headers`) and `args`; validation of required
+  inputs; `409` on id clashes. `DELETE /api/v1/catalog/servers/:id` removes it. Operator keys only.
+- `catalog.serversFile` persists installed servers (atomic write, mode 600) and loads them on start; they survive hot
+  reloads; config-file ids win on clashes.
+- **Dashboard**: *Add a server* card on the Servers tab (prompts for id, env and args; shows where an entry is
+  installed), also in the demo (read-only).
+- Exports: `Catalog`, `InstalledServers`, `BUILTIN_CATALOG`, `buildServerConfig`, `loadCatalogSource`.
+
 ## [2.3.0] - 2026-10-07
 
 Tenants / workspaces with role-based access control.

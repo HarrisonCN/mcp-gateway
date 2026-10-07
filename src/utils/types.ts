@@ -165,6 +165,8 @@ export interface GatewayConfig {
   observability?: ObservabilityConfig;
   /** Tool policy: argument rules, human approval, output filtering. */
   policy?: ToolPolicyConfig;
+  /** Upstream catalog (one-click add of well-known MCP servers). */
+  catalog?: CatalogConfig;
   /** Tenants / workspaces with owner / admin / viewer roles. */
   tenants?: TenantConfig[];
   /** Tool result caching (per-tool opt-in) and in-flight de-duplication. */
@@ -672,4 +674,17 @@ export interface TenantConfig {
   /** Server id globs that belong to the tenant. */
   servers: string[];
   members?: TenantMember[];
+}
+
+// ─── Catalog ─────────────────────────────────────────────────────────────────
+
+export interface CatalogConfig {
+  /** Include the built-in entries (default true). */
+  builtins?: boolean;
+  /** Extra catalogs: JSON files (relative to the config file) or http(s) URLs. */
+  sources?: string[];
+  /** Allow installing entries through the API / dashboard (default false: it spawns processes). */
+  install?: boolean;
+  /** JSON file where installed servers are kept (relative to the config file). Absent = runtime only. */
+  serversFile?: string;
 }

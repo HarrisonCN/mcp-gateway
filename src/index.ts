@@ -27,6 +27,8 @@ export {
 export type { Tracer, Span, SpanExporter } from './observability/tracing.js';
 export { ToolInvoker, ERR_POLICY_DENIED, ERR_APPROVAL_REJECTED, ERR_OUTPUT_BLOCKED, ERR_PLUGIN_REJECTED } from './gateway/invoker.js';
 export { withTenantScope, membershipsOf, roleIn, canCall, ROLE_RANK } from './auth/tenants.js';
+export { Catalog, InstalledServers, BUILTIN_CATALOG, buildServerConfig, loadCatalogSource } from './catalog/index.js';
+export type { CatalogEntry, InstallRequest } from './catalog/index.js';
 export { ToolCache, canonicalJson } from './gateway/cache.js';
 export type { CacheStats } from './gateway/cache.js';
 export { LoadBalancer, expandReplicas } from './gateway/balancer.js';
