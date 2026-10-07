@@ -26,6 +26,9 @@ export {
 } from './observability/tracing.js';
 export type { Tracer, Span, SpanExporter } from './observability/tracing.js';
 export { ToolInvoker, ERR_POLICY_DENIED, ERR_APPROVAL_REJECTED, ERR_OUTPUT_BLOCKED, ERR_PLUGIN_REJECTED } from './gateway/invoker.js';
+export { ToolCache, canonicalJson } from './gateway/cache.js';
+export type { CacheStats } from './gateway/cache.js';
+export { LoadBalancer, expandReplicas } from './gateway/balancer.js';
 export { PluginHost, PluginError, loadPlugin, PLUGIN_API_VERSION } from './plugins/index.js';
 export type { GatewayPlugin, PluginCall, PluginContext, PluginFactory, PluginSource, ToolCallOutcome } from './plugins/index.js';
 export { evaluatePolicy, argMatches, isUnder } from './policy/tool-policy.js';

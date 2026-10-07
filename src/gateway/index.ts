@@ -32,6 +32,7 @@ import { createStateStore, type StateStore } from '../state/index.js';
 import { createTracer, NOOP_TRACER, type Tracer } from '../observability/tracing.js';
 import { ToolInvoker } from './invoker.js';
 import { LoadBalancer, expandReplicas } from './balancer.js';
+import { ToolCache } from './cache.js';
 import { PluginHost, type PluginSource } from '../plugins/index.js';
 import { PROTECTED_RESOURCE_METADATA_PATH, protectedResourceMetadata } from '../auth/oauth.js';
 
@@ -141,6 +142,7 @@ export class Gateway {
       requestLog: () => this.config.monitor?.requestLog !== false,
       policy: () => this.config.policy,
       plugins: this.plugins,
+      cache: new ToolCache(() => this.config.cache),
       balancer: new LoadBalancer({
         servers: () => this.registry.getAllServers(),
         isConnected: (id) => this.proxy.isConnected(id),
@@ -402,6 +404,7 @@ export class Gateway {
       const applied: string[] = [];
       const prevPolicy = this.config.policy;
       const prevPlugins = this.config.plugins;
+      const prevCache = this.config.cache;
       for (const field of ['port', 'host', 'healthCheckIntervalMs', 'dashboard', 'audit', 'state', 'observability'] as const) {
         if (!same(this.config[field], next[field])) {
           logger.warn(`Config "${field}" changed — restart required for it to take effect`);
@@ -466,8 +469,13 @@ export class Gateway {
         security: next.security,
         policy: next.policy,
         plugins: next.plugins,
+        cache: next.cache,
         configDir: next.configDir ?? this.config.configDir,
       };
+      if (!same(prevCache, next.cache)) {
+        this.invoker?.cache?.purge();
+        applied.push('cache');
+      }
       if (!same(prevPlugins, next.plugins)) {
         try {
           await this.plugins.set(await PluginHost.build(next.plugins, this.options.plugins, this.config.configDir));

@@ -182,6 +182,11 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
 ```
 `kind` is present for resources and prompts. Invalid parameters → `400`.
 
+### Cache
+
+`GET /api/v1/cache` (operator) → `{ "enabled": true, "entries": 12, "maxEntries": 1000, "hits": 40, "misses": 12, "deduped": 3, "evictions": 0 }`.
+`DELETE /api/v1/cache[?server=<id>]` → `{ "purged": 12 }`. Cached REST responses report `durationMs: 0`.
+
 ### Load balancing
 
 `GET /api/v1/load-balancing` (operator keys) — one entry per server with `replicas`:

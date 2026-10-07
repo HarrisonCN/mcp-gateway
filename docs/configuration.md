@@ -205,6 +205,34 @@ Health checks: the periodic ping (`healthCheckIntervalMs`) runs on every member;
 reconnects on its own with the `reconnect` policy. Tools come from the primary, or from a replica while the primary
 has none. `GET /api/v1/load-balancing` shows members, health, latency (EWMA) and ejections. Hot reloadable.
 
+## Tool result caching
+
+Caching is opt-in per tool. Calls that match no rule are never cached.
+
+```yaml
+cache:
+  maxEntries: 1000            # LRU
+  defaultTtlSeconds: 60
+  rules:                      # first match wins
+    - tools: ['github/search_*', 'docs/*']
+      ttlSeconds: 300
+      scope: client           # default: a cache per caller; `shared` = one for everybody
+    - servers: [weather]
+      tools: [forecast]
+      scope: shared
+    - tools: [expensive_report]
+      dedupeOnly: true        # share identical in-flight calls, never cache
+```
+
+- Key: server, tool, canonical JSON of the arguments (key order does not matter) and — with `scope: client` — the
+  caller id. Only successful results that are not `isError` are cached.
+- **In-flight de-duplication** (`dedupe`, default on): identical calls arriving while the first one runs share its
+  upstream request (they also share its cancellation).
+- Order: plugins `onToolCall` → policy → **cache** → upstream → output filter → `onResponse`. Refused calls never
+  reach the cache; the output filter runs on cached results too.
+- `GET /api/v1/cache` (stats: entries, hits, misses, deduped, evictions), `DELETE /api/v1/cache[?server=id]` (purge).
+  Changing `cache:` purges the cache (hot reload). The cache is in memory per instance.
+
 ## Rate limiting
 
 ```yaml

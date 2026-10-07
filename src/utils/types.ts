@@ -165,6 +165,8 @@ export interface GatewayConfig {
   observability?: ObservabilityConfig;
   /** Tool policy: argument rules, human approval, output filtering. */
   policy?: ToolPolicyConfig;
+  /** Tool result caching (per-tool opt-in) and in-flight de-duplication. */
+  cache?: CacheConfig;
   /** Plugins (hooks: onRequest, onToolCall before policy, onResponse after the output filter). */
   plugins?: PluginConfig[];
   /** Directory of the loaded config file (set by `loadConfig`; plugin paths resolve against it). */
@@ -624,4 +626,30 @@ export interface MCPResponse {
   error?: { code: number; message: string; data?: unknown };
   method?: string;
   params?: unknown;
+}
+
+// ─── Cache ───────────────────────────────────────────────────────────────────
+
+export interface CacheRule {
+  /** Server id globs (default: all). */
+  servers?: string[];
+  /** Tool globs (`search_*`, or `server/tool` globs). Default: all tools of the matched servers. */
+  tools?: string[];
+  /** Time to live (seconds, default `cache.defaultTtlSeconds`). */
+  ttlSeconds?: number;
+  /** `client` (default): one cache per caller; `shared`: one for everybody. */
+  scope?: 'client' | 'shared';
+  /** Share identical in-flight calls (default true). */
+  dedupe?: boolean;
+  /** Only de-duplicate in-flight calls, never cache. */
+  dedupeOnly?: boolean;
+}
+
+export interface CacheConfig {
+  enabled?: boolean;
+  /** Most entries kept (LRU, default 1000). */
+  maxEntries?: number;
+  defaultTtlSeconds?: number;
+  /** First matching rule wins; tools that match no rule are never cached. */
+  rules?: CacheRule[];
 }

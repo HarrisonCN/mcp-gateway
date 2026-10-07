@@ -414,6 +414,28 @@ const GatewayConfigSchema = z.object({
       if (bad) ctx.addIssue({ code: z.ZodIssueCode.custom, message: bad });
     })
     .optional(),
+  cache: z
+    .object({
+      enabled: z.boolean().optional(),
+      maxEntries: z.number().int().positive().optional(),
+      defaultTtlSeconds: z.number().int().min(0).optional(),
+      rules: z
+        .array(
+          z
+            .object({
+              servers: z.array(z.string().min(1)).optional(),
+              tools: z.array(z.string().min(1)).optional(),
+              ttlSeconds: z.number().int().min(0).optional(),
+              scope: z.enum(['client', 'shared']).optional(),
+              dedupe: z.boolean().optional(),
+              dedupeOnly: z.boolean().optional(),
+            })
+            .strict(),
+        )
+        .optional(),
+    })
+    .strict()
+    .optional(),
   plugins: z
     .array(
       z

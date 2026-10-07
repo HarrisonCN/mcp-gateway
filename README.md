@@ -579,6 +579,15 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v2.2
+
+| Feature | Description |
+|---------|-------------|
+| **Result caching** | `cache.rules`: per-tool opt-in TTL cache, per-client or shared, LRU |
+| **In-flight dedupe** | identical concurrent calls share one upstream request |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v2.1
 
 | Feature | Description |
