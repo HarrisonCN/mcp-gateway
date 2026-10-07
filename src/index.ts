@@ -4,6 +4,23 @@
  */
 
 export { Gateway } from './gateway/index.js';
+export type { GatewayOptions } from './gateway/index.js';
+export {
+  createStateStore,
+  MemoryStateStore,
+  PrefixedStateStore,
+  RedisStateStore,
+  RedisClient,
+  createStoreRateLimiter,
+  StoreAuthLockout,
+} from './state/index.js';
+export type { StateStore } from './state/index.js';
+export {
+  OAuthVerifier,
+  protectedResourceMetadata,
+  bearerChallenge,
+  PROTECTED_RESOURCE_METADATA_PATH,
+} from './auth/oauth.js';
 export { computeReadiness } from './gateway/api.js';
 export type { Readiness } from './gateway/api.js';
 export { ServerRegistry } from './registry/index.js';
@@ -67,6 +84,8 @@ export type {
   SecurityConfig,
   AuthLockoutConfig,
   AuditConfig,
+  OAuthConfig,
+  StateConfig,
   ResourceInfo,
   ResourceTemplateInfo,
   PromptInfo,

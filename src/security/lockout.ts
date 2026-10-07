@@ -30,7 +30,17 @@ export interface LockoutStatus {
   trackedClients: number;
 }
 
-export class AuthLockout {
+/** What `withLockout` needs (in-memory `AuthLockout` or the shared-store variant). */
+export interface LockoutTracker {
+  readonly config: Required<AuthLockoutConfig>;
+  lockedFor(ip: string): number | Promise<number>;
+  fail(ip: string): boolean | Promise<boolean>;
+  success(ip: string): void | Promise<void>;
+  status(): LockoutStatus & { lockoutsTotal: number; shared?: boolean };
+  close(): void;
+}
+
+export class AuthLockout implements LockoutTracker {
   readonly config: Required<AuthLockoutConfig>;
   private readonly entries = new Map<string, Entry>();
   private readonly timer: NodeJS.Timeout;
@@ -105,12 +115,16 @@ export class AuthLockout {
  * Wrap an auth middleware: locked IPs get `429`, a `401` / `403` answer from
  * the auth middleware counts as a failure, reaching `next()` as a success.
  */
-export function withLockout(auth: RequestHandler, lockout: () => AuthLockout | undefined): RequestHandler {
+export function withLockout(auth: RequestHandler, lockout: () => LockoutTracker | undefined): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
     const lo = lockout();
     if (!lo) return auth(req, res, next);
     const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
-    const wait = lo.lockedFor(ip);
+    const locked = lo.lockedFor(ip);
+    if (typeof locked === 'number') return proceed(locked);
+    locked.then(proceed, next);
+
+    function proceed(wait: number): void {
     if (wait > 0) {
       res.status(429).set('Retry-After', String(wait)).json({
         error: 'Too Many Requests',
@@ -121,12 +135,13 @@ export function withLockout(auth: RequestHandler, lockout: () => AuthLockout | u
     }
     let passed = false;
     res.once('finish', () => {
-      if (!passed && res.statusCode === 401) lo.fail(ip);
+      if (!passed && res.statusCode === 401) void lo!.fail(ip);
     });
     auth(req, res, (err?: unknown) => {
       passed = true;
-      lo.success(ip);
+      void lo!.success(ip);
       next(err as never);
     });
+    }
   };
 }

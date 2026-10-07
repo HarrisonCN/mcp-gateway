@@ -125,9 +125,27 @@ export interface GatewayConfig {
   audit?: AuditConfig;
   /** Hardening options (headers, body limits, IP allowlist, DNS-rebinding protection, lockout, redaction). */
   security?: SecurityConfig;
+  /** Shared state for multi-instance deployments (rate limits, lockouts, MCP sessions). */
+  state?: StateConfig;
 }
 
 // ─── Security ────────────────────────────────────────────────────────────────
+
+/** `state` — where rate-limit windows, lockouts and MCP session metadata live. */
+export interface StateConfig {
+  /** `memory` (default, single instance) or `redis` (shared between instances). */
+  store?: 'memory' | 'redis';
+  redis?: {
+    /** `redis://[user:password@]host:port/db` or `rediss://…` (TLS). */
+    url: string;
+    /** Prefix for every key (default `mcp-gateway:`). */
+    keyPrefix?: string;
+    connectTimeoutMs?: number;
+    commandTimeoutMs?: number;
+  };
+  /** When the store is unreachable: `open` (default) lets requests through, `closed` rejects them. */
+  failureMode?: 'open' | 'closed';
+}
 
 export interface AuthLockoutConfig {
   /** Failed authentications from one IP within `windowSeconds` that trigger a lockout (default 10). */

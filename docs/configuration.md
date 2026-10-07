@@ -226,6 +226,30 @@ mcp:
 dropped reconnects with `Last-Event-ID: <last id>` and receives the events it missed (up to `eventBufferSize`),
 including notifications emitted while no stream was open.
 
+## Shared state (multi-instance)
+
+```yaml
+state:
+  store: redis                 # memory (default) | redis — restart required
+  redis:
+    url: "redis://:${REDIS_PASSWORD}@redis:6379/0"   # rediss:// for TLS; env MCP_GATEWAY_REDIS_URL also works
+    keyPrefix: "mcp-gateway:"  # namespace several gateways in one Redis
+    connectTimeoutMs: 5000
+    commandTimeoutMs: 5000
+  failureMode: open            # open: Redis outage lets requests through; closed: reject them
+```
+
+With `store: redis`, every gateway replica shares:
+
+- **rate limits** — the global `rateLimit` and per-key `rateLimit` sliding windows count requests on all replicas;
+- **brute-force lockouts** — failures on any replica count towards `security.authLockout`, and a locked IP is locked everywhere;
+- **MCP sessions** — session metadata (client id, protocol version, client info) is stored with the idle TTL, so a
+  session opened on one replica is accepted by the others: no sticky sessions needed for `POST /mcp`. Open `GET`
+  streams stay on the replica that holds the socket (the per-session replay buffer is per replica).
+
+The Redis client is built in (RESP2, pipelined, `AUTH` / `SELECT` / TLS); no extra dependency. Embedders can pass any
+`StateStore` implementation: `new Gateway(config, { stateStore })`.
+
 ## Audit log
 
 ```yaml

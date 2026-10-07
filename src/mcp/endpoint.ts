@@ -23,6 +23,7 @@
  * @module mcp/endpoint
  */
 
+import type { StateStore } from '../state/store.js';
 import express from 'express';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { randomUUID, createHash } from 'crypto';
@@ -119,6 +120,15 @@ interface DownstreamSession {
   logLevel?: McpLogLevel;
   /** Resource subscriptions, as `<serverId>\0<uri>` keys. */
   subscriptions: Set<string>;
+  /** Last time the shared-store record was refreshed (ms). */
+  storeTouchedAt?: number;
+}
+
+interface StoredSession {
+  clientId?: string;
+  protocolVersion: string;
+  clientInfo?: { name?: string; version?: string };
+  createdAt: string;
 }
 
 /** Lazily opened SSE reply for one POST (used for progress notifications). */
@@ -155,7 +165,12 @@ export interface McpEndpointDeps {
   /** Auth middleware (sets `clientId`). */
   authenticate: RequestHandler;
   /** Count one rate-limited call for the request. */
-  takeRateLimit: (req: Request) => RateLimitDecision | undefined;
+  takeRateLimit: (req: Request) => RateLimitDecision | undefined | Promise<RateLimitDecision | undefined>;
+  /**
+   * Shared store for session metadata (multi-instance mode): a session opened
+   * on one gateway instance is accepted by every instance sharing the store.
+   */
+  sessionStore?: StateStore;
   /** Gateway CORS origins (used when `mcp.allowedOrigins` is unset). */
   corsOrigins: () => readonly string[] | undefined;
   /** Whether request logging is on. */
@@ -270,8 +285,12 @@ export class McpEndpoint {
     r.post(path, guard, this.deps.authenticate, json, (req, res, next) => {
       this.handlePost(req, res).catch(next);
     });
-    r.get(path, guard, this.deps.authenticate, (req, res) => this.handleGet(req, res));
-    r.delete(path, guard, this.deps.authenticate, (req, res) => this.handleDelete(req, res));
+    r.get(path, guard, this.deps.authenticate, (req, res, next) => {
+      this.handleGet(req, res).catch(next);
+    });
+    r.delete(path, guard, this.deps.authenticate, (req, res, next) => {
+      this.handleDelete(req, res).catch(next);
+    });
     r.all(path, (_req, res) => {
       res.set('Allow', 'GET, POST, DELETE').status(405).json(rpcError(null, { code: JSONRPC_INVALID_REQUEST, message: 'Method not allowed' }));
     });
@@ -375,7 +394,7 @@ export class McpEndpoint {
       return;
     }
 
-    const session = this.resolveSession(req, res);
+    const session = await this.resolveSession(req, res);
     if (!session) return;
 
     const requests: JsonRpcMessage[] = [];
@@ -483,6 +502,7 @@ export class McpEndpoint {
     session.resourcesFingerprint = this.resourcesFingerprint(session.auth);
     session.promptsFingerprint = this.promptsFingerprint(session.auth);
     this.sessions.set(session.id, session);
+    this.storeSession(session);
     logger.info(
       `MCP session ${session.id.slice(0, 8)} opened by ${clientInfo?.name ?? 'unknown client'}` +
         ` (protocol ${protocolVersion}${session.clientId ? `, ${session.clientId}` : ''})`,
@@ -504,13 +524,78 @@ export class McpEndpoint {
   }
 
   /** Validate session + protocol headers; on failure the response is already sent. */
-  private resolveSession(req: Request, res: Response): DownstreamSession | undefined {
+  private sessionTtlMs(): number {
+    return this.cfg.sessionIdleTimeoutSeconds * 1000;
+  }
+
+  /** Write / refresh the shared-store record of a session (multi-instance mode). */
+  private storeSession(session: DownstreamSession): void {
+    const store = this.deps.sessionStore;
+    if (!store) return;
+    session.storeTouchedAt = Date.now();
+    const rec: StoredSession = {
+      clientId: session.clientId,
+      protocolVersion: session.protocolVersion,
+      clientInfo: session.clientInfo,
+      createdAt: session.createdAt.toISOString(),
+    };
+    store.set(`sess:${session.id}`, JSON.stringify(rec), this.sessionTtlMs()).catch((err: unknown) => {
+      logger.warn(`Could not store MCP session: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
+
+  /** Re-create a session another instance opened (shared store), or undefined. */
+  private async loadSession(id: string, req: Request): Promise<DownstreamSession | undefined> {
+    const store = this.deps.sessionStore;
+    if (!store || !/^[0-9a-f-]{36}$/i.test(id)) return undefined;
+    let raw: string | undefined;
+    try {
+      raw = await store.get(`sess:${id}`);
+    } catch (err) {
+      logger.warn(`Could not load MCP session: ${err instanceof Error ? err.message : String(err)}`);
+      return undefined;
+    }
+    if (!raw) return undefined;
+    let rec: StoredSession;
+    try {
+      rec = JSON.parse(raw) as StoredSession;
+    } catch {
+      return undefined;
+    }
+    if (rec.clientId !== (req as AuthedRequest).clientId) return undefined;
+    const existing = this.sessions.get(id);
+    if (existing) return existing;
+    if (this.sessions.size >= this.cfg.maxSessions && !this.evictOne()) return undefined;
+    const session: DownstreamSession = {
+      id,
+      clientId: rec.clientId,
+      protocolVersion: rec.protocolVersion,
+      clientInfo: rec.clientInfo,
+      createdAt: new Date(rec.createdAt),
+      lastSeen: Date.now(),
+      streams: [],
+      inflight: new Map(),
+      eventSeq: 0,
+      eventLog: [],
+      auth: identityOf(req),
+      subscriptions: new Set(),
+      storeTouchedAt: Date.now(),
+    };
+    session.toolsFingerprint = this.fingerprint(this.toolIndex(session.auth));
+    session.resourcesFingerprint = this.resourcesFingerprint(session.auth);
+    session.promptsFingerprint = this.promptsFingerprint(session.auth);
+    this.sessions.set(id, session);
+    logger.debug(`MCP session ${id.slice(0, 8)} adopted from the shared state store`);
+    return session;
+  }
+
+  private async resolveSession(req: Request, res: Response): Promise<DownstreamSession | undefined> {
     const id = req.headers['mcp-session-id'];
     if (typeof id !== 'string' || id.length === 0) {
       res.status(400).json(rpcError(null, { code: JSONRPC_INVALID_REQUEST, message: 'Bad Request: Mcp-Session-Id header is required' }));
       return undefined;
     }
-    const session = this.sessions.get(id);
+    const session = this.sessions.get(id) ?? (await this.loadSession(id, req));
     // A session presented by a different client is treated as unknown.
     if (!session || session.clientId !== (req as AuthedRequest).clientId) {
       res.status(404).json(rpcError(null, { code: -32001, message: 'Session not found' }));
@@ -523,15 +608,18 @@ export class McpEndpoint {
     }
     session.lastSeen = Date.now();
     session.auth = identityOf(req);
+    if (this.deps.sessionStore && Date.now() - (session.storeTouchedAt ?? 0) > Math.min(60_000, this.sessionTtlMs() / 4)) {
+      this.storeSession(session);
+    }
     return session;
   }
 
-  private handleGet(req: Request, res: Response): void {
+  private async handleGet(req: Request, res: Response): Promise<void> {
     if (!acceptsEventStream(req)) {
       res.status(406).json(rpcError(null, { code: JSONRPC_INVALID_REQUEST, message: 'Not Acceptable: client must accept text/event-stream' }));
       return;
     }
-    const session = this.resolveSession(req, res);
+    const session = await this.resolveSession(req, res);
     if (!session) return;
     res.status(200).set({
       'Content-Type': 'text/event-stream',
@@ -558,10 +646,11 @@ export class McpEndpoint {
     });
   }
 
-  private handleDelete(req: Request, res: Response): void {
-    const session = this.resolveSession(req, res);
+  private async handleDelete(req: Request, res: Response): Promise<void> {
+    const session = await this.resolveSession(req, res);
     if (!session) return;
     this.endSession(session);
+    void this.deps.sessionStore?.del(`sess:${session.id}`).catch(() => undefined);
     logger.info(`MCP session ${session.id.slice(0, 8)} closed by client`);
     res.status(204).end();
   }
@@ -690,7 +779,7 @@ export class McpEndpoint {
     single: boolean,
   ): Promise<JsonRpcMessage> {
     const id = msg.id as JsonRpcId;
-    const limited = this.applyRateLimit(req, res, id, single);
+    const limited = await this.applyRateLimit(req, res, id, single);
     if (limited) return limited;
     const server = this.deps.registry.getServer(serverId);
     if (!server || !this.deps.proxy.isConnected(serverId)) {
@@ -767,8 +856,8 @@ export class McpEndpoint {
   }
 
   /** Count one call against the client's rate limit; returns an error reply when exceeded. */
-  private applyRateLimit(req: Request, res: Response, id: JsonRpcId, single: boolean): JsonRpcMessage | undefined {
-    const decision = this.deps.takeRateLimit(req);
+  private async applyRateLimit(req: Request, res: Response, id: JsonRpcId, single: boolean): Promise<JsonRpcMessage | undefined> {
+    const decision = await this.deps.takeRateLimit(req);
     if (!decision) return undefined;
     if (single && !res.headersSent) setRateLimitHeaders(res, decision.limit, decision.remaining, decision.resetAt);
     if (decision.allowed) return undefined;
@@ -853,7 +942,7 @@ export class McpEndpoint {
       return rpcError(id, { code: JSONRPC_INVALID_PARAMS, message: `Unknown tool: ${name}` });
     }
 
-    const limited = this.applyRateLimit(req, res, id, single);
+    const limited = await this.applyRateLimit(req, res, id, single);
     if (limited) return limited;
 
     const server = this.deps.registry.getServer(serverId);
@@ -1121,6 +1210,7 @@ export class McpEndpoint {
         // The key that opened this session is gone.
         logger.info(`MCP session ${s.id.slice(0, 8)} ended: its credentials were removed`);
         this.endSession(s);
+        void this.deps.sessionStore?.del(`sess:${s.id}`).catch(() => undefined);
         continue;
       }
       if (current) s.auth = { ...s.auth, scope: current.scope };

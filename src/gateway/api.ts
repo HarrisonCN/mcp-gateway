@@ -19,7 +19,9 @@ import {
   type AuthedRequest,
   type AuthMiddleware,
 } from '../auth/middleware.js';
-import { AuthLockout, withLockout } from '../security/lockout.js';
+import { AuthLockout, withLockout, type LockoutTracker } from '../security/lockout.js';
+import { StoreAuthLockout, createStoreRateLimiter, type FailureMode } from '../state/shared.js';
+import type { StateStore } from '../state/store.js';
 import { securityWarnings } from '../security/posture.js';
 import { createRateLimiter, type RateLimitDecision, type RateLimiter } from '../auth/ratelimit.js';
 import { filterToolsByScope, isRestricted, isServerInScope, isToolInScope, type AccessScope } from '../auth/scopes.js';
@@ -40,11 +42,11 @@ export type ApiRouter = express.Router & {
   /** The current auth middleware (hot-swapped on reload), for other endpoints such as `/mcp`. */
   authenticate: RequestHandler;
   /** Count one rate-limited request for `req` (undefined when no limit is configured). */
-  takeRateLimit(req: Request): RateLimitDecision | undefined;
+  takeRateLimit(req: Request): RateLimitDecision | undefined | Promise<RateLimitDecision | undefined>;
   /** Current scope of a client id (api keys); see `AuthMiddleware.resolveClient`. */
   resolveClient(clientId: string | undefined): { known: boolean; scope?: AccessScope } | undefined;
   /** The brute-force lockout tracker (undefined unless `security.authLockout`). */
-  lockout(): AuthLockout | undefined;
+  lockout(): LockoutTracker | undefined;
 };
 
 /** Whether `args` serialise to more than `limit` bytes (0 / undefined = no limit). */
@@ -53,10 +55,17 @@ export function argumentsTooLarge(args: unknown, limit: number | undefined): boo
   return Buffer.byteLength(JSON.stringify(args ?? {}), 'utf8') > limit;
 }
 
-function lockoutFor(config: GatewayConfig): AuthLockout | undefined {
+function lockoutFor(config: GatewayConfig, shared?: SharedState): LockoutTracker | undefined {
   const lo = config.security?.authLockout;
   if (!lo || config.auth?.strategy === undefined || config.auth.strategy === 'none') return undefined;
-  return new AuthLockout(lo === true ? {} : lo);
+  const settings = lo === true ? {} : lo;
+  return shared ? new StoreAuthLockout(settings, shared.store, shared.failureMode) : new AuthLockout(settings);
+}
+
+/** A shared state store (multi-instance mode). */
+export interface SharedState {
+  store: StateStore;
+  failureMode?: FailureMode;
 }
 
 export interface ApiRouterOptions {
@@ -64,6 +73,8 @@ export interface ApiRouterOptions {
   supervisor?: ServerSupervisor;
   /** Makes GET /health/ready answer 503 while the gateway is shutting down. */
   isShuttingDown?: () => boolean;
+  /** Shared state store: rate limits and lockouts hold across gateway instances. */
+  shared?: SharedState;
 }
 
 export interface Readiness {
@@ -178,7 +189,10 @@ export function createApiRouter(
   // Built eagerly so a misconfiguration fails at startup (fail closed).
   const authOptions = { mcpPath: () => cfg.mcp?.path ?? '/mcp' };
   let authMw: AuthMiddleware = createAuthMiddleware(cfg.auth, authOptions);
-  let rateLimiter = createRateLimiter(cfg.rateLimit);
+  const shared = options.shared;
+  const makeLimiter = (rl: GatewayConfig['rateLimit'], namespace = 'rl'): RateLimiter =>
+    rl && shared ? createStoreRateLimiter(rl, shared.store, { failureMode: shared.failureMode, namespace }) : createRateLimiter(rl);
+  let rateLimiter = makeLimiter(cfg.rateLimit);
   // Keys with their own `rateLimit` get their own limiter (created lazily).
   let keyLimiters = new Map<string, RateLimiter>();
   const resetKeyLimiters = () => {
@@ -191,7 +205,7 @@ export function createApiRouter(
     const id = clientId ?? 'anonymous';
     let l = keyLimiters.get(id);
     if (!l) {
-      l = createRateLimiter(scope.rateLimit);
+      l = makeLimiter(scope.rateLimit, 'rlk');
       keyLimiters.set(id, l);
     }
     return l;
@@ -200,7 +214,7 @@ export function createApiRouter(
 
   // Stable wrappers: routes keep pointing at these while the inner
   // middleware is swapped on hot reload.
-  let lockout = lockoutFor(cfg);
+  let lockout = lockoutFor(cfg, shared);
   const auth: RequestHandler = withLockout((req, res, next) => authMw(req, res, next), () => lockout);
   const rateLimit: RequestHandler = (req, res, next) => limiterFor(req)(req, res, next);
   const protectable =
@@ -240,7 +254,7 @@ export function createApiRouter(
     }
     if (!same(cfg.rateLimit, next.rateLimit)) {
       const old = rateLimiter;
-      rateLimiter = createRateLimiter(next.rateLimit);
+      rateLimiter = makeLimiter(next.rateLimit);
       old.close();
       logger.info(
         next.rateLimit
@@ -250,7 +264,7 @@ export function createApiRouter(
     }
     if (!same(cfg.security?.authLockout, next.security?.authLockout) || !same(cfg.auth?.strategy, nextAuth?.strategy)) {
       lockout?.close();
-      lockout = lockoutFor({ ...next, auth: nextAuth });
+      lockout = lockoutFor({ ...next, auth: nextAuth }, shared);
     }
     cfg = { ...cfg, auth: nextAuth, rateLimit: next.rateLimit, monitor: next.monitor, mcp: next.mcp, security: next.security, host: cfg.host };
   };
@@ -351,6 +365,7 @@ export function createApiRouter(
       version: VERSION,
       uptime: process.uptime(),
       servers: summary,
+      state: shared ? shared.store.kind : 'memory',
     });
   });
 

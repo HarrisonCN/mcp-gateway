@@ -579,6 +579,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v1.4
+
+| Feature | Description |
+|---------|-------------|
+| **Shared state store** | `state.store: redis` — rate limits, auth lockouts and MCP sessions shared across replicas (built-in RESP client, `failureMode`), pluggable `StateStore` for embedders |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v1.3
 
 | Feature | Description |
@@ -651,7 +659,7 @@ unknown fields). Deep imports, log format, the dashboard and the audit database 
 | Stable API, docs, container image | ✅ Done (v1.0) |
 | Security hardening (hashed keys, JWKS, lockout, DNS-rebinding guard, CSP) | ✅ Done (v1.2) |
 | Progress, logging, completions, resource subscriptions on `/mcp` | ✅ Done (v1.2) |
-| Redis-backed rate limiting | 📋 Planned |
+| Redis-backed shared state (rate limits, lockouts, sessions) | ✅ Done (v1.4) |
 | OAuth 2.1 / OIDC auth (MCP authorization spec) | ✅ Done (v1.3) |
 | Streamable HTTP resumability (`Last-Event-ID`) | ✅ Done (v1.3) |
 | Forwarding sampling / elicitation / roots requests to downstream clients | 📋 Planned |
