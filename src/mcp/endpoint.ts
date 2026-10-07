@@ -31,6 +31,15 @@ import { filterToolsByScope, isToolInScope, type AccessScope } from '../auth/sco
 import { logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
 import { buildToolIndex, toMcpTool, type ToolIndex } from './naming.js';
+import {
+  buildPromptIndex,
+  dedupeResources,
+  routeResource,
+  toMcpPrompt,
+  toMcpResource,
+  toMcpResourceTemplate,
+} from './catalog.js';
+import { isServerInScope } from '../auth/scopes.js';
 
 /** Protocol versions the endpoint speaks, newest first. */
 export const DOWNSTREAM_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26'];
@@ -84,6 +93,8 @@ interface DownstreamSession {
   inflight: Map<string, AbortController>;
   /** Fingerprint of the tool list this session last saw. */
   toolsFingerprint?: string;
+  resourcesFingerprint?: string;
+  promptsFingerprint?: string;
   eventSeq: number;
   /** Identity + scope of the client, refreshed on every request (used for notifications). */
   auth: ClientIdentity;
@@ -173,6 +184,7 @@ export class McpEndpoint {
     this.cfg = { ...DEFAULT_MCP_CONFIG, ...stripUndefined(config ?? {}) };
     deps.registry.on('tools-updated', this.onRegistryChange);
     deps.registry.on('unregistered', this.onRegistryChange);
+    deps.registry.on('catalog-updated', this.onRegistryChange);
     this.sweepTimer = setInterval(() => this.sweep(), 60_000);
     this.sweepTimer.unref();
     this.keepaliveTimer = setInterval(() => this.keepalive(), SSE_KEEPALIVE_MS);
@@ -234,6 +246,7 @@ export class McpEndpoint {
     clearTimeout(this.notifyTimer);
     this.deps.registry.off('tools-updated', this.onRegistryChange);
     this.deps.registry.off('unregistered', this.onRegistryChange);
+    this.deps.registry.off('catalog-updated', this.onRegistryChange);
     for (const s of [...this.sessions.values()]) this.endSession(s);
   }
 
@@ -367,6 +380,8 @@ export class McpEndpoint {
       auth: identityOf(req),
     };
     session.toolsFingerprint = this.fingerprint(this.toolIndex(session.auth));
+    session.resourcesFingerprint = this.resourcesFingerprint(session.auth);
+    session.promptsFingerprint = this.promptsFingerprint(session.auth);
     this.sessions.set(session.id, session);
     logger.info(
       `MCP session ${session.id.slice(0, 8)} opened by ${clientInfo?.name ?? 'unknown client'}` +
@@ -375,7 +390,11 @@ export class McpEndpoint {
 
     const result: Record<string, unknown> = {
       protocolVersion,
-      capabilities: { tools: { listChanged: true } },
+      capabilities: {
+        tools: { listChanged: true },
+        resources: { listChanged: true },
+        prompts: { listChanged: true },
+      },
       serverInfo: { name: 'mcp-gateway', title: 'mcp-gateway', version: VERSION },
     };
     if (this.cfg.instructions) result.instructions = this.cfg.instructions;
@@ -469,6 +488,22 @@ export class McpEndpoint {
         return this.listTools(session, msg);
       case 'tools/call':
         return this.callTool(session, req, res, msg, signal, single);
+      case 'resources/list': {
+        const list = this.resources(session.auth);
+        if (isFirstPage(msg)) session.resourcesFingerprint = hashList(list);
+        return this.paginate(msg, list.map(toMcpResource), 'resources');
+      }
+      case 'resources/templates/list':
+        return this.paginate(msg, this.templates(session.auth).map(toMcpResourceTemplate), 'resourceTemplates');
+      case 'resources/read':
+        return this.readResource(session, req, res, msg, signal, single);
+      case 'prompts/list': {
+        const index = this.promptIndex(session.auth);
+        if (isFirstPage(msg)) session.promptsFingerprint = this.promptsFingerprint(session.auth);
+        return this.paginate(msg, index.list.map(({ name, item }) => toMcpPrompt(name, item)), 'prompts');
+      }
+      case 'prompts/get':
+        return this.getPrompt(session, req, res, msg, signal, single);
       default:
         return rpcError(id, { code: JSONRPC_METHOD_NOT_FOUND, message: `Method not found: ${String(msg.method)}` });
     }
@@ -478,6 +513,150 @@ export class McpEndpoint {
   private toolIndex(identity: ClientIdentity): ToolIndex {
     const tools = filterToolsByScope(identity.scope, this.deps.registry.getAllTools());
     return buildToolIndex(tools, this.cfg.toolNaming);
+  }
+
+  private resources(identity: ClientIdentity) {
+    return dedupeResources(
+      this.deps.registry.getAllResources().filter((r) => isServerInScope(identity.scope, r.serverId)),
+    );
+  }
+
+  private templates(identity: ClientIdentity) {
+    return this.deps.registry
+      .getAllResourceTemplates()
+      .filter((t) => isServerInScope(identity.scope, t.serverId))
+      .sort((a, b) => (a.serverId < b.serverId ? -1 : a.serverId > b.serverId ? 1 : 0));
+  }
+
+  private promptIndex(identity: ClientIdentity) {
+    const prompts = this.deps.registry.getAllPrompts().filter((p) => isServerInScope(identity.scope, p.serverId));
+    return buildPromptIndex(prompts, this.cfg.toolNaming);
+  }
+
+  private resourcesFingerprint(identity: ClientIdentity): string {
+    return hashList([...this.resources(identity), ...this.templates(identity)]);
+  }
+
+  private promptsFingerprint(identity: ClientIdentity): string {
+    return hashList(this.promptIndex(identity).list.map(({ name, item }) => toMcpPrompt(name, item)));
+  }
+
+  /** Cursor pagination over a list (same scheme as tools/list). */
+  private paginate(msg: JsonRpcMessage, items: unknown[], key: string): JsonRpcMessage {
+    const params = isObject(msg.params) ? msg.params : {};
+    let offset = 0;
+    if (params.cursor !== undefined) {
+      const o = decodeCursor(params.cursor);
+      if (o === undefined) return rpcError(msg.id, { code: JSONRPC_INVALID_PARAMS, message: 'Invalid cursor' });
+      offset = o;
+    }
+    const page = items.slice(offset, offset + this.cfg.pageSize);
+    const result: Record<string, unknown> = { [key]: page };
+    const next = offset + page.length;
+    if (next < items.length) result.nextCursor = encodeCursor(next);
+    return { jsonrpc: '2.0', id: msg.id as JsonRpcId, result };
+  }
+
+  /** Forward resources/read or prompts/get with shared rate limit, metrics and error mapping. */
+  private async forward(
+    req: Request,
+    res: Response,
+    msg: JsonRpcMessage,
+    serverId: string,
+    method: string,
+    params: unknown,
+    kind: 'resource' | 'prompt',
+    label: string,
+    signal: AbortSignal,
+    single: boolean,
+  ): Promise<JsonRpcMessage> {
+    const id = msg.id as JsonRpcId;
+    const limited = this.applyRateLimit(req, res, id, single);
+    if (limited) return limited;
+    const server = this.deps.registry.getServer(serverId);
+    if (!server || !this.deps.proxy.isConnected(serverId)) {
+      return rpcError(id, { code: ERR_NOT_CONNECTED, message: `Server "${serverId}" is not connected` });
+    }
+    const result = await this.deps.proxy.request(serverId, method, params, server.timeout, { signal });
+    this.deps.metrics.record({
+      serverId,
+      toolName: label,
+      durationMs: result.durationMs,
+      success: result.success,
+      errorMessage: result.error?.message,
+      clientId: (req as AuthedRequest).clientId,
+      via: 'mcp',
+      kind,
+    });
+    if (this.deps.requestLog()) {
+      logger.info(`${method} ${label} → ${serverId} ${result.success ? 'ok' : 'failed'} ${result.durationMs}ms (mcp)`);
+    }
+    if (result.success) return { jsonrpc: '2.0', id, result: result.result ?? {} };
+    const err = result.error ?? { code: JSONRPC_INTERNAL_ERROR, message: 'Unknown error' };
+    return rpcError(id, err.code === ERR_CANCELLED ? { code: ERR_CANCELLED, message: 'Request cancelled' } : err);
+  }
+
+  private readResource(
+    session: DownstreamSession,
+    req: Request,
+    res: Response,
+    msg: JsonRpcMessage,
+    signal: AbortSignal,
+    single: boolean,
+  ): Promise<JsonRpcMessage> | JsonRpcMessage {
+    const params = isObject(msg.params) ? msg.params : {};
+    const uri = params.uri;
+    if (typeof uri !== 'string' || uri.length === 0) {
+      return rpcError(msg.id, { code: JSONRPC_INVALID_PARAMS, message: '"uri" must be a non-empty string' });
+    }
+    const scope = session.auth.scope;
+    const serverId = routeResource(
+      uri,
+      this.resources(session.auth),
+      this.templates(session.auth),
+      this.deps.registry
+        .getEnabledServers()
+        .map((s) => s.id)
+        .filter((id) => isServerInScope(scope, id) && this.deps.proxy.hasCapability(id, 'resources')),
+    );
+    if (!serverId) return rpcError(msg.id, { code: -32002, message: 'Resource not found', data: { uri } });
+    return this.forward(req, res, msg, serverId, 'resources/read', { uri }, 'resource', uri, signal, single);
+  }
+
+  private getPrompt(
+    session: DownstreamSession,
+    req: Request,
+    res: Response,
+    msg: JsonRpcMessage,
+    signal: AbortSignal,
+    single: boolean,
+  ): Promise<JsonRpcMessage> | JsonRpcMessage {
+    const params = isObject(msg.params) ? msg.params : {};
+    const name = params.name;
+    const args = params.arguments ?? {};
+    if (typeof name !== 'string' || name.length === 0) {
+      return rpcError(msg.id, { code: JSONRPC_INVALID_PARAMS, message: '"name" must be a non-empty string' });
+    }
+    if (!isObject(args)) return rpcError(msg.id, { code: JSONRPC_INVALID_PARAMS, message: '"arguments" must be an object' });
+    const prompt = this.promptIndex(session.auth).byName.get(name);
+    if (!prompt) return rpcError(msg.id, { code: JSONRPC_INVALID_PARAMS, message: `Unknown prompt: ${name}` });
+    return this.forward(
+      req, res, msg, prompt.serverId, 'prompts/get', { name: prompt.name, arguments: args }, 'prompt', prompt.name, signal, single,
+    );
+  }
+
+  /** Count one call against the client's rate limit; returns an error reply when exceeded. */
+  private applyRateLimit(req: Request, res: Response, id: JsonRpcId, single: boolean): JsonRpcMessage | undefined {
+    const decision = this.deps.takeRateLimit(req);
+    if (!decision) return undefined;
+    if (single && !res.headersSent) setRateLimitHeaders(res, decision.limit, decision.remaining, decision.resetAt);
+    if (decision.allowed) return undefined;
+    if (single && !res.headersSent) res.set('Retry-After', String(decision.retryAfter));
+    return rpcError(id, {
+      code: ERR_RATE_LIMITED,
+      message: `Rate limit exceeded; retry after ${decision.retryAfter}s`,
+      data: { retryAfter: decision.retryAfter },
+    });
   }
 
   private fingerprint(index: ToolIndex): string {
@@ -543,18 +722,8 @@ export class McpEndpoint {
       return rpcError(id, { code: JSONRPC_INVALID_PARAMS, message: `Unknown tool: ${name}` });
     }
 
-    const decision = this.deps.takeRateLimit(req);
-    if (decision) {
-      if (single && !res.headersSent) setRateLimitHeaders(res, decision.limit, decision.remaining, decision.resetAt);
-      if (!decision.allowed) {
-        if (single && !res.headersSent) res.set('Retry-After', String(decision.retryAfter));
-        return rpcError(id, {
-          code: ERR_RATE_LIMITED,
-          message: `Rate limit exceeded; retry after ${decision.retryAfter}s`,
-          data: { retryAfter: decision.retryAfter },
-        });
-      }
-    }
+    const limited = this.applyRateLimit(req, res, id, single);
+    if (limited) return limited;
 
     const server = this.deps.registry.getServer(serverId);
     const toolError = (text: string): JsonRpcMessage => ({
@@ -622,9 +791,20 @@ export class McpEndpoint {
       if (current) s.auth = { ...s.auth, scope: current.scope };
       if (s.streams.length === 0) continue;
       const fp = this.fingerprint(this.toolIndex(s.auth));
-      if (fp === s.toolsFingerprint) continue;
-      s.toolsFingerprint = fp;
-      this.send(s, { jsonrpc: '2.0', method: 'notifications/tools/list_changed' });
+      if (fp !== s.toolsFingerprint) {
+        s.toolsFingerprint = fp;
+        this.send(s, { jsonrpc: '2.0', method: 'notifications/tools/list_changed' });
+      }
+      const rfp = this.resourcesFingerprint(s.auth);
+      if (rfp !== s.resourcesFingerprint) {
+        s.resourcesFingerprint = rfp;
+        this.send(s, { jsonrpc: '2.0', method: 'notifications/resources/list_changed' });
+      }
+      const pfp = this.promptsFingerprint(s.auth);
+      if (pfp !== s.promptsFingerprint) {
+        s.promptsFingerprint = pfp;
+        this.send(s, { jsonrpc: '2.0', method: 'notifications/prompts/list_changed' });
+      }
     }
   }
 
@@ -675,6 +855,16 @@ export class McpEndpoint {
   sweepNow(now?: number): void {
     this.sweep(now);
   }
+}
+
+function isFirstPage(msg: JsonRpcMessage): boolean {
+  return !isObject(msg.params) || msg.params.cursor === undefined;
+}
+
+function hashList(items: unknown[]): string {
+  const h = createHash('sha256');
+  for (const i of items) h.update(JSON.stringify(i)).update('\n');
+  return h.digest('hex');
 }
 
 function stripUndefined<T extends object>(o: T): Partial<T> {

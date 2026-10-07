@@ -15,7 +15,7 @@
  * @module gateway/supervisor
  */
 
-import type { McpServerConfig, ReconnectConfig, ReconnectState, ToolInfo } from '../utils/types.js';
+import type { McpServerConfig, ReconnectConfig, ReconnectState, ServerCatalog, ToolInfo } from '../utils/types.js';
 import type { McpProxy } from '../proxy/index.js';
 import type { ServerRegistry } from '../registry/index.js';
 import { logger } from '../utils/logger.js';
@@ -77,6 +77,13 @@ export class ServerSupervisor {
     this.registry.setTools(serverId, tools);
     logger.info(`Server "${serverId}" updated its tool list (${tools.length} tools)`);
   };
+  private readonly onCatalogChanged = (serverId: string, catalog: ServerCatalog) => {
+    if (!this.entries.has(serverId)) return;
+    this.registry.setCatalog(serverId, catalog);
+    logger.info(
+      `Server "${serverId}" updated its resources / prompts (${catalog.resources.length} resources, ${catalog.prompts.length} prompts)`,
+    );
+  };
 
   constructor(
     private readonly proxy: McpProxy,
@@ -87,6 +94,7 @@ export class ServerSupervisor {
     this.random = options.random ?? Math.random;
     proxy.on('disconnected', this.onDisconnected);
     proxy.on('tools-changed', this.onToolsChanged);
+    proxy.on('catalog-changed', this.onCatalogChanged);
   }
 
   /** Update gateway-wide reconnect defaults (hot reload). Applies to future attempts. */
@@ -136,6 +144,7 @@ export class ServerSupervisor {
     this.entries.clear();
     this.proxy.off('disconnected', this.onDisconnected);
     this.proxy.off('tools-changed', this.onToolsChanged);
+    this.proxy.off('catalog-changed', this.onCatalogChanged);
   }
 
   // ─── Internal ───────────────────────────────────────────────────────────────
@@ -159,6 +168,7 @@ export class ServerSupervisor {
         lastDisconnectAt: entry.state.lastDisconnectAt,
       };
       this.registry.setTools(config.id, tools);
+      this.registry.setCatalog(config.id, this.proxy.getCatalog(config.id));
       this.registry.updateHealth(config.id, 'online', undefined, undefined, {
         connectedSince: new Date(),
         reconnect: { ...entry.state },
@@ -169,7 +179,10 @@ export class ServerSupervisor {
       if (!this.current(entry, gen)) return false;
       const msg = err instanceof Error ? err.message : String(err);
       entry.state.lastError = msg;
-      if (!isReconnect) this.registry.setTools(config.id, []);
+      if (!isReconnect) {
+        this.registry.setTools(config.id, []);
+        this.registry.setCatalog(config.id, { resources: [], resourceTemplates: [], prompts: [] });
+      }
       logger.warn(`✗ ${config.name} — failed to connect: ${msg}`);
       this.scheduleRetry(entry, gen);
       return false;

@@ -14,6 +14,7 @@ import { createAuthMiddleware, type AuthedRequest, type AuthMiddleware } from '.
 import { createRateLimiter, type RateLimitDecision, type RateLimiter } from '../auth/ratelimit.js';
 import { filterToolsByScope, isRestricted, isServerInScope, isToolInScope, type AccessScope } from '../auth/scopes.js';
 import { logger } from '../utils/logger.js';
+import { dedupeResources, routeResource } from '../mcp/catalog.js';
 import { LLM_SCHEMA_FORMATS, toLlmToolSchemas, type LlmSchemaFormat } from '../mcp/llm-schemas.js';
 import { VERSION } from '../utils/version.js';
 
@@ -483,17 +484,219 @@ export function createApiRouter(
     }),
   );
 
-  // ─── Recent Requests ────────────────────────────────────────────────────────
+  // ─── Resources & Prompts ────────────────────────────────────────────────────
 
-  router.get('/requests', auth, (req, res) => {
-    const limit = parseIntParam(req.query.limit, 50, 1, 500);
-    // Restricted clients only see their own calls.
-    if (isRestricted(scopeOf(req))) {
-      const own = (req as AuthedRequest).clientId;
-      res.json({ requests: metrics.getRecentWhere(limit, (m) => m.clientId === own) });
+  const serverFilter = (req: Request) => (typeof req.query.server === 'string' ? req.query.server : undefined);
+  const visible = <T extends { serverId: string }>(req: Request, items: T[]): T[] => {
+    const only = serverFilter(req);
+    return items.filter((i) => isServerInScope(scopeOf(req), i.serverId) && (!only || i.serverId === only));
+  };
+
+  router.get('/resources', auth, (req, res) => {
+    const resources = dedupeResources(visible(req, registry.getAllResources()));
+    res.json({ resources, total: resources.length });
+  });
+
+  router.get('/resources/templates', auth, (req, res) => {
+    const resourceTemplates = visible(req, registry.getAllResourceTemplates());
+    res.json({ resourceTemplates, total: resourceTemplates.length });
+  });
+
+  router.get('/prompts', auth, (req, res) => {
+    const prompts = visible(req, registry.getAllPrompts());
+    res.json({ prompts, total: prompts.length });
+  });
+
+  /** Forward one upstream request with the shared checks, metrics and status mapping. */
+  async function forward(
+    req: Request,
+    res: Response,
+    serverId: string,
+    method: string,
+    params: unknown,
+    kind: 'resource' | 'prompt',
+    label: string,
+    reply: (result: unknown, durationMs: number) => Record<string, unknown>,
+  ): Promise<void> {
+    const server = registry.getServer(serverId);
+    if (!server) {
+      res.status(404).json({ error: 'Not Found', message: `Server "${serverId}" not found` });
       return;
     }
-    res.json({ requests: metrics.getRecent(limit) });
+    if (!isServerInScope(scopeOf(req), serverId)) {
+      res.status(403).json({ error: 'Forbidden', message: `Server "${serverId}" is not allowed for this client` });
+      return;
+    }
+    if (!proxy.isConnected(serverId)) {
+      res.status(503).json({
+        error: 'Service Unavailable',
+        message: `Server "${serverId}" is not connected`,
+        status: registry.getHealth(serverId)?.status,
+      });
+      return;
+    }
+    const result = await proxy.request(serverId, method, params, server.timeout);
+    metrics.record({
+      serverId,
+      toolName: label,
+      durationMs: result.durationMs,
+      success: result.success,
+      errorMessage: result.error?.message,
+      clientId: (req as AuthedRequest).clientId,
+      via: 'rest',
+      kind,
+    });
+    if (cfg.monitor?.requestLog !== false) {
+      logger.info(`${method} ${label} → ${serverId} ${result.success ? 'ok' : 'failed'} ${result.durationMs}ms`);
+    }
+    if (res.headersSent) return;
+    if (!result.success) {
+      const status = result.error?.code === ERR_TIMEOUT ? 504 : 502;
+      res.status(status).json({
+        error: status === 504 ? 'Gateway Timeout' : 'Upstream Error',
+        message: result.error?.message,
+        code: result.error?.code,
+        durationMs: result.durationMs,
+      });
+      return;
+    }
+    res.json(reply(result.result, result.durationMs));
+  }
+
+  router.post(
+    '/resources/read',
+    auth,
+    rateLimit,
+    asyncHandler(async (req, res) => {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const { uri, server } = body;
+      if (typeof uri !== 'string' || uri.length === 0) {
+        res.status(400).json({ error: 'Bad Request', message: '"uri" must be a non-empty string' });
+        return;
+      }
+      if (server !== undefined && typeof server !== 'string') {
+        res.status(400).json({ error: 'Bad Request', message: '"server" must be a string' });
+        return;
+      }
+      let target = server;
+      if (!target) {
+        const scope = scopeOf(req);
+        const inScope = (id: string) => isServerInScope(scope, id);
+        target = routeResource(
+          uri,
+          registry.getAllResources().filter((r) => inScope(r.serverId)),
+          registry.getAllResourceTemplates().filter((t) => inScope(t.serverId)),
+          registry.getEnabledServers().map((s) => s.id).filter((id) => inScope(id) && proxy.hasCapability(id, 'resources')),
+        );
+        if (!target) {
+          res.status(404).json({ error: 'Not Found', message: `No server provides resource "${uri}"; pass "server"` });
+          return;
+        }
+      }
+      await forward(req, res, target, 'resources/read', { uri }, 'resource', uri, (result, durationMs) => ({
+        result,
+        server: target,
+        uri,
+        durationMs,
+      }));
+    }),
+  );
+
+  router.post(
+    '/prompts/get',
+    auth,
+    rateLimit,
+    asyncHandler(async (req, res) => {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const { name, server } = body;
+      const args = body.arguments ?? {};
+      if (typeof name !== 'string' || name.length === 0) {
+        res.status(400).json({ error: 'Bad Request', message: '"name" must be a non-empty string' });
+        return;
+      }
+      if (server !== undefined && typeof server !== 'string') {
+        res.status(400).json({ error: 'Bad Request', message: '"server" must be a string' });
+        return;
+      }
+      if (typeof args !== 'object' || args === null || Array.isArray(args)) {
+        res.status(400).json({ error: 'Bad Request', message: '"arguments" must be an object' });
+        return;
+      }
+      let target = server;
+      if (!target) {
+        const all = registry.getAllPrompts().filter((p) => p.name === name);
+        if (all.length === 0) {
+          res.status(404).json({ error: 'Not Found', message: `Prompt "${name}" not found in any server` });
+          return;
+        }
+        const allowed = all.filter((p) => isServerInScope(scopeOf(req), p.serverId));
+        if (allowed.length === 0) {
+          res.status(403).json({ error: 'Forbidden', message: `Prompt "${name}" is not allowed for this client` });
+          return;
+        }
+        if (allowed.length > 1) {
+          res.status(409).json({
+            error: 'Conflict',
+            message: `Prompt "${name}" is provided by several servers; pass "server" to choose one`,
+            servers: allowed.map((p) => p.serverId),
+          });
+          return;
+        }
+        target = allowed[0]!.serverId;
+      }
+      await forward(req, res, target, 'prompts/get', { name, arguments: args }, 'prompt', name, (result, durationMs) => ({
+        result,
+        server: target,
+        name,
+        durationMs,
+      }));
+    }),
+  );
+
+  // ─── Recent Requests ────────────────────────────────────────────────────────
+
+  // History: in-memory log, or the persistent audit log when `audit.enabled`.
+  // Filters: server, tool, client, success, via, kind, since, until (ISO or ms), cursor.
+  router.get('/requests', auth, (req, res) => {
+    const limit = parseIntParam(req.query.limit, 50, 1, 500);
+    const str = (k: string) => (typeof req.query[k] === 'string' && req.query[k] !== '' ? (req.query[k] as string) : undefined);
+    const bad = (message: string) => res.status(400).json({ error: 'Bad Request', message });
+    const time = (k: string): number | undefined | null => {
+      const v = str(k);
+      if (v === undefined) return undefined;
+      const t = /^\d+$/.test(v) ? Number(v) : Date.parse(v);
+      return Number.isFinite(t) ? t : null;
+    };
+    const since = time('since');
+    const until = time('until');
+    if (since === null || until === null) return void bad('"since" / "until" must be ISO dates or epoch milliseconds');
+    const success = str('success');
+    if (success !== undefined && success !== 'true' && success !== 'false') return void bad('"success" must be true or false');
+    const via = str('via');
+    if (via !== undefined && via !== 'rest' && via !== 'mcp') return void bad('"via" must be rest or mcp');
+    const kind = str('kind');
+    if (kind !== undefined && !['tool', 'resource', 'prompt'].includes(kind)) return void bad('"kind" must be tool, resource or prompt');
+
+    // Restricted clients only see their own calls.
+    const own = isRestricted(scopeOf(req)) ? (req as AuthedRequest).clientId ?? '' : undefined;
+    try {
+      const page = metrics.queryRequests({
+        limit,
+        cursor: str('cursor'),
+        since,
+        until,
+        server: str('server'),
+        tool: str('tool'),
+        clientId: own ?? str('client'),
+        success: success === undefined ? undefined : success === 'true',
+        via: via as 'rest' | 'mcp' | undefined,
+        kind: kind as 'tool' | 'resource' | 'prompt' | undefined,
+      });
+      res.json(page);
+    } catch (err) {
+      if (err instanceof RangeError) return void bad('invalid "cursor"');
+      throw err;
+    }
   });
 
   return router;

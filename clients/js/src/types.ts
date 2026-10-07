@@ -106,6 +106,72 @@ export interface RequestRecord {
   errorMessage?: string;
   clientId?: string;
   via?: 'rest' | 'mcp';
+  kind?: 'tool' | 'resource' | 'prompt';
+}
+
+export interface RequestQuery {
+  limit?: number;
+  server?: string;
+  tool?: string;
+  client?: string;
+  success?: boolean;
+  via?: 'rest' | 'mcp';
+  kind?: 'tool' | 'resource' | 'prompt';
+  /** ISO date, Date or epoch ms */
+  since?: string | number | Date;
+  until?: string | number | Date;
+  cursor?: string;
+}
+
+export interface RequestPage {
+  requests: RequestRecord[];
+  nextCursor?: string;
+  /** `audit` when the persistent audit log is enabled (gateway ≥ 0.8). */
+  source?: 'audit' | 'memory';
+}
+
+export interface Resource {
+  uri: string;
+  name: string;
+  title?: string;
+  description?: string;
+  mimeType?: string;
+  size?: number;
+  serverId: string;
+  serverName: string;
+}
+
+export interface ResourceTemplate {
+  uriTemplate: string;
+  name: string;
+  title?: string;
+  description?: string;
+  mimeType?: string;
+  serverId: string;
+  serverName: string;
+}
+
+export interface Prompt {
+  name: string;
+  title?: string;
+  description?: string;
+  arguments?: Array<{ name: string; title?: string; description?: string; required?: boolean }>;
+  serverId: string;
+  serverName: string;
+}
+
+export interface ReadResourceResponse {
+  result: { contents: Array<{ uri: string; mimeType?: string; text?: string; blob?: string }> };
+  server: string;
+  uri: string;
+  durationMs: number;
+}
+
+export interface GetPromptResponse {
+  result: { description?: string; messages: Array<{ role: 'user' | 'assistant'; content: Record<string, unknown> }> };
+  server: string;
+  name: string;
+  durationMs: number;
 }
 
 export interface MetricsResponse {

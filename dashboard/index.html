@@ -94,6 +94,13 @@
     .method { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
     .method.post { background: rgba(63,185,80,.15); color: var(--green); }
     .method.get { background: rgba(88,166,255,.15); color: var(--accent); }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 12px; color: var(--muted); }
+    .filters input, .filters select { background: var(--surface, #161b22); color: inherit; border: 1px solid var(--border, #30363d); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
+    .filters .source { margin-left: auto; }
+    .filters button, .more { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .filters button:hover, .more:hover { border-color: var(--accent); color: var(--accent); }
+    .more { display: block; margin: 10px auto 0; }
+    .more[hidden] { display: none; }
 
     /* ── Code ── */
     code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; color: var(--purple); }
@@ -189,15 +196,25 @@
     </div>
   </div>
 
-  <!-- Recent Requests -->
+  <!-- Request history -->
   <div class="section">
-    <div class="section-title">Recent Requests</div>
+    <div class="section-title">Request History</div>
+    <form class="filters" id="req-filters" onsubmit="event.preventDefault(); loadRequests(true)">
+      <input id="f-server" placeholder="server id" aria-label="Filter by server" size="12" />
+      <input id="f-tool" placeholder="tool / URI / prompt" aria-label="Filter by tool" size="16" />
+      <select id="f-status" aria-label="Filter by status"><option value="">any status</option><option value="true">ok</option><option value="false">error</option></select>
+      <select id="f-via" aria-label="Filter by interface"><option value="">REST + MCP</option><option value="rest">REST</option><option value="mcp">MCP</option></select>
+      <select id="f-since" aria-label="Time range"><option value="">all time</option><option value="3600000">last hour</option><option value="86400000">last 24 h</option><option value="604800000">last 7 days</option></select>
+      <button class="refresh-btn" type="submit">Apply</button>
+      <span class="source" id="req-source"></span>
+    </form>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Time</th><th>Method</th><th>Tool</th><th>Server</th><th>Duration</th><th>Status</th></tr></thead>
-        <tbody id="requests-tbody"><tr><td colspan="6" class="loader"><span class="spinner"></span></td></tr></tbody>
+        <thead><tr><th>Time</th><th>Via</th><th>Tool / resource / prompt</th><th>Server</th><th>Client</th><th>Duration</th><th>Status</th></tr></thead>
+        <tbody id="requests-tbody"><tr><td colspan="7" class="loader"><span class="spinner"></span></td></tr></tbody>
       </table>
     </div>
+    <button class="refresh-btn more" id="req-more" type="button" hidden onclick="loadRequests(false)">Load older</button>
   </div>
 </main>
 
@@ -373,36 +390,76 @@
     } catch { /* shown via other panels */ }
   }
 
-  async function loadRequests() {
+  // History comes from the persistent audit log when it is enabled
+  // (audit.enabled), otherwise from the in-memory log; paged with a cursor.
+  let reqCursor;
+  let reqPaged = false;
+
+  function requestQuery() {
+    const q = new URLSearchParams({ limit: '25' });
+    const v = (id) => document.getElementById(id).value.trim();
+    if (v('f-server')) q.set('server', v('f-server'));
+    if (v('f-tool')) q.set('tool', v('f-tool'));
+    if (v('f-status')) q.set('success', v('f-status'));
+    if (v('f-via')) q.set('via', v('f-via'));
+    if (v('f-since')) q.set('since', String(Date.now() - Number(v('f-since'))));
+    return q;
+  }
+
+  function requestRow(r) {
+    const color = r.success ? 'green' : 'red';
+    const err = r.errorMessage ? ` title="${esc(r.errorMessage)}"` : '';
+    const kind = r.kind && r.kind !== 'tool' ? `<span style="color:var(--muted)">${esc(r.kind)}</span> ` : '';
+    const via = (r.via ?? 'rest') === 'mcp' ? '<span class="method get">MCP</span>' : '<span class="method post">REST</span>';
+    const t = new Date(r.timestamp);
+    const today = t.toDateString() === new Date().toDateString();
+    return `<tr>
+      <td style="color:var(--muted)" title="${esc(t.toISOString())}">${esc(today ? t.toLocaleTimeString() : t.toLocaleString())}</td>
+      <td>${via}</td>
+      <td>${kind}<code>${esc(r.toolName ?? '—')}</code></td>
+      <td>${esc(r.serverId ?? '—')}</td>
+      <td style="color:var(--muted)">${esc(r.clientId ?? '—')}</td>
+      <td>${fmtDuration(r.durationMs)}</td>
+      <td style="color:var(--${color})"${err}>${r.success ? 'ok' : 'error'}</td>
+    </tr>`;
+  }
+
+  async function loadRequests(reset = true) {
     const tbody = document.getElementById('requests-tbody');
+    const more = document.getElementById('req-more');
+    if (reset) {
+      reqCursor = undefined;
+      reqPaged = false;
+    } else {
+      reqPaged = true;
+    }
     try {
-      const data = await fetchJSON('/api/v1/requests?limit=20');
+      const q = requestQuery();
+      if (!reset && reqCursor) q.set('cursor', reqCursor);
+      const data = await fetchJSON('/api/v1/requests?' + q.toString());
       const reqs = data.requests ?? [];
-      if (!reqs.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty">No requests yet</td></tr>';
+      document.getElementById('req-source').textContent =
+        data.source === 'audit' ? 'source: persistent audit log' : data.source === 'memory' ? 'source: in-memory (since start)' : '';
+      reqCursor = data.nextCursor;
+      more.hidden = !reqCursor;
+      if (reset && !reqs.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty">No requests</td></tr>';
         return;
       }
-      tbody.innerHTML = reqs.map(r => {
-        const color = r.success ? 'green' : 'red';
-        const err = r.errorMessage ? ` title="${esc(r.errorMessage)}"` : '';
-        return `<tr>
-          <td style="color:var(--muted)">${esc(new Date(r.timestamp).toLocaleTimeString())}</td>
-          <td><span class="method post">CALL</span></td>
-          <td><code>${esc(r.toolName ?? '—')}</code></td>
-          <td>${esc(r.serverId ?? '—')}</td>
-          <td>${fmtDuration(r.durationMs)}</td>
-          <td style="color:var(--${color})"${err}>${r.success ? 'ok' : 'error'}</td>
-        </tr>`;
-      }).join('');
+      const html = reqs.map(requestRow).join('');
+      if (reset) tbody.innerHTML = html;
+      else tbody.insertAdjacentHTML('beforeend', html);
     } catch (e) {
-      tbody.innerHTML = `<tr><td colspan="6" class="empty">${e instanceof AuthError ? 'API key required' : 'Failed to load requests'}</td></tr>`;
+      more.hidden = true;
+      tbody.innerHTML = `<tr><td colspan="7" class="empty">${e instanceof AuthError ? 'API key required' : 'Failed to load requests'}</td></tr>`;
     }
   }
 
   async function loadAll() {
     authMissing = false;
     await loadMetrics(); // tool call counts feed the tools table
-    await Promise.allSettled([loadHealth(), loadServers(), loadTools(), loadRequests()]);
+    // Don't throw away older pages the user loaded on auto-refresh.
+    await Promise.allSettled([loadHealth(), loadServers(), loadTools(), reqPaged ? Promise.resolve() : loadRequests(true)]);
     notice.classList.toggle('show', authMissing);
     keyInput.classList.toggle('needed', authMissing);
   }

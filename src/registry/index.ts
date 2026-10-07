@@ -6,6 +6,10 @@
 import { EventEmitter } from 'events';
 import type {
   McpServerConfig,
+  PromptInfo,
+  ResourceInfo,
+  ResourceTemplateInfo,
+  ServerCatalog,
   ServerHealth,
   ServerStatus,
   ToolInfo,
@@ -17,6 +21,7 @@ export class ServerRegistry extends EventEmitter {
   private servers = new Map<string, McpServerConfig>();
   private health = new Map<string, ServerHealth>();
   private tools = new Map<string, ToolInfo[]>(); // serverId -> tools
+  private catalogs = new Map<string, ServerCatalog>(); // serverId -> resources / prompts
   private healthCheckInterval?: NodeJS.Timeout;
 
   constructor(private readonly healthCheckMs = 30_000) {
@@ -44,6 +49,7 @@ export class ServerRegistry extends EventEmitter {
     this.servers.delete(serverId);
     this.health.delete(serverId);
     this.tools.delete(serverId);
+    this.catalogs.delete(serverId);
     logger.info(`Unregistered MCP server: ${serverId}`);
     this.emit('unregistered', serverId);
     return true;
@@ -129,6 +135,31 @@ export class ServerRegistry extends EventEmitter {
       if (found) return found;
     }
     return undefined;
+  }
+
+  // ─── Resources & prompts ────────────────────────────────────────────────────
+
+  /** Store a server's resources, resource templates and prompts. */
+  setCatalog(serverId: string, catalog: ServerCatalog): void {
+    if (!this.servers.has(serverId)) return;
+    this.catalogs.set(serverId, catalog);
+    this.emit('catalog-updated', serverId, catalog);
+  }
+
+  getCatalog(serverId: string): ServerCatalog {
+    return this.catalogs.get(serverId) ?? { resources: [], resourceTemplates: [], prompts: [] };
+  }
+
+  getAllResources(): ResourceInfo[] {
+    return [...this.catalogs.values()].flatMap((c) => c.resources);
+  }
+
+  getAllResourceTemplates(): ResourceTemplateInfo[] {
+    return [...this.catalogs.values()].flatMap((c) => c.resourceTemplates);
+  }
+
+  getAllPrompts(): PromptInfo[] {
+    return [...this.catalogs.values()].flatMap((c) => c.prompts);
   }
 
   // ─── Health Updates ─────────────────────────────────────────────────────────

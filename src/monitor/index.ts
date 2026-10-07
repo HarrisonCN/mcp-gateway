@@ -15,6 +15,8 @@
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import type { RequestMetric, AggregatedMetrics, MonitorConfig } from '../utils/types.js';
+import { matchesQuery, type AuditPage, type AuditQuery, type AuditStore } from './audit.js';
+import { logger } from '../utils/logger.js';
 
 export interface MetricsOptions {
   /** Hard cap on retained request records (oldest dropped first). Default 100k. */
@@ -48,6 +50,9 @@ export class MetricsCollector extends EventEmitter {
   private readonly maxEntries: number;
   private cleanupInterval?: NodeJS.Timeout;
   private readonly counters = new Map<string, ServerCounters>();
+  private audit?: AuditStore;
+  private auditTimer?: NodeJS.Timeout;
+  private auditFailures = 0;
 
   constructor(config?: MonitorConfig, options: MetricsOptions = {}) {
     super();
@@ -75,8 +80,79 @@ export class MetricsCollector extends EventEmitter {
     c.durationMsSum += metric.durationMs;
     this.counters.set(metric.serverId, c);
 
+    if (this.audit) {
+      try {
+        this.audit.append(full);
+        this.auditFailures = 0;
+      } catch (err) {
+        // Never fail a request because the audit log is unwritable; log, but not on every call.
+        if (this.auditFailures++ % 100 === 0) {
+          logger.error(`Audit log write failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+
     this.emit('metric', full);
     return full;
+  }
+
+  // ─── Audit log ──────────────────────────────────────────────────────────────
+
+  /**
+   * Persist every record to `store` as well (history beyond the in-memory
+   * retention and across restarts). `retentionDays` > 0 prunes hourly.
+   */
+  setAuditStore(store: AuditStore | undefined, retentionDays = 0): void {
+    clearInterval(this.auditTimer);
+    this.auditTimer = undefined;
+    this.audit = store;
+    if (store && retentionDays > 0) {
+      const prune = () => {
+        try {
+          const n = store.prune(Date.now() - retentionDays * 86_400_000);
+          if (n > 0) logger.debug(`Audit log: pruned ${n} records older than ${retentionDays} days`);
+        } catch (err) {
+          logger.warn(`Audit log prune failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      };
+      prune();
+      this.auditTimer = setInterval(prune, 3_600_000);
+      this.auditTimer.unref();
+    }
+  }
+
+  getAuditStore(): AuditStore | undefined {
+    return this.audit;
+  }
+
+  /**
+   * Query request history, newest first: the audit store when one is set,
+   * otherwise the in-memory log. Throws RangeError on an invalid cursor.
+   */
+  queryRequests(q: AuditQuery): AuditPage & { source: 'audit' | 'memory' } {
+    if (this.audit) return { ...this.audit.query(q), source: 'audit' };
+    let start = this.metrics.length - 1;
+    if (q.cursor !== undefined) {
+      const m = /^m(.+)$/.exec(q.cursor);
+      const idx = m ? this.metrics.findIndex((x) => x.id === m[1]) : -1;
+      if (idx < 0) throw new RangeError('invalid cursor');
+      start = idx - 1;
+    }
+    const out: RequestMetric[] = [];
+    let i = start;
+    for (; i >= 0 && out.length < q.limit; i--) {
+      if (matchesQuery(this.metrics[i]!, q)) out.push(this.metrics[i]!);
+    }
+    // Is there anything older that matches?
+    let more = false;
+    for (let j = i; j >= 0; j--) {
+      if (matchesQuery(this.metrics[j]!, q)) {
+        more = true;
+        break;
+      }
+    }
+    const last = out[out.length - 1];
+    return more && last ? { requests: out, nextCursor: `m${last.id}`, source: 'memory' } : { requests: out, source: 'memory' };
   }
 
   // ─── Aggregation ────────────────────────────────────────────────────────────
@@ -250,6 +326,8 @@ export class MetricsCollector extends EventEmitter {
   }
 
   stop(): void {
+    clearInterval(this.auditTimer);
+    this.auditTimer = undefined;
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = undefined;

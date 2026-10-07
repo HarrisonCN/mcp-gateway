@@ -121,6 +121,8 @@ export interface GatewayConfig {
   dashboard?: { enabled?: boolean };
   /** Downstream MCP endpoint (Streamable HTTP) that aggregates every server */
   mcp?: McpEndpointConfig;
+  /** Persistent audit log of requests (optional SQLite) */
+  audit?: AuditConfig;
 }
 
 // ─── Downstream MCP endpoint ─────────────────────────────────────────────────
@@ -230,6 +232,8 @@ export interface RequestMetric {
   tokenCount?: number;
   /** Which downstream interface served the call: REST API or the `/mcp` endpoint. */
   via?: 'rest' | 'mcp';
+  /** What was called: a tool (default), a resource read (`toolName` = URI) or a prompt get. */
+  kind?: 'tool' | 'resource' | 'prompt';
 }
 
 export interface AggregatedMetrics {
@@ -278,6 +282,65 @@ export interface ToolInfo {
   annotations?: Record<string, unknown>;
   serverId: string;
   serverName: string;
+}
+
+// ─── Resources & prompts (passthrough) ───────────────────────────────────────
+
+export interface ResourceInfo {
+  uri: string;
+  name: string;
+  title?: string;
+  description?: string;
+  mimeType?: string;
+  size?: number;
+  annotations?: Record<string, unknown>;
+  serverId: string;
+  serverName: string;
+}
+
+export interface ResourceTemplateInfo {
+  uriTemplate: string;
+  name: string;
+  title?: string;
+  description?: string;
+  mimeType?: string;
+  annotations?: Record<string, unknown>;
+  serverId: string;
+  serverName: string;
+}
+
+export interface PromptArgumentInfo {
+  name: string;
+  title?: string;
+  description?: string;
+  required?: boolean;
+}
+
+export interface PromptInfo {
+  name: string;
+  title?: string;
+  description?: string;
+  arguments?: PromptArgumentInfo[];
+  serverId: string;
+  serverName: string;
+}
+
+/** Resources, resource templates and prompts a server announced. */
+export interface ServerCatalog {
+  resources: ResourceInfo[];
+  resourceTemplates: ResourceTemplateInfo[];
+  prompts: PromptInfo[];
+}
+
+// ─── Audit log ───────────────────────────────────────────────────────────────
+
+export interface AuditConfig {
+  /** Persist every request record to SQLite (default false; needs Node 22.5+ `node:sqlite`). */
+  enabled?: boolean;
+  /** Database file (default "mcp-gateway-audit.db", relative to the working directory). */
+  path?: string;
+  /** Delete records older than this many days (default 30; 0 = keep forever). */
+  retentionDays?: number;
 }
 
 // ─── JSON-RPC (used by network transports) ───────────────────────────────────

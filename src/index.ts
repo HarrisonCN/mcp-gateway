@@ -12,6 +12,14 @@ export type { ProxyOptions, SessionInfo } from './proxy/index.js';
 export { ServerSupervisor, computeBackoff, DEFAULT_RECONNECT } from './gateway/supervisor.js';
 export type { UpstreamChannel, ChannelFactory, ChannelOptions, JsonRpcMessage } from './transport/channel.js';
 export { MetricsCollector } from './monitor/index.js';
+export { SqliteAuditStore, sqliteAvailable } from './monitor/audit.js';
+export type { AuditStore, AuditQuery, AuditPage } from './monitor/audit.js';
+export {
+  dedupeResources,
+  routeResource,
+  matchesUriTemplate,
+  buildPromptIndex,
+} from './mcp/catalog.js';
 export { loadConfig, generateDefaultConfig } from './config/loader.js';
 export { logger } from './utils/logger.js';
 export { isToolAllowed, filterTools } from './utils/tool-filter.js';
@@ -47,4 +55,10 @@ export type {
   McpEndpointConfig,
   ToolNaming,
   ApiKeyConfig,
+  AuditConfig,
+  ResourceInfo,
+  ResourceTemplateInfo,
+  PromptInfo,
+  PromptArgumentInfo,
+  ServerCatalog,
 } from './utils/types.js';

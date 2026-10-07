@@ -21,6 +21,7 @@ import { logger } from '../utils/logger.js';
 import { Mutex } from '../utils/mutex.js';
 import { VERSION } from '../utils/version.js';
 import { McpEndpoint } from '../mcp/endpoint.js';
+import { SqliteAuditStore } from '../monitor/audit.js';
 
 function findDashboard(): string | undefined {
   // src/gateway → ../../dashboard (tsx) and dist/gateway → ../../dashboard (built)
@@ -112,6 +113,16 @@ export class Gateway {
     this.app.use(errorHandler);
 
     this.metrics.start();
+    if (this.config.audit?.enabled) {
+      try {
+        const store = new SqliteAuditStore(this.config.audit.path ?? 'mcp-gateway-audit.db');
+        this.metrics.setAuditStore(store, this.config.audit.retentionDays ?? 30);
+        logger.info(`Audit log: ${store.path}`);
+      } catch (err) {
+        await this.shutdownInternals();
+        throw err;
+      }
+    }
 
     await this.connectServers(this.config.servers);
 
@@ -200,6 +211,15 @@ export class Gateway {
     this.supervisor.stop();
     this.registry.stopHealthChecks();
     this.metrics.stop();
+    const audit = this.metrics.getAuditStore();
+    if (audit) {
+      this.metrics.setAuditStore(undefined);
+      try {
+        audit.close();
+      } catch {
+        /* already closed */
+      }
+    }
     this.router?.close();
     await this.proxy.disconnectAll();
   }
@@ -230,7 +250,7 @@ export class Gateway {
       });
 
       const applied: string[] = [];
-      for (const field of ['port', 'host', 'healthCheckIntervalMs', 'dashboard'] as const) {
+      for (const field of ['port', 'host', 'healthCheckIntervalMs', 'dashboard', 'audit'] as const) {
         if (!same(this.config[field], next[field])) {
           logger.warn(`Config "${field}" changed — restart required for it to take effect`);
         }

@@ -13,7 +13,7 @@ import type { AddressInfo } from 'net';
 import { randomUUID } from 'crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
@@ -54,6 +54,21 @@ function buildMcpServer(): McpServer {
       });
       return { content: [{ type: 'text', text: 'done' }] };
     },
+  );
+  // Resources & prompts (exercise the v0.8 passthrough)
+  server.registerResource('readme', 'docs://readme', { title: 'Readme', mimeType: 'text/plain' }, async (uri) => ({
+    contents: [{ uri: uri.href, text: 'hello from readme' }],
+  }));
+  server.registerResource(
+    'note',
+    new ResourceTemplate('notes://{id}', { list: undefined }),
+    { title: 'Note' },
+    async (uri, { id }) => ({ contents: [{ uri: uri.href, text: `note ${String(id)}` }] }),
+  );
+  server.registerPrompt(
+    'greet',
+    { title: 'Greet', description: 'Say hi', argsSchema: { name: z.string() } },
+    ({ name }) => ({ messages: [{ role: 'user', content: { type: 'text', text: `Hello, ${name}!` } }] }),
   );
   server.registerTool('add-tool', { description: 'Registers another tool' }, async () => {
     server.registerTool('late', { description: 'Added at runtime' }, async () => ({
