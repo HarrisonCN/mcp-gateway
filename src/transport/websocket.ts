@@ -4,16 +4,25 @@
  * Connects to MCP servers that expose a WebSocket endpoint,
  * enabling full-duplex communication with lower latency than SSE.
  *
+ * Audit fixes:
+ *  - Uses the `ws` package (already a dependency). The previous code relied on
+ *    a global WebSocket that does not exist on Node 20 (the declared engine)
+ *    and whose constructor ignores the `headers` option anyway.
+ *  - An intentional disconnect() no longer triggers the auto-reconnect loop.
+ *  - Request ids come from a monotonic counter instead of Date.now().
+ *  - Pending requests are rejected when the socket closes instead of waiting
+ *    for their timeouts.
+ *  - Reconnect / ping timers are unref()'d and cleared on disconnect.
+ *
+ * NOTE: not yet wired into McpProxy — see CONTRIBUTING.md.
+ *
  * @module transport/websocket
  */
 
 import { EventEmitter } from 'events';
-import { Logger } from '../utils/logger.js';
-import { MCPRequest, MCPResponse } from '../utils/types.js';
-
-// Use the built-in WebSocket available in Node.js 22+
-// Falls back to a lightweight polyfill pattern for older runtimes.
-declare const WebSocket: typeof import('ws').WebSocket;
+import WebSocket from 'ws';
+import type { Logger } from '../utils/logger.js';
+import type { MCPRequest, MCPResponse } from '../utils/types.js';
 
 export interface WebSocketTransportOptions {
   url: string;
@@ -30,12 +39,16 @@ type PendingRequest = {
   timer: NodeJS.Timeout;
 };
 
+let _idSeq = 0;
+
 export class WebSocketTransport extends EventEmitter {
   private options: Required<WebSocketTransportOptions>;
   private logger: Logger;
   private ws: WebSocket | null = null;
   private connected = false;
+  private closedByUser = false;
   private reconnectAttempts = 0;
+  private reconnectTimer: NodeJS.Timeout | null = null;
   private pendingRequests = new Map<string | number, PendingRequest>();
   private pingTimer: NodeJS.Timeout | null = null;
 
@@ -53,81 +66,91 @@ export class WebSocketTransport extends EventEmitter {
   }
 
   async connect(): Promise<void> {
+    this.closedByUser = false;
     return new Promise((resolve, reject) => {
       this._openSocket(resolve, reject);
     });
   }
 
-  private _openSocket(
-    onConnect?: () => void,
-    onError?: (e: Error) => void,
-  ): void {
+  private _openSocket(onConnect?: () => void, onError?: (e: Error) => void): void {
+    let settled = false;
+    let ws: WebSocket;
     try {
-      // Node.js 22 ships with a native WebSocket implementation
-      this.ws = new (globalThis as any).WebSocket(this.options.url, {
-        headers: this.options.headers,
-      });
+      ws = new WebSocket(this.options.url, { headers: this.options.headers });
     } catch (err) {
-      const e = err instanceof Error ? err : new Error(String(err));
-      onError?.(e);
+      onError?.(err instanceof Error ? err : new Error(String(err)));
       return;
     }
+    this.ws = ws;
 
-    this.ws!.onopen = () => {
+    ws.on('open', () => {
+      settled = true;
       this.connected = true;
       this.reconnectAttempts = 0;
       this.logger.info(`WebSocket transport connected to ${this.options.url}`);
       onConnect?.();
       this.emit('connect');
       this._startPing();
-    };
+    });
 
-    this.ws!.onmessage = (event: MessageEvent) => {
+    ws.on('message', (raw) => {
+      let data: MCPResponse;
       try {
-        const data: MCPResponse = JSON.parse(
-          typeof event.data === 'string' ? event.data : event.data.toString(),
-        );
-        const id = data.id;
-        if (id !== undefined && this.pendingRequests.has(id)) {
-          const pending = this.pendingRequests.get(id)!;
-          clearTimeout(pending.timer);
-          this.pendingRequests.delete(id);
-          pending.resolve(data);
-        } else {
-          this.emit('message', data);
-        }
+        data = JSON.parse(raw.toString());
       } catch {
-        this.logger.debug(`Non-JSON WebSocket message: ${event.data}`);
+        this.logger.debug(`Non-JSON WebSocket message: ${raw.toString()}`);
+        return;
       }
-    };
+      const id = data.id;
+      const pending = id !== undefined ? this.pendingRequests.get(id) : undefined;
+      if (pending && data.method === undefined) {
+        clearTimeout(pending.timer);
+        this.pendingRequests.delete(id!);
+        pending.resolve(data);
+      } else {
+        this.emit('message', data);
+      }
+    });
 
-    this.ws!.onerror = (event: Event) => {
-      const msg = (event as ErrorEvent).message ?? 'WebSocket error';
-      this.logger.error(`WebSocket error: ${msg}`);
-      onError?.(new Error(msg));
-    };
+    ws.on('error', (err) => {
+      this.logger.error(`WebSocket error: ${err.message}`);
+      if (!settled) {
+        settled = true;
+        onError?.(err);
+      }
+    });
 
-    this.ws!.onclose = (event: CloseEvent) => {
+    ws.on('close', (code, reason) => {
+      if (this.ws === ws) this.ws = null;
       this.connected = false;
       this._stopPing();
-      this.logger.warn(
-        `WebSocket closed (code=${event.code}, reason=${event.reason || 'none'})`,
-      );
+      this._rejectAll(new Error('WebSocket closed'));
+      if (this.closedByUser) return;
+      this.logger.warn(`WebSocket closed (code=${code}, reason=${reason.toString() || 'none'})`);
       this._scheduleReconnect();
-    };
+    });
+  }
+
+  private _rejectAll(err: Error): void {
+    for (const [, pending] of this.pendingRequests) {
+      clearTimeout(pending.timer);
+      pending.reject(err);
+    }
+    this.pendingRequests.clear();
   }
 
   private _startPing(): void {
     this._stopPing();
     this.pingTimer = setInterval(() => {
-      if (this.connected && this.ws?.readyState === 1 /* OPEN */) {
+      if (this.connected && this.ws?.readyState === WebSocket.OPEN) {
         try {
-          this.ws.send(JSON.stringify({ jsonrpc: '2.0', method: 'ping' }));
+          this.ws.ping();
         } catch {
           // ignore ping errors
         }
       }
     }, this.options.pingIntervalMs);
+    this.pingTimer.unref();
   }
 
   private _stopPing(): void {
@@ -138,62 +161,60 @@ export class WebSocketTransport extends EventEmitter {
   }
 
   private _scheduleReconnect(): void {
+    if (this.closedByUser || this.reconnectTimer) return;
     if (this.reconnectAttempts >= this.options.maxReconnectAttempts) {
-      this.logger.error(
-        `WebSocket max reconnect attempts (${this.options.maxReconnectAttempts}) reached`,
-      );
+      this.logger.error(`WebSocket max reconnect attempts (${this.options.maxReconnectAttempts}) reached`);
       this.emit('disconnect');
       return;
     }
     this.reconnectAttempts++;
-    const delay =
-      this.options.reconnectIntervalMs * Math.min(this.reconnectAttempts, 5);
-    this.logger.info(
-      `WebSocket reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})…`,
-    );
-    setTimeout(() => this._openSocket(), delay);
+    const delay = this.options.reconnectIntervalMs * Math.min(this.reconnectAttempts, 5);
+    this.logger.info(`WebSocket reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})…`);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.closedByUser) this._openSocket();
+    }, delay);
+    this.reconnectTimer.unref();
   }
 
   async send(request: MCPRequest): Promise<MCPResponse> {
-    if (!this.connected || !this.ws) {
+    const ws = this.ws;
+    if (!this.connected || !ws) {
       throw new Error('WebSocket transport is not connected');
     }
 
     return new Promise((resolve, reject) => {
-      const id = request.id ?? Date.now();
+      const id = request.id ?? ++_idSeq;
       const payload = JSON.stringify({ ...request, id });
 
       const timer = setTimeout(() => {
         this.pendingRequests.delete(id);
-        reject(
-          new Error(
-            `WebSocket request timed out after ${this.options.timeoutMs}ms`,
-          ),
-        );
+        reject(new Error(`WebSocket request timed out after ${this.options.timeoutMs}ms`));
       }, this.options.timeoutMs);
 
       this.pendingRequests.set(id, { resolve, reject, timer });
 
-      try {
-        this.ws!.send(payload);
-      } catch (err) {
-        clearTimeout(timer);
-        this.pendingRequests.delete(id);
-        reject(err instanceof Error ? err : new Error(String(err)));
-      }
+      ws.send(payload, (err) => {
+        if (err) {
+          clearTimeout(timer);
+          this.pendingRequests.delete(id);
+          reject(err);
+        }
+      });
     });
   }
 
   disconnect(): void {
+    this.closedByUser = true;
     this.connected = false;
     this._stopPing();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.ws?.close(1000, 'Client disconnect');
     this.ws = null;
-    for (const [id, pending] of this.pendingRequests) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error('WebSocket transport disconnected'));
-      this.pendingRequests.delete(id);
-    }
+    this._rejectAll(new Error('WebSocket transport disconnected'));
     this.emit('disconnect');
   }
 

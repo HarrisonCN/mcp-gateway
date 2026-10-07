@@ -24,14 +24,23 @@ declare global {
   }
 }
 
+// Client-supplied ids are echoed into headers and logs: accept only a safe,
+// bounded charset to prevent log forging / oversized headers.
+const SAFE_ID = /^[A-Za-z0-9._:\-]{1,128}$/;
+
+function pick(value: string | string[] | undefined): string | undefined {
+  const v = Array.isArray(value) ? value[0] : value;
+  return v && SAFE_ID.test(v) ? v : undefined;
+}
+
 export function requestIdMiddleware(
   req: Request,
   res: Response,
   next: NextFunction,
 ): void {
   const id =
-    (req.headers['x-request-id'] as string | undefined) ||
-    (req.headers['x-correlation-id'] as string | undefined) ||
+    pick(req.headers['x-request-id']) ||
+    pick(req.headers['x-correlation-id']) ||
     randomUUID();
 
   req.requestId = id;

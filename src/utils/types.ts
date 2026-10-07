@@ -156,3 +156,21 @@ export interface ToolInfo {
   serverId: string;
   serverName: string;
 }
+
+// ─── JSON-RPC (used by network transports) ───────────────────────────────────
+
+export interface MCPRequest {
+  jsonrpc: '2.0';
+  id?: string | number;
+  method: string;
+  params?: unknown;
+}
+
+export interface MCPResponse {
+  jsonrpc: '2.0';
+  id?: string | number;
+  result?: unknown;
+  error?: { code: number; message: string; data?: unknown };
+  method?: string;
+  params?: unknown;
+}

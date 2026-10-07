@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Security
+- API-key comparison is now constant-time; client ids are key fingerprints instead of key prefixes.
+- Unsupported auth strategies (`oauth2`, unknown values) and `api-key`/`jwt` without keys/secret now refuse to start instead of silently disabling auth.
+- JWT verification is pinned to HS256/384/512.
+- `/servers` responses redact `env` values.
+- Client-supplied `X-Request-Id` values are validated; tool-call arguments are no longer logged.
+
+### Fixed
+- Project did not compile (`tsc` errors in transports, watcher and JWT auth); `npm start` pointed at `dist/cli.ts`.
+- Failed `initialize` left the child process running and the server reported as connected.
+- Reconnecting a server id leaked the previous process; an old process' exit could remove the new session.
+- SIGKILL escalation never ran (`proc.killed` check); EPIPE on a dead child's stdin crashed the gateway.
+- Multi-byte UTF-8 split across stdout chunks was corrupted; server→client requests with colliding ids were taken as responses.
+- `maxConcurrency` was ignored; timed-out calls are now cancelled upstream; `tools/list` pagination is followed.
+- CORS with several origins produced an invalid `Access-Control-Allow-Origin` header.
+- The SSE parser lost events split across chunks, ignored the MCP `endpoint` event and dropped the `sessionId` query; SSE/WS reconnected after an intentional disconnect.
+- WebSocket transport relied on a global `WebSocket` missing on Node 20; now uses `ws`.
+- Rate limiter was fixed-window (README said sliding) and its timer kept the process alive.
+- Prometheus `*_total` series were last-minute counts (not counters); `*/*` requests got Prometheus text, breaking the dashboard.
+- Listen errors (EADDRINUSE) hung startup; `stop()` hung on keep-alive sockets and was not idempotent.
+- Malformed JSON bodies returned 500/HTML; upstream errors now map to 502 and timeouts to 504; ambiguous tool names return 409.
+- Hard-coded `0.1.0` version strings; startup summary always reported 0 failed servers.
+- Config hot reload, request ids, CORS, error handler and `/dashboard` were implemented but never wired in.
+- Docker: `npm ci` needed a lockfile (now committed), dashboard copied, runs as non-root; compose healthcheck used `curl` (not in image).
+
+### Added
+- Test suite (vitest) with a fake stdio MCP server; GitHub Actions CI on Node 20 and 22.
+- Config validation: unique server ids, `command` for stdio, `url` for sse/websocket.
+
+---
+
 ## [0.2.0] - 2026-03-27
 
 ### New Features

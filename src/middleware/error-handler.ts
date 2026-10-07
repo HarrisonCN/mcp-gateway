@@ -54,6 +54,12 @@ export function errorHandler(
 ): void {
   const isDev = process.env.NODE_ENV !== 'production';
 
+  // Headers already flushed (e.g. a late timeout): let Express close the socket.
+  if (res.headersSent) {
+    _next(err);
+    return;
+  }
+
   if (err instanceof GatewayError) {
     const body: ErrorResponse = {
       error: {
@@ -64,6 +70,21 @@ export function errorHandler(
       },
     };
     res.status(err.statusCode).json(body);
+    return;
+  }
+
+  // Client errors raised by Express / body-parser (malformed JSON, payload too
+  // large, …) carry a 4xx status and must not be reported as 500s.
+  const status = getHttpStatus(err);
+  if (status !== undefined && status >= 400 && status < 500) {
+    const body: ErrorResponse = {
+      error: {
+        code: status === 413 ? 'PAYLOAD_TOO_LARGE' : ErrorCodes.BAD_REQUEST,
+        message: err instanceof Error ? err.message : 'Bad request',
+        requestId: (req as any).requestId,
+      },
+    };
+    res.status(status).json(body);
     return;
   }
 
@@ -92,4 +113,11 @@ export function notFoundHandler(req: Request, res: Response): void {
     },
   };
   res.status(404).json(body);
+}
+
+function getHttpStatus(err: unknown): number | undefined {
+  if (!err || typeof err !== 'object') return undefined;
+  const e = err as { status?: unknown; statusCode?: unknown };
+  const s = typeof e.status === 'number' ? e.status : typeof e.statusCode === 'number' ? e.statusCode : undefined;
+  return s !== undefined && Number.isInteger(s) ? s : undefined;
 }

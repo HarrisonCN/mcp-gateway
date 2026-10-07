@@ -3,18 +3,24 @@
  * mcp-gateway CLI
  */
 
+import 'dotenv/config';
 import { Command } from 'commander';
-import { loadConfig, generateDefaultConfig } from './config/loader.js';
+import { existsSync } from 'fs';
+import { writeFile } from 'fs/promises';
+import { loadConfig, generateDefaultConfig, resolveConfigPath } from './config/loader.js';
+import { ConfigWatcher } from './config/watcher.js';
 import { Gateway } from './gateway/index.js';
 import { logger } from './utils/logger.js';
-import { writeFile } from 'fs/promises';
+import { VERSION } from './utils/version.js';
+
+const LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const;
 
 const program = new Command();
 
 program
   .name('mcp-gateway')
   .description('A lightweight gateway for managing multiple MCP servers')
-  .version('0.1.0');
+  .version(VERSION);
 
 // ─── start ────────────────────────────────────────────────────────────────────
 
@@ -24,28 +30,71 @@ program
   .option('-c, --config <path>', 'Path to config file')
   .option('-p, --port <number>', 'Override port from config')
   .option('--log-level <level>', 'Log level (debug|info|warn|error)')
+  .option('--no-watch', 'Disable config hot reload')
   .action(async (options) => {
+    let gateway: Gateway | undefined;
+    let watcher: ConfigWatcher | undefined;
     try {
       const config = await loadConfig(options.config);
 
-      if (options.port) config.port = parseInt(options.port, 10);
-      if (options.logLevel) config.logLevel = options.logLevel;
+      if (options.port !== undefined) {
+        const port = Number(options.port);
+        if (!Number.isInteger(port) || port < 0 || port > 65535) {
+          throw new Error(`Invalid --port "${options.port}"`);
+        }
+        config.port = port;
+      }
+      if (options.logLevel) {
+        if (!(LOG_LEVELS as readonly string[]).includes(options.logLevel)) {
+          throw new Error(`Invalid --log-level "${options.logLevel}" (expected ${LOG_LEVELS.join('|')})`);
+        }
+        config.logLevel = options.logLevel;
+      }
 
-      const gateway = new Gateway(config);
+      const gw = new Gateway(config);
+      gateway = gw;
 
-      // Graceful shutdown
-      const shutdown = async (signal: string) => {
+      // Graceful shutdown (idempotent; a second signal forces exit)
+      let shuttingDown = false;
+      const shutdown = (signal: string) => {
+        if (shuttingDown) {
+          logger.warn(`Received ${signal} again, forcing exit`);
+          process.exit(1);
+        }
+        shuttingDown = true;
         logger.info(`Received ${signal}, shutting down gracefully...`);
-        await gateway.stop();
-        process.exit(0);
+        watcher?.stop();
+        gw.stop().then(
+          () => process.exit(0),
+          (err: unknown) => {
+            logger.error(`Error during shutdown: ${err instanceof Error ? err.message : String(err)}`);
+            process.exit(1);
+          },
+        );
       };
 
       process.on('SIGINT', () => shutdown('SIGINT'));
       process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-      await gateway.start();
+      await gw.start();
+
+      const configPath = resolveConfigPath(options.config);
+      if (options.watch && configPath) {
+        const w = new ConfigWatcher(configPath, logger);
+        watcher = w;
+        w.on('reload', (next) => {
+          // CLI overrides keep precedence over the file
+          if (options.logLevel) next.logLevel = options.logLevel;
+          gw.reload(next).catch((err: unknown) => {
+            logger.error(`Hot reload failed: ${err instanceof Error ? err.message : String(err)}`);
+          });
+        });
+        w.start();
+      }
     } catch (err) {
       logger.error(`Failed to start gateway: ${err instanceof Error ? err.message : String(err)}`);
+      watcher?.stop();
+      await gateway?.stop().catch(() => {});
       process.exit(1);
     }
   });
@@ -58,7 +107,6 @@ program
   .option('-o, --output <path>', 'Output path', 'mcp-gateway.yml')
   .option('--force', 'Overwrite existing file')
   .action(async (options) => {
-    const { existsSync } = await import('fs');
     if (existsSync(options.output) && !options.force) {
       logger.error(`File "${options.output}" already exists. Use --force to overwrite.`);
       process.exit(1);

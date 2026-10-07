@@ -55,11 +55,16 @@ export function corsMiddleware(options: CORSOptions) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const origin = req.headers.origin ?? '';
 
-    if (origins.includes('*')) {
+    const wildcard = origins.includes('*');
+    if (wildcard && !credentials) {
       res.setHeader('Access-Control-Allow-Origin', '*');
-    } else if (origin && isAllowed(origin)) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Vary', 'Origin');
+    } else {
+      // Response depends on Origin: tell caches so (even when disallowed).
+      res.vary('Origin');
+      // Browsers reject "*" together with credentials, so reflect the origin.
+      if (origin && isAllowed(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+      }
     }
 
     if (credentials) {

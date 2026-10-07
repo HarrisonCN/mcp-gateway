@@ -15,35 +15,37 @@
     "typescript"
   ],
   "homepage": "https://github.com/HarrisonCN/mcp-gateway",
-  "bugs": { "url": "https://github.com/HarrisonCN/mcp-gateway/issues" },
-  "repository": { "type": "git", "url": "https://github.com/HarrisonCN/mcp-gateway.git" },
+  "bugs": {
+    "url": "https://github.com/HarrisonCN/mcp-gateway/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HarrisonCN/mcp-gateway.git"
+  },
   "license": "MIT",
   "author": "HarrisonCN",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "bin": { "mcp-gateway": "dist/cli.js" },
+  "bin": {
+    "mcp-gateway": "dist/cli.js"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/cli.ts",
-    "start": "node dist/cli.ts",
+    "start": "node dist/cli.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src --ext .ts",
-    "format": "prettier --write \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
-    "dashboard:dev": "cd dashboard && pnpm dev",
-    "dashboard:build": "cd dashboard && pnpm build"
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "chalk": "^5.3.0",
     "commander": "^12.1.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "jose": "^5.4.0",
-    "p-queue": "^8.0.1",
     "ws": "^8.18.0",
     "yaml": "^2.4.5",
     "zod": "^3.23.8"
@@ -56,5 +58,20 @@
     "typescript": "^5.5.2",
     "vitest": "^1.6.0"
   },
-  "engines": { "node": ">=20.0.0" }
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "files": [
+    "dist",
+    "dashboard/index.html",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  }
 }
