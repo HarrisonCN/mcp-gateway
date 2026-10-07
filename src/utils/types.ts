@@ -131,6 +131,21 @@ export interface GatewayConfig {
   observability?: ObservabilityConfig;
   /** Tool policy: argument rules, human approval, output filtering. */
   policy?: ToolPolicyConfig;
+  /** Plugins (hooks: onRequest, onToolCall before policy, onResponse after the output filter). */
+  plugins?: PluginConfig[];
+  /** Directory of the loaded config file (set by `loadConfig`; plugin paths resolve against it). */
+  configDir?: string;
+}
+
+/** One `plugins:` entry. */
+export interface PluginConfig {
+  /** Path (relative to the config file) or package name of an ES module. */
+  module: string;
+  /** Override the plugin's own name. */
+  name?: string;
+  enabled?: boolean;
+  /** Passed to a factory export as `ctx.options`. */
+  options?: Record<string, unknown>;
 }
 
 // ─── Security ────────────────────────────────────────────────────────────────

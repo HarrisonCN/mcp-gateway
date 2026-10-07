@@ -62,14 +62,14 @@ export class GatewayError extends Error {
     this.name = 'GatewayError';
   }
 
-  /** Gateway error code from the body (`-32003` policy denied, `-32004` approval rejected, `-32005` output blocked, …). */
+  /** Gateway error code from the body (`-32003` policy denied, `-32004` approval rejected, `-32005` output blocked, `-32006` plugin refused, …). */
   get code(): number | undefined {
     return isRecord(this.body) && typeof this.body.code === 'number' ? this.body.code : undefined;
   }
 
   /** True when a gateway policy (rule, approval or output filter) refused the call. */
   get isPolicyError(): boolean {
-    return this.code === -32003 || this.code === -32004 || this.code === -32005;
+    return this.code === -32003 || this.code === -32004 || this.code === -32005 || this.code === -32006;
   }
 }
 

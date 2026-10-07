@@ -263,6 +263,20 @@ the text; both add `_meta["mcp-gateway/flags"]`. `block` replaces the result wit
 `isError: true` result on `/mcp`). `GET /api/v1/policy` shows findings per detector. These are heuristics: they
 lower, not remove, injection risk.
 
+## Plugins
+
+```yaml
+plugins:
+  - module: ./plugins/my-plugin.mjs   # path relative to this file, or a package name
+    name: my-plugin                   # optional override
+    enabled: true
+    options: { any: value }           # passed to a factory export as ctx.options
+```
+
+Hooks: `onRequest` (Express middleware after the network guards), `onToolCall` (before policy; rewrite arguments,
+`deny`, or `respond`), `onResponse` (after the output filter). Hook failures refuse the call (`-32006`). Hot
+reloadable (file change or `SIGHUP`). See [Plugins](guides/plugins.md).
+
 ## Observability
 
 ```yaml

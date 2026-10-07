@@ -25,6 +25,8 @@ export class ConfigWatcher extends EventEmitter {
   private debounceTimer: NodeJS.Timeout | null = null;
   private debounceMs: number;
   private stopped = true;
+  /** Set by stop(): no further reloads, not even reloadNow(). */
+  private closed = false;
 
   constructor(configPath: string, logger: Logger, debounceMs = 500) {
     super();
@@ -36,6 +38,7 @@ export class ConfigWatcher extends EventEmitter {
   start(): void {
     if (this.watcher) return;
     this.stopped = false;
+    this.closed = false;
     this._attach();
     this.logger.info(`Config hot-reload enabled — watching ${this.configPath}`);
   }
@@ -70,11 +73,11 @@ export class ConfigWatcher extends EventEmitter {
     }, this.debounceMs);
   }
 
-  private async _reload(): Promise<void> {
+  private async _reload(force = false): Promise<void> {
     try {
       const newConfig: GatewayConfig = await loadConfig(this.configPath);
-      if (this.stopped) return;
-      this.logger.info('Config file changed — applying hot reload');
+      if (this.closed || (!force && this.stopped)) return;
+      this.logger.info(force ? 'Reloading configuration' : 'Config file changed — applying hot reload');
       this.emit('reload', newConfig);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -85,8 +88,17 @@ export class ConfigWatcher extends EventEmitter {
     }
   }
 
+  /** Reload now (e.g. on SIGHUP), whether or not the file is being watched. */
+  reloadNow(): Promise<void> {
+    if (this.closed) return Promise.resolve();
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    this.debounceTimer = null;
+    return this._reload(true);
+  }
+
   stop(): void {
     this.stopped = true;
+    this.closed = true;
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = null;
     this.watcher?.close();

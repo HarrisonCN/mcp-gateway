@@ -82,7 +82,7 @@ program
       await gw.start();
 
       const configPath = resolveConfigPath(options.config);
-      if (options.watch && configPath) {
+      if (configPath) {
         const w = new ConfigWatcher(configPath, logger);
         watcher = w;
         w.on('reload', (next) => {
@@ -93,7 +93,14 @@ program
             logger.error(`Hot reload failed: ${err instanceof Error ? err.message : String(err)}`);
           });
         });
-        w.start();
+        if (options.watch) w.start();
+        // SIGHUP reloads the config file even with --no-watch (Windows has no SIGHUP).
+        if (process.platform !== 'win32') {
+          process.on('SIGHUP', () => {
+            logger.info('Received SIGHUP — reloading configuration');
+            void w.reloadNow();
+          });
+        }
       }
     } catch (err) {
       logger.error(`Failed to start gateway: ${err instanceof Error ? err.message : String(err)}`);

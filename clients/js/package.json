@@ -1,6 +1,6 @@
 {
   "name": "@winstonsayno/mcp-gateway-client",
-  "version": "1.7.0",
+  "version": "2.0.0",
   "description": "Typed, dependency-free client for mcp-gateway (REST API + MCP over /mcp). Works in browsers, Node 18+, Deno, Bun and React Native.",
   "keywords": [
     "mcp",

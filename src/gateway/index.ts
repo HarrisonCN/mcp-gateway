@@ -31,6 +31,7 @@ import { SqliteAuditStore } from '../monitor/audit.js';
 import { createStateStore, type StateStore } from '../state/index.js';
 import { createTracer, NOOP_TRACER, type Tracer } from '../observability/tracing.js';
 import { ToolInvoker } from './invoker.js';
+import { PluginHost, type PluginSource } from '../plugins/index.js';
 import { PROTECTED_RESOURCE_METADATA_PATH, protectedResourceMetadata } from '../auth/oauth.js';
 
 function findDashboard(): string | undefined {
@@ -43,6 +44,8 @@ function findDashboard(): string | undefined {
 export interface GatewayOptions {
   /** Use this state store instead of building one from `config.state` (embedding / custom backends). */
   stateStore?: StateStore;
+  /** Plugins supplied in code (run before the ones from `config.plugins`). */
+  plugins?: PluginSource[];
 }
 
 export class Gateway {
@@ -64,6 +67,7 @@ export class Gateway {
   private stateStore?: StateStore;
   private tracer: Tracer = NOOP_TRACER;
   private invoker?: ToolInvoker;
+  private readonly plugins = new PluginHost();
 
   constructor(
     private config: GatewayConfig,
@@ -118,6 +122,15 @@ export class Gateway {
       }
     }
 
+    try {
+      await this.plugins.set(await PluginHost.build(this.config.plugins, this.options.plugins, this.config.configDir));
+    } catch (err) {
+      this.started = false;
+      if (!this.options.stateStore) await this.stateStore.close().catch(() => undefined);
+      throw err;
+    }
+    if (this.plugins.size > 0) logger.info(`Plugins: ${this.plugins.list().map((p) => p.name).join(', ')}`);
+
     this.tracer = await createTracer(this.config.observability?.tracing);
     if (this.tracer.enabled) logger.info(`Tracing enabled (${this.config.observability?.tracing?.exporter ?? 'otlp-http'})`);
     this.invoker = new ToolInvoker({
@@ -126,6 +139,7 @@ export class Gateway {
       tracer: () => this.tracer,
       requestLog: () => this.config.monitor?.requestLog !== false,
       policy: () => this.config.policy,
+      plugins: this.plugins,
     });
 
     // Builds auth/rate-limit; throws on insecure misconfiguration (fail closed)
@@ -144,6 +158,9 @@ export class Gateway {
     // a disallowed client address or Host header.
     this.app.use((req, res, next) => (this.ipFilter ? this.ipFilter(req, res, next) : next()));
     this.app.use(hostCheckMiddleware(() => this.allowedHosts()));
+    // Plugin onRequest hooks: after the network guards, before CORS, auth and routes.
+    const pluginMiddleware = this.plugins.middleware();
+    this.app.use((req, res, next) => (this.plugins.size > 0 ? pluginMiddleware(req, res, next) : next()));
     // Previously an inline handler joined multiple origins into one
     // Access-Control-Allow-Origin value, which browsers reject.
     // Indirection so CORS origins can be hot reloaded.
@@ -328,6 +345,7 @@ export class Gateway {
 
   private async shutdownInternals(): Promise<void> {
     this.invoker?.approvals.close();
+    await this.plugins.close();
     this.mcp?.close();
     this.live?.close();
     this.supervisor.stop();
@@ -377,6 +395,7 @@ export class Gateway {
 
       const applied: string[] = [];
       const prevPolicy = this.config.policy;
+      const prevPlugins = this.config.plugins;
       for (const field of ['port', 'host', 'healthCheckIntervalMs', 'dashboard', 'audit', 'state', 'observability'] as const) {
         if (!same(this.config[field], next[field])) {
           logger.warn(`Config "${field}" changed — restart required for it to take effect`);
@@ -440,7 +459,17 @@ export class Gateway {
         mcp: next.mcp,
         security: next.security,
         policy: next.policy,
+        plugins: next.plugins,
+        configDir: next.configDir ?? this.config.configDir,
       };
+      if (!same(prevPlugins, next.plugins)) {
+        try {
+          await this.plugins.set(await PluginHost.build(next.plugins, this.options.plugins, this.config.configDir));
+          applied.push('plugins');
+        } catch (err) {
+          logger.error(`Plugins not reloaded (keeping the current ones): ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
       if (!same(prevPolicy, next.policy)) {
         this.invoker?.refreshPolicy();
         applied.push('policy');
@@ -480,6 +509,11 @@ export class Gateway {
   /** The downstream MCP endpoint (undefined when `mcp.enabled` is false or before start). */
   getMcpEndpoint(): McpEndpoint | undefined {
     return this.mcp;
+  }
+
+  /** Active plugins (in hook order). */
+  getPlugins(): readonly string[] {
+    return this.plugins.list().map((p) => p.name);
   }
 
   /** Server registry (read-only use when embedding). */

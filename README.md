@@ -9,7 +9,7 @@
 Route · Authenticate · Rate-limit · Monitor — all your [Model Context Protocol](https://modelcontextprotocol.io) servers from a single endpoint.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue.svg)](https://www.typescriptlang.org)
 [![npm version](https://img.shields.io/npm/v/@winstonsayno/mcp-gateway.svg)](https://www.npmjs.com/package/@winstonsayno/mcp-gateway)
 [![CI](https://github.com/HarrisonCN/mcp-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/HarrisonCN/mcp-gateway/actions/workflows/ci.yml)
@@ -462,7 +462,7 @@ audit:
 ```
 
 - Uses Node's built-in [`node:sqlite`](https://nodejs.org/api/sqlite.html) (**Node 22.5+**): no extra dependency and
-  nothing native to compile. On Node 20 the gateway refuses to start with `audit.enabled: true` and says why. Node may
+  nothing native to compile. Node 22.0–22.4 refuses to start with `audit.enabled: true` and says why. Node may
   print an `ExperimentalWarning` for `node:sqlite`.
 - Only metadata is stored: time, server, tool / URI / prompt, kind, duration, success, error message, client id, `via`
   (`rest` / `mcp`). Arguments and results are never stored.
@@ -578,6 +578,16 @@ await gateway.start();
 // Graceful shutdown
 process.on('SIGTERM', () => gateway.stop());
 ```
+
+## What's New in v2.0
+
+| Feature | Description |
+|---------|-------------|
+| **Plugins** | `onRequest` middleware, `onToolCall` before policy, `onResponse` after output filtering — [guide](docs/guides/plugins.md) |
+| **SIGHUP reload** | `kill -HUP` re-reads the config (plugins included), even with `--no-watch` |
+| **Node 22+** | breaking: Node 20 support dropped — [migration guide](docs/guides/migrating-to-v2.md) |
+
+Details: [CHANGELOG](CHANGELOG.md).
 
 ## What's New in v1.7
 

@@ -7,7 +7,7 @@ import { invalidPolicy } from '../policy/tool-policy.js';
 import { invalidFilterPattern } from '../policy/output-filter.js';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
-import { resolve } from 'path';
+import { dirname, resolve } from 'path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import type { GatewayConfig } from '../utils/types.js';
@@ -372,6 +372,18 @@ const GatewayConfigSchema = z.object({
       if (bad) ctx.addIssue({ code: z.ZodIssueCode.custom, message: bad });
     })
     .optional(),
+  plugins: z
+    .array(
+      z
+        .object({
+          module: z.string().min(1),
+          name: z.string().min(1).optional(),
+          enabled: z.boolean().optional(),
+          options: z.record(z.unknown()).optional(),
+        })
+        .strict(),
+    )
+    .optional(),
   observability: z
     .object({
       tracing: z
@@ -462,7 +474,9 @@ export async function loadConfig(configPath?: string): Promise<GatewayConfig> {
     );
   }
 
-  return result.data as GatewayConfig;
+  const config = result.data as GatewayConfig;
+  if (filePath) config.configDir = dirname(filePath);
+  return config;
 }
 
 async function readConfigFile(filePath: string): Promise<unknown> {
