@@ -24,13 +24,15 @@ export const ERR_APPROVAL_REJECTED = -32004;
 export const ERR_OUTPUT_BLOCKED = -32005;
 
 /** Error codes produced by the gateway's own policy layer (REST maps them to 403). */
-export const POLICY_ERROR_CODES = new Set([ERR_POLICY_DENIED, ERR_APPROVAL_REJECTED, ERR_OUTPUT_BLOCKED, ERR_PLUGIN_REJECTED]);
+export const POLICY_ERROR_CODES = new Set([ERR_POLICY_DENIED, ERR_APPROVAL_REJECTED, ERR_OUTPUT_BLOCKED, ERR_PLUGIN_REJECTED, ERR_QUOTA_EXCEEDED]);
 import { ERR_PLUGIN_REJECTED, PluginError, type PluginCall, type PluginHost } from '../plugins/index.js';
 export { ERR_PLUGIN_REJECTED };
 import { logger } from '../utils/logger.js';
 import { ERR_NOT_CONNECTED, ERR_TIMEOUT } from '../proxy/index.js';
 import type { FailureKind, LoadBalancer } from './balancer.js';
 import type { ToolCache } from './cache.js';
+import { ERR_QUOTA_EXCEEDED, type UsageMeter } from './usage.js';
+export { ERR_QUOTA_EXCEEDED };
 import { NOOP_TRACER, type Tracer } from '../observability/tracing.js';
 
 export type CallKind = 'tool' | 'resource' | 'prompt';
@@ -73,6 +75,10 @@ export interface InvokerDeps {
   balancer?: LoadBalancer;
   /** Tool result cache + in-flight de-duplication (`cache:` config). */
   cache?: ToolCache;
+  /** Quotas + metering (`quotas:` config). */
+  usage?: UsageMeter;
+  /** Tenant ids of a client (for per-tenant quotas and metering). */
+  tenantsOf?: (clientId: string | undefined) => string[];
 }
 
 export class ToolInvoker {
@@ -179,6 +185,14 @@ export class ToolInvoker {
     }
     const refused = await this.checkPolicy(ctx, span);
     if (refused) return refused;
+    const usage = this.deps.usage;
+    if (usage && ctx.kind === 'tool') {
+      const over = usage.take({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name });
+      if (over) {
+        const message = `Quota "${over.rule}" exceeded for ${over.subject} (${over.limit} per period)`;
+        return this.refuse(ctx, ERR_QUOTA_EXCEEDED, message, { decision: 'quota', quota: over.rule, limit: over.limit, resetsAt: new Date(over.resetsAt).toISOString() }, span);
+      }
+    }
     let result: ProxyResponse;
     try {
       const cache = ctx.kind === 'tool' ? this.deps.cache : undefined;
@@ -263,8 +277,13 @@ export class ToolInvoker {
     throw new Error('unreachable');
   }
 
+  get usage(): UsageMeter | undefined {
+    return this.deps.usage;
+  }
+
   /** `onResponse` hooks, metrics, request log and span end. */
   private async finish(ctx: InvokeContext, call: PluginCall | undefined, result: ProxyResponse, span: ReturnType<Tracer['startSpan']>): Promise<InvokeResult> {
+
     if (call && this.deps.plugins) {
       try {
         result = await this.deps.plugins.afterCall(call, result);
@@ -272,6 +291,9 @@ export class ToolInvoker {
         const plugin = err instanceof PluginError ? err.plugin : undefined;
         result = { success: false, durationMs: result.durationMs, error: { code: ERR_PLUGIN_REJECTED, message: err instanceof Error ? err.message : String(err), data: { plugin } } };
       }
+    }
+    if (ctx.kind === 'tool') {
+      this.deps.usage?.record({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name, success: result.success, durationMs: result.durationMs });
     }
     this.deps.metrics.record({
       serverId: ctx.serverId,

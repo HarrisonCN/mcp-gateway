@@ -33,6 +33,7 @@ import { redactArgs } from '../security/redact.js';
 import type { CatalogEntry, InstallRequest } from '../catalog/index.js';
 import { withTenantScope, canCall, highestRole, roleIn, ROLE_RANK } from '../auth/tenants.js';
 import { globToRegExp } from '../utils/tool-filter.js';
+import { ERR_QUOTA_EXCEEDED, usageCsv, type UsageGroup } from './usage.js';
 import { ToolInvoker, POLICY_ERROR_CODES, ERR_OUTPUT_BLOCKED } from './invoker.js';
 import { ApprovalError } from '../policy/approvals.js';
 
@@ -306,7 +307,7 @@ export function createApiRouter(
       lockout?.close();
       lockout = lockoutFor({ ...next, auth: nextAuth }, shared);
     }
-    cfg = { ...cfg, auth: nextAuth, rateLimit: next.rateLimit, monitor: next.monitor, mcp: next.mcp, security: next.security, policy: next.policy, tenants: next.tenants, host: cfg.host };
+    cfg = { ...cfg, auth: nextAuth, rateLimit: next.rateLimit, monitor: next.monitor, mcp: next.mcp, security: next.security, policy: next.policy, tenants: next.tenants, quotas: next.quotas, host: cfg.host };
     invoker.refreshPolicy();
   };
 
@@ -623,6 +624,13 @@ export function createApiRouter(
       if (res.headersSent) return;
       if (result.traceparent) res.set('traceparent', result.traceparent);
 
+      if (!result.success && result.error?.code === ERR_QUOTA_EXCEEDED) {
+        const data = result.error.data as { resetsAt?: string } | undefined;
+        const reset = data?.resetsAt ? Date.parse(data.resetsAt) : NaN;
+        if (Number.isFinite(reset)) res.set('Retry-After', String(Math.max(1, Math.ceil((reset - Date.now()) / 1000))));
+        res.status(429).json({ error: 'Too Many Requests', message: result.error.message, code: result.error.code, quota: result.error.data });
+        return;
+      }
       if (!result.success && result.error && POLICY_ERROR_CODES.has(result.error.code)) {
         res.status(result.error.code === ERR_OUTPUT_BLOCKED ? 502 : 403).json({
           error: result.error.code === ERR_OUTPUT_BLOCKED ? 'Tool Output Blocked' : 'Forbidden',
@@ -940,6 +948,57 @@ export function createApiRouter(
     t.members = remaining;
     options.onTenantsChanged?.();
     res.json(tenantView(t, roleIn(t, (req as AuthedRequest).clientId), isOperator(req)));
+  });
+
+  // ─── Usage metering + quotas ───────────────────────────────────────────────
+
+  /** Tenant filter for the caller: operators any (or none); tenant admins / owners only their tenants. */
+  const usageTenant = (req: Request, res: Response): { ok: boolean; tenant?: string } => {
+    const q = typeof req.query.tenant === 'string' && req.query.tenant ? req.query.tenant : undefined;
+    if (isOperator(req)) return { ok: true, tenant: q };
+    const admin = (scopeOf(req)?.tenants ?? []).filter((t) => ROLE_RANK[t.role] >= ROLE_RANK.admin).map((t) => t.id);
+    const tenant = q ?? admin[0];
+    if (!tenant || !admin.includes(tenant)) {
+      res.status(403).json({ error: 'Forbidden', message: 'Usage is available to operators and tenant admins / owners' });
+      return { ok: false };
+    }
+    return { ok: true, tenant };
+  };
+  const GROUPS: UsageGroup[] = ['client', 'tenant', 'server', 'tool', 'hour', 'day'];
+
+  router.get('/usage', auth, (req, res) => {
+    const scope = usageTenant(req, res);
+    if (!scope.ok) return;
+    const time = (k: string): number | undefined => {
+      const v = typeof req.query[k] === 'string' ? (req.query[k] as string) : '';
+      if (!v) return undefined;
+      const t = /^\d+$/.test(v) ? Number(v) : Date.parse(v);
+      return Number.isFinite(t) ? t : undefined;
+    };
+    const group = (typeof req.query.group === 'string' ? req.query.group.split(',') : ['client']).filter((g): g is UsageGroup => (GROUPS as string[]).includes(g));
+    const rows = invoker.usage?.report({
+      since: time('since'),
+      until: time('until'),
+      group,
+      tenant: scope.tenant,
+      client: typeof req.query.client === 'string' && req.query.client ? req.query.client : undefined,
+      server: typeof req.query.server === 'string' && req.query.server ? req.query.server : undefined,
+    }) ?? [];
+    if (req.query.format === 'csv') {
+      res.set('Content-Type', 'text/csv; charset=utf-8').set('Content-Disposition', 'attachment; filename="mcp-gateway-usage.csv"').send(usageCsv(rows, group));
+      return;
+    }
+    res.json({ group: group.length ? group : ['client'], rows, generatedAt: new Date().toISOString() });
+  });
+
+  router.get('/quotas', auth, (req, res) => {
+    const scope = usageTenant(req, res);
+    if (!scope.ok) return;
+    const all = invoker.usage?.quotaStatus() ?? [];
+    res.json({
+      rules: cfg.quotas?.rules ?? [],
+      usage: isOperator(req) && !scope.tenant ? all : all.filter((u) => u.subject === `tenant:${scope.tenant}`),
+    });
   });
 
   // ─── Catalog (operator) ─────────────────────────────────────────────────────

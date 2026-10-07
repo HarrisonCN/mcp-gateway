@@ -29,6 +29,8 @@ export { ToolInvoker, ERR_POLICY_DENIED, ERR_APPROVAL_REJECTED, ERR_OUTPUT_BLOCK
 export { withTenantScope, membershipsOf, roleIn, canCall, ROLE_RANK } from './auth/tenants.js';
 export { Catalog, InstalledServers, BUILTIN_CATALOG, buildServerConfig, loadCatalogSource } from './catalog/index.js';
 export type { CatalogEntry, InstallRequest } from './catalog/index.js';
+export { UsageMeter, usageCsv, periodBounds, ERR_QUOTA_EXCEEDED } from './gateway/usage.js';
+export type { UsageRow, UsageGroup } from './gateway/usage.js';
 export { ToolCache, canonicalJson } from './gateway/cache.js';
 export type { CacheStats } from './gateway/cache.js';
 export { LoadBalancer, expandReplicas } from './gateway/balancer.js';

@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-10-07
+
+Usage quotas and metering export.
+
+### Added
+- **`quotas.rules`**: tool-call limits per `hour` / `day` / `month` (UTC calendar periods), per client (default, with
+  `clients` globs) or per tenant (`per: tenant`, shared pool), optionally for some `servers` / `tools`. Over quota →
+  `-32007`; REST `429` + `Retry-After` + quota details. Checked after the policy, before cache and upstream.
+- **Metering**: every tool call is counted in hourly buckets per client, tenant, server and tool (calls, errors,
+  duration). `GET /api/v1/usage` exports JSON or CSV (`format=csv`, formula-injection safe) grouped by `client`,
+  `tenant`, `server`, `tool`, `hour`, `day`, with `since` / `until` / `client` / `tenant` / `server` filters;
+  `quotas.meteringRetentionDays` (35).
+- `GET /api/v1/quotas` — live counters with `resetsAt`. Tenant admins / owners can read their own tenant's usage.
+- Exports: `UsageMeter`, `usageCsv`, `periodBounds`, `ERR_QUOTA_EXCEEDED`.
+
 ## [2.4.0] - 2026-10-07
 
 Upstream catalog / registry with one-click add.
