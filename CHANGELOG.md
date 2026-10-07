@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-10-07
+
+Bridges: OpenAI-compatible tools proxy and A2A agent card.
+
+### Added
+- **OpenAI-compatible tools proxy** (`openai:`): `GET /openai/v1/tools` (function tools + name mapping),
+  `POST /openai/v1/tool_calls` (execute `tool_calls`, get `role: "tool"` messages) and
+  `POST /openai/v1/chat/completions` (forward to `openai.upstream`, inject gateway tools, run the tool loop up to
+  `maxToolRounds`; caller-supplied tools are returned untouched; `stream: true` passes through).
+- **A2A bridge** (`a2a:`): Agent Card at `/.well-known/agent-card.json` (and `/.well-known/agent.json`), one skill per
+  visible tool; JSON-RPC `message/send` / `tasks/get` at `a2a.path` (default `/a2a`); results as A2A Tasks with
+  artifacts.
+- Bridge calls run through the regular REST checks (auth, scopes, tenants, policy, quotas, cache, output filter).
+- `validateConfig()` exported from the config loader.
+- Docs: [Bridges](docs/guides/bridges.md).
+
 ## [2.6.0] - 2026-10-07
 
 Edge runtimes: Cloudflare Workers, Deno and Bun adapters for the HTTP transport.

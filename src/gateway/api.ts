@@ -53,6 +53,8 @@ export type ApiRouter = express.Router & {
   resolveClient(clientId: string | undefined): { known: boolean; scope?: AccessScope } | undefined;
   /** The brute-force lockout tracker (undefined unless `security.authLockout`). */
   lockout(): LockoutTracker | undefined;
+  /** REST-semantics tool call (after `authenticate`), for bridges. */
+  runToolCall(req: Request, body: Record<string, unknown>, res: ToolCallResponse): Promise<void>;
 };
 
 /** Whether `args` serialise to more than `limit` bytes (0 / undefined = no limit). */
@@ -72,6 +74,35 @@ function lockoutFor(config: GatewayConfig, shared?: SharedState): LockoutTracker
 export interface SharedState {
   store: StateStore;
   failureMode?: FailureMode;
+}
+
+/** The subset of an Express response used by `runToolCall` (lets bridges capture results). */
+export interface ToolCallResponse {
+  status(code: number): ToolCallResponse;
+  json(body: unknown): unknown;
+  set(field: string, value: string): unknown;
+  readonly headersSent: boolean;
+}
+
+/** Collects a `runToolCall` outcome instead of writing it to a socket. */
+export class CapturedResponse implements ToolCallResponse {
+  statusCode = 200;
+  body: unknown;
+  headers: Record<string, string> = {};
+  headersSent = false;
+  status(code: number): this {
+    this.statusCode = code;
+    return this;
+  }
+  json(body: unknown): this {
+    this.body = body;
+    this.headersSent = true;
+    return this;
+  }
+  set(field: string, value: string): this {
+    this.headers[field.toLowerCase()] = value;
+    return this;
+  }
 }
 
 export interface ApiRouterOptions {
@@ -260,7 +291,7 @@ export function createApiRouter(
     (req, res, next) =>
       cfg.auth?.protect?.[flag] ? auth(req, res, next) : next();
   const argLimit = () => cfg.security?.maxToolArgumentsBytes;
-  const tooLarge = (res: Response) =>
+  const tooLarge = (res: Pick<ToolCallResponse, "status">) =>
     res.status(413).json({
       error: 'Payload Too Large',
       message: `"arguments" exceed security.maxToolArgumentsBytes (${argLimit()} bytes)`,
@@ -512,153 +543,161 @@ export function createApiRouter(
 
   // ─── Tool Invocation ────────────────────────────────────────────────────────
 
+  /**
+   * One REST-semantics tool call (auth scope, tenants, routing, policy, quotas, status mapping).
+   * Used by POST /tools/call and the OpenAI / A2A bridges.
+   */
+  async function runToolCall(req: Request, body: Record<string, unknown>, res: ToolCallResponse): Promise<void> {
+    const { tool, server: serverId } = body;
+    const args = body.arguments ?? {};
+
+    if (typeof tool !== 'string' || tool.length === 0) {
+      res.status(400).json({ error: 'Bad Request', message: '"tool" must be a non-empty string' });
+      return;
+    }
+    if (serverId !== undefined && typeof serverId !== 'string') {
+      res.status(400).json({ error: 'Bad Request', message: '"server" must be a string' });
+      return;
+    }
+    if (typeof args !== 'object' || args === null || Array.isArray(args)) {
+      res.status(400).json({ error: 'Bad Request', message: '"arguments" must be an object' });
+      return;
+    }
+    if (argumentsTooLarge(args, argLimit())) return void tooLarge(res);
+
+    const scope = scopeOf(req);
+    const forbidden = (message: string) => res.status(403).json({ error: 'Forbidden', message });
+
+    // Resolve server: use explicit serverId or auto-discover from tool name
+    let targetServerId = serverId;
+    if (!targetServerId) {
+      const all = registry.findTools(tool);
+      if (all.length === 0) {
+        res.status(404).json({ error: 'Not Found', message: `Tool "${tool}" not found in any server` });
+        return;
+      }
+      // Only servers the client may use take part in auto-routing.
+      const candidates = all.filter((c) => isToolInScope(scope, c.serverId, c.name));
+      if (candidates.length === 0) {
+        forbidden(`Tool "${tool}" is not allowed for this client`);
+        return;
+      }
+      if (candidates.length > 1) {
+        // Previously the first match was used silently, so a call could hit
+        // an unintended server depending on registration order.
+        res.status(409).json({
+          error: 'Conflict',
+          message: `Tool "${tool}" is provided by several servers; pass "server" to choose one`,
+          servers: candidates.map((c) => c.serverId),
+        });
+        return;
+      }
+      targetServerId = candidates[0]!.serverId;
+    }
+
+    const server = registry.getServer(targetServerId);
+    if (!server) {
+      res.status(404).json({ error: 'Not Found', message: `Server "${targetServerId}" not found` });
+      return;
+    }
+
+    if (!isServerInScope(scope, targetServerId)) {
+      forbidden(`Server "${targetServerId}" is not allowed for this client`);
+      return;
+    }
+
+    // Enforced here too: an explicit "server" must not bypass the filter.
+    if (!registry.isToolExposed(targetServerId, tool)) {
+      res.status(403).json({
+        error: 'Forbidden',
+        message: `Tool "${tool}" is not exposed by server "${targetServerId}"`,
+      });
+      return;
+    }
+
+    if (isToolInScope(scope, targetServerId, tool) && !canCall(scope, targetServerId)) {
+      forbidden(`Read-only role: tool calls on server "${targetServerId}" need the admin or owner role`);
+      return;
+    }
+    if (!isToolInScope(scope, targetServerId, tool)) {
+      forbidden(`Tool "${tool}" on server "${targetServerId}" is not allowed for this client`);
+      return;
+    }
+
+    if (!(invoker.balancer?.anyConnected(targetServerId) ?? proxy.isConnected(targetServerId))) {
+      const health = registry.getHealth(targetServerId);
+      const retryAt = health?.reconnect?.state === 'scheduled' ? health.reconnect.nextAttemptAt : undefined;
+      if (retryAt) res.set('Retry-After', String(Math.max(1, Math.ceil((retryAt.getTime() - Date.now()) / 1000))));
+      res.status(503).json({
+        error: 'Service Unavailable',
+        message: `Server "${targetServerId}" is not connected`,
+        status: health?.status,
+      });
+      return;
+    }
+
+    // Argument values may contain secrets; log only their keys.
+    logger.debug(`Tool call: ${tool} → ${targetServerId}`, { argKeys: Object.keys(args) });
+
+    const result = await invoker.invoke({
+      serverId: targetServerId,
+      name: tool,
+      kind: 'tool',
+      method: 'tools/call',
+      params: args as Record<string, unknown>,
+      timeoutMs: server.timeout,
+      clientId: (req as AuthedRequest).clientId,
+      via: 'rest',
+      traceparent: traceparentOf(req),
+    });
+
+    if (res.headersSent) return;
+    if (result.traceparent) res.set('traceparent', result.traceparent);
+
+    if (!result.success && result.error?.code === ERR_QUOTA_EXCEEDED) {
+      const data = result.error.data as { resetsAt?: string } | undefined;
+      const reset = data?.resetsAt ? Date.parse(data.resetsAt) : NaN;
+      if (Number.isFinite(reset)) res.set('Retry-After', String(Math.max(1, Math.ceil((reset - Date.now()) / 1000))));
+      res.status(429).json({ error: 'Too Many Requests', message: result.error.message, code: result.error.code, quota: result.error.data });
+      return;
+    }
+    if (!result.success && result.error && POLICY_ERROR_CODES.has(result.error.code)) {
+      res.status(result.error.code === ERR_OUTPUT_BLOCKED ? 502 : 403).json({
+        error: result.error.code === ERR_OUTPUT_BLOCKED ? 'Tool Output Blocked' : 'Forbidden',
+        message: result.error.message,
+        code: result.error.code,
+        policy: result.error.data,
+      });
+      return;
+    }
+
+    if (!result.success) {
+      // 504 for upstream timeouts, 502 for upstream errors (was always 500).
+      const status = result.error?.code === ERR_TIMEOUT ? 504 : 502;
+      res.status(status).json({
+        error: status === 504 ? 'Gateway Timeout' : 'Tool Execution Failed',
+        message: result.error?.message,
+        code: result.error?.code,
+        durationMs: result.durationMs,
+      });
+      return;
+    }
+
+    res.json({
+      result: result.result,
+      server: targetServerId,
+      tool,
+      durationMs: result.durationMs,
+    });
+  }
+  router.runToolCall = runToolCall;
+
   router.post(
     '/tools/call',
     auth,
     rateLimit,
     asyncHandler(async (req, res) => {
-      const body = (req.body ?? {}) as Record<string, unknown>;
-      const { tool, server: serverId } = body;
-      const args = body.arguments ?? {};
-
-      if (typeof tool !== 'string' || tool.length === 0) {
-        res.status(400).json({ error: 'Bad Request', message: '"tool" must be a non-empty string' });
-        return;
-      }
-      if (serverId !== undefined && typeof serverId !== 'string') {
-        res.status(400).json({ error: 'Bad Request', message: '"server" must be a string' });
-        return;
-      }
-      if (typeof args !== 'object' || args === null || Array.isArray(args)) {
-        res.status(400).json({ error: 'Bad Request', message: '"arguments" must be an object' });
-        return;
-      }
-      if (argumentsTooLarge(args, argLimit())) return void tooLarge(res);
-
-      const scope = scopeOf(req);
-      const forbidden = (message: string) => res.status(403).json({ error: 'Forbidden', message });
-
-      // Resolve server: use explicit serverId or auto-discover from tool name
-      let targetServerId = serverId;
-      if (!targetServerId) {
-        const all = registry.findTools(tool);
-        if (all.length === 0) {
-          res.status(404).json({ error: 'Not Found', message: `Tool "${tool}" not found in any server` });
-          return;
-        }
-        // Only servers the client may use take part in auto-routing.
-        const candidates = all.filter((c) => isToolInScope(scope, c.serverId, c.name));
-        if (candidates.length === 0) {
-          forbidden(`Tool "${tool}" is not allowed for this client`);
-          return;
-        }
-        if (candidates.length > 1) {
-          // Previously the first match was used silently, so a call could hit
-          // an unintended server depending on registration order.
-          res.status(409).json({
-            error: 'Conflict',
-            message: `Tool "${tool}" is provided by several servers; pass "server" to choose one`,
-            servers: candidates.map((c) => c.serverId),
-          });
-          return;
-        }
-        targetServerId = candidates[0]!.serverId;
-      }
-
-      const server = registry.getServer(targetServerId);
-      if (!server) {
-        res.status(404).json({ error: 'Not Found', message: `Server "${targetServerId}" not found` });
-        return;
-      }
-
-      if (!isServerInScope(scope, targetServerId)) {
-        forbidden(`Server "${targetServerId}" is not allowed for this client`);
-        return;
-      }
-
-      // Enforced here too: an explicit "server" must not bypass the filter.
-      if (!registry.isToolExposed(targetServerId, tool)) {
-        res.status(403).json({
-          error: 'Forbidden',
-          message: `Tool "${tool}" is not exposed by server "${targetServerId}"`,
-        });
-        return;
-      }
-
-      if (isToolInScope(scope, targetServerId, tool) && !canCall(scope, targetServerId)) {
-        forbidden(`Read-only role: tool calls on server "${targetServerId}" need the admin or owner role`);
-        return;
-      }
-      if (!isToolInScope(scope, targetServerId, tool)) {
-        forbidden(`Tool "${tool}" on server "${targetServerId}" is not allowed for this client`);
-        return;
-      }
-
-      if (!(invoker.balancer?.anyConnected(targetServerId) ?? proxy.isConnected(targetServerId))) {
-        const health = registry.getHealth(targetServerId);
-        const retryAt = health?.reconnect?.state === 'scheduled' ? health.reconnect.nextAttemptAt : undefined;
-        if (retryAt) res.set('Retry-After', String(Math.max(1, Math.ceil((retryAt.getTime() - Date.now()) / 1000))));
-        res.status(503).json({
-          error: 'Service Unavailable',
-          message: `Server "${targetServerId}" is not connected`,
-          status: health?.status,
-        });
-        return;
-      }
-
-      // Argument values may contain secrets; log only their keys.
-      logger.debug(`Tool call: ${tool} → ${targetServerId}`, { argKeys: Object.keys(args) });
-
-      const result = await invoker.invoke({
-        serverId: targetServerId,
-        name: tool,
-        kind: 'tool',
-        method: 'tools/call',
-        params: args as Record<string, unknown>,
-        timeoutMs: server.timeout,
-        clientId: (req as AuthedRequest).clientId,
-        via: 'rest',
-        traceparent: traceparentOf(req),
-      });
-
-      if (res.headersSent) return;
-      if (result.traceparent) res.set('traceparent', result.traceparent);
-
-      if (!result.success && result.error?.code === ERR_QUOTA_EXCEEDED) {
-        const data = result.error.data as { resetsAt?: string } | undefined;
-        const reset = data?.resetsAt ? Date.parse(data.resetsAt) : NaN;
-        if (Number.isFinite(reset)) res.set('Retry-After', String(Math.max(1, Math.ceil((reset - Date.now()) / 1000))));
-        res.status(429).json({ error: 'Too Many Requests', message: result.error.message, code: result.error.code, quota: result.error.data });
-        return;
-      }
-      if (!result.success && result.error && POLICY_ERROR_CODES.has(result.error.code)) {
-        res.status(result.error.code === ERR_OUTPUT_BLOCKED ? 502 : 403).json({
-          error: result.error.code === ERR_OUTPUT_BLOCKED ? 'Tool Output Blocked' : 'Forbidden',
-          message: result.error.message,
-          code: result.error.code,
-          policy: result.error.data,
-        });
-        return;
-      }
-
-      if (!result.success) {
-        // 504 for upstream timeouts, 502 for upstream errors (was always 500).
-        const status = result.error?.code === ERR_TIMEOUT ? 504 : 502;
-        res.status(status).json({
-          error: status === 504 ? 'Gateway Timeout' : 'Tool Execution Failed',
-          message: result.error?.message,
-          code: result.error?.code,
-          durationMs: result.durationMs,
-        });
-        return;
-      }
-
-      res.json({
-        result: result.result,
-        server: targetServerId,
-        tool,
-        durationMs: result.durationMs,
-      });
+      await runToolCall(req, (req.body ?? {}) as Record<string, unknown>, res);
     }),
   );
 

@@ -2,7 +2,7 @@
  * Gateway bootstrap — wires together all subsystems
  */
 
-import express from 'express';
+import express, { type Request } from 'express';
 import { createServer, type Server } from 'http';
 import type { AddressInfo } from 'net';
 import { existsSync } from 'fs';
@@ -13,7 +13,9 @@ import type { GatewayConfig, McpServerConfig } from '../utils/types.js';
 import { ServerRegistry } from '../registry/index.js';
 import { McpProxy } from '../proxy/index.js';
 import { MetricsCollector } from '../monitor/index.js';
-import { createApiRouter, serverStateSamples, type ApiRouter } from './api.js';
+import { createApiRouter, serverStateSamples, type ApiRouter, type ToolCallResponse } from './api.js';
+import { createOpenAIRouter } from '../bridges/openai.js';
+import { createA2ARouter } from '../bridges/a2a.js';
 import { ServerSupervisor } from './supervisor.js';
 import { createLiveRouter, type LiveRouter } from './live.js';
 import { corsMiddleware } from '../middleware/cors.js';
@@ -235,6 +237,22 @@ export class Gateway {
     this.live = createLiveRouter(this.metrics, this.registry, { authenticate: this.router.authenticate });
     this.app.use('/api/v1', this.live);
     this.app.use('/api/v1', this.router);
+
+    // Bridges: OpenAI-compatible tools proxy and A2A agent card / JSON-RPC (after the JSON parser).
+    const bridgeBase = {
+      tools: () => this.registry.getAllTools(),
+      naming: () => this.config.mcp?.toolNaming ?? 'auto',
+      authenticate: this.router.authenticate,
+      runToolCall: (req: Request, body: Record<string, unknown>, res: ToolCallResponse) => this.router!.runToolCall(req, body, res),
+    } as const;
+    this.app.use(this.config.openai?.path ?? '/openai/v1', createOpenAIRouter({ ...bridgeBase, config: () => this.config.openai }));
+    this.app.use(
+      createA2ARouter({
+        ...bridgeBase,
+        config: () => this.config.a2a,
+        authRequired: () => (this.config.auth?.strategy ?? 'none') !== 'none',
+      }),
+    );
 
     // Conventional Prometheus scrape path (same data as GET /api/v1/metrics?format=prometheus).
     this.app.get('/metrics', (req, res, next) => {
@@ -499,6 +517,9 @@ export class Gateway {
         tenants: next.tenants,
         catalog: next.catalog,
         quotas: next.quotas,
+        // openai.path is fixed at start; other bridge settings hot reload
+        openai: next.openai ? { ...next.openai, path: this.config.openai?.path } : next.openai,
+        a2a: next.a2a,
         configDir: next.configDir ?? this.config.configDir,
       };
       if (!same(prevCatalog, next.catalog)) {
