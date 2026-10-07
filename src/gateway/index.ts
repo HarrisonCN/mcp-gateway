@@ -14,6 +14,7 @@ import { McpProxy } from '../proxy/index.js';
 import { MetricsCollector } from '../monitor/index.js';
 import { createApiRouter, type ApiRouter } from './api.js';
 import { ServerSupervisor } from './supervisor.js';
+import { createLiveRouter, type LiveRouter } from './live.js';
 import { corsMiddleware } from '../middleware/cors.js';
 import { requestIdMiddleware } from '../middleware/request-id.js';
 import { errorHandler, notFoundHandler } from '../middleware/error-handler.js';
@@ -39,6 +40,7 @@ export class Gateway {
   private readonly supervisor: ServerSupervisor;
   private router?: ApiRouter;
   private mcp?: McpEndpoint;
+  private live?: LiveRouter;
   private cors: express.RequestHandler;
   private readonly reloadLock = new Mutex();
   private started = false;
@@ -88,6 +90,9 @@ export class Gateway {
 
     this.app.use(express.json({ limit: '10mb' }));
 
+    // Live dashboard data: GET /api/v1/stats and the /api/v1/events SSE stream.
+    this.live = createLiveRouter(this.metrics, this.registry, { authenticate: this.router.authenticate });
+    this.app.use('/api/v1', this.live);
     this.app.use('/api/v1', this.router);
 
     const dashboard = this.config.dashboard?.enabled === false ? undefined : findDashboard();
@@ -208,6 +213,7 @@ export class Gateway {
 
   private async shutdownInternals(): Promise<void> {
     this.mcp?.close();
+    this.live?.close();
     this.supervisor.stop();
     this.registry.stopHealthChecks();
     this.metrics.stop();
