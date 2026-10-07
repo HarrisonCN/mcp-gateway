@@ -21,6 +21,8 @@ Route · Authenticate · Rate-limit · Monitor — all your [Model Context Proto
 
 ---
 
+> **Live demo:** try the dashboard with simulated traffic — <https://harrisoncn.github.io/mcp-gateway/> (runs entirely in your browser).
+
 ## The Problem
 
 As [MCP](https://modelcontextprotocol.io) becomes the standard protocol for AI agents to interact with tools, teams are running **dozens of MCP servers** — filesystem, GitHub, databases, Slack, search, and more. Managing them is chaos:

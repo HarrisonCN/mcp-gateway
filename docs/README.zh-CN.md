@@ -16,6 +16,8 @@
 
 ---
 
+> **在线演示：** 用模拟流量体验控制面板 — <https://harrisoncn.github.io/mcp-gateway/>（完全在浏览器内运行）。
+
 ## 为什么需要 mcp-gateway？
 
 随着 [MCP（模型上下文协议）](https://modelcontextprotocol.io) 成为 AI Agent 与工具交互的事实标准，团队往往需要同时运行十几个 MCP 服务器——文件系统、GitHub、数据库、Slack、搜索等等。管理这些服务器非常混乱：

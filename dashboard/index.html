@@ -672,7 +672,7 @@ const fmtNum = (v, d = 0) => (v == null || !isFinite(v) ? '—' : v >= 1e6 ? (v 
 const fmtTime = (ts) => new Date(ts).toLocaleTimeString(lang === 'zh' ? 'zh-CN' : undefined, { hour12: false });
 const fmtDateTime = (ts) => new Date(ts).toLocaleString(lang === 'zh' ? 'zh-CN' : undefined, { hour12: false, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 const statusCls = (s) => ({ online: 'ok', degraded: 'warn', reconnecting: 'info', offline: 'bad' })[s] || '';
-const ORIGIN = location.origin;
+const ORIGIN = window.__MCP_GATEWAY_DEMO__ ? 'http://localhost:4000' : location.origin;
 const ICON = {
   overview: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 13h4l3-8 4 14 3-6h4"/></svg>',
   servers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/></svg>',
