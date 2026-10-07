@@ -14,6 +14,7 @@ export type { UpstreamChannel, ChannelFactory, ChannelOptions, JsonRpcMessage } 
 export { MetricsCollector } from './monitor/index.js';
 export { loadConfig, generateDefaultConfig } from './config/loader.js';
 export { logger } from './utils/logger.js';
+export { isToolAllowed, filterTools } from './utils/tool-filter.js';
 export type {
   GatewayConfig,
   McpServerConfig,
@@ -28,4 +29,5 @@ export type {
   MonitorConfig,
   ReconnectConfig,
   ReconnectState,
+  ToolFilterConfig,
 } from './utils/types.js';

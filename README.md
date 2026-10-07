@@ -72,6 +72,7 @@ As [MCP](https://modelcontextprotocol.io) becomes the standard protocol for AI a
 - **Config hot reload** — servers, API keys / auth, rate limits, CORS and reconnect policy apply without a restart (disable with `--no-watch`)
 - **Optional auth for health & metrics** — keep `/health` and `/metrics` public (default) or put them behind auth; the dashboard asks for a key
 - **Tool discovery** — `GET /api/v1/tools` lists all tools across all servers
+- **Tool filtering** — per-server `tools.allow` / `tools.deny` glob patterns hide tools you don't want exposed (and block calls to them)
 - **YAML/JSON config** — simple, declarative configuration with env var overrides
 - **Docker-ready** — official Docker image, Compose examples included
 - **TypeScript SDK** — embed the gateway as a library in your own project
@@ -169,6 +170,7 @@ Prometheus text format when the client asks for `text/plain` (as Prometheus does
 |--------|---------|
 | `200` | Tool returned a result |
 | `400` | Invalid body (`tool` must be a string, `arguments` an object) or malformed JSON |
+| `403` | The tool is hidden by the server's `tools` filter (also when `"server"` is passed explicitly) |
 | `404` | Unknown tool or server |
 | `409` | Tool name is exposed by several servers — pass `"server"` to choose |
 | `429` | Rate limited (see `Retry-After`) |
@@ -228,6 +230,9 @@ servers:
     enabled: true
     timeout: 30000            # ms, includes time queued behind maxConcurrency
     maxConcurrency: 10        # max in-flight tool calls for this server
+    tools:                    # optional: expose only some tools (globs: * and ?, deny wins)
+      allow: ["read_*", "list_*"]
+      deny: ["*_secret"]
     reconnect:                # optional per-server override of the reconnect block
       maxAttempts: 5
 
@@ -263,6 +268,30 @@ With `mcp-gateway start` the config file is watched (disable with `--no-watch`).
 | `reconnect`, `logLevel` | |
 
 An invalid file is rejected and the running config is kept. `MCP_GATEWAY_*` env overrides keep precedence.
+
+### Tool filtering
+
+Expose only part of a server's tools — e.g. make a filesystem server read-only, or drop tools that
+clash with another server's names:
+
+```yaml
+servers:
+  - id: filesystem
+    name: Filesystem (read-only)
+    transport: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/data"]
+    tools:
+      allow: ["read_*", "list_*", "search_files", "get_file_info"]
+      deny: ["*_media_file"]
+```
+
+- Patterns are globs matched against the whole tool name, case-sensitive: `*` = any characters, `?` = one character.
+- A tool is exposed when it matches an `allow` pattern (or `allow` is absent / empty) **and** no `deny` pattern. Deny wins.
+- Hidden tools are absent from `GET /tools`, `GET /servers/:id`, tool counts and metrics, and don't cause
+  name conflicts with other servers. Calling one returns `404` (auto-routing) or `403` (explicit `"server"`).
+- The filter is applied to every tool list, including updates via `notifications/tools/list_changed`.
+  Changing it in the config file is applied by hot reload (the server is reconnected).
 
 ### Reconnect & server status
 

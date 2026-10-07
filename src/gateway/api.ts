@@ -345,6 +345,15 @@ export function createApiRouter(
         return;
       }
 
+      // Enforced here too: an explicit "server" must not bypass the filter.
+      if (!registry.isToolExposed(targetServerId, tool)) {
+        res.status(403).json({
+          error: 'Forbidden',
+          message: `Tool "${tool}" is not exposed by server "${targetServerId}"`,
+        });
+        return;
+      }
+
       if (!proxy.isConnected(targetServerId)) {
         const health = registry.getHealth(targetServerId);
         const retryAt = health?.reconnect?.state === 'scheduled' ? health.reconnect.nextAttemptAt : undefined;
