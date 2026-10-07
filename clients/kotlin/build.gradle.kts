@@ -12,7 +12,7 @@ version = "0.1.0"
 
 dependencies {
     api("com.squareup.okhttp3:okhttp:4.12.0")
-    api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
     testImplementation(kotlin("test"))
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
