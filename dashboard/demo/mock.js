@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '1.1.0';
+  const VERSION = '1.2.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   const rnd = (a, b) => a + Math.random() * (b - a);
@@ -214,6 +214,17 @@
     if (p === '/stats') { const [w, b] = windowOf(q); return json(stats(w, b)); }
     if (p === '/events') return events(q, init?.signal);
     if (p === '/servers') return json({ servers: SERVERS.map(serverView), total: SERVERS.length });
+    if (p === '/security') return json({
+      authStrategy: 'api-key',
+      warnings: [
+        { id: 'plaintext-api-keys', level: 'info', message: '1 API key(s) are stored in plain text. Store "sha256:<hex>" digests instead (mcp-gateway hash-key).' },
+        { id: 'api-keys-expiring', level: 'warn', message: '1 API key(s) expire within 7 days: ci.' },
+      ],
+      apiKeys: { total: 4, hashed: 3, disabled: 0, expired: 0, expiring: [{ name: 'ci', expiresAt: iso(started + 3 * 86400000) }] },
+      jwt: null,
+      settings: { headers: true, hsts: true, dnsRebindingProtection: false, allowedHosts: ['gateway.example.com'], ipAllowlist: 2, trustProxy: 1, maxBodyBytes: 10485760, maxToolArgumentsBytes: 262144, redactPatterns: 0, authLockout: { maxFailures: 10, windowSeconds: 300, lockoutSeconds: 900 } },
+      lockout: { lockedClients: 1, trackedClients: 3, lockoutsTotal: 2 },
+    });
     if (p === '/tools') return json({ tools: SERVERS.filter((s) => isUp(s.id)).flatMap((s) => s.tools.map((t) => ({ ...t, serverId: s.id, serverName: s.name }))), total: SERVERS.reduce((a, s) => a + (isUp(s.id) ? s.tools.length : 0), 0) });
     let m;
     if ((m = p.match(/^\/servers\/([^/]+)\/reconnect$/)) && method === 'POST') {

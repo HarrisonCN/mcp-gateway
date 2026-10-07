@@ -148,9 +148,21 @@ location / {
   scoped key.
 - Set `corsOrigins` / `mcp.allowedOrigins` to the browser origins that may call the gateway (DNS-rebinding
   protection for `/mcp`).
-- Keep secrets in the environment (`${VAR}`), not in the config file; `/servers` redacts env / header values.
+- Store API keys as digests (`mcp-gateway gen-key` / `hash-key` → `sha256:…`), give keys an `expiresAt`, and
+  rotate by adding the new key before removing the old one (hot reload).
+- For JWT, set `auth.jwt.issuer`, `audience` and `requireExp`; prefer `jwksUrl` / `publicKey` over a shared secret.
+- Turn on `security.authLockout` against key guessing.
+- Behind a reverse proxy set `security.trustProxy` to the proxy's address (not `true`) so `req.ip`, rate limits,
+  lockout and `ipAllowlist` see real client addresses; add `security.hsts: true` when TLS terminates there.
+- Restrict who can connect: `security.ipAllowlist` (CIDRs) and `security.allowedHosts` (your public hostname).
+- A local gateway without auth: enable `security.dnsRebindingProtection`.
+- Cap payloads with `security.maxBodyBytes` / `maxToolArgumentsBytes`.
+- Keep secrets in the environment (`${VAR}`), not in the config file; `/servers` redacts env / header values and
+  secret-looking args, and logs / the request log mask token-shaped strings (add your own with
+  `security.redactPatterns`).
 - Consider `auth.protect.metrics` if metrics labels (server ids, tool names) are sensitive.
 - Terminate TLS at a proxy / Ingress.
+- Run `mcp-gateway validate --strict` in CI to fail on security warnings, and check `GET /api/v1/security`.
 
 ## npm / systemd
 

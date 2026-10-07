@@ -17,6 +17,7 @@ import { randomUUID } from 'crypto';
 import type { RequestMetric, AggregatedMetrics, MonitorConfig } from '../utils/types.js';
 import { matchesQuery, type AuditPage, type AuditQuery, type AuditStore } from './audit.js';
 import { logger } from '../utils/logger.js';
+import { redactString } from '../security/redact.js';
 
 export interface MetricsOptions {
   /** Hard cap on retained request records (oldest dropped first). Default 100k. */
@@ -68,6 +69,9 @@ export class MetricsCollector extends EventEmitter {
       id: randomUUID(),
       timestamp: new Date(),
     };
+    // Upstream error messages often echo arguments / tokens: mask them before
+    // they reach the request log, the audit log, the API and the dashboard.
+    if (full.errorMessage) full.errorMessage = redactString(full.errorMessage);
     this.metrics.push(full);
     // Trim in batches to keep this amortised O(1).
     if (this.metrics.length > this.maxEntries * 1.1) {

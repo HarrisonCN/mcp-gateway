@@ -218,7 +218,7 @@ describe('/mcp protocol details (raw HTTP)', () => {
     expect(batch.body).toHaveLength(2);
     expect(batch.body[1].result.tools.map((t: any) => t.name)).toEqual(['echo']);
 
-    const unknown = await post(url, rpc(3, 'resources/subscribe'), S);
+    const unknown = await post(url, rpc(3, 'sampling/createMessage'), S);
     expect(unknown.body.error.code).toBe(-32601);
 
     // initialize always starts a new session

@@ -6,6 +6,7 @@ import express from 'express';
 import { createServer, type Server } from 'http';
 import type { AddressInfo } from 'net';
 import { existsSync } from 'fs';
+import { readFile } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import type { GatewayConfig, McpServerConfig } from '../utils/types.js';
@@ -17,7 +18,11 @@ import { ServerSupervisor } from './supervisor.js';
 import { createLiveRouter, type LiveRouter } from './live.js';
 import { corsMiddleware } from '../middleware/cors.js';
 import { requestIdMiddleware } from '../middleware/request-id.js';
-import { errorHandler, notFoundHandler } from '../middleware/error-handler.js';
+import { createErrorHandler, notFoundHandler } from '../middleware/error-handler.js';
+import { dashboardCsp, securityHeadersMiddleware } from '../security/headers.js';
+import { defaultAllowedHosts, hostCheckMiddleware, ipAllowlistMiddleware } from '../security/network.js';
+import { configureRedaction } from '../security/redact.js';
+import { securityWarnings } from '../security/posture.js';
 import { logger } from '../utils/logger.js';
 import { Mutex } from '../utils/mutex.js';
 import { VERSION } from '../utils/version.js';
@@ -42,6 +47,8 @@ export class Gateway {
   private mcp?: McpEndpoint;
   private live?: LiveRouter;
   private cors: express.RequestHandler;
+  private ipFilter?: express.RequestHandler;
+  private jsonParser: express.RequestHandler;
   private readonly reloadLock = new Mutex();
   private started = false;
   private stopping?: Promise<void>;
@@ -52,6 +59,29 @@ export class Gateway {
     this.metrics = new MetricsCollector(config.monitor);
     this.supervisor = new ServerSupervisor(this.proxy, this.registry, { reconnect: config.reconnect });
     this.cors = corsMiddleware({ origins: config.corsOrigins ?? ['*'] });
+    this.jsonParser = express.json({ limit: this.maxBodyBytes() });
+    configureRedaction(config.security?.redactPatterns);
+    this.ipFilter = config.security?.ipAllowlist ? ipAllowlistMiddleware(config.security.ipAllowlist) : undefined;
+  }
+
+  private maxBodyBytes(): number {
+    return this.config.security?.maxBodyBytes ?? 10 * 1024 * 1024;
+  }
+
+  /** Host header patterns to enforce (undefined = no check). */
+  private allowedHosts(): readonly string[] | undefined {
+    const sec = this.config.security;
+    if (sec?.allowedHosts) return sec.allowedHosts;
+    return sec?.dnsRebindingProtection ? defaultAllowedHosts(this.config.host) : undefined;
+  }
+
+  private applyTrustProxy(): void {
+    const tp = this.config.security?.trustProxy ?? false;
+    try {
+      this.app.set('trust proxy', tp);
+    } catch (err) {
+      throw new Error(`Invalid security.trustProxy: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   async start(): Promise<void> {
@@ -66,7 +96,13 @@ export class Gateway {
     });
 
     this.app.disable('x-powered-by');
+    this.applyTrustProxy();
     this.app.use(requestIdMiddleware);
+    this.app.use(securityHeadersMiddleware(() => this.config.security));
+    // Network guards first: nothing else (not even CORS preflights) runs for
+    // a disallowed client address or Host header.
+    this.app.use((req, res, next) => (this.ipFilter ? this.ipFilter(req, res, next) : next()));
+    this.app.use(hostCheckMiddleware(() => this.allowedHosts()));
     // Previously an inline handler joined multiple origins into one
     // Access-Control-Allow-Origin value, which browsers reject.
     // Indirection so CORS origins can be hot reloaded.
@@ -84,11 +120,14 @@ export class Gateway {
         corsOrigins: () => this.config.corsOrigins,
         resolveClient: (clientId) => router.resolveClient(clientId),
         requestLog: () => this.config.monitor?.requestLog !== false,
+        strictOrigins: () => this.config.security?.dnsRebindingProtection === true,
+        maxBodyBytes: () => this.maxBodyBytes(),
+        maxArgumentsBytes: () => this.config.security?.maxToolArgumentsBytes ?? 0,
       });
       this.app.use(this.mcp.router());
     }
 
-    this.app.use(express.json({ limit: '10mb' }));
+    this.app.use((req, res, next) => this.jsonParser(req, res, next));
 
     // Live dashboard data: GET /api/v1/stats and the /api/v1/events SSE stream.
     this.live = createLiveRouter(this.metrics, this.registry, { authenticate: this.router.authenticate });
@@ -97,7 +136,13 @@ export class Gateway {
 
     const dashboard = this.config.dashboard?.enabled === false ? undefined : findDashboard();
     if (dashboard) {
-      this.app.get('/dashboard', (_req, res) => res.sendFile(dashboard));
+      this.app.get('/dashboard', (_req, res, next) => {
+        // Read per request (small file) so the CSP hash always matches the served script.
+        readFile(dashboard, 'utf8').then((html) => {
+          if (this.config.security?.headers !== false) res.setHeader('Content-Security-Policy', dashboardCsp(html));
+          res.type('html').set('Cache-Control', 'no-cache').send(html);
+        }, next);
+      });
     }
 
     this.app.get('/', (_req, res) => {
@@ -115,7 +160,7 @@ export class Gateway {
     });
 
     this.app.use(notFoundHandler);
-    this.app.use(errorHandler);
+    this.app.use(createErrorHandler(() => this.config.security?.exposeErrorDetails === true));
 
     this.metrics.start();
     if (this.config.audit?.enabled) {
@@ -145,6 +190,10 @@ export class Gateway {
         const { port } = this.address() ?? { port: this.config.port };
         logger.info(`mcp-gateway v${VERSION} listening on http://${this.config.host}:${port}`);
         logger.info(`API: http://${this.config.host}:${port}/api/v1`);
+        for (const w of securityWarnings(this.config)) {
+          if (w.level === 'warn') logger.warn(`Security: ${w.message}`);
+          else logger.info(`Security hint: ${w.message}`);
+        }
         resolveListen();
       };
       this.server.once('error', onError);
@@ -235,7 +284,9 @@ export class Gateway {
    *  - servers that were removed or disabled are disconnected, new or changed
    *    ones (re)connected;
    *  - auth (strategy, keys, secret, protect flags), rate limits, CORS origins,
-   *    monitor.requestLog / monitor.prometheus, reconnect policy and logLevel
+   *    monitor.requestLog / monitor.prometheus, reconnect policy, logLevel and
+   *    `security` (headers, trustProxy, ipAllowlist, allowedHosts,
+   *    dnsRebindingProtection, body / argument limits, lockout, redaction)
    *    take effect immediately.
    * port, host, monitor.retentionHours, healthCheckIntervalMs and dashboard
    * still require a restart.
@@ -281,6 +332,15 @@ export class Gateway {
         this.cors = corsMiddleware({ origins: next.corsOrigins ?? ['*'] });
         applied.push('corsOrigins');
       }
+      if (!same(this.config.security, next.security)) {
+        const sec = next.security;
+        configureRedaction(sec?.redactPatterns);
+        this.ipFilter = sec?.ipAllowlist ? ipAllowlistMiddleware(sec.ipAllowlist) : undefined;
+        if ((sec?.maxBodyBytes ?? 0) !== (this.config.security?.maxBodyBytes ?? 0)) {
+          this.jsonParser = express.json({ limit: sec?.maxBodyBytes ?? 10 * 1024 * 1024 });
+        }
+        applied.push('security');
+      }
       if (reconnectChanged) {
         this.supervisor.setReconnectDefaults(next.reconnect);
         applied.push('reconnect');
@@ -308,7 +368,15 @@ export class Gateway {
         corsOrigins: next.corsOrigins,
         reconnect: next.reconnect,
         mcp: next.mcp,
+        security: next.security,
       };
+      if (applied.includes('security')) {
+        try {
+          this.applyTrustProxy();
+        } catch (err) {
+          logger.error(err instanceof Error ? err.message : String(err));
+        }
+      }
       await this.connectServers(toConnect);
       logger.info(
         `Hot reload applied: ${toConnect.length} (re)connected, ${toRemove.length} removed` +

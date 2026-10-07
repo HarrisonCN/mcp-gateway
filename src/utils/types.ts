@@ -123,6 +123,53 @@ export interface GatewayConfig {
   mcp?: McpEndpointConfig;
   /** Persistent audit log of requests (optional SQLite) */
   audit?: AuditConfig;
+  /** Hardening options (headers, body limits, IP allowlist, DNS-rebinding protection, lockout, redaction). */
+  security?: SecurityConfig;
+}
+
+// ─── Security ────────────────────────────────────────────────────────────────
+
+export interface AuthLockoutConfig {
+  /** Failed authentications from one IP within `windowSeconds` that trigger a lockout (default 10). */
+  maxFailures?: number;
+  /** Window for counting failures (default 300). */
+  windowSeconds?: number;
+  /** How long a locked-out IP gets `429` (default 900). */
+  lockoutSeconds?: number;
+}
+
+export interface SecurityConfig {
+  /** Send security headers (nosniff, frame-ancestors, Referrer-Policy, CSP) on every response (default true). */
+  headers?: boolean;
+  /** Also send `Strict-Transport-Security` (only behind HTTPS; default false). */
+  hsts?: boolean | { maxAgeSeconds?: number; includeSubDomains?: boolean };
+  /**
+   * Express "trust proxy" setting: false (default), true, a hop count, or a
+   * list of trusted proxy addresses / CIDRs. Controls `req.ip` (rate limits,
+   * lockout, IP allowlist, logs).
+   */
+  trustProxy?: boolean | number | string | string[];
+  /** Only these client IPs / CIDRs may call the gateway (liveness / readiness probes stay open). */
+  ipAllowlist?: string[];
+  /** Accepted `Host` header values (hostnames, `host:port`, `*.example.com`). Unset = any (unless `dnsRebindingProtection`). */
+  allowedHosts?: string[];
+  /**
+   * DNS-rebinding protection (default false): `Host` must be in
+   * `allowedHosts` (default: localhost names + the bind address), and `/mcp`
+   * accepts browser requests only from the same origin or loopback origins
+   * unless `mcp.allowedOrigins` / `corsOrigins` list others.
+   */
+  dnsRebindingProtection?: boolean;
+  /** Maximum JSON request body in bytes (default 10 MiB). */
+  maxBodyBytes?: number;
+  /** Maximum size of a tool call's / prompt's `arguments` as JSON, in bytes (default 0 = no limit). */
+  maxToolArgumentsBytes?: number;
+  /** Lock out IPs after repeated authentication failures (off unless set; `true` = defaults). */
+  authLockout?: boolean | AuthLockoutConfig;
+  /** Extra regular expressions whose matches are masked in logs, the request log / audit log and API output. */
+  redactPatterns?: string[];
+  /** Include error messages / stack traces of unexpected 500s in responses (default false; NODE_ENV=development also enables it). */
+  exposeErrorDetails?: boolean;
 }
 
 // ─── Downstream MCP endpoint ─────────────────────────────────────────────────
@@ -165,8 +212,10 @@ export interface AuthConfig {
    * restrict the key to some servers / tools and give it its own rate limit.
    */
   apiKeys?: Array<string | ApiKeyConfig>;
-  /** For jwt: secret or public key */
+  /** For jwt: HMAC secret (HS256/384/512). Not needed when `jwt.jwksUrl` or `jwt.publicKey` is set. */
   jwtSecret?: string;
+  /** For jwt: verification options (issuer, audience, algorithms, JWKS, clock skew). */
+  jwt?: JwtConfig;
   /**
    * Endpoints that are public by default and can be put behind auth.
    * The dashboard page itself is a static shell; when auth is on it asks for
@@ -185,9 +234,41 @@ export interface AuthConfig {
   };
 }
 
+export interface JwtConfig {
+  /** Required `iss` claim (string or list). */
+  issuer?: string | string[];
+  /** Required `aud` claim (string or list; the token must contain one of them). */
+  audience?: string | string[];
+  /**
+   * Accepted `alg` values. Default: HS256/384/512 with `jwtSecret`,
+   * RS/PS/ES 256-512 + EdDSA with `publicKey` / `jwksUrl`. Mixing HMAC and
+   * asymmetric algorithms is rejected (algorithm confusion).
+   */
+  algorithms?: string[];
+  /** Allowed clock skew for `exp` / `nbf` / `iat` (seconds, default 0). */
+  clockToleranceSeconds?: number;
+  /** Fetch verification keys from a JWKS endpoint (cached, refreshed on unknown `kid`). */
+  jwksUrl?: string;
+  /** How long fetched JWKS are cached (seconds, default 600). */
+  jwksCacheSeconds?: number;
+  /** PEM-encoded public key (SPKI) or X.509 certificate for RS/PS/ES/EdDSA tokens. */
+  publicKey?: string;
+  /** Reject tokens without an `exp` claim (default false). */
+  requireExp?: boolean;
+  /** Reject tokens whose `iat` is older than this (seconds). */
+  maxTokenAgeSeconds?: number;
+}
+
 export interface ApiKeyConfig {
-  /** The secret key (supports ${VAR} via env overrides in the config file). */
+  /**
+   * The secret key (supports ${VAR} via env overrides in the config file), or
+   * its SHA-256 digest as `sha256:<64 hex chars>` (see `mcp-gateway hash-key`).
+   */
   key: string;
+  /** Reject the key from this moment on (ISO 8601 date / date-time). */
+  expiresAt?: string;
+  /** Temporarily reject the key without removing it. */
+  disabled?: boolean;
   /** Label used in client ids, logs and metrics instead of the key fingerprint (unique). */
   name?: string;
   /** Server ids this key may use (glob patterns). Absent = all servers. */

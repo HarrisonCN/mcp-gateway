@@ -5,8 +5,15 @@
  *  - `POST <path>`: JSON-RPC requests / notifications / responses (batches
  *    accepted for 2025-03-26 clients). Answers with `application/json`.
  *  - `GET <path>`: server→client SSE stream for notifications
- *    (`notifications/tools/list_changed`).
+ *    (`notifications/{tools,resources,prompts}/list_changed`,
+ *    `notifications/resources/updated`, `notifications/message`).
  *  - `DELETE <path>`: ends the session.
+ *
+ * A `tools/call` carrying `_meta.progressToken` from a client that accepts
+ * `text/event-stream` is answered as an SSE stream as soon as the upstream
+ * server reports progress: `notifications/progress` events, then the result.
+ * `logging/setLevel`, `completion/complete` and `resources/subscribe` /
+ * `unsubscribe` are routed to the owning upstream servers.
  *
  * Sessions (`Mcp-Session-Id`) are bound to the authenticated client: a
  * session id presented with another key is treated as unknown. Auth, rate
@@ -26,6 +33,7 @@ import type { MetricsCollector } from '../monitor/index.js';
 import type { RateLimitDecision } from '../auth/ratelimit.js';
 import { setRateLimitHeaders } from '../auth/ratelimit.js';
 import { originAllowed } from '../middleware/cors.js';
+import { isLoopbackOrigin, isSameOrigin } from '../security/network.js';
 import type { AuthedRequest } from '../auth/middleware.js';
 import { filterToolsByScope, isToolInScope, type AccessScope } from '../auth/scopes.js';
 import { logger } from '../utils/logger.js';
@@ -40,6 +48,12 @@ import {
   toMcpResourceTemplate,
 } from './catalog.js';
 import { isServerInScope } from '../auth/scopes.js';
+import { matchesUriTemplate } from './catalog.js';
+
+/** MCP logging levels (RFC 5424 severities), least severe first. */
+export const LOG_LEVELS = ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'] as const;
+export type McpLogLevel = (typeof LOG_LEVELS)[number];
+const levelIndex = (l: unknown) => LOG_LEVELS.indexOf(l as McpLogLevel);
 
 /** Protocol versions the endpoint speaks, newest first. */
 export const DOWNSTREAM_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26'];
@@ -98,6 +112,16 @@ interface DownstreamSession {
   eventSeq: number;
   /** Identity + scope of the client, refreshed on every request (used for notifications). */
   auth: ClientIdentity;
+  /** Minimum level of forwarded `notifications/message` (unset = none forwarded). */
+  logLevel?: McpLogLevel;
+  /** Resource subscriptions, as `<serverId>\0<uri>` keys. */
+  subscriptions: Set<string>;
+}
+
+/** Lazily opened SSE reply for one POST (used for progress notifications). */
+interface ReplyStream {
+  started: boolean;
+  send(msg: JsonRpcMessage): void;
 }
 
 interface ClientIdentity {
@@ -138,6 +162,16 @@ export interface McpEndpointDeps {
    * auth hot reload (`known: false` ends the session). Optional.
    */
   resolveClient?: (clientId: string | undefined) => { known: boolean; scope?: AccessScope } | undefined;
+  /**
+   * DNS-rebinding protection: when true, browser requests are only accepted
+   * from the same origin, loopback origins or explicitly listed origins
+   * ("*" is ignored).
+   */
+  strictOrigins?: () => boolean;
+  /** Maximum request body (bytes, default 10 MiB). */
+  maxBodyBytes?: () => number;
+  /** Maximum `arguments` size of tools/call / prompts/get / completion (bytes, 0 = no limit). */
+  maxArgumentsBytes?: () => number;
 }
 
 const SSE_KEEPALIVE_MS = 25_000;
@@ -176,6 +210,15 @@ export class McpEndpoint {
   private notifyTimer?: NodeJS.Timeout;
   private closed = false;
   private readonly onRegistryChange = () => this.scheduleListChanged();
+  /** Upstream resource subscriptions: `<serverId>\0<uri>` → subscribed session ids. */
+  private readonly upstreamSubs = new Map<string, Set<string>>();
+  /** Last `logging/setLevel` sent to each upstream server. */
+  private readonly upstreamLogLevel = new Map<string, McpLogLevel>();
+  private readonly onUpstreamNotification = (serverId: string, msg: JsonRpcMessage) =>
+    this.handleUpstreamNotification(serverId, msg);
+  private readonly onUpstreamConnected = (serverId: string) => this.handleUpstreamConnected(serverId);
+  private readonly onUpstreamDisconnected = (serverId: string) => this.upstreamLogLevel.delete(serverId);
+  private jsonParser?: { limit: number; mw: RequestHandler };
 
   constructor(
     config: McpEndpointConfig | undefined,
@@ -185,6 +228,9 @@ export class McpEndpoint {
     deps.registry.on('tools-updated', this.onRegistryChange);
     deps.registry.on('unregistered', this.onRegistryChange);
     deps.registry.on('catalog-updated', this.onRegistryChange);
+    deps.proxy.on('notification', this.onUpstreamNotification);
+    deps.proxy.on('connected', this.onUpstreamConnected);
+    deps.proxy.on('disconnected', this.onUpstreamDisconnected);
     this.sweepTimer = setInterval(() => this.sweep(), 60_000);
     this.sweepTimer.unref();
     this.keepaliveTimer = setInterval(() => this.keepalive(), SSE_KEEPALIVE_MS);
@@ -209,7 +255,13 @@ export class McpEndpoint {
   /** Express router serving POST / GET / DELETE on the configured path. */
   router(): express.Router {
     const r = express.Router();
-    const json = express.json({ limit: '10mb', type: ['application/json', 'application/*+json'] });
+    const json: RequestHandler = (req, res, next) => {
+      const limit = this.deps.maxBodyBytes?.() ?? 10 * 1024 * 1024;
+      if (this.jsonParser?.limit !== limit) {
+        this.jsonParser = { limit, mw: express.json({ limit, type: ['application/json', 'application/*+json'] }) };
+      }
+      this.jsonParser.mw(req, res, next);
+    };
     const path = this.cfg.path;
     const guard: RequestHandler = (req, res, next) => this.checkOrigin(req, res, next);
     r.post(path, guard, this.deps.authenticate, json, (req, res, next) => {
@@ -247,6 +299,9 @@ export class McpEndpoint {
     this.deps.registry.off('tools-updated', this.onRegistryChange);
     this.deps.registry.off('unregistered', this.onRegistryChange);
     this.deps.registry.off('catalog-updated', this.onRegistryChange);
+    this.deps.proxy.off('notification', this.onUpstreamNotification);
+    this.deps.proxy.off('connected', this.onUpstreamConnected);
+    this.deps.proxy.off('disconnected', this.onUpstreamDisconnected);
     for (const s of [...this.sessions.values()]) this.endSession(s);
   }
 
@@ -270,8 +325,15 @@ export class McpEndpoint {
     // requests; non-browser clients usually send none.
     const origin = req.headers.origin;
     if (origin) {
-      const allowed = this.cfg.allowedOrigins ?? this.deps.corsOrigins() ?? ['*'];
-      if (!originAllowed(allowed, origin)) {
+      const configured = this.cfg.allowedOrigins ?? this.deps.corsOrigins();
+      const strict = this.deps.strictOrigins?.() === true;
+      const ok = strict
+        ? isSameOrigin(origin, req.headers.host) ||
+          isLoopbackOrigin(origin) ||
+          originAllowed((configured ?? []).filter((o) => o !== '*'), origin)
+        : originAllowed(configured ?? ['*'], origin);
+      if (!ok) {
+        logger.warn(`Rejected /mcp request from Origin ${origin}`);
         res.status(403).json(rpcError(null, { code: JSONRPC_INVALID_REQUEST, message: 'Origin not allowed' }));
         return;
       }
@@ -330,13 +392,17 @@ export class McpEndpoint {
       if (!res.writableFinished) for (const c of controllers) c.abort();
     });
 
+    // Single requests from clients accepting SSE may be upgraded to an SSE
+    // reply (progress notifications before the result).
+    const stream = !batch && acceptsEventStream(req) ? this.replyStream(res, session) : undefined;
+
     const replies = await Promise.all(
       requests.map((m) => {
         const ctrl = new AbortController();
         controllers.push(ctrl);
         const key = idKey(m.id as JsonRpcId);
         session.inflight.set(key, ctrl);
-        return this.handleRequest(session, req, res, m, ctrl.signal, !batch)
+        return this.handleRequest(session, req, res, m, ctrl.signal, !batch, stream)
           .catch((err: unknown): JsonRpcMessage => {
             logger.error(`MCP ${m.method} failed: ${err instanceof Error ? err.message : String(err)}`);
             return rpcError(m.id, { code: JSONRPC_INTERNAL_ERROR, message: 'Internal error' });
@@ -346,8 +412,37 @@ export class McpEndpoint {
           });
       }),
     );
+    if (stream?.started) {
+      if (!res.writableEnded) {
+        stream.send(replies[0]!);
+        res.end();
+      }
+      return;
+    }
     if (res.headersSent || res.destroyed) return;
     res.status(200).json(batch ? replies : replies[0]);
+  }
+
+  private replyStream(res: Response, session: DownstreamSession): ReplyStream {
+    const stream: ReplyStream = {
+      started: false,
+      send: (msg) => {
+        if (res.writableEnded || res.destroyed) return;
+        if (!stream.started) {
+          stream.started = true;
+          res.status(200).set({
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache, no-transform',
+            Connection: 'keep-alive',
+            'X-Accel-Buffering': 'no',
+            'Mcp-Session-Id': session.id,
+          });
+          res.flushHeaders();
+        }
+        res.write(`event: message\ndata: ${JSON.stringify(msg)}\n\n`);
+      },
+    };
+    return stream;
   }
 
   private initialize(req: Request, res: Response, msg: JsonRpcMessage): void {
@@ -378,6 +473,7 @@ export class McpEndpoint {
       inflight: new Map(),
       eventSeq: 0,
       auth: identityOf(req),
+      subscriptions: new Set(),
     };
     session.toolsFingerprint = this.fingerprint(this.toolIndex(session.auth));
     session.resourcesFingerprint = this.resourcesFingerprint(session.auth);
@@ -392,8 +488,10 @@ export class McpEndpoint {
       protocolVersion,
       capabilities: {
         tools: { listChanged: true },
-        resources: { listChanged: true },
+        resources: { listChanged: true, subscribe: true },
         prompts: { listChanged: true },
+        logging: {},
+        completions: {},
       },
       serverInfo: { name: 'mcp-gateway', title: 'mcp-gateway', version: VERSION },
     };
@@ -476,10 +574,19 @@ export class McpEndpoint {
     msg: JsonRpcMessage,
     signal: AbortSignal,
     single: boolean,
+    stream?: ReplyStream,
   ): Promise<JsonRpcMessage> {
     const id = msg.id as JsonRpcId;
     const ok = (result: unknown): JsonRpcMessage => ({ jsonrpc: '2.0', id, result });
     switch (msg.method) {
+      case 'logging/setLevel':
+        return this.setLogLevel(session, msg);
+      case 'completion/complete':
+        return this.complete(session, msg, signal);
+      case 'resources/subscribe':
+        return this.subscribe(session, msg);
+      case 'resources/unsubscribe':
+        return this.unsubscribe(session, msg);
       case 'ping':
         return ok({});
       case 'initialize':
@@ -487,7 +594,7 @@ export class McpEndpoint {
       case 'tools/list':
         return this.listTools(session, msg);
       case 'tools/call':
-        return this.callTool(session, req, res, msg, signal, single);
+        return this.callTool(session, req, res, msg, signal, single, stream);
       case 'resources/list': {
         const list = this.resources(session.auth);
         if (isFirstPage(msg)) session.resourcesFingerprint = hashList(list);
@@ -638,6 +745,8 @@ export class McpEndpoint {
       return rpcError(msg.id, { code: JSONRPC_INVALID_PARAMS, message: '"name" must be a non-empty string' });
     }
     if (!isObject(args)) return rpcError(msg.id, { code: JSONRPC_INVALID_PARAMS, message: '"arguments" must be an object' });
+    const tooLarge = this.argumentsTooLarge(msg.id, args);
+    if (tooLarge) return tooLarge;
     const prompt = this.promptIndex(session.auth).byName.get(name);
     if (!prompt) return rpcError(msg.id, { code: JSONRPC_INVALID_PARAMS, message: `Unknown prompt: ${name}` });
     return this.forward(
@@ -691,6 +800,7 @@ export class McpEndpoint {
     msg: JsonRpcMessage,
     signal: AbortSignal,
     single: boolean,
+    stream?: ReplyStream,
   ): Promise<JsonRpcMessage> {
     const id = msg.id as JsonRpcId;
     const params = isObject(msg.params) ? msg.params : {};
@@ -702,6 +812,15 @@ export class McpEndpoint {
     if (!isObject(args)) {
       return rpcError(id, { code: JSONRPC_INVALID_PARAMS, message: '"arguments" must be an object' });
     }
+    const tooLarge = this.argumentsTooLarge(id, args);
+    if (tooLarge) return tooLarge;
+    const meta = isObject(params._meta) ? params._meta : {};
+    const progressToken = typeof meta.progressToken === 'string' || typeof meta.progressToken === 'number' ? meta.progressToken : undefined;
+    const onProgress =
+      progressToken !== undefined && stream
+        ? (u: { progress: number; total?: number; message?: string }) =>
+            stream.send({ jsonrpc: '2.0', method: 'notifications/progress', params: { progressToken, ...u } })
+        : undefined;
 
     const tool = this.toolIndex(session.auth).byName.get(name);
     if (!tool) {
@@ -736,7 +855,7 @@ export class McpEndpoint {
       return toolError(`Server "${serverId}" is not connected${status ? ` (${status})` : ''}; try again later.`);
     }
 
-    const result = await this.deps.proxy.callTool(serverId, tool.name, args, server.timeout, { signal });
+    const result = await this.deps.proxy.callTool(serverId, tool.name, args, server.timeout, { signal, onProgress });
     this.deps.metrics.record({
       serverId,
       toolName: tool.name,
@@ -762,6 +881,210 @@ export class McpEndpoint {
       default:
         // Upstream JSON-RPC error: forward unchanged.
         return rpcError(id, err);
+    }
+  }
+
+  private argumentsTooLarge(id: JsonRpcId | null | undefined, args: unknown): JsonRpcMessage | undefined {
+    const limit = this.deps.maxArgumentsBytes?.() ?? 0;
+    if (!limit || Buffer.byteLength(JSON.stringify(args ?? {}), 'utf8') <= limit) return undefined;
+    return rpcError(id, { code: JSONRPC_INVALID_PARAMS, message: `"arguments" exceed the gateway limit of ${limit} bytes` });
+  }
+
+  // ─── Logging ────────────────────────────────────────────────────────────────
+
+  private setLogLevel(session: DownstreamSession, msg: JsonRpcMessage): JsonRpcMessage {
+    const params = isObject(msg.params) ? msg.params : {};
+    if (levelIndex(params.level) < 0) {
+      return rpcError(msg.id, { code: JSONRPC_INVALID_PARAMS, message: `"level" must be one of: ${LOG_LEVELS.join(', ')}` });
+    }
+    session.logLevel = params.level as McpLogLevel;
+    this.pushUpstreamLogLevel();
+    return { jsonrpc: '2.0', id: msg.id as JsonRpcId, result: {} };
+  }
+
+  /** Most verbose level any session asked for (undefined when none did). */
+  private wantedLogLevel(): McpLogLevel | undefined {
+    let min = -1;
+    for (const s of this.sessions.values()) {
+      const i = levelIndex(s.logLevel);
+      if (i >= 0 && (min < 0 || i < min)) min = i;
+    }
+    return min >= 0 ? LOG_LEVELS[min] : undefined;
+  }
+
+  /** Send `logging/setLevel` to upstream servers with the `logging` capability when the wanted level changed. */
+  private pushUpstreamLogLevel(only?: string): void {
+    const level = this.wantedLogLevel();
+    if (!level) return;
+    const ids = only ? [only] : this.deps.registry.getEnabledServers().map((s) => s.id);
+    for (const serverId of ids) {
+      if (!this.deps.proxy.hasCapability(serverId, 'logging')) continue;
+      if (this.upstreamLogLevel.get(serverId) === level) continue;
+      this.upstreamLogLevel.set(serverId, level);
+      void this.deps.proxy.request(serverId, 'logging/setLevel', { level }, 5_000).then((r) => {
+        if (!r.success) logger.debug(`[${serverId}] logging/setLevel failed: ${r.error?.message}`);
+      });
+    }
+  }
+
+  // ─── Completion ─────────────────────────────────────────────────────────────
+
+  private async complete(session: DownstreamSession, msg: JsonRpcMessage, signal: AbortSignal): Promise<JsonRpcMessage> {
+    const id = msg.id as JsonRpcId;
+    const params = isObject(msg.params) ? msg.params : {};
+    const ref = isObject(params.ref) ? params.ref : undefined;
+    const argument = isObject(params.argument) ? params.argument : undefined;
+    if (!ref || !argument || typeof argument.name !== 'string' || typeof argument.value !== 'string') {
+      return rpcError(id, { code: JSONRPC_INVALID_PARAMS, message: '"ref" and "argument" { name, value } are required' });
+    }
+    const tooLarge = this.argumentsTooLarge(id, params.context ?? {});
+    if (tooLarge) return tooLarge;
+    let serverId: string | undefined;
+    let upstreamRef: Record<string, unknown> = ref;
+    if (ref.type === 'ref/prompt' && typeof ref.name === 'string') {
+      const prompt = this.promptIndex(session.auth).byName.get(ref.name);
+      if (!prompt) return rpcError(id, { code: JSONRPC_INVALID_PARAMS, message: `Unknown prompt: ${ref.name}` });
+      serverId = prompt.serverId;
+      upstreamRef = { ...ref, name: prompt.name };
+    } else if (ref.type === 'ref/resource' && typeof ref.uri === 'string') {
+      const uri = ref.uri;
+      const template = this.templates(session.auth).find((t) => t.uriTemplate === uri);
+      serverId =
+        template?.serverId ??
+        this.resources(session.auth).find((r) => r.uri === uri)?.serverId ??
+        this.templates(session.auth).find((t) => matchesUriTemplate(t.uriTemplate, uri))?.serverId;
+      if (!serverId) return rpcError(id, { code: -32002, message: 'Resource not found', data: { uri } });
+    } else {
+      return rpcError(id, { code: JSONRPC_INVALID_PARAMS, message: '"ref.type" must be "ref/prompt" or "ref/resource"' });
+    }
+    const empty = { completion: { values: [], hasMore: false } };
+    if (!this.deps.proxy.isConnected(serverId) || !this.deps.proxy.hasCapability(serverId, 'completions')) {
+      return { jsonrpc: '2.0', id, result: empty };
+    }
+    const upstreamParams: Record<string, unknown> = { ref: upstreamRef, argument };
+    if (isObject(params.context)) upstreamParams.context = params.context;
+    const server = this.deps.registry.getServer(serverId);
+    const r = await this.deps.proxy.request(serverId, 'completion/complete', upstreamParams, server?.timeout, { signal });
+    if (r.success) return { jsonrpc: '2.0', id, result: r.result ?? empty };
+    if (r.error?.code === ERR_CANCELLED) return rpcError(id, { code: ERR_CANCELLED, message: 'Request cancelled' });
+    return rpcError(id, r.error ?? { code: JSONRPC_INTERNAL_ERROR, message: 'Unknown error' });
+  }
+
+  // ─── Resource subscriptions ─────────────────────────────────────────────────
+
+  private routeUri(session: DownstreamSession, uri: string): string | undefined {
+    const scope = session.auth.scope;
+    return routeResource(
+      uri,
+      this.resources(session.auth),
+      this.templates(session.auth),
+      this.deps.registry
+        .getEnabledServers()
+        .map((s) => s.id)
+        .filter((sid) => isServerInScope(scope, sid) && this.deps.proxy.hasCapability(sid, 'resources')),
+    );
+  }
+
+  private async subscribe(session: DownstreamSession, msg: JsonRpcMessage): Promise<JsonRpcMessage> {
+    const id = msg.id as JsonRpcId;
+    const params = isObject(msg.params) ? msg.params : {};
+    const uri = params.uri;
+    if (typeof uri !== 'string' || uri.length === 0) {
+      return rpcError(id, { code: JSONRPC_INVALID_PARAMS, message: '"uri" must be a non-empty string' });
+    }
+    const serverId = this.routeUri(session, uri);
+    if (!serverId) return rpcError(id, { code: -32002, message: 'Resource not found', data: { uri } });
+    const caps = this.deps.proxy.getSessionInfo(serverId)?.capabilities;
+    const resCaps = isObject(caps?.resources) ? caps.resources : {};
+    if (resCaps.subscribe !== true) {
+      return rpcError(id, { code: JSONRPC_METHOD_NOT_FOUND, message: `Server "${serverId}" does not support resource subscriptions` });
+    }
+    const key = `${serverId}\u0000${uri}`;
+    if (session.subscriptions.has(key)) return { jsonrpc: '2.0', id, result: {} };
+    let subs = this.upstreamSubs.get(key);
+    if (!subs || subs.size === 0) {
+      const r = await this.deps.proxy.request(serverId, 'resources/subscribe', { uri }, 10_000);
+      if (!r.success) return rpcError(id, r.error ?? { code: JSONRPC_INTERNAL_ERROR, message: 'Subscribe failed' });
+      subs = this.upstreamSubs.get(key) ?? new Set();
+      this.upstreamSubs.set(key, subs);
+    }
+    if (!this.sessions.has(session.id)) {
+      // The session ended while subscribing.
+      if (subs.size === 0) this.dropUpstreamSub(key);
+      return rpcError(id, { code: -32001, message: 'Session not found' });
+    }
+    subs.add(session.id);
+    session.subscriptions.add(key);
+    return { jsonrpc: '2.0', id, result: {} };
+  }
+
+  private unsubscribe(session: DownstreamSession, msg: JsonRpcMessage): JsonRpcMessage {
+    const params = isObject(msg.params) ? msg.params : {};
+    const uri = params.uri;
+    if (typeof uri !== 'string' || uri.length === 0) {
+      return rpcError(msg.id, { code: JSONRPC_INVALID_PARAMS, message: '"uri" must be a non-empty string' });
+    }
+    for (const key of [...session.subscriptions]) {
+      if (key.slice(key.indexOf('\u0000') + 1) === uri) this.releaseSub(session, key);
+    }
+    return { jsonrpc: '2.0', id: msg.id as JsonRpcId, result: {} };
+  }
+
+  private releaseSub(session: DownstreamSession, key: string): void {
+    session.subscriptions.delete(key);
+    const subs = this.upstreamSubs.get(key);
+    if (!subs) return;
+    subs.delete(session.id);
+    if (subs.size === 0) this.dropUpstreamSub(key);
+  }
+
+  private dropUpstreamSub(key: string): void {
+    this.upstreamSubs.delete(key);
+    const i = key.indexOf('\u0000');
+    const serverId = key.slice(0, i);
+    if (!this.deps.proxy.isConnected(serverId)) return;
+    void this.deps.proxy.request(serverId, 'resources/unsubscribe', { uri: key.slice(i + 1) }, 10_000);
+  }
+
+  /** Number of upstream subscriptions (for tests / monitoring). */
+  subscriptionCount(): number {
+    return this.upstreamSubs.size;
+  }
+
+  // ─── Upstream notifications ─────────────────────────────────────────────────
+
+  private handleUpstreamConnected(serverId: string): void {
+    // Subscriptions and the log level do not survive a reconnect: restore them.
+    for (const key of this.upstreamSubs.keys()) {
+      const i = key.indexOf('\u0000');
+      if (key.slice(0, i) !== serverId) continue;
+      void this.deps.proxy.request(serverId, 'resources/subscribe', { uri: key.slice(i + 1) }, 10_000);
+    }
+    this.upstreamLogLevel.delete(serverId);
+    this.pushUpstreamLogLevel(serverId);
+  }
+
+  private handleUpstreamNotification(serverId: string, msg: JsonRpcMessage): void {
+    const params = isObject(msg.params) ? msg.params : {};
+    if (msg.method === 'notifications/resources/updated' && typeof params.uri === 'string') {
+      const subs = this.upstreamSubs.get(`${serverId}\u0000${params.uri}`);
+      for (const sid of subs ?? []) {
+        const s = this.sessions.get(sid);
+        if (s && isServerInScope(s.auth.scope, serverId)) {
+          this.send(s, { jsonrpc: '2.0', method: 'notifications/resources/updated', params: { uri: params.uri } });
+        }
+      }
+      return;
+    }
+    if (msg.method === 'notifications/message') {
+      const lvl = levelIndex(params.level);
+      if (lvl < 0) return;
+      const name = typeof params.logger === 'string' && params.logger ? `${serverId}/${params.logger}` : serverId;
+      for (const s of this.sessions.values()) {
+        const min = levelIndex(s.logLevel);
+        if (min < 0 || lvl < min || !isServerInScope(s.auth.scope, serverId)) continue;
+        this.send(s, { jsonrpc: '2.0', method: 'notifications/message', params: { level: params.level, logger: name, data: params.data } });
+      }
     }
   }
 
@@ -845,6 +1168,7 @@ export class McpEndpoint {
 
   private endSession(session: DownstreamSession): void {
     this.sessions.delete(session.id);
+    for (const key of [...session.subscriptions]) this.releaseSub(session, key);
     for (const c of session.inflight.values()) c.abort();
     session.inflight.clear();
     for (const st of session.streams) st.end();

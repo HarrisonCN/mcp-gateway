@@ -9,6 +9,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-07
+
+Security hardening and more of the MCP spec on `/mcp`. Every new protection that could reject traffic that 1.1
+accepted is **opt-in**; see *Upgrade notes*.
+
+### Security
+- **Hashed API keys**: `auth.apiKeys` entries (plain strings or `key`) may be `sha256:<64 hex>` digests, so the config
+  file never holds a usable key. Digest and plain form of a key share the same client id. New CLI commands
+  `mcp-gateway gen-key` (random `mgw_…` key + digest, `--bytes`, `--prefix`, `--json`) and
+  `mcp-gateway hash-key [key]` (reads stdin when no argument is given). Malformed `sha256:` values are a config error.
+- **Key expiry / disabling**: `expiresAt` (ISO 8601) and `disabled` on object keys → `401`; open `/mcp` sessions of
+  such keys end on the next reload. Keys expiring within 7 days produce a warning.
+- **JWT hardening** (`auth.jwt`): `issuer`, `audience` (string or list), `algorithms` allowlist, `clockToleranceSeconds`,
+  `requireExp`, `maxTokenAgeSeconds`; verification keys from `jwtSecret` (HS*), a PEM `publicKey` (RS/PS/ES/EdDSA) or
+  a `jwksUrl` (HTTPS, cached `jwksCacheSeconds`, refetch on unknown `kid`). HMAC and asymmetric algorithms are never
+  mixed (algorithm-confusion protection); exactly one key source must be configured.
+- **Security headers** (`security.headers`, default on): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`, a deny-all CSP on API
+  responses and a dashboard CSP that allows exactly its inline script by SHA-256 hash. Optional `security.hsts`.
+- **Network guards**: `security.ipAllowlist` (IPv4 / IPv6 / CIDR, via `net.BlockList`), `security.allowedHosts` (Host
+  header allowlist with `*.domain` wildcards), `security.trustProxy` (Express "trust proxy": decides `req.ip` for rate
+  limits, lockout, allowlist and logs). Liveness / readiness probes stay reachable.
+- **DNS-rebinding protection** (`security.dnsRebindingProtection`): Host must be a loopback name / the bind address
+  (or `allowedHosts`), and `/mcp` accepts browser `Origin`s only when same-origin, loopback or explicitly listed.
+- **Size limits**: `security.maxBodyBytes` (default 10 MiB as before, now configurable for REST and `/mcp`) and
+  `security.maxToolArgumentsBytes` for `tools/call`, `prompts/get` and `completion/complete` arguments (`413` on REST,
+  `-32602` on `/mcp`).
+- **Brute-force lockout** (`security.authLockout`): after `maxFailures` (10) failed authentications from one IP within
+  `windowSeconds` (300), the IP gets `429` + `Retry-After` for `lockoutSeconds` (900) on every authenticated route,
+  including `/mcp` and `/api/v1/events`.
+- **Secret redaction**: log lines and metadata, recorded `errorMessage`s (request log, audit log, `/requests`,
+  `/stats`, `/events`, dashboard) mask Bearer / Basic tokens, JWTs, common provider keys (OpenAI, Anthropic, GitHub,
+  GitLab, Slack, AWS, Google), `password=` / `token=` / `api_key=` pairs, URL credentials and values under
+  secret-looking keys. `GET /servers` now also masks secret-looking stdio `args` (`--token x`, `--api-key=x`). Extra
+  patterns via `security.redactPatterns`.
+- **Secure-defaults check**: startup warnings / hints (auth off on a public bind, DNS rebinding, `/mcp` open to any
+  origin, plain-text / short / expiring keys, JWT without iss / aud / exp, no lockout, `corsOrigins: ["*"]` with auth,
+  headers disabled, error details exposed). `mcp-gateway validate` prints them; `--strict` exits with code 2.
+- `GET /api/v1/security`: auth strategy, warnings, key hygiene counts and upcoming expiries, JWT settings, effective
+  security settings and lockout state — never key material; scoped clients get `403`. The dashboard's *Connect*
+  page shows it as a *Security posture* card (demo mock updated).
+- `SECURITY.md`: hardening table and scope; `docs/deployment.md` security checklist extended.
+
+### Fixed (security)
+- Unexpected errors (500) no longer return their message and stack trace whenever `NODE_ENV` was not `production`
+  (the default for `npm i -g` installs). They are shown only with `NODE_ENV=development` or the new
+  `security.exposeErrorDetails: true`. Deliberate `GatewayError` details are unchanged.
+
+### Added (MCP)
+- **Progress notifications**: a single `tools/call` with `params._meta.progressToken` from a client that accepts
+  `text/event-stream` is forwarded with a gateway-generated token; upstream `notifications/progress` are mapped back
+  and the reply becomes an SSE stream (progress events, then the result). Plain JSON otherwise.
+- **Logging**: `logging` capability, `logging/setLevel` per session; upstream `notifications/message` are forwarded to
+  sessions in scope at or above their level (`logger: "<serverId>/<logger>"`), and upstream servers announcing
+  `logging` are set to the most verbose level any session requested (re-applied after reconnects).
+- **Completion**: `completions` capability and `completion/complete` routed by prompt (exposed name translated back)
+  or resource template / URI; servers without the capability answer an empty completion.
+- **Resource subscriptions**: `resources.subscribe` capability, `resources/subscribe` / `resources/unsubscribe`
+  (routed like `resources/read`; `-32601` when the owning server does not support subscriptions) and
+  `notifications/resources/updated` forwarding. One upstream subscription per (server, URI) is shared and
+  reference-counted across sessions, released when the last session unsubscribes or ends, and restored after an
+  upstream reconnect.
+- Proxy: `RequestOptions.onProgress`, `connected` and `notification` events.
+- Library exports: `hashApiKey`, `isHashedKey`, `buildJwtVerifier`, `HMAC_ALGORITHMS`, `ASYMMETRIC_ALGORITHMS`,
+  `redactString`, `redactValue`, `redactArgs`, `configureRedaction`, `securityWarnings`, `AuthLockout`,
+  `createIpMatcher`, `hostAllowed`, `dashboardCsp`, `inlineScriptHashes`, `LOG_LEVELS`; types `SecurityConfig`,
+  `JwtConfig`, `AuthLockoutConfig`, `SecurityWarning`, `McpLogLevel`, `RequestOptions`, `ProgressUpdate`.
+
+### Changed
+- `auth.jwtSecret` is no longer required for `strategy: jwt` when `auth.jwt.publicKey` or `auth.jwt.jwksUrl` is set.
+- `initialize` on `/mcp` now also announces `logging`, `completions` and `resources.subscribe` (clients ignore
+  capabilities they do not use).
+- JWT verification failures are logged with the client IP.
+
+### Upgrade notes
+- No configuration changes are required. New behaviour that is on by default: security headers (disable with
+  `security.headers: false`), secret redaction in logs / recorded error messages, hidden 500 error details, and the
+  extra capabilities on `/mcp`.
+- If you embedded the dashboard in an `<iframe>` on another origin, set `security.headers: false` (the new
+  `frame-ancestors 'none'` / `X-Frame-Options: DENY` block that).
+- Tests or tooling that relied on 500 responses carrying `error.message` / `details` outside production need
+  `NODE_ENV=development` or `security.exposeErrorDetails: true`.
+- Everything else (`ipAllowlist`, `allowedHosts`, `dnsRebindingProtection`, `authLockout`, `maxToolArgumentsBytes`,
+  `hsts`, `trustProxy`, JWT checks, key expiry) is opt-in.
+
 ## [1.1.0] - 2026-10-07
 
 ### Added

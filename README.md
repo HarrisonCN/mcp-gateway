@@ -65,10 +65,11 @@ As [MCP](https://modelcontextprotocol.io) becomes the standard protocol for AI a
 ## Features
 
 - **Unified API endpoint** — one URL for all your MCP tools, auto-routed by tool name
-- **MCP endpoint for clients** — `/mcp` speaks MCP Streamable HTTP (2025-06-18 / 2025-03-26), so Claude Code, Cursor or any MCP client sees every upstream tool through one server, with the same auth, limits and metrics
+- **MCP endpoint for clients** — `/mcp` speaks MCP Streamable HTTP (2025-06-18 / 2025-03-26), so Claude Code, Cursor or any MCP client sees every upstream tool through one server, with the same auth, limits and metrics — including progress notifications, cancellation, logging, completions and resource subscriptions
 - **Every MCP transport** — `stdio`, `streamable-http` (current spec), legacy `sse` (HTTP+SSE) and `websocket` upstream servers, with per-server headers for upstream auth
 - **Automatic reconnect** — crashed or disconnected servers are reconnected with exponential backoff + jitter; state is visible in `/servers`, `/health`, the dashboard and Prometheus
-- **Authentication** — API key (constant-time compare), JWT (HS256/384/512), or no-auth; misconfiguration fails closed
+- **Authentication** — API keys (constant-time compare, storable as `sha256:` digests, with expiry), JWT (HMAC secret, PEM public key or JWKS URL; issuer / audience / exp checks), or no-auth; misconfiguration fails closed
+- **Hardening** — security headers + hash-based CSP, IP allowlist, Host / Origin checks against DNS rebinding, body and argument size limits, brute-force lockout, secret redaction in logs and history, startup security warnings (`mcp-gateway validate --strict`)
 - **Rate limiting** — per-key sliding-window counter, with standard `X-RateLimit-*` headers
 - **Per-key scopes** — restrict an API key (or a JWT via claims) to some servers / tools and give it its own rate limit; enforced on REST and `/mcp`
 - **Concurrency limits** — per-server `maxConcurrency`, queued requests count against `timeout`
@@ -201,9 +202,9 @@ What the endpoint does:
 
 | | |
 |---|---|
-| `POST /mcp` | JSON-RPC: `initialize`, `ping`, `tools/list` (paginated), `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`, `prompts/list`, `prompts/get`, notifications (incl. `notifications/cancelled`). Batches are accepted. Responses are `application/json`. |
-| `GET /mcp` | SSE stream for server→client notifications: `notifications/tools/list_changed`, `notifications/resources/list_changed` and `notifications/prompts/list_changed` are sent when the aggregated list a session sees changes (a server announces changes, connects, is removed by hot reload, …). |
-| Resources & prompts | Resource URIs are passed through unchanged; when two servers list the same URI the lowest server id wins. `resources/read` is routed by exact URI, then by resource template, then to the only server with resources. Prompt names follow `toolNaming` like tools. `resources/subscribe` is not offered. |
+| `POST /mcp` | JSON-RPC: `initialize`, `ping`, `tools/list` (paginated), `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`, `resources/subscribe` / `unsubscribe`, `prompts/list`, `prompts/get`, `logging/setLevel`, `completion/complete`, notifications (incl. `notifications/cancelled`). Batches are accepted. Responses are `application/json`; a single `tools/call` with `_meta.progressToken` switches to an SSE reply when the upstream reports progress (`notifications/progress`, then the result). |
+| `GET /mcp` | SSE stream for server→client notifications: `notifications/tools/list_changed`, `notifications/resources/list_changed` and `notifications/prompts/list_changed` are sent when the aggregated list a session sees changes (a server announces changes, connects, is removed by hot reload, …); `notifications/resources/updated` for subscribed URIs; upstream `notifications/message` at or above the session's `logging/setLevel` level (`logger` = `<serverId>/<logger>`). |
+| Resources & prompts | Resource URIs are passed through unchanged; when two servers list the same URI the lowest server id wins. `resources/read` is routed by exact URI, then by resource template, then to the only server with resources. Prompt names follow `toolNaming` like tools. `resources/subscribe` is routed the same way; sessions share one upstream subscription per URI, restored after reconnects. `completion/complete` is routed by prompt name or resource template. |
 | `DELETE /mcp` | Ends the session. |
 | Sessions | `initialize` returns `Mcp-Session-Id`; later requests must send it (`400` if missing, `404` if unknown or expired). A session is bound to the API key / JWT subject that created it. Idle sessions expire after `mcp.sessionIdleTimeoutSeconds`. |
 | Tool names | `toolNaming: auto` (default) keeps a tool's name unless two servers expose the same name; then every copy becomes `<serverId>__<tool>`. `prefix` always uses `<serverId>__<tool>`. Ordering is deterministic (server id, then tool name). In `auto` mode the prefixed form is also accepted by `tools/call`. |
@@ -294,11 +295,13 @@ auth:
   strategy: api-key           # none | api-key | jwt   (oauth2 is not implemented and is rejected)
   apiKeys:
     - "your-secret-key"       # full access
+    - "sha256:…"              # a key stored as its digest (mcp-gateway gen-key / hash-key)
     - key: "${APP_KEY}"       # scoped key (see "Per-key scopes")
       name: app
       servers: ["github"]
       tools: ["read_*"]
       rateLimit: { limit: 30, windowSeconds: 60 }
+      expiresAt: "2027-01-01" # optional expiry; disabled: true switches a key off
   protect:
     health: false             # true → /api/v1/health requires auth
     metrics: false            # true → /api/v1/metrics requires auth (configure your scraper)
@@ -324,6 +327,12 @@ monitor:
   requestLog: true            # Log all requests
   prometheus: true            # Enable Prometheus /metrics
   retentionHours: 24          # Metrics retention
+
+security:                     # hardening (see docs/configuration.md#security)
+  authLockout: true           # 429 for IPs with repeated auth failures
+  dnsRebindingProtection: false  # true for a local gateway without auth
+  ipAllowlist: ["10.0.0.0/8"]
+  maxToolArgumentsBytes: 262144
 
 corsOrigins:
   - "https://your-app.com"
@@ -570,6 +579,18 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v1.2
+
+| Feature | Description |
+|---------|-------------|
+| **Hashed & expiring keys** | `auth.apiKeys` entries can be `sha256:<hex>` digests (`mcp-gateway gen-key`, `hash-key`) and carry `expiresAt` / `disabled` |
+| **JWT hardening** | `auth.jwt`: `issuer`, `audience`, `algorithms` (HMAC / asymmetric never mixed), `clockToleranceSeconds`, `requireExp`, `maxTokenAgeSeconds`, PEM `publicKey` or cached `jwksUrl` (works with OAuth 2.0 / OIDC providers) |
+| **`security` block** | headers + dashboard CSP, `hsts`, `trustProxy`, `ipAllowlist`, `allowedHosts`, `dnsRebindingProtection`, `maxBodyBytes`, `maxToolArgumentsBytes`, `authLockout`, `redactPatterns` — all hot reloadable |
+| **Secure-defaults check** | startup warnings, `validate --strict`, `GET /api/v1/security` and a *Security posture* card in the dashboard |
+| **More of MCP on `/mcp`** | `notifications/progress` (SSE replies), `logging/setLevel` + forwarded `notifications/message`, `completion/complete`, `resources/subscribe` / `unsubscribe` + `notifications/resources/updated` |
+
+Details and upgrade notes: [CHANGELOG](CHANGELOG.md#120---2026-10-07).
+
 ## What's New in v1.0
 
 | Feature | Description |
@@ -619,8 +640,11 @@ unknown fields). Deep imports, log format, the dashboard and the audit database 
 | JS / Kotlin clients, OpenAI / Anthropic tool schemas | ✅ Done (v1.0) |
 | Resources & prompts passthrough, persistent audit log | ✅ Done (v1.0) |
 | Stable API, docs, container image | ✅ Done (v1.0) |
+| Security hardening (hashed keys, JWKS, lockout, DNS-rebinding guard, CSP) | ✅ Done (v1.2) |
+| Progress, logging, completions, resource subscriptions on `/mcp` | ✅ Done (v1.2) |
 | Redis-backed rate limiting | 📋 Planned |
-| OAuth2 / OIDC auth | 📋 Planned |
+| OAuth2 / OIDC auth | 🟡 JWT access tokens via `auth.jwt.jwksUrl` (v1.2); discovery / token introspection planned |
+| Forwarding sampling / elicitation / roots requests to downstream clients | 📋 Planned |
 | Tool-level access control | ✅ Done via per-key scopes (v0.6) |
 | Request replay & debugging | 📋 Planned (history is available via the audit log) |
 | Multi-tenant mode | 📋 Planned |

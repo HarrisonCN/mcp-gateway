@@ -12,6 +12,9 @@ import { ConfigWatcher } from './config/watcher.js';
 import { Gateway } from './gateway/index.js';
 import { logger } from './utils/logger.js';
 import { VERSION } from './utils/version.js';
+import { randomBytes } from 'crypto';
+import { hashApiKey } from './auth/middleware.js';
+import { securityWarnings } from './security/posture.js';
 
 const LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const;
 
@@ -123,8 +126,9 @@ program
 
 program
   .command('validate')
-  .description('Validate a configuration file')
+  .description('Validate a configuration file and report security warnings')
   .option('-c, --config <path>', 'Path to config file')
+  .option('--strict', 'Exit with code 2 when there are security warnings')
   .action(async (options) => {
     try {
       const config = await loadConfig(options.config);
@@ -132,10 +136,60 @@ program
       console.log(`  Port: ${config.port}`);
       console.log(`  Servers: ${config.servers.length}`);
       console.log(`  Auth: ${config.auth?.strategy ?? 'none'}`);
+      const warnings = securityWarnings(config);
+      if (warnings.length > 0) {
+        console.log('\nSecurity:');
+        for (const w of warnings) console.log(`  ${w.level === 'warn' ? '!' : '-'} ${w.message}`);
+        if (options.strict && warnings.some((w) => w.level === 'warn')) process.exit(2);
+      }
     } catch (err) {
       logger.error(`Invalid configuration: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
+  });
+
+// ─── keys ─────────────────────────────────────────────────────────────────────
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const c of process.stdin) chunks.push(c as Buffer);
+  return Buffer.concat(chunks).toString('utf8').replace(/\r?\n$/, '');
+}
+
+program
+  .command('hash-key')
+  .description('Print the sha256:<hex> digest of an API key, for auth.apiKeys (reads stdin when no key is given)')
+  .argument('[key]', 'The key (prefer stdin so it stays out of your shell history)')
+  .action(async (key?: string) => {
+    const value = key ?? (process.stdin.isTTY ? '' : await readStdin());
+    if (!value) {
+      logger.error('No key given. Usage: echo -n "$KEY" | mcp-gateway hash-key');
+      process.exit(1);
+    }
+    console.log(hashApiKey(value));
+  });
+
+program
+  .command('gen-key')
+  .description('Generate a random API key and print it with its sha256 digest')
+  .option('-b, --bytes <n>', 'Random bytes (16-128)', '32')
+  .option('--prefix <prefix>', 'Key prefix (helps secret scanners and redaction)', 'mgw_')
+  .option('--json', 'Print JSON')
+  .action((options) => {
+    const bytes = Number(options.bytes);
+    if (!Number.isInteger(bytes) || bytes < 16 || bytes > 128) {
+      logger.error(`Invalid --bytes "${options.bytes}" (16-128)`);
+      process.exit(1);
+    }
+    const key = `${options.prefix}${randomBytes(bytes).toString('base64url')}`;
+    const hash = hashApiKey(key);
+    if (options.json) {
+      console.log(JSON.stringify({ key, hash }));
+      return;
+    }
+    console.log(`key:  ${key}`);
+    console.log(`hash: ${hash}`);
+    console.log('\nGive the key to the client; put the hash in auth.apiKeys. The key is not shown again.');
   });
 
 program.parse(process.argv);

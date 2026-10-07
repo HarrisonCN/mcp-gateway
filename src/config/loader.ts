@@ -10,6 +10,9 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import type { GatewayConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
+import { invalidCidr } from '../security/network.js';
+import { invalidRedactPattern } from '../security/redact.js';
+import { ASYMMETRIC_ALGORITHMS, HMAC_ALGORITHMS } from '../auth/middleware.js';
 
 // ─── Zod Schema ───────────────────────────────────────────────────────────────
 
@@ -103,6 +106,11 @@ const ApiKeySchema = z.union([
         .optional(),
       servers: PatternList.optional(),
       tools: PatternList.optional(),
+      expiresAt: z
+        .string()
+        .refine((v) => !Number.isNaN(Date.parse(v)), 'must be an ISO 8601 date or date-time')
+        .optional(),
+      disabled: z.boolean().optional(),
       rateLimit: z
         .object({ limit: z.number().int().positive(), windowSeconds: z.number().positive() })
         .strict()
@@ -110,6 +118,63 @@ const ApiKeySchema = z.union([
     })
     .strict(),
 ]);
+
+const StringOrList = z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]);
+
+const JwtSchema = z
+  .object({
+    issuer: StringOrList.optional(),
+    audience: StringOrList.optional(),
+    algorithms: z.array(z.enum([...HMAC_ALGORITHMS, ...ASYMMETRIC_ALGORITHMS] as [string, ...string[]])).min(1).optional(),
+    clockToleranceSeconds: z.number().min(0).max(3600).optional(),
+    jwksUrl: z.string().url().optional(),
+    jwksCacheSeconds: z.number().int().positive().optional(),
+    publicKey: z.string().min(1).optional(),
+    requireExp: z.boolean().optional(),
+    maxTokenAgeSeconds: z.number().int().positive().optional(),
+  })
+  .strict();
+
+const LockoutSchema = z
+  .object({
+    maxFailures: z.number().int().min(1).optional(),
+    windowSeconds: z.number().int().positive().optional(),
+    lockoutSeconds: z.number().int().positive().optional(),
+  })
+  .strict();
+
+const SecuritySchema = z
+  .object({
+    headers: z.boolean().default(true),
+    hsts: z
+      .union([
+        z.boolean(),
+        z.object({ maxAgeSeconds: z.number().int().min(0).optional(), includeSubDomains: z.boolean().optional() }).strict(),
+      ])
+      .optional(),
+    trustProxy: z.union([z.boolean(), z.number().int().min(0), z.string().min(1), z.array(z.string().min(1))]).optional(),
+    ipAllowlist: z
+      .array(z.string().min(1))
+      .superRefine((list, ctx) => {
+        const err = invalidCidr(list);
+        if (err) ctx.addIssue({ code: z.ZodIssueCode.custom, message: err });
+      })
+      .optional(),
+    allowedHosts: z.array(z.string().min(1)).optional(),
+    dnsRebindingProtection: z.boolean().default(false),
+    maxBodyBytes: z.number().int().min(1024).default(10 * 1024 * 1024),
+    maxToolArgumentsBytes: z.number().int().min(0).default(0),
+    authLockout: z.union([z.boolean(), LockoutSchema]).optional(),
+    redactPatterns: z
+      .array(z.string().min(1))
+      .superRefine((list, ctx) => {
+        const err = invalidRedactPattern(list);
+        if (err) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `invalid regular expression ${err}` });
+      })
+      .optional(),
+    exposeErrorDetails: z.boolean().default(false),
+  })
+  .strict();
 
 const GatewayConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(4000),
@@ -119,6 +184,7 @@ const GatewayConfigSchema = z.object({
       strategy: z.enum(['none', 'api-key', 'jwt', 'oauth2']).default('none'),
       apiKeys: z.array(ApiKeySchema).optional(),
       jwtSecret: z.string().optional(),
+      jwt: JwtSchema.optional(),
       protect: z
         .object({
           health: z.boolean().default(false),
@@ -137,6 +203,14 @@ const GatewayConfigSchema = z.object({
         names.add(k.name);
       });
       (a.apiKeys ?? []).forEach((k, i) => {
+        const key = keyOf(k);
+        if (/^sha256:/i.test(key) && !/^sha256:[0-9a-f]{64}$/i.test(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: typeof k === 'string' ? ['apiKeys', i] : ['apiKeys', i, 'key'],
+            message: '"sha256:" keys must be followed by 64 hex characters (mcp-gateway hash-key)',
+          });
+        }
         if (typeof k !== 'string' && k.key.length === 0) {
           ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['apiKeys', i, 'key'], message: 'is empty (unset environment variable?)' });
         }
@@ -144,8 +218,25 @@ const GatewayConfigSchema = z.object({
       if (a.strategy === 'api-key' && !(a.apiKeys ?? []).some((k) => keyOf(k).length > 0)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['apiKeys'], message: 'at least one key is required for api-key strategy' });
       }
-      if (a.strategy === 'jwt' && !a.jwtSecret) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['jwtSecret'], message: 'required for jwt strategy' });
+      if (a.strategy === 'jwt') {
+        const sources = [a.jwtSecret, a.jwt?.publicKey, a.jwt?.jwksUrl].filter(Boolean).length;
+        if (sources === 0) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['jwtSecret'], message: 'jwt strategy needs jwtSecret, jwt.publicKey or jwt.jwksUrl' });
+        } else if (sources > 1) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['jwt'], message: 'configure only one of jwtSecret, jwt.publicKey, jwt.jwksUrl' });
+        }
+        const algs = a.jwt?.algorithms;
+        if (algs && sources === 1) {
+          const allowed = a.jwtSecret ? HMAC_ALGORITHMS : ASYMMETRIC_ALGORITHMS;
+          const bad = algs.filter((x) => !allowed.includes(x));
+          if (bad.length > 0) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['jwt', 'algorithms'],
+              message: `${bad.join(', ')} cannot be used with ${a.jwtSecret ? 'an HMAC secret' : 'a public key / JWKS'} (algorithm confusion)`,
+            });
+          }
+        }
       }
       if (a.strategy === 'oauth2') {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['strategy'], message: 'oauth2 is not implemented yet (refusing to start without auth)' });
@@ -191,6 +282,7 @@ const GatewayConfigSchema = z.object({
     })
     .strict()
     .optional(),
+  security: SecuritySchema.optional(),
 }).superRefine((c, ctx) => {
   const seen = new Set<string>();
   c.servers.forEach((s, i) => {
@@ -297,9 +389,26 @@ logLevel: info
 #       servers: ["github", "fs-*"]
 #       tools: ["read_*", "github/create_issue"]
 #       rateLimit: { limit: 30, windowSeconds: 60 }
+#     - sha256:<64-hex-digest>        # a key stored as its digest: run mcp-gateway hash-key
+#     - key: \${CI_GATEWAY_KEY}
+#       name: ci
+#       expiresAt: 2027-01-01   # rejected from this date on; "disabled: true" switches a key off
 #   protect:
 #     health: false    # true = /api/v1/health requires a key (/health/live stays public)
 #     metrics: false   # true = /api/v1/metrics requires a key (configure your scraper)
+
+# Hardening (all optional; defaults shown where they exist)
+# security:
+#   headers: true                  # nosniff, frame-ancestors, Referrer-Policy, CSP (dashboard: hashed inline script)
+#   hsts: false                    # true behind HTTPS
+#   trustProxy: false              # e.g. 1 or ["10.0.0.0/8"] behind a reverse proxy (affects req.ip)
+#   ipAllowlist: ["10.0.0.0/8", "127.0.0.1"]
+#   dnsRebindingProtection: false  # true: Host must be localhost / allowedHosts, /mcp only same-origin + loopback origins
+#   allowedHosts: ["gateway.example.com"]
+#   maxBodyBytes: 10485760
+#   maxToolArgumentsBytes: 0       # 0 = no limit
+#   authLockout: true              # or { maxFailures: 10, windowSeconds: 300, lockoutSeconds: 900 }
+#   redactPatterns: ["internal-[0-9a-f]{32}"]
 
 # Automatic reconnect of crashed / disconnected servers (defaults shown)
 # reconnect:
