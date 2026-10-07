@@ -1,6 +1,6 @@
 {
   "name": "mcp-gateway",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A lightweight, open-source gateway for managing, routing, and monitoring multiple MCP (Model Context Protocol) servers.",
   "keywords": [
     "mcp",
