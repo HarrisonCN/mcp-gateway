@@ -28,6 +28,8 @@ export const POLICY_ERROR_CODES = new Set([ERR_POLICY_DENIED, ERR_APPROVAL_REJEC
 import { ERR_PLUGIN_REJECTED, PluginError, type PluginCall, type PluginHost } from '../plugins/index.js';
 export { ERR_PLUGIN_REJECTED };
 import { logger } from '../utils/logger.js';
+import { ERR_NOT_CONNECTED, ERR_TIMEOUT } from '../proxy/index.js';
+import type { FailureKind, LoadBalancer } from './balancer.js';
 import { NOOP_TRACER, type Tracer } from '../observability/tracing.js';
 
 export type CallKind = 'tool' | 'resource' | 'prompt';
@@ -66,6 +68,8 @@ export interface InvokerDeps {
   approvals?: ApprovalQueue;
   /** Plugin hooks (`onToolCall` before policy, `onResponse` after the output filter). */
   plugins?: PluginHost;
+  /** Routes calls on servers with `replicas:` (load balancing + failover). */
+  balancer?: LoadBalancer;
 }
 
 export class ToolInvoker {
@@ -174,13 +178,7 @@ export class ToolInvoker {
     if (refused) return refused;
     let result: ProxyResponse;
     try {
-      result =
-        ctx.kind === 'tool'
-          ? await this.deps.proxy.callTool(ctx.serverId, ctx.name, ctx.params, ctx.timeoutMs, {
-              signal: ctx.signal,
-              onProgress: ctx.onProgress,
-            })
-          : await this.deps.proxy.request(ctx.serverId, ctx.method, ctx.params, ctx.timeoutMs, { signal: ctx.signal });
+      result = await this.callUpstream(ctx, span);
     } catch (err) {
       span.setError(err instanceof Error ? err.message : String(err));
       span.end();
@@ -204,6 +202,51 @@ export class ToolInvoker {
       }
     }
     return this.finish(ctx, call, result, span);
+  }
+
+  get balancer(): LoadBalancer | undefined {
+    return this.deps.balancer;
+  }
+
+  private send(ctx: InvokeContext, target: string): Promise<ProxyResponse> {
+    return ctx.kind === 'tool'
+      ? this.deps.proxy.callTool(target, ctx.name, ctx.params, ctx.timeoutMs, { signal: ctx.signal, onProgress: ctx.onProgress })
+      : this.deps.proxy.request(target, ctx.method, ctx.params, ctx.timeoutMs, { signal: ctx.signal });
+  }
+
+  /** One upstream call, spread over replicas and failed over when the server has `replicas:`. */
+  private async callUpstream(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>): Promise<ProxyResponse> {
+    const lb = this.deps.balancer;
+    const targets = lb ? lb.order(ctx.serverId) : [ctx.serverId];
+    if (!lb || targets.length === 1) return this.send(ctx, ctx.serverId);
+    const { failoverOn, retries } = lb.settings(ctx.serverId);
+    const attempts = Math.min(targets.length, retries + 1);
+    const tried: string[] = [];
+    for (let i = 0; i < attempts; i++) {
+      const target = targets[i]!;
+      tried.push(target);
+      let result: ProxyResponse | undefined;
+      let failure: FailureKind | undefined;
+      let thrown: unknown;
+      try {
+        result = await this.send(ctx, target);
+        failure = classifyFailure(result);
+      } catch (err) {
+        thrown = err;
+        failure = 'error';
+      }
+      lb.report(target, ctx.serverId, failure, result?.durationMs ?? 0);
+      const last = i === attempts - 1 || ctx.signal?.aborted;
+      if (failure === undefined || !failoverOn.includes(failure) || last) {
+        span.setAttribute('mcp.upstream.id', target);
+        if (tried.length > 1) span.setAttribute('mcp.upstream.attempts', tried.length);
+        if (thrown !== undefined) throw thrown;
+        return result!;
+      }
+      logger.warn(`${ctx.name} → ${target} failed (${failure}); failing over to ${targets[i + 1]}`);
+    }
+    /* c8 ignore next */
+    throw new Error('unreachable');
   }
 
   /** `onResponse` hooks, metrics, request log and span end. */
@@ -239,4 +282,12 @@ export class ToolInvoker {
     span.end();
     return { ...result, traceparent: span.traceparent() };
   }
+}
+
+/** Failure kind of an upstream result (undefined = success or an application-level tool error). */
+export function classifyFailure(r: ProxyResponse): FailureKind | undefined {
+  if (r.success) return undefined;
+  if (r.error?.code === ERR_NOT_CONNECTED) return 'not-connected';
+  if (r.error?.code === ERR_TIMEOUT) return 'timeout';
+  return 'error';
 }

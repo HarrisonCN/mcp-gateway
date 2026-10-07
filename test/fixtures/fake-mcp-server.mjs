@@ -109,7 +109,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       const delay = name === 'slow' ? slowMs : 0;
       // also send a server->client ping that reuses the same id
       if (name === 'ping-collide') send({ jsonrpc: '2.0', id: msg.id, method: 'ping' });
-      setTimeout(() => send({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: JSON.stringify(args) }] } }), delay);
+      const echoed = process.env.SERVER_TAG ? { ...args, _server: process.env.SERVER_TAG } : args;
+      setTimeout(() => send({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: JSON.stringify(echoed) }] } }), delay);
       return;
     }
     default:
