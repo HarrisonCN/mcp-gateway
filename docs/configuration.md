@@ -318,6 +318,16 @@ cache:
 - `GET /api/v1/cache` (stats: entries, hits, misses, deduped, evictions), `DELETE /api/v1/cache[?server=id]` (purge).
   Changing `cache:` purges the cache (hot reload). The cache is in memory per instance.
 
+## Admin API
+
+```yaml
+admin:
+  configApi: true   # allow PUT /api/v1/admin/config and POST /api/v1/admin/reload (default false)
+```
+
+See [Declarative config](guides/declarative-config.md). From 2.9 `cors.origins` and `health.intervalMs` replace the
+deprecated `corsOrigins` and `healthCheckIntervalMs` (removed in 3.0).
+
 ## Bridges (OpenAI / A2A)
 
 ```yaml

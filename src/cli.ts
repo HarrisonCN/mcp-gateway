@@ -10,6 +10,7 @@ import { writeFile } from 'fs/promises';
 import { loadConfig, generateDefaultConfig, resolveConfigPath } from './config/loader.js';
 import { ConfigWatcher } from './config/watcher.js';
 import { runPolicyTests } from './policy/tool-policy.js';
+import { diffConfigs, formatDiff, type ConfigChange } from './config/diff.js';
 import { Gateway } from './gateway/index.js';
 import { logger } from './utils/logger.js';
 import { VERSION } from './utils/version.js';
@@ -55,7 +56,8 @@ program
         config.logLevel = options.logLevel;
       }
 
-      const gw = new Gateway(config);
+      const fromDisk = resolveConfigPath(options.config) ? () => loadConfig(options.config) : undefined;
+      const gw = new Gateway(config, { reloadFromDisk: fromDisk });
       gateway = gw;
 
       // Graceful shutdown (idempotent; a second signal forces exit)
@@ -144,6 +146,10 @@ program
       console.log(`  Port: ${config.port}`);
       console.log(`  Servers: ${config.servers.length}`);
       console.log(`  Auth: ${config.auth?.strategy ?? 'none'}`);
+      if (config.deprecations?.length) {
+        console.log('\nDeprecated (removed in 3.0):');
+        for (const d of config.deprecations) console.log(`  ! ${d.message}`);
+      }
       const warnings = securityWarnings(config);
       if (warnings.length > 0) {
         console.log('\nSecurity:');
@@ -155,6 +161,92 @@ program
       process.exit(1);
     }
   });
+
+// ─── declarative config: diff / apply ─────────────────────────────────────────
+
+/** Load a config file for sending to a gateway: policy files merged, loader-only fields dropped. */
+async function portableFromFile(path: string | undefined): Promise<Record<string, unknown>> {
+  const cfg = await loadConfig(path);
+  if (cfg.policy) cfg.policy = { ...cfg.policy, files: undefined };
+  const { configDir: _d, deprecations: _x, ...rest } = cfg;
+  return JSON.parse(JSON.stringify(rest)) as Record<string, unknown>;
+}
+
+async function adminCall(url: string, key: string | undefined, method: string, path: string, body?: unknown): Promise<{ status: number; data: Record<string, unknown> }> {
+  const res = await fetch(`${url.replace(/\/+$/, '')}/api/v1${path}`, {
+    method,
+    headers: { 'content-type': 'application/json', ...(key ? { authorization: `Bearer ${key}` } : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    data = { message: text };
+  }
+  return { status: res.status, data };
+}
+
+const remoteOptions = (cmd: Command) =>
+  cmd
+    .option('-c, --config <path>', 'Desired config file')
+    .option('--url <url>', 'Gateway base URL (default env MCP_GATEWAY_URL or http://localhost:4000)')
+    .option('--key <key>', 'Operator API key (default env MCP_GATEWAY_ADMIN_KEY)')
+    .option('--json', 'Print JSON');
+
+remoteOptions(
+  program
+    .command('diff')
+    .description('Show what applying a config file would change (against a running gateway, or another file with --against)')
+    .option('--against <path>', 'Compare with this config file instead of a running gateway'),
+).action(async (options) => {
+  try {
+    const desired = await portableFromFile(options.config);
+    let changes: ConfigChange[];
+    if (options.against) {
+      changes = diffConfigs(await portableFromFile(options.against), desired);
+    } else {
+      const r = await adminCall(options.url ?? process.env.MCP_GATEWAY_URL ?? 'http://localhost:4000', options.key ?? process.env.MCP_GATEWAY_ADMIN_KEY, 'POST', '/admin/config/diff', desired);
+      if (r.status !== 200) throw new Error(`Gateway answered ${r.status}: ${String(r.data.message ?? r.data.error ?? '')}`);
+      changes = r.data.changes as ConfigChange[];
+    }
+    console.log(options.json ? JSON.stringify({ changes }, null, 2) : formatDiff(changes));
+    process.exitCode = changes.length > 0 ? 3 : 0;
+  } catch (err) {
+    logger.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+});
+
+remoteOptions(
+  program
+    .command('apply')
+    .description('Apply a config file to a running gateway (hot reload over the admin API; needs admin.configApi: true)')
+    .option('--dry-run', 'Validate and show the diff without applying'),
+).action(async (options) => {
+  try {
+    const desired = await portableFromFile(options.config);
+    const r = await adminCall(
+      options.url ?? process.env.MCP_GATEWAY_URL ?? 'http://localhost:4000',
+      options.key ?? process.env.MCP_GATEWAY_ADMIN_KEY,
+      'PUT',
+      `/admin/config${options.dryRun ? '?dryRun=true' : ''}`,
+      desired,
+    );
+    if (r.status !== 200) throw new Error(`Gateway answered ${r.status}: ${String(r.data.message ?? r.data.error ?? '')}`);
+    if (options.json) console.log(JSON.stringify(r.data, null, 2));
+    else {
+      console.log(formatDiff(r.data.changes as ConfigChange[]));
+      console.log(r.data.applied ? '\n✓ Applied' : options.dryRun ? '\n(dry run — nothing applied)' : '\nNothing to apply');
+      const restart = (r.data.changes as ConfigChange[]).filter((c) => c.restart);
+      if (restart.length > 0) console.log(`! ${restart.length} change(s) need a restart: ${restart.map((c) => c.path).join(', ')}`);
+    }
+  } catch (err) {
+    logger.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+});
 
 program
   .command('policy')

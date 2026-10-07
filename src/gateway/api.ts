@@ -53,6 +53,8 @@ export type ApiRouter = express.Router & {
   resolveClient(clientId: string | undefined): { known: boolean; scope?: AccessScope } | undefined;
   /** The brute-force lockout tracker (undefined unless `security.authLockout`). */
   lockout(): LockoutTracker | undefined;
+  /** Whether the authenticated caller is an operator (no key scope / tenant restriction). */
+  isOperator(req: Request): boolean;
   /** REST-semantics tool call (after `authenticate`), for bridges. */
   runToolCall(req: Request, body: Record<string, unknown>, res: ToolCallResponse): Promise<void>;
 };
@@ -691,6 +693,7 @@ export function createApiRouter(
     });
   }
   router.runToolCall = runToolCall;
+  router.isOperator = (req: Request) => !isRestricted(scopeOf(req));
 
   router.post(
     '/tools/call',

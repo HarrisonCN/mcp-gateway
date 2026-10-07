@@ -15,6 +15,8 @@ import { McpProxy } from '../proxy/index.js';
 import { MetricsCollector } from '../monitor/index.js';
 import { createApiRouter, serverStateSamples, type ApiRouter, type ToolCallResponse } from './api.js';
 import { createOpenAIRouter } from '../bridges/openai.js';
+import { createAdminRouter } from './admin.js';
+import { deprecate } from '../utils/deprecations.js';
 import { createA2ARouter } from '../bridges/a2a.js';
 import { ServerSupervisor } from './supervisor.js';
 import { createLiveRouter, type LiveRouter } from './live.js';
@@ -54,6 +56,8 @@ export interface GatewayOptions {
   stateStore?: StateStore;
   /** Plugins supplied in code (run before the ones from `config.plugins`). */
   plugins?: PluginSource[];
+  /** Re-read the config from its source (enables `POST /api/v1/admin/reload`; set by the CLI). */
+  reloadFromDisk?: () => Promise<GatewayConfig>;
 }
 
 export class Gateway {
@@ -239,6 +243,16 @@ export class Gateway {
     // Live dashboard data: GET /api/v1/stats and the /api/v1/events SSE stream.
     this.live = createLiveRouter(this.metrics, this.registry, { authenticate: this.router.authenticate });
     this.app.use('/api/v1', this.live);
+    this.app.use(
+      '/api/v1',
+      createAdminRouter({
+        config: () => this.config,
+        apply: (next) => this.reload(next),
+        reloadFromDisk: this.options.reloadFromDisk,
+        authenticate: this.router.authenticate,
+        isOperator: (req) => this.router!.isOperator(req),
+      }),
+    );
     this.app.use('/api/v1', this.router);
 
     // Bridges: OpenAI-compatible tools proxy and A2A agent card / JSON-RPC (after the JSON parser).
@@ -295,6 +309,8 @@ export class Gateway {
 
     this.app.use(notFoundHandler);
     this.app.use(createErrorHandler(() => this.config.security?.exposeErrorDetails === true));
+
+    for (const d of this.config.deprecations ?? []) deprecate(d);
 
     this.metrics.start();
     if (this.config.audit?.enabled) {

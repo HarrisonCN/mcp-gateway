@@ -579,6 +579,16 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v2.9
+
+| Feature | Description |
+|---------|-------------|
+| **Admin API** | Read, validate, diff and hot-apply the config over REST (`/api/v1/admin`) |
+| **Declarative config** | `mcp-gateway diff` / `apply` — [guide](docs/guides/declarative-config.md) |
+| **3.0 deprecations** | `corsOrigins` → `cors.origins`, `healthCheckIntervalMs` → `health.intervalMs` (warnings now) |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v2.8
 
 | Feature | Description |
