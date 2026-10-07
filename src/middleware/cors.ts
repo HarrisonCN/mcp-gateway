@@ -24,33 +24,40 @@ const DEFAULT_HEADERS = [
   'Authorization',
   'X-API-Key',
   'X-Request-Id',
+  // MCP Streamable HTTP (/mcp)
+  'Mcp-Session-Id',
+  'MCP-Protocol-Version',
+  'Last-Event-ID',
 ];
+
+/** Whether `origin` matches an origin list ('*', exact values, or /regex/). */
+export function originAllowed(origins: readonly string[], origin: string): boolean {
+  for (const o of origins) {
+    if (o === '*') return true;
+    if (o === origin) return true;
+    // Support regex patterns wrapped in /…/
+    if (o.startsWith('/') && o.endsWith('/') && o.length > 1) {
+      try {
+        if (new RegExp(o.slice(1, -1)).test(origin)) return true;
+      } catch {
+        // invalid regex — skip
+      }
+    }
+  }
+  return false;
+}
 
 export function corsMiddleware(options: CORSOptions) {
   const {
     origins,
     methods = DEFAULT_METHODS,
     allowedHeaders = DEFAULT_HEADERS,
-    exposedHeaders = ['X-Request-Id', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
+    exposedHeaders = ['X-Request-Id', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'Mcp-Session-Id'],
     credentials = false,
     maxAge = 86400,
   } = options;
 
-  const isAllowed = (origin: string): boolean => {
-    for (const o of origins) {
-      if (o === '*') return true;
-      if (o === origin) return true;
-      // Support regex patterns wrapped in /…/
-      if (o.startsWith('/') && o.endsWith('/')) {
-        try {
-          if (new RegExp(o.slice(1, -1)).test(origin)) return true;
-        } catch {
-          // invalid regex — skip
-        }
-      }
-    }
-    return false;
-  };
+  const isAllowed = (origin: string): boolean => originAllowed(origins, origin);
 
   return (req: Request, res: Response, next: NextFunction): void => {
     const origin = req.headers.origin ?? '';

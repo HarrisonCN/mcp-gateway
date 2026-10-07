@@ -20,6 +20,7 @@ import { errorHandler, notFoundHandler } from '../middleware/error-handler.js';
 import { logger } from '../utils/logger.js';
 import { Mutex } from '../utils/mutex.js';
 import { VERSION } from '../utils/version.js';
+import { McpEndpoint } from '../mcp/endpoint.js';
 
 function findDashboard(): string | undefined {
   // src/gateway → ../../dashboard (tsx) and dist/gateway → ../../dashboard (built)
@@ -36,6 +37,7 @@ export class Gateway {
   private readonly metrics: MetricsCollector;
   private readonly supervisor: ServerSupervisor;
   private router?: ApiRouter;
+  private mcp?: McpEndpoint;
   private cors: express.RequestHandler;
   private readonly reloadLock = new Mutex();
   private started = false;
@@ -66,6 +68,22 @@ export class Gateway {
     // Access-Control-Allow-Origin value, which browsers reject.
     // Indirection so CORS origins can be hot reloaded.
     this.app.use((req, res, next) => this.cors(req, res, next));
+
+    // Downstream MCP endpoint (parses its own body so JSON errors become JSON-RPC errors).
+    if (this.config.mcp?.enabled !== false) {
+      const router = this.router;
+      this.mcp = new McpEndpoint(this.config.mcp, {
+        registry: this.registry,
+        proxy: this.proxy,
+        metrics: this.metrics,
+        authenticate: router.authenticate,
+        takeRateLimit: (req) => router.takeRateLimit(req),
+        corsOrigins: () => this.config.corsOrigins,
+        requestLog: () => this.config.monitor?.requestLog !== false,
+      });
+      this.app.use(this.mcp.router());
+    }
+
     this.app.use(express.json({ limit: '10mb' }));
 
     this.app.use('/api/v1', this.router);
@@ -80,6 +98,7 @@ export class Gateway {
         name: 'mcp-gateway',
         version: VERSION,
         docs: '/api/v1/health',
+        mcp: this.mcp ? this.mcp.path : 'disabled',
         dashboard: dashboard
           ? '/dashboard'
           : this.config.dashboard?.enabled === false
@@ -176,6 +195,7 @@ export class Gateway {
   }
 
   private async shutdownInternals(): Promise<void> {
+    this.mcp?.close();
     this.supervisor.stop();
     this.registry.stopHealthChecks();
     this.metrics.stop();
@@ -223,6 +243,10 @@ export class Gateway {
       if (!same(this.config.auth, next.auth)) applied.push('auth');
       if (!same(this.config.rateLimit, next.rateLimit)) applied.push('rateLimit');
       if (!same(this.config.monitor, next.monitor)) applied.push('monitor');
+      if (!same(this.config.mcp, next.mcp)) {
+        this.mcp?.update(next.mcp);
+        applied.push('mcp');
+      }
       if (!same(this.config.corsOrigins, next.corsOrigins)) {
         this.cors = corsMiddleware({ origins: next.corsOrigins ?? ['*'] });
         applied.push('corsOrigins');
@@ -253,6 +277,7 @@ export class Gateway {
         monitor: next.monitor ? { ...next.monitor, retentionHours: this.config.monitor?.retentionHours } : next.monitor,
         corsOrigins: next.corsOrigins,
         reconnect: next.reconnect,
+        mcp: next.mcp,
       };
       await this.connectServers(toConnect);
       logger.info(
@@ -277,6 +302,11 @@ export class Gateway {
 
     const succeeded = outcomes.filter(Boolean).length;
     logger.info(`Connected: ${succeeded}/${enabled.length} servers (${enabled.length - succeeded} failed)`);
+  }
+
+  /** The downstream MCP endpoint (undefined when `mcp.enabled` is false or before start). */
+  getMcpEndpoint(): McpEndpoint | undefined {
+    return this.mcp;
   }
 
   /** Server registry (read-only use when embedding). */

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { fileURLToPath } from 'url';
-import { McpProxy, ERR_TIMEOUT } from '../src/proxy/index.js';
+import { McpProxy, ERR_TIMEOUT, ERR_CANCELLED } from '../src/proxy/index.js';
 import type { McpServerConfig } from '../src/utils/types.js';
 import { logger } from '../src/utils/logger.js';
 
@@ -121,5 +121,43 @@ describe('McpProxy health ping', () => {
     await proxy.connect(cfg());
     expect(await proxy.ping('fake')).toBeGreaterThanOrEqual(0);
     await expect(proxy.ping('nope')).rejects.toThrow(/not connected/);
+  });
+});
+
+describe('McpProxy cancellation', () => {
+  it('cancels an in-flight request via AbortSignal', async () => {
+    proxy = new McpProxy();
+    await proxy.connect(cfg({ env: { SLOW_MS: '2000' } }));
+    const ac = new AbortController();
+    const p = proxy.callTool('fake', 'slow', {}, 5000, { signal: ac.signal });
+    setTimeout(() => ac.abort(), 50);
+    const r = await p;
+    expect(r.error?.code).toBe(ERR_CANCELLED);
+    expect(r.durationMs).toBeLessThan(1500);
+    // the session is still usable
+    expect((await proxy.callTool('fake', 'echo', {})).success).toBe(true);
+  });
+
+  it('returns cancelled immediately for an already-aborted signal and while queued', async () => {
+    proxy = new McpProxy();
+    await proxy.connect(cfg({ env: { SLOW_MS: '300' }, maxConcurrency: 1 }));
+    const ac = new AbortController();
+    ac.abort();
+    expect((await proxy.callTool('fake', 'echo', {}, 1000, { signal: ac.signal })).error?.code).toBe(ERR_CANCELLED);
+
+    const busy = proxy.callTool('fake', 'slow', {});
+    const ac2 = new AbortController();
+    const queued = proxy.callTool('fake', 'echo', {}, 5000, { signal: ac2.signal });
+    setTimeout(() => ac2.abort(), 30);
+    expect((await queued).error?.code).toBe(ERR_CANCELLED);
+    expect((await busy).success).toBe(true);
+  });
+
+  it('request() sends arbitrary methods', async () => {
+    proxy = new McpProxy();
+    await proxy.connect(cfg());
+    expect((await proxy.request('fake', 'ping')).success).toBe(true);
+    expect((await proxy.request('fake', 'nope/method', {})).error?.code).toBe(-32601);
+    expect((await proxy.request('missing', 'ping')).success).toBe(false);
   });
 });

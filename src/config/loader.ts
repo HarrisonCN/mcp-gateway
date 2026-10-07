@@ -126,6 +126,23 @@ const GatewayConfigSchema = z.object({
   reconnect: ReconnectSchema.optional(),
   healthCheckIntervalMs: z.number().int().min(1000).default(30_000),
   dashboard: z.object({ enabled: z.boolean().default(true) }).optional(),
+  mcp: z
+    .object({
+      enabled: z.boolean().default(true),
+      path: z
+        .string()
+        .regex(/^\/[A-Za-z0-9._~\-/]*$/, 'must be an absolute URL path such as /mcp')
+        .refine((p) => p !== '/' && !/^\/(api|dashboard)(\/|$)/.test(p), 'must not be "/" or under /api or /dashboard')
+        .default('/mcp'),
+      toolNaming: z.enum(['auto', 'prefix']).default('auto'),
+      pageSize: z.number().int().min(1).max(10_000).default(500),
+      sessionIdleTimeoutSeconds: z.number().int().positive().default(1800),
+      maxSessions: z.number().int().positive().default(1000),
+      allowedOrigins: z.array(z.string()).optional(),
+      instructions: z.string().optional(),
+    })
+    .strict()
+    .optional(),
 }).superRefine((c, ctx) => {
   const seen = new Set<string>();
   c.servers.forEach((s, i) => {
@@ -245,6 +262,13 @@ logLevel: info
 #   limit: 100
 #   windowSeconds: 60
 #   perKey: true
+
+# Downstream MCP endpoint: point Claude Code / Cursor / any MCP client at
+# http://<host>:<port>/mcp (Streamable HTTP; uses the auth settings above)
+# mcp:
+#   enabled: true
+#   path: /mcp
+#   toolNaming: auto   # auto = prefix "<server>__" only on name collisions; prefix = always
 
 # Monitoring
 monitor:

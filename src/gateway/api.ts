@@ -11,7 +11,7 @@ import { ERR_TIMEOUT, type McpProxy } from '../proxy/index.js';
 import type { MetricsCollector, ServerStateSample } from '../monitor/index.js';
 import type { ServerSupervisor } from './supervisor.js';
 import { createAuthMiddleware, type AuthedRequest } from '../auth/middleware.js';
-import { createRateLimiter } from '../auth/ratelimit.js';
+import { createRateLimiter, type RateLimitDecision } from '../auth/ratelimit.js';
 import { logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
 
@@ -23,6 +23,10 @@ export type ApiRouter = express.Router & {
    * the current middleware (fail safe).
    */
   update(next: GatewayConfig): void;
+  /** The current auth middleware (hot-swapped on reload), for other endpoints such as `/mcp`. */
+  authenticate: RequestHandler;
+  /** Count one rate-limited request for `req` (undefined when no limit is configured). */
+  takeRateLimit(req: Request): RateLimitDecision | undefined;
 };
 
 export interface ApiRouterOptions {
@@ -154,6 +158,8 @@ export function createApiRouter(
       cfg.auth?.protect?.[flag] ? authMw(req, res, next) : next();
 
   router.close = () => rateLimiter.close();
+  router.authenticate = auth;
+  router.takeRateLimit = (req) => rateLimiter.take(req);
   router.update = (next: GatewayConfig) => {
     const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
     let nextAuth = cfg.auth;
@@ -378,6 +384,7 @@ export function createApiRouter(
         success: result.success,
         errorMessage: result.error?.message,
         clientId: (req as AuthedRequest).clientId,
+        via: 'rest',
       });
       if (cfg.monitor?.requestLog !== false) {
         logger.info(`${tool} → ${targetServerId} ${result.success ? 'ok' : 'failed'} ${result.durationMs}ms`);

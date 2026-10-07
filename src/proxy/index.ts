@@ -49,6 +49,13 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 // JSON-RPC error codes used by the gateway
 export const ERR_NOT_CONNECTED = -32000;
 export const ERR_TIMEOUT = -32001;
+/** The caller cancelled the request (e.g. a downstream `notifications/cancelled`). */
+export const ERR_CANCELLED = -32800;
+
+export interface RequestOptions {
+  /** Abort the request: upstream gets `notifications/cancelled`, the result is `ERR_CANCELLED`. */
+  signal?: AbortSignal;
+}
 
 // ── Monotonic ID counter (fix BUG-002) ──────────────────────────────────────
 let _idSeq = 0;
@@ -222,15 +229,26 @@ export class McpProxy extends EventEmitter {
 
       const result = (toolsResult.result ?? {}) as { tools?: unknown[]; nextCursor?: unknown };
       for (const t of result.tools ?? []) {
-        const tool = t as { name?: unknown; description?: string; inputSchema?: Record<string, unknown> };
+        const tool = t as {
+          name?: unknown;
+          title?: unknown;
+          description?: string;
+          inputSchema?: Record<string, unknown>;
+          outputSchema?: unknown;
+          annotations?: unknown;
+        };
         if (typeof tool?.name !== 'string') continue;
-        tools.push({
+        const info: ToolInfo = {
           name: tool.name,
           description: tool.description,
           inputSchema: tool.inputSchema,
           serverId: config.id,
           serverName: config.name,
-        });
+        };
+        if (typeof tool.title === 'string') info.title = tool.title;
+        if (isPlainObject(tool.outputSchema)) info.outputSchema = tool.outputSchema;
+        if (isPlainObject(tool.annotations)) info.annotations = tool.annotations;
+        tools.push(info);
       }
 
       cursor = typeof result.nextCursor === 'string' && result.nextCursor ? result.nextCursor : undefined;
@@ -266,6 +284,21 @@ export class McpProxy extends EventEmitter {
     toolName: string,
     args: Record<string, unknown>,
     timeout?: number,
+    options: RequestOptions = {},
+  ): Promise<ProxyResponse> {
+    return this.request(serverId, 'tools/call', { name: toolName, arguments: args }, timeout, options);
+  }
+
+  /**
+   * Send any MCP request to a connected server through the session layer
+   * (timeout, `maxConcurrency`, upstream cancellation).
+   */
+  async request(
+    serverId: string,
+    method: string,
+    params?: unknown,
+    timeout?: number,
+    options: RequestOptions = {},
   ): Promise<ProxyResponse> {
     const session = this.sessions.get(serverId);
     if (!session || session.closed) {
@@ -277,10 +310,11 @@ export class McpProxy extends EventEmitter {
     }
     return this._sendRequest(
       session,
-      'tools/call',
-      { name: toolName, arguments: args },
+      method,
+      params,
       timeout ?? session.config.timeout ?? DEFAULT_TIMEOUT_MS,
       true,
+      options.signal,
     );
   }
 
@@ -398,6 +432,7 @@ export class McpProxy extends EventEmitter {
     params: unknown,
     timeout = DEFAULT_TIMEOUT_MS,
     limited = true,
+    signal?: AbortSignal,
   ): Promise<ProxyResponse> {
     const serverId = session.config.id;
     const startTime = Date.now();
@@ -413,22 +448,36 @@ export class McpProxy extends EventEmitter {
       durationMs: Date.now() - startTime,
     });
 
+    const cancelled = (): ProxyResponse => ({
+      success: false,
+      error: { code: ERR_CANCELLED, message: 'Request cancelled' },
+      durationMs: Date.now() - startTime,
+    });
+
     if (session.closed) return notConnected(`No session for server "${serverId}"`);
+    if (signal?.aborted) return cancelled();
 
     // Enforce maxConcurrency; the timeout covers time spent queued.
     let release: (() => void) | undefined;
     if (limited) {
       let queueTimer: NodeJS.Timeout | undefined;
+      let onAbort: (() => void) | undefined;
       const slot = session.limiter.acquire();
       const winner = await Promise.race([
         slot.then((r) => ({ release: r })),
-        new Promise<null>((r) => (queueTimer = setTimeout(() => r(null), timeout))),
+        new Promise<'timeout'>((r) => (queueTimer = setTimeout(() => r('timeout'), timeout))),
+        new Promise<'aborted'>((r) => {
+          if (!signal) return;
+          onAbort = () => r('aborted');
+          signal.addEventListener('abort', onAbort, { once: true });
+        }),
       ]);
       clearTimeout(queueTimer);
-      if (!winner) {
+      if (onAbort) signal?.removeEventListener('abort', onAbort);
+      if (winner === 'timeout' || winner === 'aborted') {
         // Give the slot back as soon as it is granted.
         void slot.then((r) => r());
-        return timedOut();
+        return winner === 'timeout' ? timedOut() : cancelled();
       }
       release = winner.release;
     }
@@ -436,25 +485,44 @@ export class McpProxy extends EventEmitter {
     try {
       if (session.closed) return notConnected(`Server "${serverId}" disconnected`);
 
+      if (signal?.aborted) return cancelled();
+
       return await new Promise<ProxyResponse>((resolve) => {
         const id = nextId();
         const remaining = Math.max(0, deadline - Date.now());
 
-        const timer = setTimeout(() => {
-          session.pendingRequests.delete(id);
-          // Ask the server to stop working on it, then free channel resources.
+        // Ask the server to stop working on it, then free channel resources.
+        const cancelUpstream = (reason: string) => {
           void session.channel
-            .send({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id, reason: 'timeout' } })
+            .send({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id, reason } })
             .catch(() => {})
             .finally(() => session.channel.abandon?.(id));
+        };
+        const onAbort = () => {
+          if (!session.pendingRequests.has(id)) return;
+          clearTimeout(timer);
+          session.pendingRequests.delete(id);
+          cancelUpstream('cancelled by client');
+          resolve(cancelled());
+        };
+        const settle = (response: ProxyResponse) => {
+          signal?.removeEventListener('abort', onAbort);
+          resolve(response);
+        };
+
+        const timer = setTimeout(() => {
+          session.pendingRequests.delete(id);
+          signal?.removeEventListener('abort', onAbort);
+          cancelUpstream('timeout');
           resolve(timedOut());
         }, remaining);
 
         session.pendingRequests.set(id, {
-          resolve: (response) => resolve({ ...response, durationMs: Date.now() - startTime }),
-          reject: (err) => resolve(notConnected(err.message)),
+          resolve: (response) => settle({ ...response, durationMs: Date.now() - startTime }),
+          reject: (err) => settle(notConnected(err.message)),
           timer,
         });
+        signal?.addEventListener('abort', onAbort, { once: true });
 
         const payload: JsonRpcMessage =
           params === undefined ? { jsonrpc: '2.0', id, method } : { jsonrpc: '2.0', id, method, params };
@@ -464,13 +532,17 @@ export class McpProxy extends EventEmitter {
           clearTimeout(timer);
           session.pendingRequests.delete(id);
           const message = err instanceof Error ? err.message : String(err);
-          resolve(notConnected(`Request to "${serverId}" failed: ${message}`));
+          settle(notConnected(`Request to "${serverId}" failed: ${message}`));
         });
       });
     } finally {
       release?.();
     }
   }
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {

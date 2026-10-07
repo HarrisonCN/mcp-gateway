@@ -62,6 +62,7 @@ As [MCP](https://modelcontextprotocol.io) becomes the standard protocol for AI a
 ## Features
 
 - **Unified API endpoint** — one URL for all your MCP tools, auto-routed by tool name
+- **MCP endpoint for clients** — `/mcp` speaks MCP Streamable HTTP (2025-06-18 / 2025-03-26), so Claude Code, Cursor or any MCP client sees every upstream tool through one server, with the same auth, limits and metrics
 - **Every MCP transport** — `stdio`, `streamable-http` (current spec), legacy `sse` (HTTP+SSE) and `websocket` upstream servers, with per-server headers for upstream auth
 - **Automatic reconnect** — crashed or disconnected servers are reconnected with exponential backoff + jitter; state is visible in `/servers`, `/health`, the dashboard and Prometheus
 - **Authentication** — API key (constant-time compare), JWT (HS256/384/512), or no-auth; misconfiguration fails closed
@@ -143,6 +144,64 @@ curl -X POST http://localhost:4000/api/v1/tools/call \
   -d '{"tool": "create_issue", "server": "github", "arguments": {"title": "Bug report", "body": "..."}}'
 ```
 
+## Use the gateway as an MCP server (`/mcp`)
+
+The gateway is itself an MCP server: `http://<host>:4000/mcp` implements the
+[Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)
+(protocol `2025-06-18`, `2025-03-26` accepted). Clients get one aggregated, filtered tool list; calls are
+routed to the right upstream server with the gateway's auth, rate limit, `maxConcurrency`, timeouts,
+metrics and request log.
+
+**Claude Code**
+
+```bash
+claude mcp add --transport http gateway http://localhost:4000/mcp \
+  --header "Authorization: Bearer your-secret-key"
+```
+
+**Cursor** (`~/.cursor/mcp.json` or `.cursor/mcp.json`)
+
+```json
+{
+  "mcpServers": {
+    "gateway": {
+      "url": "http://localhost:4000/mcp",
+      "headers": { "Authorization": "Bearer your-secret-key" }
+    }
+  }
+}
+```
+
+**Clients that only speak stdio** (e.g. older Claude Desktop builds) can bridge with
+[`mcp-remote`](https://www.npmjs.com/package/mcp-remote):
+`npx mcp-remote http://localhost:4000/mcp --header "Authorization: Bearer your-secret-key"`.
+
+**Any SDK client**
+
+```ts
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+
+const client = new Client({ name: 'my-app', version: '1.0.0' });
+await client.connect(new StreamableHTTPClientTransport(new URL('http://localhost:4000/mcp'), {
+  requestInit: { headers: { Authorization: 'Bearer your-secret-key' } },
+}));
+const { tools } = await client.listTools();
+```
+
+What the endpoint does:
+
+| | |
+|---|---|
+| `POST /mcp` | JSON-RPC: `initialize`, `ping`, `tools/list` (paginated), `tools/call`, notifications (incl. `notifications/cancelled`). Batches are accepted. Responses are `application/json`. |
+| `GET /mcp` | SSE stream for server→client notifications: `notifications/tools/list_changed` is sent when the aggregated list changes (a server announces new tools, connects, is removed by hot reload, …). |
+| `DELETE /mcp` | Ends the session. |
+| Sessions | `initialize` returns `Mcp-Session-Id`; later requests must send it (`400` if missing, `404` if unknown or expired). A session is bound to the API key / JWT subject that created it. Idle sessions expire after `mcp.sessionIdleTimeoutSeconds`. |
+| Tool names | `toolNaming: auto` (default) keeps a tool's name unless two servers expose the same name; then every copy becomes `<serverId>__<tool>`. `prefix` always uses `<serverId>__<tool>`. Ordering is deterministic (server id, then tool name). In `auto` mode the prefixed form is also accepted by `tools/call`. |
+| Errors | Unknown tool / bad params → JSON-RPC `-32602`; rate limit → `-32029` with `data.retryAfter`; server offline or timed out → a normal result with `isError: true` (so the model sees it); upstream JSON-RPC errors are forwarded unchanged; cancelled → `-32800`. |
+| Cancellation | `notifications/cancelled` (or the client dropping the HTTP request) cancels the upstream call, which receives its own `notifications/cancelled`. |
+| Security | Same `auth` as the REST API (`Authorization: Bearer …` or `X-API-Key`). Requests with an `Origin` header are rejected (`403`) unless it matches `mcp.allowedOrigins` (default: `corsOrigins`) — set this when the gateway listens on a reachable address. |
+
 ## API Reference
 
 | Method | Path | Description |
@@ -157,6 +216,7 @@ curl -X POST http://localhost:4000/api/v1/tools/call \
 | `GET` | `/api/v1/health/ready` | Readiness probe — always public; `200` when servers are ready, else `503` (`?min=N`) |
 | `GET` | `/api/v1/metrics` | Aggregated metrics (JSON or Prometheus) |
 | `GET` | `/api/v1/requests` | Recent request log (`?limit=`, max 500) |
+| `POST` `GET` `DELETE` | `/mcp` | MCP Streamable HTTP endpoint (see [above](#use-the-gateway-as-an-mcp-server-mcp)) |
 
 `/health` and `/metrics` are unauthenticated by default; set `auth.protect.health` / `auth.protect.metrics`
 to require auth for them too (`/health/live` and `/health/ready` always stay public for Docker / Kubernetes probes).
@@ -218,6 +278,16 @@ monitor:
 corsOrigins:
   - "https://your-app.com"
 
+mcp:                          # downstream MCP endpoint (Streamable HTTP)
+  enabled: true               # restart required to change
+  path: /mcp                  # restart required to change; not "/" or under /api, /dashboard
+  toolNaming: auto            # auto | prefix  ("<serverId>__<tool>")
+  pageSize: 500               # tools per tools/list page
+  sessionIdleTimeoutSeconds: 1800
+  maxSessions: 1000           # least recently used idle session is evicted beyond this
+  # allowedOrigins: ["https://your-app.com"]   # browser origins allowed on /mcp (default: corsOrigins)
+  # instructions: "Tools for the ACME workspace"  # returned from initialize
+
 servers:
   - id: my-server             # Unique identifier
     name: My Server           # Display name
@@ -265,7 +335,8 @@ With `mcp-gateway start` the config file is watched (disable with `--no-watch`).
 | `auth` (strategy, keys, JWT secret, `protect`) | `monitor.retentionHours` |
 | `rateLimit` (counters reset when it changes) | `healthCheckIntervalMs` |
 | `corsOrigins`, `monitor.requestLog`, `monitor.prometheus` | `dashboard` |
-| `reconnect`, `logLevel` | |
+| `reconnect`, `logLevel` | `mcp.enabled`, `mcp.path` |
+| `mcp.toolNaming`, `mcp.pageSize`, session limits, `mcp.allowedOrigins` | |
 
 An invalid file is rejected and the running config is kept. `MCP_GATEWAY_*` env overrides keep precedence.
 
@@ -371,12 +442,7 @@ process.on('SIGTERM', () => gateway.stop());
 
 | Feature | Description |
 |---------|-------------|
-| **Remote transports** | `streamable-http`, `sse` and `websocket` servers are now routable (checked against the official MCP SDK servers in the test suite) |
-| **Auto reconnect** | Exponential backoff with jitter, `reconnecting` status, manual `POST /servers/:id/reconnect`, Prometheus series |
-| **Health pings** | Real MCP `ping` health checks with latency; `degraded` when a connected server stops answering |
-| **Tool list updates** | `notifications/tools/list_changed` refreshes the tool registry |
-| **Protected health/metrics** | `auth.protect.health` / `auth.protect.metrics`, public `/health/live`, dashboard API-key support |
-| **More hot reload** | Auth, API keys, rate limits, CORS, reconnect policy |
+| **`/mcp` endpoint** | The gateway is an MCP server (Streamable HTTP, 2025-06-18): sessions, aggregated + paginated `tools/list`, deterministic collision naming, routed `tools/call`, `list_changed` notifications, cancellation |
 
 ## What's New in v0.2.0
 
@@ -401,6 +467,10 @@ process.on('SIGTERM', () => gateway.stop());
 | Automatic reconnect with backoff | ✅ Done |
 | Config hot reload | ✅ Done (v0.2.0) |
 | Web dashboard UI | ✅ Done (v0.2.0) |
+| Downstream MCP endpoint (`/mcp`) | ✅ Done (unreleased, v0.5) |
+| Per-key scopes and limits | 📋 Planned (v0.6) |
+| JS / Kotlin clients, OpenAI / Anthropic tool schemas | 📋 Planned (v0.7) |
+| Resources & prompts passthrough, persistent audit log | 📋 Planned (v0.8) |
 | Redis-backed rate limiting | 📋 Planned |
 | OAuth2 / OIDC auth | 📋 Planned |
 | Tool-level access control (RBAC) | 📋 Planned |
