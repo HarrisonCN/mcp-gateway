@@ -43,7 +43,13 @@ beforeAll(async () => {
       case 'POST /api/v1/tools/call':
         if (body.tool === 'busy') return json(429, { error: 'Too Many Requests', message: 'Rate limit of 1 requests per 60s exceeded' }, { 'retry-after': '7' });
         if (body.tool === 'hang') return; // never answers
+        if (body.tool === 'forbidden') return json(403, { error: 'Forbidden', message: 'outside sandbox', code: -32003, policy: { rule: 'sandbox' } });
         return json(200, { result: { content: [{ type: 'text', text: JSON.stringify(body) }] }, server: body.server ?? 'a', tool: body.tool, durationMs: 1 });
+      case 'GET /api/v1/approvals':
+        return json(200, { pending: [{ id: 'ap1', status: 'pending', serverId: 'a', tool: 'echo' }], recent: [] });
+      case 'POST /api/v1/approvals/ap1/approve':
+      case 'POST /api/v1/approvals/ap1/deny':
+        return json(200, { id: 'ap1', status: u.pathname.endsWith('approve') ? 'approved' : 'denied', reason: body?.reason });
       case 'GET /api/v1/requests':
         return json(200, { requests: [{ id: '1', toolName: 'echo', limit: u.searchParams.get('limit') }] });
       case 'POST /mcp': {
@@ -163,6 +169,24 @@ describe('GatewayClient (REST)', () => {
     });
     expect(await c.listTools()).toEqual([]);
     expect(calls).toEqual(['http://gw/api/v1/tools']);
+  });
+});
+
+describe('GatewayClient policy + approvals (gateway ≥ 1.6)', () => {
+  it('exposes policy error codes', async () => {
+    const err = (await client().callTool("forbidden").catch((e: unknown) => e)) as GatewayError;
+    expect(err).toBeInstanceOf(GatewayError);
+    expect(err.status).toBe(403);
+    expect(err.code).toBe(-32003);
+    expect(err.isPolicyError).toBe(true);
+    expect(new GatewayError('x', 500).code).toBeUndefined();
+  });
+
+  it('lists, approves and denies held calls', async () => {
+    const c = client();
+    expect((await c.approvals()).pending[0]!.id).toBe('ap1');
+    expect(await c.approve('ap1', 'ok')).toMatchObject({ status: 'approved', reason: 'ok' });
+    expect((await c.deny('ap1')).status).toBe('denied');
   });
 });
 

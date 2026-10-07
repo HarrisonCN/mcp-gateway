@@ -579,6 +579,15 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v1.7
+
+| Feature | Description |
+|---------|-------------|
+| **Clients 1.7** | JS + Kotlin clients gain `approvals()` / `approve()` / `deny()` and policy-aware errors (`code`, `isPolicyError`) |
+| **Maven Central ready** | Kotlin client POM, sources/javadoc jars, signing, Central Portal publish workflow |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v1.6
 
 | Feature | Description |

@@ -61,6 +61,34 @@ export class GatewayError extends Error {
     super(message);
     this.name = 'GatewayError';
   }
+
+  /** Gateway error code from the body (`-32003` policy denied, `-32004` approval rejected, `-32005` output blocked, …). */
+  get code(): number | undefined {
+    return isRecord(this.body) && typeof this.body.code === 'number' ? this.body.code : undefined;
+  }
+
+  /** True when a gateway policy (rule, approval or output filter) refused the call. */
+  get isPolicyError(): boolean {
+    return this.code === -32003 || this.code === -32004 || this.code === -32005;
+  }
+}
+
+/** A tool call held by a policy rule with `effect: approve` (`GET /approvals`). */
+export interface ApprovalRequest {
+  id: string;
+  status: 'pending' | 'approved' | 'denied' | 'expired' | 'cancelled';
+  clientId?: string;
+  serverId: string;
+  tool: string;
+  arguments: unknown;
+  rule?: string;
+  message?: string;
+  via: 'rest' | 'mcp';
+  createdAt: string;
+  expiresAt: string;
+  decidedAt?: string;
+  decidedBy?: string;
+  reason?: string;
 }
 
 /**
@@ -223,6 +251,23 @@ export class GatewayClient {
     return this.request(
       'POST', '/api/v1/prompts/get', { name, arguments: args, ...(options.server ? { server: options.server } : {}) }, options,
     );
+  }
+
+  // ─── Approvals (gateway ≥ 1.6, operator keys) ───────────────────────────────
+
+  /** `GET /approvals` — pending and recently decided held tool calls. */
+  approvals(options?: RequestOptions): Promise<{ pending: ApprovalRequest[]; recent: ApprovalRequest[] }> {
+    return this.request('GET', '/api/v1/approvals', undefined, options);
+  }
+
+  /** `POST /approvals/:id/approve`. */
+  approve(id: string, reason?: string, options?: RequestOptions): Promise<ApprovalRequest> {
+    return this.request('POST', `/api/v1/approvals/${encodeURIComponent(id)}/approve`, reason ? { reason } : {}, options);
+  }
+
+  /** `POST /approvals/:id/deny`. */
+  deny(id: string, reason?: string, options?: RequestOptions): Promise<ApprovalRequest> {
+    return this.request('POST', `/api/v1/approvals/${encodeURIComponent(id)}/deny`, reason ? { reason } : {}, options);
   }
 
   // ─── Plumbing ───────────────────────────────────────────────────────────────

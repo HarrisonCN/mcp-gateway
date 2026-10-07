@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-07
+
+Clients 1.7: policy-aware JS and Kotlin clients, release-ready packaging.
+
+### Added
+- **JS client 1.7.0** (`@winstonsayno/mcp-gateway-client`): `approvals()`, `approve(id, reason?)`, `deny(id, reason?)`;
+  `GatewayError.code` and `GatewayError.isPolicyError` for `-32003` (policy denied), `-32004` (approval rejected) and
+  `-32005` (output blocked). The client version now follows the gateway version.
+- **Kotlin client 1.7.0** (`io.github.harrisoncn:mcp-gateway-client`): same approvals API and `GatewayException.code` /
+  `isPolicyError`; Maven Central ready POM (license, SCM, developers), sources + javadoc jars, in-memory PGP signing
+  when a key is supplied, local `staging` repository for Central Portal bundles; `-PreleaseVersion` override.
+- **`.github/workflows/clients-publish.yml`**: on release, publishes the JS client to npm (`NPM_TOKEN`) and the Kotlin
+  client to Maven Central (`MAVEN_CENTRAL_USERNAME` / `MAVEN_CENTRAL_PASSWORD` / `SIGNING_KEY` / `SIGNING_PASSWORD`);
+  each job is skipped with a notice when its secrets are missing.
+
 ## [1.6.0] - 2026-10-07
 
 Tool policy: argument rules, human approval and output filtering.

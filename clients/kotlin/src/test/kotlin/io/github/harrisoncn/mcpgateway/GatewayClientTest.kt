@@ -142,4 +142,23 @@ class GatewayClientTest {
         repeat(3) { server.takeRequest() }
         assertEquals("DELETE", server.takeRequest().method)
     }
+
+    @Test
+    fun approvalsAndPolicyErrors() {
+        json(200, """{"pending":[{"id":"ap1","status":"pending","serverId":"a","tool":"echo"}],"recent":[]}""")
+        assertEquals("ap1", client.approvals().pending.single().id)
+        assertEquals("/api/v1/approvals", server.takeRequest().path)
+
+        json(200, """{"id":"ap1","status":"approved","reason":"ok"}""")
+        assertEquals("approved", client.approve("ap1", "ok").status)
+        val sent = server.takeRequest()
+        assertEquals("/api/v1/approvals/ap1/approve", sent.path)
+        assertEquals("""{"reason":"ok"}""", sent.body.readUtf8())
+
+        json(403, """{"error":"Forbidden","message":"outside sandbox","code":-32003}""")
+        val e = assertFailsWith<GatewayException> { client.callTool("rm") }
+        assertEquals(-32003, e.code)
+        assertTrue(e.isPolicyError)
+        assertNull(GatewayException("x", 500).code)
+    }
 }
