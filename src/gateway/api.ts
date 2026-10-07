@@ -10,8 +10,9 @@ import type { ServerRegistry } from '../registry/index.js';
 import { ERR_TIMEOUT, type McpProxy } from '../proxy/index.js';
 import type { MetricsCollector, ServerStateSample } from '../monitor/index.js';
 import type { ServerSupervisor } from './supervisor.js';
-import { createAuthMiddleware, type AuthedRequest } from '../auth/middleware.js';
-import { createRateLimiter, type RateLimitDecision } from '../auth/ratelimit.js';
+import { createAuthMiddleware, type AuthedRequest, type AuthMiddleware } from '../auth/middleware.js';
+import { createRateLimiter, type RateLimitDecision, type RateLimiter } from '../auth/ratelimit.js';
+import { filterToolsByScope, isRestricted, isServerInScope, isToolInScope, type AccessScope } from '../auth/scopes.js';
 import { logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
 
@@ -27,6 +28,8 @@ export type ApiRouter = express.Router & {
   authenticate: RequestHandler;
   /** Count one rate-limited request for `req` (undefined when no limit is configured). */
   takeRateLimit(req: Request): RateLimitDecision | undefined;
+  /** Current scope of a client id (api keys); see `AuthMiddleware.resolveClient`. */
+  resolveClient(clientId: string | undefined): { known: boolean; scope?: AccessScope } | undefined;
 };
 
 export interface ApiRouterOptions {
@@ -145,21 +148,43 @@ export function createApiRouter(
   const router = express.Router() as ApiRouter;
   let cfg = config;
   // Built eagerly so a misconfiguration fails at startup (fail closed).
-  let authMw = createAuthMiddleware(cfg.auth);
+  let authMw: AuthMiddleware = createAuthMiddleware(cfg.auth);
   let rateLimiter = createRateLimiter(cfg.rateLimit);
+  // Keys with their own `rateLimit` get their own limiter (created lazily).
+  let keyLimiters = new Map<string, RateLimiter>();
+  const resetKeyLimiters = () => {
+    for (const l of keyLimiters.values()) l.close();
+    keyLimiters = new Map();
+  };
+  const limiterFor = (req: Request): RateLimiter => {
+    const { scope, clientId } = req as AuthedRequest;
+    if (!scope?.rateLimit) return rateLimiter;
+    const id = clientId ?? 'anonymous';
+    let l = keyLimiters.get(id);
+    if (!l) {
+      l = createRateLimiter(scope.rateLimit);
+      keyLimiters.set(id, l);
+    }
+    return l;
+  };
+  const scopeOf = (req: Request): AccessScope | undefined => (req as AuthedRequest).scope;
 
   // Stable wrappers: routes keep pointing at these while the inner
   // middleware is swapped on hot reload.
   const auth: RequestHandler = (req, res, next) => authMw(req, res, next);
-  const rateLimit: RequestHandler = (req, res, next) => rateLimiter(req, res, next);
+  const rateLimit: RequestHandler = (req, res, next) => limiterFor(req)(req, res, next);
   const protectable =
     (flag: 'health' | 'metrics'): RequestHandler =>
     (req, res, next) =>
       cfg.auth?.protect?.[flag] ? authMw(req, res, next) : next();
 
-  router.close = () => rateLimiter.close();
+  router.close = () => {
+    rateLimiter.close();
+    resetKeyLimiters();
+  };
   router.authenticate = auth;
-  router.takeRateLimit = (req) => rateLimiter.take(req);
+  router.takeRateLimit = (req) => limiterFor(req).take(req);
+  router.resolveClient = (clientId) => authMw.resolveClient?.(clientId);
   router.update = (next: GatewayConfig) => {
     const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
     let nextAuth = cfg.auth;
@@ -167,6 +192,7 @@ export function createApiRouter(
       try {
         authMw = createAuthMiddleware(next.auth);
         nextAuth = next.auth;
+        resetKeyLimiters();
         logger.info(`Auth settings reloaded (strategy: ${next.auth?.strategy ?? 'none'})`);
       } catch (err) {
         logger.error(
@@ -237,19 +263,24 @@ export function createApiRouter(
 
   // ─── Server Registry ────────────────────────────────────────────────────────
 
-  router.get('/servers', auth, (_req, res) => {
-    const servers = registry.getAllServers().map((s) => ({
-      ...redactServer(s),
-      health: registry.getHealth(s.id),
-      session: proxy.getSessionInfo(s.id),
-      toolCount: registry.getTools(s.id).length,
-    }));
+  router.get('/servers', auth, (req, res) => {
+    const scope = scopeOf(req);
+    const servers = registry
+      .getAllServers()
+      .filter((s) => isServerInScope(scope, s.id))
+      .map((s) => ({
+        ...redactServer(s),
+        health: registry.getHealth(s.id),
+        session: proxy.getSessionInfo(s.id),
+        toolCount: filterToolsByScope(scope, registry.getTools(s.id)).length,
+      }));
     res.json({ servers, total: servers.length });
   });
 
   router.get('/servers/:id', auth, (req, res) => {
     const server = registry.getServer(req.params.id!);
-    if (!server) {
+    // Out-of-scope servers are hidden from discovery.
+    if (!server || !isServerInScope(scopeOf(req), server.id)) {
       res.status(404).json({ error: 'Server not found' });
       return;
     }
@@ -257,7 +288,7 @@ export function createApiRouter(
       ...redactServer(server),
       health: registry.getHealth(server.id),
       session: proxy.getSessionInfo(server.id),
-      tools: registry.getTools(server.id),
+      tools: filterToolsByScope(scopeOf(req), registry.getTools(server.id)),
     });
   });
 
@@ -270,6 +301,10 @@ export function createApiRouter(
       const server = registry.getServer(req.params.id!);
       if (!server) {
         res.status(404).json({ error: 'Server not found' });
+        return;
+      }
+      if (!isServerInScope(scopeOf(req), server.id)) {
+        res.status(403).json({ error: 'Forbidden', message: `Server "${server.id}" is not allowed for this client` });
         return;
       }
       if (!options.supervisor) {
@@ -296,6 +331,7 @@ export function createApiRouter(
       const taggedServerIds = new Set(registry.getServersByTag(tag).map((s) => s.id));
       tools = tools.filter((t) => taggedServerIds.has(t.serverId));
     }
+    tools = filterToolsByScope(scopeOf(req), tools);
 
     res.json({ tools, total: tools.length });
   });
@@ -324,12 +360,21 @@ export function createApiRouter(
         return;
       }
 
+      const scope = scopeOf(req);
+      const forbidden = (message: string) => res.status(403).json({ error: 'Forbidden', message });
+
       // Resolve server: use explicit serverId or auto-discover from tool name
       let targetServerId = serverId;
       if (!targetServerId) {
-        const candidates = registry.findTools(tool);
-        if (candidates.length === 0) {
+        const all = registry.findTools(tool);
+        if (all.length === 0) {
           res.status(404).json({ error: 'Not Found', message: `Tool "${tool}" not found in any server` });
+          return;
+        }
+        // Only servers the client may use take part in auto-routing.
+        const candidates = all.filter((c) => isToolInScope(scope, c.serverId, c.name));
+        if (candidates.length === 0) {
+          forbidden(`Tool "${tool}" is not allowed for this client`);
           return;
         }
         if (candidates.length > 1) {
@@ -351,12 +396,22 @@ export function createApiRouter(
         return;
       }
 
+      if (!isServerInScope(scope, targetServerId)) {
+        forbidden(`Server "${targetServerId}" is not allowed for this client`);
+        return;
+      }
+
       // Enforced here too: an explicit "server" must not bypass the filter.
       if (!registry.isToolExposed(targetServerId, tool)) {
         res.status(403).json({
           error: 'Forbidden',
           message: `Tool "${tool}" is not exposed by server "${targetServerId}"`,
         });
+        return;
+      }
+
+      if (!isToolInScope(scope, targetServerId, tool)) {
+        forbidden(`Tool "${tool}" on server "${targetServerId}" is not allowed for this client`);
         return;
       }
 
@@ -417,6 +472,12 @@ export function createApiRouter(
 
   router.get('/requests', auth, (req, res) => {
     const limit = parseIntParam(req.query.limit, 50, 1, 500);
+    // Restricted clients only see their own calls.
+    if (isRestricted(scopeOf(req))) {
+      const own = (req as AuthedRequest).clientId;
+      res.json({ requests: metrics.getRecentWhere(limit, (m) => m.clientId === own) });
+      return;
+    }
     res.json({ requests: metrics.getRecent(limit) });
   });
 

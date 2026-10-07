@@ -19,7 +19,7 @@
 import express from 'express';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { randomUUID, createHash } from 'crypto';
-import type { McpEndpointConfig, ToolInfo } from '../utils/types.js';
+import type { McpEndpointConfig } from '../utils/types.js';
 import type { ServerRegistry } from '../registry/index.js';
 import { ERR_CANCELLED, ERR_NOT_CONNECTED, ERR_TIMEOUT, type McpProxy } from '../proxy/index.js';
 import type { MetricsCollector } from '../monitor/index.js';
@@ -27,6 +27,7 @@ import type { RateLimitDecision } from '../auth/ratelimit.js';
 import { setRateLimitHeaders } from '../auth/ratelimit.js';
 import { originAllowed } from '../middleware/cors.js';
 import type { AuthedRequest } from '../auth/middleware.js';
+import { filterToolsByScope, isToolInScope, type AccessScope } from '../auth/scopes.js';
 import { logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
 import { buildToolIndex, toMcpTool, type ToolIndex } from './naming.js';
@@ -84,9 +85,19 @@ interface DownstreamSession {
   /** Fingerprint of the tool list this session last saw. */
   toolsFingerprint?: string;
   eventSeq: number;
-  /** The request that created the session (scopes are evaluated against it). */
-  authRequest: AuthedRequest;
+  /** Identity + scope of the client, refreshed on every request (used for notifications). */
+  auth: ClientIdentity;
 }
+
+interface ClientIdentity {
+  clientId?: string;
+  scope?: AccessScope;
+}
+
+const identityOf = (req: Request): ClientIdentity => ({
+  clientId: (req as AuthedRequest).clientId,
+  scope: (req as AuthedRequest).scope,
+});
 
 export interface McpSessionSummary {
   id: string;
@@ -112,14 +123,10 @@ export interface McpEndpointDeps {
   /** Whether request logging is on. */
   requestLog: () => boolean;
   /**
-   * Optional access control hooks (per-key scopes). `visibleTools` filters
-   * discovery; `canCall` gates `tools/call`.
+   * Current scope of a client id, used to re-evaluate open sessions after an
+   * auth hot reload (`known: false` ends the session). Optional.
    */
-  access?: {
-    visibleTools(req: Request, tools: ToolInfo[]): ToolInfo[];
-    canCall(req: Request, serverId: string, toolName: string): boolean;
-    takeRateLimit?(req: Request): RateLimitDecision | undefined;
-  };
+  resolveClient?: (clientId: string | undefined) => { known: boolean; scope?: AccessScope } | undefined;
 }
 
 const SSE_KEEPALIVE_MS = 25_000;
@@ -357,14 +364,9 @@ export class McpEndpoint {
       streams: [],
       inflight: new Map(),
       eventSeq: 0,
-      // Keep only the identity, not the whole request object.
-      authRequest: {
-        clientId: (req as AuthedRequest).clientId,
-        jwtPayload: (req as AuthedRequest).jwtPayload,
-        headers: {},
-      } as unknown as AuthedRequest,
+      auth: identityOf(req),
     };
-    session.toolsFingerprint = this.fingerprint(this.toolIndex(req));
+    session.toolsFingerprint = this.fingerprint(this.toolIndex(session.auth));
     this.sessions.set(session.id, session);
     logger.info(
       `MCP session ${session.id.slice(0, 8)} opened by ${clientInfo?.name ?? 'unknown client'}` +
@@ -399,6 +401,7 @@ export class McpEndpoint {
       return undefined;
     }
     session.lastSeen = Date.now();
+    session.auth = identityOf(req);
     return session;
   }
 
@@ -463,17 +466,17 @@ export class McpEndpoint {
       case 'initialize':
         return rpcError(id, { code: JSONRPC_INVALID_REQUEST, message: 'Session already initialized' });
       case 'tools/list':
-        return this.listTools(session, req, msg);
+        return this.listTools(session, msg);
       case 'tools/call':
-        return this.callTool(req, res, msg, signal, single);
+        return this.callTool(session, req, res, msg, signal, single);
       default:
         return rpcError(id, { code: JSONRPC_METHOD_NOT_FOUND, message: `Method not found: ${String(msg.method)}` });
     }
   }
 
-  private toolIndex(req: Request): ToolIndex {
-    let tools = this.deps.registry.getAllTools();
-    if (this.deps.access) tools = this.deps.access.visibleTools(req, tools);
+  /** Tools visible to a client (server filters + its scope), with exposed names. */
+  private toolIndex(identity: ClientIdentity): ToolIndex {
+    const tools = filterToolsByScope(identity.scope, this.deps.registry.getAllTools());
     return buildToolIndex(tools, this.cfg.toolNaming);
   }
 
@@ -483,7 +486,7 @@ export class McpEndpoint {
     return h.digest('hex');
   }
 
-  private listTools(session: DownstreamSession, req: Request, msg: JsonRpcMessage): JsonRpcMessage {
+  private listTools(session: DownstreamSession, msg: JsonRpcMessage): JsonRpcMessage {
     const params = isObject(msg.params) ? msg.params : {};
     let offset = 0;
     if (params.cursor !== undefined) {
@@ -493,7 +496,7 @@ export class McpEndpoint {
       }
       offset = o;
     }
-    const index = this.toolIndex(req);
+    const index = this.toolIndex(session.auth);
     if (offset === 0) session.toolsFingerprint = this.fingerprint(index);
     const page = index.list.slice(offset, offset + this.cfg.pageSize);
     const result: Record<string, unknown> = { tools: page.map(toMcpTool) };
@@ -503,6 +506,7 @@ export class McpEndpoint {
   }
 
   private async callTool(
+    session: DownstreamSession,
     req: Request,
     res: Response,
     msg: JsonRpcMessage,
@@ -520,13 +524,17 @@ export class McpEndpoint {
       return rpcError(id, { code: JSONRPC_INVALID_PARAMS, message: '"arguments" must be an object' });
     }
 
-    const tool = this.toolIndex(req).byName.get(name);
+    const tool = this.toolIndex(session.auth).byName.get(name);
     if (!tool) {
-      // Scope-hidden tools look exactly like unknown ones, unless the caller
-      // names one it is not allowed to use explicitly by its prefixed form.
-      const unscoped = buildToolIndex(this.deps.registry.getAllTools(), this.cfg.toolNaming).byName.get(name);
-      if (unscoped && this.deps.access && !this.deps.access.canCall(req, unscoped.serverId, unscoped.name)) {
-        return rpcError(id, { code: ERR_FORBIDDEN, message: `Forbidden: tool "${name}" is not allowed for this client` });
+      // A tool that exists but is outside the client's scope is refused with
+      // ERR_FORBIDDEN (the REST API's 403); it never appears in tools/list.
+      if (session.auth.scope) {
+        const unscoped = buildToolIndex(this.deps.registry.getAllTools(), this.cfg.toolNaming).byName.get(name);
+        const anyServer = this.deps.registry.findTools(name);
+        const target = unscoped ?? (anyServer.length > 0 ? anyServer[0] : undefined);
+        if (target && !isToolInScope(session.auth.scope, target.serverId, target.name)) {
+          return rpcError(id, { code: ERR_FORBIDDEN, message: `Forbidden: tool "${name}" is not allowed for this client` });
+        }
       }
       return rpcError(id, { code: JSONRPC_INVALID_PARAMS, message: `Unknown tool: ${name}` });
     }
@@ -535,9 +543,7 @@ export class McpEndpoint {
       return rpcError(id, { code: JSONRPC_INVALID_PARAMS, message: `Unknown tool: ${name}` });
     }
 
-    const decision = this.deps.access?.takeRateLimit
-      ? this.deps.access.takeRateLimit(req)
-      : this.deps.takeRateLimit(req);
+    const decision = this.deps.takeRateLimit(req);
     if (decision) {
       if (single && !res.headersSent) setRateLimitHeaders(res, decision.limit, decision.remaining, decision.resetAt);
       if (!decision.allowed) {
@@ -599,10 +605,23 @@ export class McpEndpoint {
     this.notifyTimer.unref();
   }
 
+  /** Re-evaluate every session's scope (after an auth hot reload) and notify changes. */
+  refreshClients(): void {
+    this.scheduleListChanged();
+  }
+
   private sendListChanged(): void {
-    for (const s of this.sessions.values()) {
+    for (const s of [...this.sessions.values()]) {
+      const current = this.deps.resolveClient?.(s.auth.clientId);
+      if (current && !current.known) {
+        // The key that opened this session is gone.
+        logger.info(`MCP session ${s.id.slice(0, 8)} ended: its credentials were removed`);
+        this.endSession(s);
+        continue;
+      }
+      if (current) s.auth = { ...s.auth, scope: current.scope };
       if (s.streams.length === 0) continue;
-      const fp = this.fingerprint(this.toolIndex(s.authRequest));
+      const fp = this.fingerprint(this.toolIndex(s.auth));
       if (fp === s.toolsFingerprint) continue;
       s.toolsFingerprint = fp;
       this.send(s, { jsonrpc: '2.0', method: 'notifications/tools/list_changed' });

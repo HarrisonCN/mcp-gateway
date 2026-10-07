@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Per-key scopes**: `auth.apiKeys` entries may be objects `{ key, name?, servers?, tools?, rateLimit? }` (plain strings still mean full access). `servers` / `tools` are glob allow-lists (`tools` patterns containing `/` match `<serverId>/<tool>`); `rateLimit` gives the key its own bucket; `name` makes the client id `key:<name>`; `${VAR}` is expanded in object keys. JWTs carry scopes in the `mcp_servers` / `mcp_tools` claims. Enforced on REST (`/tools`, `/servers`, `/servers/:id` hide; `/tools/call`, `/servers/:id/reconnect` → `403`; auto-routing only among allowed servers; restricted keys see only their own `/requests`) and on `/mcp` (`tools/list` hides, `tools/call` → `-32003`, key rate limits). Hot reloadable: open `/mcp` sessions are notified, sessions of removed keys closed. Exports: `isServerInScope`, `isToolInScope`, `filterToolsByScope`, `scopeFromJwt`, types `AccessScope`, `ApiKeyConfig`.
 - **Downstream MCP endpoint** `POST/GET/DELETE /mcp`: the gateway is now an MCP server over Streamable HTTP (protocol `2025-06-18`, `2025-03-26` accepted). Sessions via `Mcp-Session-Id` (bound to the authenticated key / JWT subject, idle expiry, LRU eviction at `maxSessions`), `initialize`, `ping`, aggregated and paginated `tools/list`, `tools/call` routed upstream, `notifications/tools/list_changed` on the `GET` SSE stream whenever the aggregated list changes, and `notifications/cancelled` propagated to the upstream server. JSON-RPC batches are accepted. Reuses auth, the rate limiter (per `tools/call`), `maxConcurrency`, timeouts, metrics and the request log. Origin validation (`mcp.allowedOrigins`, default `corsOrigins`) against DNS rebinding.
 - `mcp` config block: `enabled`, `path`, `toolNaming` (`auto` — prefix `<serverId>__` only on name collisions — or `prefix`), `pageSize`, `sessionIdleTimeoutSeconds`, `maxSessions`, `allowedOrigins`, `instructions`. Everything except `enabled` / `path` hot reloads.
 - `McpProxy.request()` for arbitrary upstream methods and an optional `AbortSignal` on `callTool()` (`ERR_CANCELLED`).
@@ -18,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Library exports: `McpEndpoint`, `buildToolIndex`, `prefixedName`, `DOWNSTREAM_PROTOCOL_VERSIONS`, `ERR_RATE_LIMITED`, types `McpEndpointConfig`, `ToolNaming`, `McpSessionSummary`; `Gateway#getMcpEndpoint()`.
 - Conformance tests with the official `@modelcontextprotocol/sdk` client (list, call, ping, `list_changed`, cancellation, session termination, auth).
 - CORS allows the `Mcp-Session-Id`, `MCP-Protocol-Version` and `Last-Event-ID` request headers and exposes `Mcp-Session-Id`.
+
+### Changed
+- `AuthConfig.apiKeys` is typed `Array<string | ApiKeyConfig>` (was `string[]`); existing configs are unchanged. `createAuthMiddleware()` returns an `AuthMiddleware` (a `RequestHandler` with an optional `resolveClient`).
 
 ## [0.4.0] - 2026-10-07
 

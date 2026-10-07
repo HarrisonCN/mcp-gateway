@@ -158,8 +158,11 @@ export type AuthStrategy = 'none' | 'api-key' | 'jwt' | 'oauth2';
 
 export interface AuthConfig {
   strategy: AuthStrategy;
-  /** For api-key: list of valid keys */
-  apiKeys?: string[];
+  /**
+   * For api-key: valid keys. A plain string grants full access; an object can
+   * restrict the key to some servers / tools and give it its own rate limit.
+   */
+  apiKeys?: Array<string | ApiKeyConfig>;
   /** For jwt: secret or public key */
   jwtSecret?: string;
   /**
@@ -178,6 +181,19 @@ export interface AuthConfig {
     issuer: string;
     audience: string;
   };
+}
+
+export interface ApiKeyConfig {
+  /** The secret key (supports ${VAR} via env overrides in the config file). */
+  key: string;
+  /** Label used in client ids, logs and metrics instead of the key fingerprint (unique). */
+  name?: string;
+  /** Server ids this key may use (glob patterns). Absent = all servers. */
+  servers?: string[];
+  /** Tools this key may use (globs on the tool name, or on "<serverId>/<tool>" when the pattern has a "/"). Absent = all tools. */
+  tools?: string[];
+  /** Own rate limit for this key (replaces the global `rateLimit`). */
+  rateLimit?: { limit: number; windowSeconds: number };
 }
 
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
