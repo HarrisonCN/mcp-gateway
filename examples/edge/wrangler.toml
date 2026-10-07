@@ -1,0 +1,7 @@
+name = "mcp-gateway-edge"
+main = "cloudflare-worker.ts"
+compatibility_date = "2026-10-01"
+
+[vars]
+MCP_GATEWAY_SERVERS = '[{"id":"github","url":"https://api.githubcopilot.com/mcp/","headers":{"Authorization":"Bearer REPLACE_ME"}}]'
+MCP_GATEWAY_TOOL_NAMING = "auto"

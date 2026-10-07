@@ -579,6 +579,15 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v2.6
+
+| Feature | Description |
+|---------|-------------|
+| **Edge gateway** | `@winstonsayno/mcp-gateway/edge`: Fetch-API gateway for remote MCP servers, no Node dependencies |
+| **Runtime adapters** | Cloudflare Workers, Deno, Bun (and Node) — [guide](docs/guides/edge.md) |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v2.5
 
 | Feature | Description |
