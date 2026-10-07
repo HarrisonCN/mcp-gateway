@@ -313,6 +313,25 @@ const GatewayConfigSchema = z.object({
     .strict()
     .optional(),
   security: SecuritySchema.optional(),
+  state: z
+    .object({
+      store: z.enum(['memory', 'redis']).default('memory'),
+      redis: z
+        .object({
+          url: z.string().regex(/^rediss?:\/\//, 'must start with redis:// or rediss://'),
+          keyPrefix: z.string().optional(),
+          connectTimeoutMs: z.number().int().positive().optional(),
+          commandTimeoutMs: z.number().int().positive().optional(),
+        })
+        .strict()
+        .optional(),
+      failureMode: z.enum(['open', 'closed']).default('open'),
+    })
+    .strict()
+    .superRefine((st, ctx) => {
+      if (st.store === 'redis' && !st.redis) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['redis'], message: 'state.redis.url is required for store "redis"' });
+    })
+    .optional(),
 }).superRefine((c, ctx) => {
   const seen = new Set<string>();
   c.servers.forEach((s, i) => {
@@ -388,6 +407,13 @@ function applyEnvOverrides(config: Record<string, unknown>): Record<string, unkn
   }
   if (process.env.MCP_GATEWAY_LOG_LEVEL) {
     overrides.logLevel = process.env.MCP_GATEWAY_LOG_LEVEL;
+  }
+  if (process.env.MCP_GATEWAY_REDIS_URL) {
+    overrides.state = {
+      ...((overrides.state as Record<string, unknown>) ?? {}),
+      store: 'redis',
+      redis: { ...(((overrides.state as Record<string, unknown>)?.redis as Record<string, unknown>) ?? {}), url: process.env.MCP_GATEWAY_REDIS_URL },
+    };
   }
   if (process.env.MCP_GATEWAY_API_KEYS) {
     // Keeps other auth settings (e.g. auth.protect) from the file.

@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-07
+
+Multi-instance deployments: a pluggable shared state store.
+
+### Added
+- **`state` config block** with a pluggable `StateStore` (`memory` default, `redis`):
+  - Built-in Redis adapter (RESP2 client, pipelining, `MULTI`/`EXEC`, `AUTH` incl. ACL user, `SELECT`, `rediss://`
+    TLS, connect / command timeouts, lazy reconnect) — no new dependency. `keyPrefix` namespaces several gateways.
+  - **Shared rate limits**: global and per-key sliding windows are counted in the store, so limits hold across replicas
+    (denied requests are not counted).
+  - **Shared brute-force lockout**: failures on any replica count, a locked IP is locked everywhere.
+  - **Shared MCP sessions**: session metadata is stored with the idle TTL; a session opened on one replica is adopted
+    by the others (same client only) — no sticky sessions for `POST /mcp`. `DELETE` removes it cluster-wide.
+  - `state.failureMode`: `open` (default; a Redis outage lets requests through, logged at most every 10 s) or `closed`.
+  - `MCP_GATEWAY_REDIS_URL` environment override; `/api/v1/health` reports `state`.
+- Embedding: `new Gateway(config, { stateStore })` accepts any `StateStore`; `createStateStore`, `MemoryStateStore`,
+  `RedisStateStore`, `RedisClient`, `createStoreRateLimiter`, `StoreAuthLockout` are exported. `OAuthVerifier` and the
+  OAuth metadata helpers are exported too.
+- CI runs the state tests against a real Redis service container (`REDIS_URL`).
+- Docs: *Shared state* (configuration), *Multiple instances* (deployment).
+
+### Changed
+- `RateLimiter.take()` and the lockout tracker may be asynchronous (`LockoutTracker` interface); in-memory behaviour
+  is unchanged.
+
 ## [1.3.0] - 2026-10-07
 
 MCP authorization (OAuth 2.1) and resumable streams.

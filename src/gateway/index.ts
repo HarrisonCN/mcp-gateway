@@ -28,6 +28,7 @@ import { Mutex } from '../utils/mutex.js';
 import { VERSION } from '../utils/version.js';
 import { McpEndpoint } from '../mcp/endpoint.js';
 import { SqliteAuditStore } from '../monitor/audit.js';
+import { createStateStore, type StateStore } from '../state/index.js';
 import { PROTECTED_RESOURCE_METADATA_PATH, protectedResourceMetadata } from '../auth/oauth.js';
 
 function findDashboard(): string | undefined {
@@ -35,6 +36,11 @@ function findDashboard(): string | undefined {
   const here = dirname(fileURLToPath(import.meta.url));
   const file = resolve(here, '../../dashboard/index.html');
   return existsSync(file) ? file : undefined;
+}
+
+export interface GatewayOptions {
+  /** Use this state store instead of building one from `config.state` (embedding / custom backends). */
+  stateStore?: StateStore;
 }
 
 export class Gateway {
@@ -53,8 +59,12 @@ export class Gateway {
   private readonly reloadLock = new Mutex();
   private started = false;
   private stopping?: Promise<void>;
+  private stateStore?: StateStore;
 
-  constructor(private config: GatewayConfig) {
+  constructor(
+    private config: GatewayConfig,
+    private readonly options: GatewayOptions = {},
+  ) {
     this.registry = new ServerRegistry(config.healthCheckIntervalMs ?? 30_000);
     this.proxy = new McpProxy();
     this.metrics = new MetricsCollector(config.monitor);
@@ -90,10 +100,25 @@ export class Gateway {
     this.started = true;
     logger.setLevel(this.config.logLevel ?? 'info');
 
+    this.stateStore = this.options.stateStore ?? createStateStore(this.config.state);
+    const shared = this.stateStore.kind === 'memory' ? undefined : { store: this.stateStore, failureMode: this.config.state?.failureMode };
+    if (shared) {
+      try {
+        await this.stateStore.ping();
+        logger.info(`Shared state store: ${this.stateStore.kind}`);
+      } catch (err) {
+        logger.warn(
+          `Shared state store (${this.stateStore.kind}) is not reachable yet: ${err instanceof Error ? err.message : String(err)}` +
+            ` — failing ${this.config.state?.failureMode ?? 'open'} until it is`,
+        );
+      }
+    }
+
     // Builds auth/rate-limit; throws on insecure misconfiguration (fail closed)
     this.router = createApiRouter(this.config, this.registry, this.proxy, this.metrics, {
       supervisor: this.supervisor,
       isShuttingDown: () => this.stopping !== undefined,
+      shared,
     });
 
     this.app.disable('x-powered-by');
@@ -136,6 +161,7 @@ export class Gateway {
         strictOrigins: () => this.config.security?.dnsRebindingProtection === true,
         maxBodyBytes: () => this.maxBodyBytes(),
         maxArgumentsBytes: () => this.config.security?.maxToolArgumentsBytes ?? 0,
+        sessionStore: shared?.store,
       });
       this.app.use(this.mcp.router());
     }
@@ -290,6 +316,7 @@ export class Gateway {
     }
     this.router?.close();
     await this.proxy.disconnectAll();
+    if (this.stateStore && !this.options.stateStore) await this.stateStore.close().catch(() => undefined);
   }
 
   /**
@@ -320,7 +347,7 @@ export class Gateway {
       });
 
       const applied: string[] = [];
-      for (const field of ['port', 'host', 'healthCheckIntervalMs', 'dashboard', 'audit'] as const) {
+      for (const field of ['port', 'host', 'healthCheckIntervalMs', 'dashboard', 'audit', 'state'] as const) {
         if (!same(this.config[field], next[field])) {
           logger.warn(`Config "${field}" changed — restart required for it to take effect`);
         }

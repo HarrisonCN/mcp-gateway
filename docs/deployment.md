@@ -129,6 +129,21 @@ Notes:
   `proxy_buffering off;`, generous `proxy_read_timeout`). The gateway sends `X-Accel-Buffering: no` and SSE
   keep-alives every 25 s.
 
+## Multiple instances (horizontal scaling)
+
+Run several replicas behind a load balancer and point them at one Redis:
+
+```yaml
+state:
+  store: redis
+  redis: { url: "redis://redis:6379" }
+```
+
+Rate limits, auth lockouts and MCP session metadata are then shared (see *Shared state* in the configuration
+reference). Each replica connects to the upstream MCP servers itself. The `GET /mcp` notification stream is served by
+the replica that accepted it; clients reconnect with `Last-Event-ID` after a failover. `/api/v1/health` reports
+`"state": "redis"`.
+
 ## Behind a reverse proxy
 
 ```nginx

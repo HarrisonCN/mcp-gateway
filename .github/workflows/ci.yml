@@ -21,6 +21,15 @@ jobs:
       fail-fast: false
       matrix:
         node: [20, 22]
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      # Enables the real-Redis tests in test/state.test.ts
+      REDIS_URL: redis://127.0.0.1:6379
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

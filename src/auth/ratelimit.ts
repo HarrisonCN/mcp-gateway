@@ -7,7 +7,8 @@
  * window. This smooths the 2x burst a plain fixed window allows at window
  * boundaries while staying O(1) in memory per client.
  *
- * For multi-instance deployments, replace with a shared (e.g. Redis) store.
+ * For multi-instance deployments, `state.store: redis` switches to the
+ * store-backed limiter in `state/shared.ts`.
  */
 
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
@@ -38,7 +39,7 @@ export interface RateLimiter extends RequestHandler {
    * Count one request for `req` without responding (used by `/mcp`, where a
    * limit hit becomes a JSON-RPC error). Returns undefined when unlimited.
    */
-  take(req: Request): RateLimitDecision | undefined;
+  take(req: Request): RateLimitDecision | undefined | Promise<RateLimitDecision | undefined>;
 }
 
 export function createRateLimiter(
