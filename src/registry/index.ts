@@ -21,6 +21,7 @@ export class ServerRegistry extends EventEmitter {
   private servers = new Map<string, McpServerConfig>();
   private health = new Map<string, ServerHealth>();
   private tools = new Map<string, ToolInfo[]>(); // serverId -> tools
+  private replicaTools = new Map<string, ToolInfo[]>(); // replica id -> tools (mapped to the primary)
   private catalogs = new Map<string, ServerCatalog>(); // serverId -> resources / prompts
   private healthCheckInterval?: NodeJS.Timeout;
 
@@ -49,6 +50,7 @@ export class ServerRegistry extends EventEmitter {
     this.servers.delete(serverId);
     this.health.delete(serverId);
     this.tools.delete(serverId);
+    this.replicaTools.delete(serverId);
     this.catalogs.delete(serverId);
     logger.info(`Unregistered MCP server: ${serverId}`);
     this.emit('unregistered', serverId);
@@ -89,6 +91,28 @@ export class ServerRegistry extends EventEmitter {
    * filtered ones.
    */
   setTools(serverId: string, all: ToolInfo[]): void {
+    // Replicas serve the logical server's tools; they are never exposed on their own.
+    // Their list stands in for the primary's while the primary has none (e.g. it is down at start).
+    const primaryId = this.servers.get(serverId)?.replicaOf;
+    if (primaryId) {
+      const primary = this.servers.get(primaryId);
+      if (!primary) return;
+      const mapped = filterTools(all, primary.tools).map((t) => ({ ...t, serverId: primaryId, serverName: primary.name }));
+      this.replicaTools.set(serverId, mapped);
+      if ((this.tools.get(primaryId)?.length ?? 0) === 0 && mapped.length > 0) {
+        this.tools.set(primaryId, mapped);
+        this.emit('tools-updated', primaryId, mapped);
+      }
+      return;
+    }
+    if (all.length === 0) {
+      const standIn = [...this.replicaTools.entries()].find(([id, t]) => this.servers.get(id)?.replicaOf === serverId && t.length > 0);
+      if (standIn) {
+        this.tools.set(serverId, standIn[1]);
+        this.emit('tools-updated', serverId, standIn[1]);
+        return;
+      }
+    }
     const tools = filterTools(all, this.servers.get(serverId)?.tools);
     if (tools.length !== all.length) {
       logger.debug(`Server "${serverId}": ${all.length - tools.length} of ${all.length} tools hidden by its tools filter`);
@@ -141,7 +165,7 @@ export class ServerRegistry extends EventEmitter {
 
   /** Store a server's resources, resource templates and prompts. */
   setCatalog(serverId: string, catalog: ServerCatalog): void {
-    if (!this.servers.has(serverId)) return;
+    if (!this.servers.has(serverId) || this.servers.get(serverId)?.replicaOf) return;
     this.catalogs.set(serverId, catalog);
     this.emit('catalog-updated', serverId, catalog);
   }

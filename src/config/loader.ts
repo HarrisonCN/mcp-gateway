@@ -67,7 +67,49 @@ const McpServerSchema = z.object({
   timeout: z.number().positive().default(30000),
   maxConcurrency: z.number().int().positive().default(10),
   tools: ToolFilterSchema.optional(),
+  replicas: z
+    .array(
+      z
+        .object({
+          name: z.string().min(1).optional(),
+          transport: z.enum(['stdio', 'sse', 'websocket', 'streamable-http']).optional(),
+          url: z.string().url().optional(),
+          command: z.string().optional(),
+          args: z.array(z.string()).optional(),
+          env: z.record(z.string()).optional(),
+          headers: z.record(z.string()).optional(),
+          weight: z.number().positive().optional(),
+          enabled: z.boolean().optional(),
+        })
+        .strict(),
+    )
+    .optional(),
+  loadBalancing: z
+    .object({
+      strategy: z.enum(['round-robin', 'random', 'weighted', 'least-latency', 'failover']).optional(),
+      failoverOn: z.array(z.enum(['not-connected', 'timeout', 'error'])).optional(),
+      retries: z.number().int().min(0).optional(),
+      ejectAfter: z.number().int().min(0).optional(),
+      ejectMs: z.number().int().positive().optional(),
+    })
+    .strict()
+    .optional(),
+  weight: z.number().positive().optional(),
 }).superRefine((s, ctx) => {
+  if (s.id.includes('~')) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['id'], message: '"~" is reserved for replica ids' });
+  }
+  (s.replicas ?? []).forEach((r, i) => {
+    const transport = r.transport ?? s.transport;
+    if (transport === 'stdio' && !(r.command ?? s.command)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['replicas', i, 'command'], message: 'required for stdio transport' });
+    }
+    const protocols = URL_PROTOCOLS[transport];
+    const url = r.url ?? s.url;
+    if (protocols && (!url || !protocols.includes(safeProtocol(url)))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['replicas', i, 'url'], message: `a ${protocols.join(' / ')} URL is required for ${transport} transport` });
+    }
+  });
   if (s.transport === 'stdio' && !s.command) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['command'], message: 'required for stdio transport' });
   }

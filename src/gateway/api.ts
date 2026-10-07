@@ -558,7 +558,7 @@ export function createApiRouter(
         return;
       }
 
-      if (!proxy.isConnected(targetServerId)) {
+      if (!(invoker.balancer?.anyConnected(targetServerId) ?? proxy.isConnected(targetServerId))) {
         const health = registry.getHealth(targetServerId);
         const retryAt = health?.reconnect?.state === 'scheduled' ? health.reconnect.nextAttemptAt : undefined;
         if (retryAt) res.set('Retry-After', String(Math.max(1, Math.ceil((retryAt.getTime() - Date.now()) / 1000))));
@@ -662,7 +662,7 @@ export function createApiRouter(
       res.status(403).json({ error: 'Forbidden', message: `Server "${serverId}" is not allowed for this client` });
       return;
     }
-    if (!proxy.isConnected(serverId)) {
+    if (!(invoker.balancer?.anyConnected(serverId) ?? proxy.isConnected(serverId))) {
       res.status(503).json({
         error: 'Service Unavailable',
         message: `Server "${serverId}" is not connected`,
@@ -822,6 +822,12 @@ export function createApiRouter(
       }
     });
   }
+
+  // Load balancing: members, health and ejection per server with replicas (operator view).
+  router.get('/load-balancing', auth, (req, res) => {
+    if (!operatorOnly(req, res)) return;
+    res.json({ groups: invoker.balancer?.snapshot() ?? [] });
+  });
 
   // Output-filter findings since start (operator view).
   router.get('/policy', auth, (req, res) => {

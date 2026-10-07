@@ -31,6 +31,7 @@ import { SqliteAuditStore } from '../monitor/audit.js';
 import { createStateStore, type StateStore } from '../state/index.js';
 import { createTracer, NOOP_TRACER, type Tracer } from '../observability/tracing.js';
 import { ToolInvoker } from './invoker.js';
+import { LoadBalancer, expandReplicas } from './balancer.js';
 import { PluginHost, type PluginSource } from '../plugins/index.js';
 import { PROTECTED_RESOURCE_METADATA_PATH, protectedResourceMetadata } from '../auth/oauth.js';
 
@@ -140,6 +141,11 @@ export class Gateway {
       requestLog: () => this.config.monitor?.requestLog !== false,
       policy: () => this.config.policy,
       plugins: this.plugins,
+      balancer: new LoadBalancer({
+        servers: () => this.registry.getAllServers(),
+        isConnected: (id) => this.proxy.isConnected(id),
+        healthStatus: (id) => this.registry.getHealth(id)?.status,
+      }),
     });
 
     // Builds auth/rate-limit; throws on insecure misconfiguration (fail closed)
@@ -257,7 +263,7 @@ export class Gateway {
       }
     }
 
-    await this.connectServers(this.config.servers);
+    await this.connectServers(expandReplicas(this.config.servers));
 
     this.registry.startHealthChecks((serverId) => this.checkHealth(serverId));
 
@@ -383,8 +389,8 @@ export class Gateway {
       if (this.stopping) return;
       const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
       const key = (s: McpServerConfig) => JSON.stringify(s);
-      const current = new Map(this.config.servers.filter((s) => s.enabled !== false).map((s) => [s.id, s]));
-      const wanted = new Map(next.servers.filter((s) => s.enabled !== false).map((s) => [s.id, s]));
+      const current = new Map(expandReplicas(this.config.servers).filter((s) => s.enabled !== false).map((s) => [s.id, s]));
+      const wanted = new Map(expandReplicas(next.servers).filter((s) => s.enabled !== false).map((s) => [s.id, s]));
 
       const toRemove = [...current.keys()].filter((id) => !wanted.has(id));
       const reconnectChanged = !same(this.config.reconnect, next.reconnect);
@@ -482,6 +488,7 @@ export class Gateway {
         }
       }
       await this.connectServers(toConnect);
+      this.invoker?.balancer?.prune();
       logger.info(
         `Hot reload applied: ${toConnect.length} (re)connected, ${toRemove.length} removed` +
           (applied.length ? `; updated ${applied.join(', ')}` : ''),

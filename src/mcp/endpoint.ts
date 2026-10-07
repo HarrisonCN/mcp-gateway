@@ -245,6 +245,11 @@ export class McpEndpoint {
   private jsonParser?: { limit: number; mw: RequestHandler };
   private readonly invoker: ToolInvoker;
 
+  /** Connected, or (for servers with replicas) any member connected. */
+  private connected(serverId: string): boolean {
+    return this.invoker.balancer?.anyConnected(serverId) ?? this.deps.proxy.isConnected(serverId);
+  }
+
   constructor(
     config: McpEndpointConfig | undefined,
     private readonly deps: McpEndpointDeps,
@@ -790,7 +795,7 @@ export class McpEndpoint {
     const limited = await this.applyRateLimit(req, res, id, single);
     if (limited) return limited;
     const server = this.deps.registry.getServer(serverId);
-    if (!server || !this.deps.proxy.isConnected(serverId)) {
+    if (!server || !this.connected(serverId)) {
       return rpcError(id, { code: ERR_NOT_CONNECTED, message: `Server "${serverId}" is not connected` });
     }
     const result = await this.invoker.invoke({
@@ -957,7 +962,7 @@ export class McpEndpoint {
       id,
       result: { content: [{ type: 'text', text }], isError: true },
     });
-    if (!server || !this.deps.proxy.isConnected(serverId)) {
+    if (!server || !this.connected(serverId)) {
       const status = this.deps.registry.getHealth(serverId)?.status;
       return toolError(`Server "${serverId}" is not connected${status ? ` (${status})` : ''}; try again later.`);
     }

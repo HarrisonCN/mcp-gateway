@@ -72,6 +72,40 @@ export interface McpServerConfig {
   maxConcurrency?: number;
   /** Expose only some of this server's tools (glob patterns; deny wins) */
   tools?: ToolFilterConfig;
+  /** Extra upstream endpoints for this server (load balancing + failover). Fields override the primary's. */
+  replicas?: ReplicaConfig[];
+  /** How calls are spread over the primary and its replicas. */
+  loadBalancing?: LoadBalancingConfig;
+  /** Relative weight for `strategy: weighted` (default 1). */
+  weight?: number;
+  /** Set on the internal replica servers (`<id>~<n>`): id of the logical server. */
+  replicaOf?: string;
+}
+
+/** One replica of a server: transport fields that differ from the primary. */
+export interface ReplicaConfig {
+  name?: string;
+  transport?: McpServerConfig['transport'];
+  url?: string;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
+  weight?: number;
+  enabled?: boolean;
+}
+
+export interface LoadBalancingConfig {
+  /** `round-robin` (default), `random`, `weighted`, `least-latency` or `failover` (primary first). */
+  strategy?: 'round-robin' | 'random' | 'weighted' | 'least-latency' | 'failover';
+  /** Failure kinds retried on the next member (default `[not-connected]`; `timeout` / `error` may re-run a tool). */
+  failoverOn?: Array<'not-connected' | 'timeout' | 'error'>;
+  /** Extra attempts per call (default: members - 1). */
+  retries?: number;
+  /** Consecutive failed calls before a member is ejected (default 3, 0 = never). */
+  ejectAfter?: number;
+  /** How long an ejected member is skipped (ms, default 30000). */
+  ejectMs?: number;
 }
 
 export interface ToolFilterConfig {

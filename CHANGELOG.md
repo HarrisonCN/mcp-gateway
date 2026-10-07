@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-07
+
+Multi-upstream load balancing, failover and member health checks.
+
+### Added
+- **`servers[].replicas`**: extra upstream endpoints for one logical server (each overrides transport fields of the
+  primary — `url`, `command`, `args`, `env`, `headers`, `transport` — plus `weight`). Replicas are connected as
+  internal servers `<id>~<n>` (`replicaOf`), supervised and reconnected individually; their tools are served under the
+  logical id only (a replica's tool list stands in while the primary has none).
+- **`servers[].loadBalancing`**: `strategy` `round-robin` (default) / `random` / `weighted` / `least-latency` (EWMA) /
+  `failover`; `failoverOn` (`not-connected` default, opt-in `timeout` / `error`), `retries`, passive ejection after
+  `ejectAfter` consecutive failures for `ejectMs`.
+- Health-aware routing: the periodic ping runs on every member; disconnected, `degraded` / `offline` and ejected
+  members are skipped (all are tried when none is healthy). REST and `/mcp` accept calls while any member is up.
+- `GET /api/v1/load-balancing` (operator): members, connection, health, latency, calls / errors, ejections.
+  Trace attributes `mcp.upstream.id` / `mcp.upstream.attempts`.
+- `LoadBalancer`, `expandReplicas` exported for embedders. `"~"` is now reserved in server ids.
+
 ## [2.0.0] - 2026-10-07
 
 Plugins and signal-driven reloads. **Breaking** — see [docs/guides/migrating-to-v2.md](docs/guides/migrating-to-v2.md).

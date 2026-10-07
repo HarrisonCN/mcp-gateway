@@ -182,6 +182,17 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
 ```
 `kind` is present for resources and prompts. Invalid parameters → `400`.
 
+### Load balancing
+
+`GET /api/v1/load-balancing` (operator keys) — one entry per server with `replicas`:
+
+```json
+{ "groups": [ { "server": "github", "strategy": "round-robin", "failoverOn": ["not-connected"],
+  "members": [ { "id": "github", "weight": 1, "connected": true, "healthy": true, "latencyMs": 41, "calls": 120, "errors": 0 },
+               { "id": "github~1", "weight": 1, "connected": false, "healthy": false, "calls": 3, "errors": 3,
+                 "ejectedUntil": "2026-10-07T18:00:30.000Z" } ] } ] }
+```
+
 ### Security posture
 
 #### `GET /security`

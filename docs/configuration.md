@@ -175,6 +175,36 @@ JWT: claims `mcp_servers` / `mcp_tools` (array, or a space/comma-separated strin
 
 Scopes stack with each server's `tools` filter. Resources and prompts are scoped by `servers` only.
 
+## Load balancing and failover
+
+A server can be backed by several upstream endpoints. The primary keeps the server id; each entry in `replicas`
+overrides transport fields of the primary and is connected as an internal server `<id>~<n>` (its tools are served
+under the logical id, never on their own).
+
+```yaml
+servers:
+  - id: github
+    name: GitHub
+    transport: streamable-http
+    url: https://mcp-a.example.com/mcp
+    headers: { Authorization: "Bearer ${GITHUB_TOKEN}" }
+    replicas:
+      - url: https://mcp-b.example.com/mcp
+      - url: https://mcp-c.example.com/mcp
+        weight: 2
+    loadBalancing:
+      strategy: round-robin        # round-robin (default) | random | weighted | least-latency | failover
+      failoverOn: [not-connected]  # also: timeout, error (may run a non-idempotent tool twice)
+      retries: 2                   # extra attempts per call (default: members - 1)
+      ejectAfter: 3                # consecutive failed calls before a member is skipped (0 = never)
+      ejectMs: 30000
+```
+
+Health checks: the periodic ping (`healthCheckIntervalMs`) runs on every member; members that are disconnected,
+`degraded` / `offline`, or ejected are skipped. When all members are unhealthy, all are tried in order. Each member
+reconnects on its own with the `reconnect` policy. Tools come from the primary, or from a replica while the primary
+has none. `GET /api/v1/load-balancing` shows members, health, latency (EWMA) and ejections. Hot reloadable.
+
 ## Rate limiting
 
 ```yaml

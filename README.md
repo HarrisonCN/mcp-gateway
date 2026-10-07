@@ -579,6 +579,16 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v2.1
+
+| Feature | Description |
+|---------|-------------|
+| **Load balancing** | `replicas:` per server with round-robin / weighted / least-latency / random / failover strategies |
+| **Failover** | retry the next healthy member on `not-connected` (opt-in `timeout`, `error`); passive ejection |
+| **Health checks** | every member is pinged; `GET /api/v1/load-balancing` shows members and ejections |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v2.0
 
 | Feature | Description |
