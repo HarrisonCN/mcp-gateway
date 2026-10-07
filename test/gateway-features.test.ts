@@ -177,7 +177,7 @@ describe('optional auth for health, metrics and dashboard', () => {
   it('serves a dashboard that sends an API key, and can be disabled', async () => {
     let url = await start({ ...base, auth });
     const html = await (await fetch(`${url}/dashboard`)).text();
-    expect(html).toContain('id="api-key"');
+    expect(html).toContain('id="keyInput"');
     expect(html).toContain('Authorization');
     await gw!.stop();
     url = await start({ ...base, dashboard: { enabled: false } });

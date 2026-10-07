@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-07
+
+### Added
+- **Dashboard v2** (`/dashboard`, still one self-contained HTML file: no build step, no CDN, no runtime dependencies):
+  - First-run **guided onboarding** (dismissible, reopen with **?**): connect with an API key (tested live), see the upstream servers, try a tool (`tools` list → form generated from the tool's JSON schema, or raw JSON → call → result), and copy-paste snippets for Claude Desktop (via `mcp-remote`), Cursor, Claude Code, the JS and Kotlin clients and curl, all pointing at this gateway's `/mcp` URL.
+  - **Live overview**: requests/min, p50 / p95 / p99 latency, error rate and servers-online cards with sparklines; hand-drawn SVG charts for request rate, latency and error rate (5 m / 15 m / 1 h / 6 h windows, hover / touch tooltips); top tools; usage per API key; live request stream; server health.
+  - Servers page with tool chips and one-click reconnect; Playground; request history with filters and cursor paging (cards on phones); Connect page.
+  - English / 中文 toggle, dark / light theme, responsive down to phone widths with a bottom tab bar, keyboard navigation (arrow-key tabs, focus-trapped dialog, Esc), `prefers-reduced-motion`, View Transitions, skeleton loaders; animations use transform / opacity only.
+- `GET /api/v1/stats`: windowed time series (count, errors, p50 / p95 per bucket), summary, top tools, per-server and per-client usage (`?window=`, `?bucket=`).
+- `GET /api/v1/events`: Server-Sent Events stream with a `request` event per recorded call and a `snapshot` (server health + summary) every 2 s; heartbeats, max 50 concurrent streams, closed on shutdown. Both new endpoints require auth and show restricted clients only their own calls. The dashboard falls back to polling every 2 s when the stream is unavailable.
+
 ## [1.0.1] - 2026-10-07
 
 Bug-fix release; no API or configuration changes.

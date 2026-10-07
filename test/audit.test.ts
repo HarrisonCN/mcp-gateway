@@ -161,7 +161,7 @@ describe('dashboard history panel', () => {
     gw = new Gateway({ port: 0, host: '127.0.0.1', logLevel: 'error', servers: [] });
     await gw.start();
     const html = await (await fetch(`http://127.0.0.1:${gw.address()!.port}/dashboard`)).text();
-    for (const id of ['id="req-filters"', 'id="f-server"', 'id="req-more"', "q.set('cursor'", 'persistent audit log']) {
+    for (const id of ['id="hiFilters"', 'id="f-server"', 'id="hiNext"', "q.set('cursor'", 'Persistent audit log']) {
       expect(html).toContain(id);
     }
   });

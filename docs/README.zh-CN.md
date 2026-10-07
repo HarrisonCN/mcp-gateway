@@ -277,7 +277,9 @@ servers:
 
 ### 面板
 
-访问 `http://localhost:4000/dashboard`。开启鉴权后，在页头输入 API Key（或 JWT）：默认只保存在当前标签页（`sessionStorage`），勾选 “remember” 则保存在 `localStorage`，并以 `Authorization: Bearer …` 发送给每个 API 请求。设置 `dashboard.enabled: false` 可关闭面板。
+访问 `http://localhost:4000/dashboard`。首次打开会进入新手引导：用 API Key 连接、查看上游服务器、通过按 JSON Schema 自动生成的表单调用一个工具，并复制 Claude Desktop、Cursor、Claude Code、JS / Kotlin 客户端或 curl 的接入配置；之后可随时点击 **?** 重新打开。仪表盘实时展示请求速率、p50 / p95 延迟、错误率、热门工具、各密钥用量、实时请求流、服务器健康状态（可一键重连）以及可筛选分页的请求历史。整个面板是一个静态文件，无需构建、不依赖 CDN，支持中英文切换、深色 / 浅色主题和手机浏览。实时数据来自 `GET /api/v1/stats` 与 SSE 流 `GET /api/v1/events`。
+
+开启鉴权后，在页头输入 API Key（或 JWT）：默认只保存在当前标签页（`sessionStorage`），勾选 “remember” 则保存在 `localStorage`，并以 `Authorization: Bearer …` 发送给每个 API 请求。设置 `dashboard.enabled: false` 可关闭面板。
 
 ## 文档
 
