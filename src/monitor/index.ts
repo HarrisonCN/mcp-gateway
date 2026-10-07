@@ -21,6 +21,21 @@ export interface MetricsOptions {
   maxEntries?: number;
 }
 
+/** Per-server connection state exported as Prometheus gauges / counters. */
+export interface ServerStateSample {
+  id: string;
+  status: string;
+  /** 1 when connected (online or degraded), else 0. */
+  up: number;
+  /** Successful automatic reconnects since start (monotonic). */
+  reconnects: number;
+  /** Consecutive failed reconnect attempts right now. */
+  reconnectAttempt: number;
+  latencyMs?: number;
+}
+
+const SERVER_STATUSES = ['online', 'degraded', 'reconnecting', 'offline', 'unknown'];
+
 interface ServerCounters {
   requests: number;
   errors: number;
@@ -120,7 +135,7 @@ export class MetricsCollector extends EventEmitter {
 
   // ─── Prometheus Format ──────────────────────────────────────────────────────
 
-  toPrometheusText(): string {
+  toPrometheusText(servers: ServerStateSample[] = []): string {
     const agg = this.aggregate(60_000); // gauges over the last minute
     let total = 0;
     let errors = 0;
@@ -169,8 +184,49 @@ export class MetricsCollector extends EventEmitter {
       '# HELP mcp_gateway_latency_p99_ms P99 latency over the last minute (ms)',
       '# TYPE mcp_gateway_latency_p99_ms gauge',
       `mcp_gateway_latency_p99_ms ${agg.p99LatencyMs.toFixed(2)}`,
-      '',
     );
+
+    if (servers.length > 0) {
+      lines.push(
+        '# HELP mcp_gateway_server_up Whether the gateway currently has a session with the server (1/0)',
+        '# TYPE mcp_gateway_server_up gauge',
+      );
+      for (const s of servers) lines.push(`mcp_gateway_server_up{server="${escapeLabel(s.id)}"} ${s.up}`);
+      lines.push(
+        '# HELP mcp_gateway_server_status Current server status (1 for the active status label)',
+        '# TYPE mcp_gateway_server_status gauge',
+      );
+      for (const s of servers) {
+        for (const st of SERVER_STATUSES) {
+          lines.push(
+            `mcp_gateway_server_status{server="${escapeLabel(s.id)}",status="${st}"} ${s.status === st ? 1 : 0}`,
+          );
+        }
+      }
+      lines.push(
+        '# HELP mcp_gateway_server_reconnects_total Successful automatic reconnects per server since start',
+        '# TYPE mcp_gateway_server_reconnects_total counter',
+      );
+      for (const s of servers) {
+        lines.push(`mcp_gateway_server_reconnects_total{server="${escapeLabel(s.id)}"} ${s.reconnects}`);
+      }
+      lines.push(
+        '# HELP mcp_gateway_server_reconnect_attempt Consecutive failed reconnect attempts (0 when healthy)',
+        '# TYPE mcp_gateway_server_reconnect_attempt gauge',
+      );
+      for (const s of servers) {
+        lines.push(`mcp_gateway_server_reconnect_attempt{server="${escapeLabel(s.id)}"} ${s.reconnectAttempt}`);
+      }
+      const pinged = servers.filter((s) => typeof s.latencyMs === 'number');
+      if (pinged.length > 0) {
+        lines.push(
+          '# HELP mcp_gateway_server_ping_ms Latency of the last health ping (ms)',
+          '# TYPE mcp_gateway_server_ping_ms gauge',
+        );
+        for (const s of pinged) lines.push(`mcp_gateway_server_ping_ms{server="${escapeLabel(s.id)}"} ${s.latencyMs}`);
+      }
+    }
+    lines.push('');
 
     return lines.join('\n');
   }

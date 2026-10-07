@@ -4,8 +4,40 @@
 
 // ─── Server Registry ──────────────────────────────────────────────────────────
 
-export type ServerTransport = 'stdio' | 'sse' | 'websocket';
-export type ServerStatus = 'online' | 'offline' | 'degraded' | 'unknown';
+export type ServerTransport = 'stdio' | 'sse' | 'websocket' | 'streamable-http';
+/**
+ * - `online`: connected and answering
+ * - `degraded`: connected but the last health ping failed
+ * - `reconnecting`: connection lost, an automatic reconnect is scheduled / running
+ * - `offline`: not connected and no reconnect pending (disabled, or gave up)
+ */
+export type ServerStatus = 'online' | 'offline' | 'degraded' | 'reconnecting' | 'unknown';
+
+export interface ReconnectConfig {
+  /** Reconnect servers that crash or disconnect (default true). */
+  enabled: boolean;
+  /** Delay before the first retry (ms, default 1000). */
+  initialDelayMs: number;
+  /** Upper bound for the delay (ms, default 60000). */
+  maxDelayMs: number;
+  /** Growth factor per failed attempt (default 2). */
+  multiplier: number;
+  /** Random jitter as a fraction of the delay, 0-1 (default 0.2). */
+  jitter: number;
+  /** Give up after this many consecutive failures; 0 = retry forever (default 0). */
+  maxAttempts: number;
+}
+
+export interface ReconnectState {
+  state: 'idle' | 'scheduled' | 'connecting' | 'gave-up' | 'disabled';
+  /** Consecutive failed attempts since the last successful connection. */
+  attempt: number;
+  /** Successful reconnects since the gateway started. */
+  reconnects: number;
+  nextAttemptAt?: Date;
+  lastError?: string;
+  lastDisconnectAt?: Date;
+}
 
 export interface McpServerConfig {
   /** Unique identifier for this server */
@@ -20,8 +52,14 @@ export interface McpServerConfig {
   command?: string;
   /** For stdio: command arguments */
   args?: string[];
-  /** For sse/websocket: URL to connect to */
+  /** For sse/websocket/streamable-http: URL to connect to */
   url?: string;
+  /** For sse/websocket/streamable-http: extra HTTP headers (supports ${VAR}) */
+  headers?: Record<string, string>;
+  /** For websocket: subprotocol to request (default "mcp"; "" for none) */
+  subprotocol?: string;
+  /** Per-server overrides for automatic reconnect */
+  reconnect?: Partial<ReconnectConfig>;
   /** Environment variables to pass to the server process */
   env?: Record<string, string>;
   /** Tags for grouping and filtering */
@@ -41,6 +79,10 @@ export interface ServerHealth {
   latencyMs?: number;
   errorMessage?: string;
   toolCount?: number;
+  /** When the current session was established. */
+  connectedSince?: Date;
+  /** Automatic reconnect bookkeeping. */
+  reconnect?: ReconnectState;
 }
 
 // ─── Gateway Config ───────────────────────────────────────────────────────────
@@ -62,6 +104,12 @@ export interface GatewayConfig {
   corsOrigins?: string[];
   /** Log level */
   logLevel?: 'debug' | 'info' | 'warn' | 'error';
+  /** Automatic reconnect of crashed / disconnected servers */
+  reconnect?: Partial<ReconnectConfig>;
+  /** Interval between health pings (ms, default 30000) */
+  healthCheckIntervalMs?: number;
+  /** Web dashboard */
+  dashboard?: { enabled?: boolean };
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -74,6 +122,17 @@ export interface AuthConfig {
   apiKeys?: string[];
   /** For jwt: secret or public key */
   jwtSecret?: string;
+  /**
+   * Endpoints that are public by default and can be put behind auth.
+   * The dashboard page itself is a static shell; when auth is on it asks for
+   * a key and sends it with every API call.
+   */
+  protect?: {
+    /** Require auth for GET /api/v1/health (default false). /api/v1/health/live stays public. */
+    health?: boolean;
+    /** Require auth for GET /api/v1/metrics, incl. Prometheus scrapes (default false). */
+    metrics?: boolean;
+  };
   /** For oauth2: provider config */
   oauth2?: {
     issuer: string;

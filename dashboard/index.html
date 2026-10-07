@@ -38,6 +38,17 @@
     }
     header .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+    header .auth { display: flex; align-items: center; gap: 6px; }
+    header .auth input[type=password] {
+      background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 4px 8px; border-radius: 6px; font-size: 12px; width: 180px;
+    }
+    header .auth input.needed { border-color: var(--yellow); }
+    header .auth label { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+    .notice { display: none; margin-bottom: 16px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--yellow); color: var(--yellow); background: rgba(210,153,34,.08); font-size: 13px; }
+    .notice.show { display: block; }
+    .muted { color: var(--muted); font-size: 11px; }
+
     main { padding: 24px; max-width: 1200px; margin: 0 auto; }
 
     /* ── Stat Cards ── */
@@ -108,13 +119,20 @@
 
 <header>
   <span class="logo">⇌ mcp-gateway</span>
-  <span class="version">v0.2.0</span>
+  <span class="version" id="version">v—</span>
   <span id="status-dot" class="status-dot offline"></span>
   <span id="status-label" class="status-label">Connecting…</span>
+  <form class="auth" id="auth-form" autocomplete="off">
+    <input type="password" id="api-key" placeholder="API key / JWT (if auth is on)" aria-label="API key" />
+    <label><input type="checkbox" id="remember" /> remember</label>
+    <button class="refresh-btn" type="submit">Use key</button>
+    <button class="refresh-btn" type="button" id="clear-key">Clear</button>
+  </form>
   <button class="refresh-btn" onclick="loadAll()">↻ Refresh</button>
 </header>
 
 <main>
+  <div class="notice" id="auth-notice">This gateway requires authentication. Enter an API key (or JWT) above — it is kept in this browser tab only unless you tick “remember”, and is sent as <code>Authorization: Bearer …</code>.</div>
   <!-- Stat Cards -->
   <div class="stats-grid">
     <div class="stat-card">
@@ -135,12 +153,12 @@
     <div class="stat-card">
       <span class="label">Error Rate</span>
       <span class="value" id="stat-error-rate">—</span>
-      <span class="sub">last 5 min</span>
+      <span class="sub">last hour</span>
     </div>
     <div class="stat-card">
       <span class="label">Avg Latency</span>
       <span class="value" id="stat-latency">—</span>
-      <span class="sub">p50 (ms)</span>
+      <span class="sub" id="stat-latency-sub">avg, last hour</span>
     </div>
     <div class="stat-card">
       <span class="label">Uptime</span>
@@ -185,16 +203,56 @@
 
 <script>
   const BASE = window.location.origin;
+  const KEY_NAME = 'mcp-gateway.apiKey';
+  const keyInput = document.getElementById('api-key');
+  const remember = document.getElementById('remember');
+  const notice = document.getElementById('auth-notice');
+  let authMissing = false;
+
+  function getKey() {
+    return sessionStorage.getItem(KEY_NAME) || localStorage.getItem(KEY_NAME) || '';
+  }
+  function setKey(key, persist) {
+    sessionStorage.removeItem(KEY_NAME);
+    localStorage.removeItem(KEY_NAME);
+    if (key) (persist ? localStorage : sessionStorage).setItem(KEY_NAME, key);
+  }
+  remember.checked = !!localStorage.getItem(KEY_NAME);
+  keyInput.value = getKey() ? '••••••••' : '';
+
+  document.getElementById('auth-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const v = keyInput.value.trim();
+    if (v && v !== '••••••••') setKey(v, remember.checked);
+    keyInput.value = getKey() ? '••••••••' : '';
+    loadAll();
+  });
+  document.getElementById('clear-key').addEventListener('click', () => {
+    setKey('', false);
+    keyInput.value = '';
+    loadAll();
+  });
+
+  class AuthError extends Error {}
 
   async function fetchJSON(path) {
-    const r = await fetch(BASE + path);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const headers = { Accept: 'application/json' };
+    const key = getKey();
+    if (key) headers.Authorization = 'Bearer ' + key;
+    const r = await fetch(BASE + path, { headers });
+    if (r.status === 401) { authMissing = true; throw new AuthError('HTTP 401'); }
+    if (!r.ok && r.status !== 207) throw new Error(`HTTP ${r.status}`);
     return r.json();
+  }
+
+  // Server-provided strings (names, ids, errors) are never trusted as HTML.
+  function esc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
   function fmtDuration(ms) {
     if (ms == null) return '—';
-    if (ms < 1000) return ms + 'ms';
+    if (ms < 1000) return Math.round(ms) + 'ms';
     return (ms / 1000).toFixed(2) + 's';
   }
 
@@ -209,122 +267,144 @@
   }
 
   function statusBadge(status) {
-    const cls = status === 'healthy' ? 'healthy' : status === 'degraded' ? 'degraded' : 'offline';
-    return `<span class="badge ${cls}">${status ?? 'unknown'}</span>`;
+    const cls = status === 'online' ? 'healthy' : (status === 'degraded' || status === 'reconnecting') ? 'degraded' : 'offline';
+    return `<span class="badge ${cls}">${esc(status ?? 'unknown')}</span>`;
+  }
+
+  function reconnectInfo(h) {
+    const rc = h && h.reconnect;
+    if (!rc) return '';
+    const parts = [];
+    if (rc.state === 'scheduled' && rc.nextAttemptAt) {
+      const secs = Math.max(0, Math.round((new Date(rc.nextAttemptAt) - Date.now()) / 1000));
+      parts.push(`retry #${rc.attempt} in ${secs}s`);
+    } else if (rc.state === 'connecting') {
+      parts.push(rc.attempt ? `retry #${rc.attempt}…` : 'connecting…');
+    } else if (rc.state === 'gave-up') {
+      parts.push(`gave up after ${rc.attempt} tries`);
+    }
+    if (rc.reconnects) parts.push(`${rc.reconnects} reconnect${rc.reconnects === 1 ? '' : 's'}`);
+    return parts.length ? `<div class="muted">${esc(parts.join(' · '))}</div>` : '';
   }
 
   async function loadHealth() {
+    const dot = document.getElementById('status-dot');
+    const lbl = document.getElementById('status-label');
     try {
       const data = await fetchJSON('/api/v1/health');
-      const dot = document.getElementById('status-dot');
-      const lbl = document.getElementById('status-label');
       dot.className = 'status-dot' + (data.status === 'ok' ? '' : ' offline');
       lbl.textContent = data.status === 'ok' ? 'Gateway online' : 'Gateway degraded';
-
-      document.getElementById('stat-servers').textContent = data.servers?.total ?? '—';
-      document.getElementById('stat-servers-sub').textContent =
-        `${data.servers?.healthy ?? 0} healthy, ${data.servers?.unhealthy ?? 0} offline`;
-      document.getElementById('stat-uptime').textContent = fmtUptime(data.uptimeSeconds);
+      document.getElementById('version').textContent = 'v' + (data.version ?? '—');
+      const sv = data.servers ?? {};
+      document.getElementById('stat-servers').textContent = sv.total ?? '—';
+      const sub = [`${sv.online ?? 0} online`];
+      if (sv.reconnecting) sub.push(`${sv.reconnecting} reconnecting`);
+      if (sv.degraded) sub.push(`${sv.degraded} degraded`);
+      if (sv.offline) sub.push(`${sv.offline} offline`);
+      document.getElementById('stat-servers-sub').textContent = sub.join(', ');
+      document.getElementById('stat-uptime').textContent = fmtUptime(data.uptime);
       document.getElementById('stat-started').textContent =
-        data.startedAt ? 'since ' + new Date(data.startedAt).toLocaleTimeString() : '';
+        data.uptime != null ? 'since ' + new Date(Date.now() - data.uptime * 1000).toLocaleTimeString() : '';
     } catch (e) {
-      document.getElementById('status-label').textContent = 'Cannot reach gateway';
+      // A protected /health still means the gateway is up.
+      lbl.textContent = e instanceof AuthError ? 'Authentication required' : 'Cannot reach gateway';
     }
   }
 
   async function loadServers() {
+    const tbody = document.getElementById('servers-tbody');
     try {
       const data = await fetchJSON('/api/v1/servers');
-      const tbody = document.getElementById('servers-tbody');
       if (!data.servers?.length) {
         tbody.innerHTML = '<tr><td colspan="5" class="empty">No servers registered</td></tr>';
         return;
       }
-      tbody.innerHTML = data.servers.map(s => `
+      tbody.innerHTML = data.servers.map(s => {
+        const h = s.health || {};
+        const err = h.errorMessage ? ` title="${esc(h.errorMessage)}"` : '';
+        return `
         <tr>
-          <td><code>${s.id}</code></td>
-          <td>${s.name}</td>
-          <td><span class="badge healthy">${s.transport ?? 'stdio'}</span></td>
-          <td>${s.toolCount ?? 0}</td>
-          <td>${statusBadge(s.status)}</td>
-        </tr>`).join('');
-    } catch {
-      document.getElementById('servers-tbody').innerHTML =
-        '<tr><td colspan="5" class="empty">Failed to load servers</td></tr>';
+          <td><code>${esc(s.id)}</code></td>
+          <td>${esc(s.name)}</td>
+          <td><span class="badge healthy">${esc(s.transport ?? 'stdio')}</span></td>
+          <td>${esc(s.toolCount ?? 0)}</td>
+          <td${err}>${statusBadge(h.status)}${reconnectInfo(h)}</td>
+        </tr>`;
+      }).join('');
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="5" class="empty">${e instanceof AuthError ? 'API key required' : 'Failed to load servers'}</td></tr>`;
     }
   }
 
+  let toolCalls = new Map();
+
   async function loadTools() {
+    const tbody = document.getElementById('tools-tbody');
     try {
       const data = await fetchJSON('/api/v1/tools');
-      const tbody = document.getElementById('tools-tbody');
       document.getElementById('stat-tools').textContent = data.tools?.length ?? '—';
       if (!data.tools?.length) {
         tbody.innerHTML = '<tr><td colspan="3" class="empty">No tools available</td></tr>';
         return;
       }
-      tbody.innerHTML = data.tools.slice(0, 20).map(t => `
+      tbody.innerHTML = data.tools.slice(0, 50).map(t => `
         <tr>
-          <td><code>${t.name}</code></td>
-          <td>${t.serverName ?? t.serverId ?? '—'}</td>
-          <td>${t.callCount ?? 0}</td>
+          <td><code>${esc(t.name)}</code></td>
+          <td>${esc(t.serverName ?? t.serverId ?? '—')}</td>
+          <td>${esc(toolCalls.get(t.name) ?? 0)}</td>
         </tr>`).join('');
-    } catch {
-      document.getElementById('tools-tbody').innerHTML =
-        '<tr><td colspan="3" class="empty">Failed to load tools</td></tr>';
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="3" class="empty">${e instanceof AuthError ? 'API key required' : 'Failed to load tools'}</td></tr>`;
     }
   }
 
   async function loadMetrics() {
     try {
-      const data = await fetchJSON('/api/v1/metrics');
-      const m = data.aggregate ?? data;
-      document.getElementById('stat-requests').textContent =
-        (m.totalRequests ?? '—').toLocaleString?.() ?? m.totalRequests ?? '—';
-      const errRate = m.errorRate != null ? (m.errorRate * 100).toFixed(1) + '%' : '—';
+      const m = await fetchJSON('/api/v1/metrics?format=json');
+      toolCalls = new Map((m.topTools ?? []).map(t => [t.name, t.count]));
+      document.getElementById('stat-requests').textContent = (m.totalRequests ?? 0).toLocaleString();
+      const errRate = m.totalRequests ? 1 - (m.successRate ?? 1) : 0;
       const errEl = document.getElementById('stat-error-rate');
-      errEl.textContent = errRate;
-      errEl.className = 'value ' + (m.errorRate > 0.05 ? 'red' : m.errorRate > 0.01 ? 'yellow' : 'green');
-      document.getElementById('stat-latency').textContent =
-        m.p50LatencyMs != null ? m.p50LatencyMs + 'ms' : '—';
-    } catch { /* metrics endpoint optional */ }
+      errEl.textContent = m.totalRequests ? (errRate * 100).toFixed(1) + '%' : '—';
+      errEl.className = 'value ' + (errRate > 0.05 ? 'red' : errRate > 0.01 ? 'yellow' : 'green');
+      document.getElementById('stat-latency').textContent = m.totalRequests ? fmtDuration(m.avgLatencyMs) : '—';
+      document.getElementById('stat-latency-sub').textContent =
+        m.totalRequests ? `avg · p95 ${fmtDuration(m.p95LatencyMs)}` : 'avg, last hour';
+    } catch { /* shown via other panels */ }
   }
 
   async function loadRequests() {
+    const tbody = document.getElementById('requests-tbody');
     try {
       const data = await fetchJSON('/api/v1/requests?limit=20');
-      const tbody = document.getElementById('requests-tbody');
       const reqs = data.requests ?? [];
       if (!reqs.length) {
         tbody.innerHTML = '<tr><td colspan="6" class="empty">No requests yet</td></tr>';
         return;
       }
       tbody.innerHTML = reqs.map(r => {
-        const ok = r.status < 400;
-        const statusColor = ok ? 'green' : r.status < 500 ? 'yellow' : 'red';
+        const color = r.success ? 'green' : 'red';
+        const err = r.errorMessage ? ` title="${esc(r.errorMessage)}"` : '';
         return `<tr>
-          <td style="color:var(--muted)">${new Date(r.timestamp).toLocaleTimeString()}</td>
-          <td><span class="method ${r.method?.toLowerCase()}">${r.method}</span></td>
-          <td><code>${r.tool ?? r.path ?? '—'}</code></td>
-          <td>${r.server ?? '—'}</td>
+          <td style="color:var(--muted)">${esc(new Date(r.timestamp).toLocaleTimeString())}</td>
+          <td><span class="method post">CALL</span></td>
+          <td><code>${esc(r.toolName ?? '—')}</code></td>
+          <td>${esc(r.serverId ?? '—')}</td>
           <td>${fmtDuration(r.durationMs)}</td>
-          <td style="color:var(--${statusColor})">${r.status}</td>
+          <td style="color:var(--${color})"${err}>${r.success ? 'ok' : 'error'}</td>
         </tr>`;
       }).join('');
-    } catch {
-      document.getElementById('requests-tbody').innerHTML =
-        '<tr><td colspan="6" class="empty">Failed to load requests</td></tr>';
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="6" class="empty">${e instanceof AuthError ? 'API key required' : 'Failed to load requests'}</td></tr>`;
     }
   }
 
   async function loadAll() {
-    await Promise.allSettled([
-      loadHealth(),
-      loadServers(),
-      loadTools(),
-      loadMetrics(),
-      loadRequests(),
-    ]);
+    authMissing = false;
+    await loadMetrics(); // tool call counts feed the tools table
+    await Promise.allSettled([loadHealth(), loadServers(), loadTools(), loadRequests()]);
+    notice.classList.toggle('show', authMissing);
+    keyInput.classList.toggle('needed', authMissing);
   }
 
   // Initial load + auto-refresh every 10s

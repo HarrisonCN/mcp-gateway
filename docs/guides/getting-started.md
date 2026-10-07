@@ -17,7 +17,6 @@ Verify the installation:
 
 ```bash
 mcp-gateway --version
-# 0.1.0
 ```
 
 ## Step 2: Generate a Config File
@@ -75,9 +74,13 @@ curl -X POST http://localhost:4000/api/v1/tools/call \
   }'
 ```
 
+## Step 7: Open the Dashboard
+
+Visit `http://localhost:4000/dashboard`. If you enabled auth, paste your API key in the header field.
+
 ## Next Steps
 
-- [Add authentication](./authentication.md)
-- [Set up rate limiting](./rate-limiting.md)
-- [Monitor with Prometheus](./monitoring.md)
-- [Deploy with Docker](./docker.md)
+- [Remote servers, reconnect and hot reload](./remote-servers.md)
+- [Configuration reference](../../README.md#configuration-reference) — auth, rate limiting, CORS
+- [Monitor with Prometheus](../../examples/docker/prometheus.yml)
+- [Deploy with Docker](../../examples/docker/docker-compose.yml)

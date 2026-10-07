@@ -43,9 +43,17 @@ describe('McpProxy (stdio)', () => {
     expect(proxy.isConnected('fake')).toBe(false);
   });
 
-  it('rejects non-stdio transports clearly', async () => {
+  it('rejects unknown transports clearly', async () => {
     proxy = new McpProxy();
-    await expect(proxy.connect(cfg({ transport: 'sse', url: 'http://x/sse' }))).rejects.toThrow(/not supported/);
+    await expect(proxy.connect(cfg({ transport: 'carrier-pigeon' as any }))).rejects.toThrow(/Unknown transport/);
+  });
+
+  it('emits "disconnected" when a connected server crashes', async () => {
+    proxy = new McpProxy();
+    await proxy.connect(cfg());
+    const lost = new Promise<string>((r) => proxy.once('disconnected', (id: string) => r(id)));
+    await proxy.callTool('fake', 'crash', {});
+    expect(await lost).toBe('fake');
   });
 
   it('decodes multi-byte UTF-8 split across chunks', async () => {
@@ -104,5 +112,14 @@ describe('McpProxy (stdio)', () => {
     proxy = new McpProxy();
     await expect(proxy.connect(cfg({ command: '/nonexistent/binary' }))).rejects.toThrow();
     expect(proxy.isConnected('fake')).toBe(false);
+  });
+});
+
+describe('McpProxy health ping', () => {
+  it('measures ping latency over stdio', async () => {
+    proxy = new McpProxy();
+    await proxy.connect(cfg());
+    expect(await proxy.ping('fake')).toBeGreaterThanOrEqual(0);
+    await expect(proxy.ping('nope')).rejects.toThrow(/not connected/);
   });
 });

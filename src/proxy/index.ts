@@ -1,47 +1,48 @@
 /**
  * MCP Proxy
- * Routes tool-call requests to the appropriate MCP server (stdio transport).
+ * Routes tool-call requests to the appropriate upstream MCP server over any
+ * supported transport: `stdio`, `sse` (HTTP+SSE, 2024-11-05), `websocket`
+ * and `streamable-http` (2025-03-26+).
  *
- * v0.2.0 bug fixes:
- *  - [BUG-001] Concurrent restart race condition: fixed with per-server Mutex.
- *  - [BUG-002] JSON-RPC id collision: monotonic counter instead of Date.now().
- *  - [BUG-003] Leaked stdio handles on process crash.
- *  - [BUG-004] Silent failures on process spawn error.
+ * The proxy is split in two layers:
+ *  - a *channel* per transport (`src/transport/*`) that only moves JSON-RPC
+ *    messages, and
+ *  - this transport-independent *session* layer: MCP handshake, request/
+ *    response correlation, timeouts + upstream cancellation, `maxConcurrency`,
+ *    answering server→client requests (`ping`), `tools/list` pagination and
+ *    `notifications/tools/list_changed`.
  *
- * Audit fixes (hark/audit-fixes):
- *  - A failed `initialize` left the child process running and the session
- *    registered, so the server reported "connected" and leaked a process.
- *  - Re-connecting an existing server id overwrote the old session without
- *    killing its process.
- *  - The exit handler of an old process could delete a *newer* session that
- *    had been registered under the same id.
- *  - `proc.killed` is true as soon as a signal is sent, so the SIGKILL
- *    escalation never ran; disconnect now waits for the real exit.
- *  - Writing to a dead child's stdin emitted an unhandled 'error' (EPIPE) that
- *    crashed the whole gateway.
- *  - stdout chunks were decoded per chunk, corrupting multi-byte UTF-8
- *    characters split across chunk boundaries.
- *  - Server-initiated requests (e.g. `ping`) whose id collided with a pending
- *    gateway request were mistaken for responses; they are now answered.
- *  - `maxConcurrency` was accepted in config but never enforced.
- *  - Timed-out requests are now cancelled upstream (`notifications/cancelled`).
- *  - `tools/list` pagination (`nextCursor`) is followed.
- *  - Unbounded stdout buffer growth is capped.
+ * Events:
+ *  - `disconnected` (serverId, error) — a session was lost unexpectedly
+ *    (process exit, socket/stream closed, session expired). Not emitted for
+ *    `disconnect()`. The gateway supervisor uses it to reconnect.
+ *  - `tools-changed` (serverId, tools) — the server announced a new tool list.
+ *
+ * Fixes kept from v0.2.0 / the audit: per-server connect mutex (BUG-001),
+ * monotonic ids (BUG-002), no leaked sessions on failed `initialize`, an old
+ * session's exit can never remove a newer one, server requests with colliding
+ * ids are answered instead of mistaken for responses.
  *
  * @module proxy
  */
 
-import { spawn, type ChildProcess } from 'child_process';
-import type { McpServerConfig, ProxyRequest, ProxyResponse, ToolInfo } from '../utils/types.js';
+import { EventEmitter } from 'events';
+import type { McpServerConfig, ProxyResponse, ToolInfo } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { Mutex } from '../utils/mutex.js';
 import { Semaphore } from '../utils/semaphore.js';
 import { VERSION } from '../utils/version.js';
+import type { ChannelFactory, ChannelOptions, JsonRpcId, JsonRpcMessage, UpstreamChannel } from '../transport/channel.js';
+import { StdioChannel } from '../transport/stdio.js';
+import { SseChannel } from '../transport/sse.js';
+import { WebSocketChannel } from '../transport/websocket.js';
+import { StreamableHttpChannel } from '../transport/streamable-http.js';
 
-export const MCP_PROTOCOL_VERSION = '2024-11-05';
+/** Protocol version the gateway asks for in `initialize`. */
+export const MCP_PROTOCOL_VERSION = '2025-06-18';
+/** Versions the gateway understands; servers may answer with any of them. */
+export const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
-/** Max bytes of un-terminated stdout we buffer before declaring the server broken. */
-const MAX_BUFFER_CHARS = 16 * 1024 * 1024;
 const MAX_TOOL_PAGES = 100;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -55,7 +56,23 @@ function nextId(): number {
   return ++_idSeq;
 }
 
-// ─── Stdio Session ────────────────────────────────────────────────────────────
+/** Default channel per transport. */
+export const defaultChannelFactory: ChannelFactory = (config, options) => {
+  switch (config.transport) {
+    case 'stdio':
+      return new StdioChannel(config, options);
+    case 'sse':
+      return new SseChannel(config, options);
+    case 'websocket':
+      return new WebSocketChannel(config, options);
+    case 'streamable-http':
+      return new StreamableHttpChannel(config, options);
+    default:
+      throw new Error(`Unknown transport "${String((config as McpServerConfig).transport)}" (server "${config.id}")`);
+  }
+};
+
+// ─── Session ──────────────────────────────────────────────────────────────────
 
 interface PendingRequest {
   resolve: (value: ProxyResponse) => void;
@@ -63,29 +80,42 @@ interface PendingRequest {
   timer: NodeJS.Timeout;
 }
 
-interface StdioSession {
-  serverId: string;
-  process: ChildProcess;
-  pendingRequests: Map<string | number, PendingRequest>;
-  buffer: string;
+interface Session {
+  config: McpServerConfig;
+  channel: UpstreamChannel;
+  pendingRequests: Map<JsonRpcId, PendingRequest>;
   limiter: Semaphore;
   closed: boolean;
-  exited: Promise<void>;
+  protocolVersion?: string;
+  serverInfo?: { name?: string; version?: string };
+  connectedAt?: Date;
+}
+
+export interface SessionInfo {
+  transport: string;
+  protocolVersion?: string;
+  serverInfo?: { name?: string; version?: string };
+  connectedAt?: Date;
 }
 
 export interface ProxyOptions {
-  /** Grace period between closing stdin / SIGTERM / SIGKILL on disconnect. */
+  /** Grace period between closing stdin / SIGTERM / SIGKILL (and for WS/HTTP close). */
   killGraceMs?: number;
+  /** Override how channels are created (for tests or custom transports). */
+  channelFactory?: ChannelFactory;
 }
 
-export class McpProxy {
-  private sessions = new Map<string, StdioSession>();
-  // Per-server spawn mutex (fix BUG-001)
+export class McpProxy extends EventEmitter {
+  private sessions = new Map<string, Session>();
+  // Per-server connect mutex (fix BUG-001)
   private spawnLocks = new Map<string, Mutex>();
   private readonly killGraceMs: number;
+  private readonly channelFactory: ChannelFactory;
 
   constructor(options: ProxyOptions = {}) {
+    super();
     this.killGraceMs = options.killGraceMs ?? 2_000;
+    this.channelFactory = options.channelFactory ?? defaultChannelFactory;
   }
 
   private getSpawnLock(serverId: string): Mutex {
@@ -102,27 +132,38 @@ export class McpProxy {
   async connect(config: McpServerConfig): Promise<ToolInfo[]> {
     // Serialise concurrent connect calls for the same server (fix BUG-001)
     return this.getSpawnLock(config.id).runExclusive(async () => {
-      if (config.transport !== 'stdio') {
-        // The previous "stdio fallback" could never work for URL-based servers
-        // (they have no command); fail with an accurate message instead.
-        throw new Error(
-          `Transport "${config.transport}" is not supported by the proxy yet (server "${config.id}"); only stdio is routable`,
-        );
-      }
-      if (!config.command) {
-        throw new Error(`Server "${config.id}" has no command configured`);
-      }
-
       // Replace (and clean up) any existing session for this id.
       if (this.sessions.has(config.id)) {
         await this._disconnectUnlocked(config.id);
       }
 
-      const session = this._spawnSession(config);
-      this.sessions.set(config.id, session);
+      const timeout = config.timeout ?? DEFAULT_TIMEOUT_MS;
+      const options: ChannelOptions = { connectTimeoutMs: timeout, killGraceMs: this.killGraceMs };
+      const channel = this.channelFactory(config, options);
+      const session: Session = {
+        config,
+        channel,
+        pendingRequests: new Map(),
+        limiter: new Semaphore(config.maxConcurrency ?? Infinity),
+        closed: false,
+      };
+
+      channel.onmessage = (msg) => this._onMessage(session, msg);
+      channel.onclose = (err) => this._onChannelLost(session, err);
 
       try {
-        return await this._handshake(config);
+        await withTimeout(channel.start(), timeout, `Connecting to "${config.id}" timed out after ${timeout}ms`);
+      } catch (err) {
+        session.closed = true;
+        await channel.close().catch(() => {});
+        throw err;
+      }
+
+      this.sessions.set(config.id, session);
+      try {
+        const tools = await this._handshake(session);
+        session.connectedAt = new Date();
+        return tools;
       } catch (err) {
         await this._disconnectUnlocked(config.id);
         throw err;
@@ -130,19 +171,16 @@ export class McpProxy {
     });
   }
 
-  private async _handshake(config: McpServerConfig): Promise<ToolInfo[]> {
+  private async _handshake(session: Session): Promise<ToolInfo[]> {
+    const { config } = session;
     const timeout = config.timeout ?? DEFAULT_TIMEOUT_MS;
     const initResult = await this._sendRequest(
-      config.id,
+      session,
+      'initialize',
       {
-        serverId: config.id,
-        method: 'initialize',
-        params: {
-          protocolVersion: MCP_PROTOCOL_VERSION,
-          capabilities: {},
-          clientInfo: { name: 'mcp-gateway', version: VERSION },
-        },
-        requestId: nextId(),
+        protocolVersion: MCP_PROTOCOL_VERSION,
+        capabilities: {},
+        clientInfo: { name: 'mcp-gateway', version: VERSION },
       },
       timeout,
       false,
@@ -152,22 +190,30 @@ export class McpProxy {
       throw new Error(`Failed to initialize server "${config.id}": ${initResult.error?.message}`);
     }
 
-    this._sendNotification(config.id, 'notifications/initialized');
+    const init = (initResult.result ?? {}) as {
+      protocolVersion?: unknown;
+      serverInfo?: { name?: string; version?: string };
+    };
+    if (typeof init.protocolVersion === 'string') {
+      session.protocolVersion = init.protocolVersion;
+      if (!SUPPORTED_PROTOCOL_VERSIONS.includes(init.protocolVersion)) {
+        logger.warn(`Server "${config.id}" negotiated unknown protocol version ${init.protocolVersion}; continuing`);
+      }
+      session.channel.setProtocolVersion?.(init.protocolVersion);
+    }
+    session.serverInfo = init.serverInfo;
 
+    await this._notify(session, 'notifications/initialized');
+    return this._listTools(session);
+  }
+
+  private async _listTools(session: Session): Promise<ToolInfo[]> {
+    const { config } = session;
+    const timeout = config.timeout ?? DEFAULT_TIMEOUT_MS;
     const tools: ToolInfo[] = [];
     let cursor: string | undefined;
     for (let page = 0; page < MAX_TOOL_PAGES; page++) {
-      const toolsResult = await this._sendRequest(
-        config.id,
-        {
-          serverId: config.id,
-          method: 'tools/list',
-          params: cursor ? { cursor } : {},
-          requestId: nextId(),
-        },
-        timeout,
-        false,
-      );
+      const toolsResult = await this._sendRequest(session, 'tools/list', cursor ? { cursor } : {}, timeout, false);
 
       if (!toolsResult.success) {
         logger.warn(`Could not list tools for "${config.id}": ${toolsResult.error?.message}`);
@@ -190,7 +236,6 @@ export class McpProxy {
       cursor = typeof result.nextCursor === 'string' && result.nextCursor ? result.nextCursor : undefined;
       if (!cursor) break;
     }
-
     return tools;
   }
 
@@ -203,31 +248,10 @@ export class McpProxy {
     if (!session) return;
     this.sessions.delete(serverId);
     session.closed = true;
-
     this._rejectAll(session, new Error('Server disconnected'));
-
-    // Graceful shutdown per MCP stdio spec: close stdin → SIGTERM → SIGKILL.
-    const proc = session.process;
-    const isRunning = () => proc.exitCode === null && proc.signalCode === null;
-    const waitExit = (ms: number) =>
-      Promise.race([session.exited, new Promise<void>((r) => setTimeout(r, ms).unref())]);
-
-    if (isRunning()) {
-      proc.stdin?.end();
-      await waitExit(Math.min(this.killGraceMs, 500));
-    }
-    if (isRunning()) {
-      proc.kill('SIGTERM');
-      await waitExit(this.killGraceMs);
-    }
-    if (isRunning()) {
-      proc.kill('SIGKILL');
-      await waitExit(this.killGraceMs);
-    }
-    proc.stdin?.destroy();
-    proc.stdout?.destroy();
-    proc.stderr?.destroy();
-
+    await session.channel.close().catch((err: unknown) => {
+      logger.debug(`[${serverId}] error while closing: ${String(err)}`);
+    });
     logger.info(`Disconnected from server: ${serverId}`);
   }
 
@@ -243,30 +267,51 @@ export class McpProxy {
     args: Record<string, unknown>,
     timeout?: number,
   ): Promise<ProxyResponse> {
-    if (!this.sessions.has(serverId)) {
+    const session = this.sessions.get(serverId);
+    if (!session || session.closed) {
       return {
         success: false,
         error: { code: ERR_NOT_CONNECTED, message: `Server "${serverId}" is not connected` },
         durationMs: 0,
       };
     }
-
     return this._sendRequest(
-      serverId,
-      {
-        serverId,
-        method: 'tools/call',
-        params: { name: toolName, arguments: args },
-        requestId: nextId(), // fix BUG-002
-      },
-      timeout ?? DEFAULT_TIMEOUT_MS,
+      session,
+      'tools/call',
+      { name: toolName, arguments: args },
+      timeout ?? session.config.timeout ?? DEFAULT_TIMEOUT_MS,
       true,
     );
+  }
+
+  /** MCP `ping`: resolves with the round-trip latency (ms), or rejects if the server does not answer. */
+  async ping(serverId: string, timeout = 5_000): Promise<number> {
+    const session = this.sessions.get(serverId);
+    if (!session || session.closed) throw new Error(`Server "${serverId}" is not connected`);
+    const r = await this._sendRequest(session, 'ping', undefined, timeout, false);
+    // Any JSON-RPC answer (even "method not found" from a non-compliant
+    // server) proves the server is alive; only timeouts / transport errors fail.
+    if (!r.success && (r.error?.code === ERR_TIMEOUT || r.error?.code === ERR_NOT_CONNECTED)) {
+      throw new Error(r.error.message);
+    }
+    return r.durationMs;
   }
 
   isConnected(serverId: string): boolean {
     const s = this.sessions.get(serverId);
     return !!s && !s.closed;
+  }
+
+  /** Negotiated session details (for /servers). */
+  getSessionInfo(serverId: string): SessionInfo | undefined {
+    const s = this.sessions.get(serverId);
+    if (!s || s.closed) return undefined;
+    return {
+      transport: s.channel.kind,
+      protocolVersion: s.protocolVersion,
+      serverInfo: s.serverInfo,
+      connectedAt: s.connectedAt,
+    };
   }
 
   /** In-flight and queued tool calls for a server (for monitoring). */
@@ -277,82 +322,19 @@ export class McpProxy {
 
   // ─── Internal ───────────────────────────────────────────────────────────────
 
-  private _spawnSession(config: McpServerConfig): StdioSession {
-    // Expand ${VAR} env references
-    const resolvedEnv: Record<string, string> = {};
-    for (const [k, v] of Object.entries(config.env ?? {})) {
-      resolvedEnv[k] = v.replace(/\$\{([^}]+)\}/g, (_, name: string) => process.env[name] ?? '');
-    }
-
-    const proc = spawn(config.command!, config.args ?? [], {
-      env: { ...process.env, ...resolvedEnv },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    let markExited!: () => void;
-    const session: StdioSession = {
-      serverId: config.id,
-      process: proc,
-      pendingRequests: new Map(),
-      buffer: '',
-      limiter: new Semaphore(config.maxConcurrency ?? Infinity),
-      closed: false,
-      exited: new Promise<void>((r) => (markExited = r)),
-    };
-
-    // Decode as a stream so multi-byte chars split across chunks survive.
-    proc.stdout?.setEncoding('utf8');
-    proc.stdout?.on('data', (chunk: string) => {
-      session.buffer += chunk;
-      this._drainBuffer(session);
-      if (session.buffer.length > MAX_BUFFER_CHARS) {
-        logger.error(`[${config.id}] stdout line exceeded ${MAX_BUFFER_CHARS} chars; dropping session`);
-        this._failSession(session, new Error('MCP server sent an oversized message'));
-        proc.kill('SIGKILL');
-      }
-    });
-
-    proc.stderr?.on('data', (chunk: Buffer) => {
-      logger.debug(`[${config.id}] stderr: ${chunk.toString().trim()}`);
-    });
-
-    // Stream errors (EPIPE when the child dies mid-write) must never become
-    // unhandled 'error' events — those crash the process.
-    const onStreamError = (err: Error) => {
-      logger.debug(`[${config.id}] stdio stream error: ${err.message}`);
-    };
-    proc.stdin?.on('error', onStreamError);
-    proc.stdout?.on('error', onStreamError);
-    proc.stderr?.on('error', onStreamError);
-
-    // fix BUG-003 & BUG-004
-    proc.on('error', (err) => {
-      logger.error(`[${config.id}] spawn error: ${err.message}`);
-      this._failSession(session, err);
-      markExited(); // 'exit' may never fire if spawn failed
-    });
-
-    proc.on('exit', (code, signal) => {
-      if (!session.closed) {
-        logger.warn(`Server "${config.id}" exited (code=${code}, signal=${signal})`);
-      }
-      this._failSession(session, new Error(`MCP server "${config.id}" exited unexpectedly`));
-      markExited();
-    });
-
-    return session;
-  }
-
-  /** Reject everything in flight and drop the session — only if it is still the current one. */
-  private _failSession(session: StdioSession, err: Error): void {
-    this._rejectAll(session, err);
+  private _onChannelLost(session: Session, err: Error): void {
+    if (session.closed) return;
     session.closed = true;
-    if (this.sessions.get(session.serverId) === session) {
-      this.sessions.delete(session.serverId);
+    this._rejectAll(session, err);
+    // Only drop the session if it is still the current one for this id.
+    if (this.sessions.get(session.config.id) === session) {
+      this.sessions.delete(session.config.id);
+      // A loss during the handshake surfaces as a connect() failure instead.
+      if (session.connectedAt) this.emit('disconnected', session.config.id, err);
     }
   }
 
-  private _rejectAll(session: StdioSession, err: Error): void {
+  private _rejectAll(session: Session, err: Error): void {
     for (const [, pending] of session.pendingRequests) {
       clearTimeout(pending.timer);
       pending.reject(err);
@@ -360,82 +342,64 @@ export class McpProxy {
     session.pendingRequests.clear();
   }
 
-  private _drainBuffer(session: StdioSession): void {
-    if (!session.buffer.includes('\n')) return;
-    const lines = session.buffer.split('\n');
-    session.buffer = lines.pop() ?? '';
+  private _onMessage(session: Session, msg: JsonRpcMessage): void {
+    if (!msg || typeof msg !== 'object') return;
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      let msg: {
-        id?: string | number | null;
-        method?: string;
-        result?: unknown;
-        error?: { code: number; message: string; data?: unknown };
-      };
-      try {
-        msg = JSON.parse(trimmed);
-      } catch {
-        continue; // Non-JSON line — ignore
+    if (typeof msg.method === 'string') {
+      if (msg.id !== undefined && msg.id !== null) {
+        this._answerServerRequest(session, msg.id, msg.method);
+      } else if (msg.method === 'notifications/tools/list_changed') {
+        this._refreshTools(session);
       }
-      if (!msg || typeof msg !== 'object') continue;
+      return;
+    }
 
-      if (typeof msg.method === 'string') {
-        // Server → client request or notification
-        if (msg.id !== undefined && msg.id !== null) this._answerServerRequest(session, msg.id, msg.method);
-        continue;
-      }
+    if (msg.id === undefined || msg.id === null) return;
+    const pending = session.pendingRequests.get(msg.id);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    session.pendingRequests.delete(msg.id);
 
-      if (msg.id === undefined || msg.id === null) continue;
-      const pending = session.pendingRequests.get(msg.id);
-      if (!pending) continue;
-      clearTimeout(pending.timer);
-      session.pendingRequests.delete(msg.id);
-
-      if (msg.error) {
-        pending.resolve({ success: false, error: msg.error, durationMs: 0 });
-      } else {
-        pending.resolve({ success: true, result: msg.result, durationMs: 0 });
-      }
+    if (msg.error) {
+      pending.resolve({ success: false, error: msg.error, durationMs: 0 });
+    } else {
+      pending.resolve({ success: true, result: msg.result, durationMs: 0 });
     }
   }
 
-  private _answerServerRequest(session: StdioSession, id: string | number, method: string): void {
-    const reply =
+  private _refreshTools(session: Session): void {
+    if (!session.connectedAt) return; // still handshaking: the initial list is fetched anyway
+    void this._listTools(session).then(
+      (tools) => {
+        if (!session.closed) this.emit('tools-changed', session.config.id, tools);
+      },
+      (err: unknown) => logger.warn(`[${session.config.id}] could not refresh tools: ${String(err)}`),
+    );
+  }
+
+  private _answerServerRequest(session: Session, id: JsonRpcId, method: string): void {
+    const reply: JsonRpcMessage =
       method === 'ping'
         ? { jsonrpc: '2.0', id, result: {} }
         : { jsonrpc: '2.0', id, error: { code: -32601, message: `Method not supported by gateway: ${method}` } };
-    this._write(session, reply);
+    void session.channel.send(reply).catch(() => {});
   }
 
-  private _write(session: StdioSession, payload: unknown): boolean {
-    const stdin = session.process.stdin;
-    if (session.closed || !stdin || !stdin.writable) return false;
-    try {
-      stdin.write(JSON.stringify(payload) + '\n');
-      return true;
-    } catch {
-      return false;
-    }
+  private async _notify(session: Session, method: string, params?: unknown): Promise<void> {
+    const msg: JsonRpcMessage = params === undefined ? { jsonrpc: '2.0', method } : { jsonrpc: '2.0', method, params };
+    await session.channel.send(msg).catch((err: unknown) => {
+      logger.debug(`[${session.config.id}] failed to send ${method}: ${String(err)}`);
+    });
   }
 
   private async _sendRequest(
-    serverId: string,
-    req: ProxyRequest,
+    session: Session,
+    method: string,
+    params: unknown,
     timeout = DEFAULT_TIMEOUT_MS,
     limited = true,
   ): Promise<ProxyResponse> {
-    const session = this.sessions.get(serverId);
-    if (!session || session.closed) {
-      return {
-        success: false,
-        error: { code: ERR_NOT_CONNECTED, message: `No session for server "${serverId}"` },
-        durationMs: 0,
-      };
-    }
-
+    const serverId = session.config.id;
     const startTime = Date.now();
     const deadline = startTime + timeout;
     const timedOut = (): ProxyResponse => ({
@@ -443,6 +407,13 @@ export class McpProxy {
       error: { code: ERR_TIMEOUT, message: `Request timed out after ${timeout}ms` },
       durationMs: Date.now() - startTime,
     });
+    const notConnected = (message: string): ProxyResponse => ({
+      success: false,
+      error: { code: ERR_NOT_CONNECTED, message },
+      durationMs: Date.now() - startTime,
+    });
+
+    if (session.closed) return notConnected(`No session for server "${serverId}"`);
 
     // Enforce maxConcurrency; the timeout covers time spent queued.
     let release: (() => void) | undefined;
@@ -463,59 +434,52 @@ export class McpProxy {
     }
 
     try {
-      if (session.closed) {
-        return {
-          success: false,
-          error: { code: ERR_NOT_CONNECTED, message: `Server "${serverId}" disconnected` },
-          durationMs: Date.now() - startTime,
-        };
-      }
+      if (session.closed) return notConnected(`Server "${serverId}" disconnected`);
 
       return await new Promise<ProxyResponse>((resolve) => {
-        const id = req.requestId ?? nextId();
+        const id = nextId();
         const remaining = Math.max(0, deadline - Date.now());
 
         const timer = setTimeout(() => {
           session.pendingRequests.delete(id);
-          // Ask the server to stop working on it.
-          this._write(session, {
-            jsonrpc: '2.0',
-            method: 'notifications/cancelled',
-            params: { requestId: id, reason: 'timeout' },
-          });
+          // Ask the server to stop working on it, then free channel resources.
+          void session.channel
+            .send({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id, reason: 'timeout' } })
+            .catch(() => {})
+            .finally(() => session.channel.abandon?.(id));
           resolve(timedOut());
         }, remaining);
 
         session.pendingRequests.set(id, {
           resolve: (response) => resolve({ ...response, durationMs: Date.now() - startTime }),
-          reject: (err) =>
-            resolve({
-              success: false,
-              error: { code: ERR_NOT_CONNECTED, message: err.message },
-              durationMs: Date.now() - startTime,
-            }),
+          reject: (err) => resolve(notConnected(err.message)),
           timer,
         });
 
-        const ok = this._write(session, { jsonrpc: '2.0', id, method: req.method, params: req.params });
-        if (!ok) {
+        const payload: JsonRpcMessage =
+          params === undefined ? { jsonrpc: '2.0', id, method } : { jsonrpc: '2.0', id, method, params };
+        session.channel.send(payload).catch((err: unknown) => {
+          const pending = session.pendingRequests.get(id);
+          if (!pending) return; // already answered / timed out
           clearTimeout(timer);
           session.pendingRequests.delete(id);
-          resolve({
-            success: false,
-            error: { code: ERR_NOT_CONNECTED, message: `Server "${serverId}" is not writable` },
-            durationMs: Date.now() - startTime,
-          });
-        }
+          const message = err instanceof Error ? err.message : String(err);
+          resolve(notConnected(`Request to "${serverId}" failed: ${message}`));
+        });
       });
     } finally {
       release?.();
     }
   }
+}
 
-  private _sendNotification(serverId: string, method: string, params?: unknown): void {
-    const session = this.sessions.get(serverId);
-    if (!session) return;
-    this._write(session, params === undefined ? { jsonrpc: '2.0', method } : { jsonrpc: '2.0', method, params });
-  }
+function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    p,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+      timer.unref();
+    }),
+  ]).finally(() => clearTimeout(timer));
 }

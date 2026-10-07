@@ -13,6 +13,7 @@ import { ServerRegistry } from '../registry/index.js';
 import { McpProxy } from '../proxy/index.js';
 import { MetricsCollector } from '../monitor/index.js';
 import { createApiRouter, type ApiRouter } from './api.js';
+import { ServerSupervisor } from './supervisor.js';
 import { corsMiddleware } from '../middleware/cors.js';
 import { requestIdMiddleware } from '../middleware/request-id.js';
 import { errorHandler, notFoundHandler } from '../middleware/error-handler.js';
@@ -33,15 +34,19 @@ export class Gateway {
   private readonly registry: ServerRegistry;
   private readonly proxy: McpProxy;
   private readonly metrics: MetricsCollector;
+  private readonly supervisor: ServerSupervisor;
   private router?: ApiRouter;
+  private cors: express.RequestHandler;
   private readonly reloadLock = new Mutex();
   private started = false;
   private stopping?: Promise<void>;
 
   constructor(private config: GatewayConfig) {
-    this.registry = new ServerRegistry();
+    this.registry = new ServerRegistry(config.healthCheckIntervalMs ?? 30_000);
     this.proxy = new McpProxy();
     this.metrics = new MetricsCollector(config.monitor);
+    this.supervisor = new ServerSupervisor(this.proxy, this.registry, { reconnect: config.reconnect });
+    this.cors = corsMiddleware({ origins: config.corsOrigins ?? ['*'] });
   }
 
   async start(): Promise<void> {
@@ -50,18 +55,21 @@ export class Gateway {
     logger.setLevel(this.config.logLevel ?? 'info');
 
     // Builds auth/rate-limit; throws on insecure misconfiguration (fail closed)
-    this.router = createApiRouter(this.config, this.registry, this.proxy, this.metrics);
+    this.router = createApiRouter(this.config, this.registry, this.proxy, this.metrics, {
+      supervisor: this.supervisor,
+    });
 
     this.app.disable('x-powered-by');
     this.app.use(requestIdMiddleware);
     // Previously an inline handler joined multiple origins into one
     // Access-Control-Allow-Origin value, which browsers reject.
-    this.app.use(corsMiddleware({ origins: this.config.corsOrigins ?? ['*'] }));
+    // Indirection so CORS origins can be hot reloaded.
+    this.app.use((req, res, next) => this.cors(req, res, next));
     this.app.use(express.json({ limit: '10mb' }));
 
     this.app.use('/api/v1', this.router);
 
-    const dashboard = findDashboard();
+    const dashboard = this.config.dashboard?.enabled === false ? undefined : findDashboard();
     if (dashboard) {
       this.app.get('/dashboard', (_req, res) => res.sendFile(dashboard));
     }
@@ -71,7 +79,11 @@ export class Gateway {
         name: 'mcp-gateway',
         version: VERSION,
         docs: '/api/v1/health',
-        dashboard: dashboard ? '/dashboard' : 'not available (dashboard/index.html missing)',
+        dashboard: dashboard
+          ? '/dashboard'
+          : this.config.dashboard?.enabled === false
+            ? 'disabled'
+            : 'not available (dashboard/index.html missing)',
       });
     });
 
@@ -82,10 +94,7 @@ export class Gateway {
 
     await this.connectServers(this.config.servers);
 
-    this.registry.startHealthChecks(async (serverId) => {
-      const isConnected = this.proxy.isConnected(serverId);
-      this.registry.updateHealth(serverId, isConnected ? 'online' : 'offline');
-    });
+    this.registry.startHealthChecks((serverId) => this.checkHealth(serverId));
 
     // Reject on listen errors (EADDRINUSE, EACCES) instead of hanging forever
     // and crashing with an unhandled 'error' event.
@@ -142,7 +151,31 @@ export class Gateway {
     logger.info('Gateway stopped.');
   }
 
+  /**
+   * One health check: an MCP `ping` for connected servers (records latency,
+   * marks `degraded` when it fails); disconnected servers are `reconnecting`
+   * while the supervisor is on it, otherwise `offline`.
+   */
+  private async checkHealth(serverId: string): Promise<void> {
+    if (this.proxy.isConnected(serverId)) {
+      const timeout = Math.min(this.registry.getServer(serverId)?.timeout ?? 5_000, 5_000);
+      try {
+        const latency = await this.proxy.ping(serverId, timeout);
+        if (this.proxy.isConnected(serverId)) this.registry.updateHealth(serverId, 'online', latency);
+      } catch (err) {
+        if (!this.proxy.isConnected(serverId)) return; // the disconnect handler owns the status now
+        const msg = err instanceof Error ? err.message : String(err);
+        this.registry.updateHealth(serverId, 'degraded', undefined, `health ping failed: ${msg}`);
+      }
+      return;
+    }
+    if (this.supervisor.isRecovering(serverId)) return;
+    const prev = this.registry.getHealth(serverId);
+    this.registry.updateHealth(serverId, 'offline', undefined, prev?.errorMessage);
+  }
+
   private async shutdownInternals(): Promise<void> {
+    this.supervisor.stop();
     this.registry.stopHealthChecks();
     this.metrics.stop();
     this.router?.close();
@@ -150,40 +183,81 @@ export class Gateway {
   }
 
   /**
-   * Apply a new configuration's server list without restarting: servers that
-   * were removed or disabled are disconnected, new or changed ones (re)connected.
-   * Other settings (port, auth, rate limits, CORS) require a restart.
+   * Apply a new configuration without restarting:
+   *  - servers that were removed or disabled are disconnected, new or changed
+   *    ones (re)connected;
+   *  - auth (strategy, keys, secret, protect flags), rate limits, CORS origins,
+   *    monitor.requestLog / monitor.prometheus, reconnect policy and logLevel
+   *    take effect immediately.
+   * port, host, monitor.retentionHours, healthCheckIntervalMs and dashboard
+   * still require a restart.
    */
   async reload(next: GatewayConfig): Promise<void> {
     await this.reloadLock.runExclusive(async () => {
       if (this.stopping) return;
+      const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
       const key = (s: McpServerConfig) => JSON.stringify(s);
       const current = new Map(this.config.servers.filter((s) => s.enabled !== false).map((s) => [s.id, s]));
       const wanted = new Map(next.servers.filter((s) => s.enabled !== false).map((s) => [s.id, s]));
 
       const toRemove = [...current.keys()].filter((id) => !wanted.has(id));
+      const reconnectChanged = !same(this.config.reconnect, next.reconnect);
       const toConnect = [...wanted.values()].filter((s) => {
         const prev = current.get(s.id);
         return !prev || key(prev) !== key(s);
       });
 
-      for (const field of ['port', 'host', 'auth', 'rateLimit', 'corsOrigins', 'monitor'] as const) {
-        if (JSON.stringify(this.config[field]) !== JSON.stringify(next[field])) {
+      const applied: string[] = [];
+      for (const field of ['port', 'host', 'healthCheckIntervalMs', 'dashboard'] as const) {
+        if (!same(this.config[field], next[field])) {
           logger.warn(`Config "${field}" changed — restart required for it to take effect`);
         }
       }
-      if (next.logLevel && next.logLevel !== this.config.logLevel) logger.setLevel(next.logLevel);
+      if (this.config.monitor?.retentionHours !== next.monitor?.retentionHours) {
+        logger.warn('Config "monitor.retentionHours" changed — restart required for it to take effect');
+      }
+
+      // Router-level settings (auth may be rejected and kept; the router logs that).
+      this.router?.update(next);
+      if (!same(this.config.auth, next.auth)) applied.push('auth');
+      if (!same(this.config.rateLimit, next.rateLimit)) applied.push('rateLimit');
+      if (!same(this.config.monitor, next.monitor)) applied.push('monitor');
+      if (!same(this.config.corsOrigins, next.corsOrigins)) {
+        this.cors = corsMiddleware({ origins: next.corsOrigins ?? ['*'] });
+        applied.push('corsOrigins');
+      }
+      if (reconnectChanged) {
+        this.supervisor.setReconnectDefaults(next.reconnect);
+        applied.push('reconnect');
+      }
+      if (next.logLevel && next.logLevel !== this.config.logLevel) {
+        logger.setLevel(next.logLevel);
+        applied.push('logLevel');
+      }
 
       await Promise.all(
         toRemove.map(async (id) => {
+          this.supervisor.forget(id);
           await this.proxy.disconnect(id);
           this.registry.unregister(id);
         }),
       );
 
-      this.config = { ...this.config, servers: next.servers, logLevel: next.logLevel ?? this.config.logLevel };
+      this.config = {
+        ...this.config,
+        servers: next.servers,
+        logLevel: next.logLevel ?? this.config.logLevel,
+        auth: next.auth,
+        rateLimit: next.rateLimit,
+        monitor: next.monitor ? { ...next.monitor, retentionHours: this.config.monitor?.retentionHours } : next.monitor,
+        corsOrigins: next.corsOrigins,
+        reconnect: next.reconnect,
+      };
       await this.connectServers(toConnect);
-      logger.info(`Hot reload applied: ${toConnect.length} (re)connected, ${toRemove.length} removed`);
+      logger.info(
+        `Hot reload applied: ${toConnect.length} (re)connected, ${toRemove.length} removed` +
+          (applied.length ? `; updated ${applied.join(', ')}` : ''),
+      );
     });
   }
 
@@ -193,27 +267,19 @@ export class Gateway {
     logger.info(`Connecting to ${enabled.length} MCP server(s)...`);
 
     const outcomes = await Promise.all(
-      enabled.map(async (serverConfig) => {
+      enabled.map((serverConfig) => {
         this.registry.register(serverConfig);
-        try {
-          const tools = await this.proxy.connect(serverConfig);
-          this.registry.setTools(serverConfig.id, tools);
-          this.registry.updateHealth(serverConfig.id, 'online');
-          logger.info(`✓ ${serverConfig.name} — ${tools.length} tools available`);
-          return true;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          this.registry.setTools(serverConfig.id, []);
-          this.registry.updateHealth(serverConfig.id, 'offline', undefined, msg);
-          logger.warn(`✗ ${serverConfig.name} — failed to connect: ${msg}`);
-          return false;
-        }
+        // Failed servers are retried in the background with backoff.
+        return this.supervisor.connect(serverConfig);
       }),
     );
 
-    // Previously every server counted as "connected" because errors were
-    // caught inside the settled promises.
     const succeeded = outcomes.filter(Boolean).length;
     logger.info(`Connected: ${succeeded}/${enabled.length} servers (${enabled.length - succeeded} failed)`);
+  }
+
+  /** Server registry (read-only use when embedding). */
+  getRegistry(): ServerRegistry {
+    return this.registry;
   }
 }
