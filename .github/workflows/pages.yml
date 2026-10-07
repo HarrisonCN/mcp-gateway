@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Assemble _site
         run: |
           mkdir -p _site
@@ -34,8 +34,8 @@ jobs:
           awk 'BEGIN{d=0} /^<script>/ && !d {print "<script src=\"demo.js\"></script>"; d=1} {print}' dashboard/index.html > _site/index.html
           grep -q 'src="demo.js"' _site/index.html
           touch _site/.nojekyll
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
 
@@ -49,4 +49,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
