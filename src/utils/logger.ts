@@ -2,6 +2,8 @@
  * Minimal structured logger for mcp-gateway
  */
 
+import { redactString, redactValue } from '../security/redact.js';
+
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 const LEVELS: Record<LogLevel, number> = {
@@ -36,9 +38,10 @@ export class Logger {
     const color = process.stdout.isTTY ? COLORS[level] : '';
     const reset = process.stdout.isTTY ? RESET : '';
     const prefix = `${color}[${level.toUpperCase().padEnd(5)}]${reset}`;
-    const metaStr = meta ? ` ${safeStringify(meta)}` : '';
+    // Secrets (tokens, keys, passwords) are masked before anything is written.
+    const metaStr = meta ? ` ${safeStringify(redactValue(meta))}` : '';
 
-    const output = `${ts} ${prefix} ${message}${metaStr}`;
+    const output = `${ts} ${prefix} ${redactString(message)}${metaStr}`;
 
     if (level === 'error' || level === 'warn') {
       process.stderr.write(output + '\n');

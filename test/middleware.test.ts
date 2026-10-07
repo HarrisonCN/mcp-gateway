@@ -3,7 +3,7 @@ import express from 'express';
 import type { AddressInfo } from 'net';
 import type { Server } from 'http';
 import { timeoutMiddleware } from '../src/middleware/timeout.js';
-import { errorHandler, notFoundHandler, GatewayError, ErrorCodes } from '../src/middleware/error-handler.js';
+import { errorHandler, createErrorHandler, notFoundHandler, GatewayError, ErrorCodes } from '../src/middleware/error-handler.js';
 import { requestIdMiddleware } from '../src/middleware/request-id.js';
 
 const servers: Server[] = [];
@@ -136,12 +136,31 @@ describe('errorHandler', () => {
     });
   });
 
-  it('includes the message and stack for unknown errors outside production', async () => {
-    await withEnv('NODE_ENV', 'test', async () => {
+  it('includes the message and stack for unknown errors only in development', async () => {
+    await withEnv('NODE_ENV', 'development', async () => {
       const base = await serve(app(new Error('kaboom')));
       const body = (await (await fetch(`${base}/boom`)).json()) as any;
       expect(body.error.message).toBe('kaboom');
       expect(String(body.error.details)).toMatch(/kaboom/);
+    });
+    await withEnv('NODE_ENV', 'test', async () => {
+      const base = await serve(app(new Error('db password is hunter2')));
+      const body = (await (await fetch(`${base}/boom`)).json()) as any;
+      expect(body.error.message).toBe('Internal server error');
+      expect(body.error.details).toBeUndefined();
+    });
+  });
+
+  it('createErrorHandler exposes internals only when asked', async () => {
+    await withEnv('NODE_ENV', 'test', async () => {
+      for (const expose of [true, false]) {
+        const a = express();
+        a.get('/boom', (_req, _res, next) => next(new Error('kaboom')));
+        a.use(createErrorHandler(() => expose));
+        const base = await serve(a);
+        const body = (await (await fetch(`${base}/boom`)).json()) as any;
+        expect(body.error.message).toBe(expose ? 'kaboom' : 'Internal server error');
+      }
     });
   });
 

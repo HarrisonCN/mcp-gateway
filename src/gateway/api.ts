@@ -10,13 +10,24 @@ import type { ServerRegistry } from '../registry/index.js';
 import { ERR_TIMEOUT, type McpProxy } from '../proxy/index.js';
 import type { MetricsCollector, ServerStateSample } from '../monitor/index.js';
 import type { ServerSupervisor } from './supervisor.js';
-import { createAuthMiddleware, type AuthedRequest, type AuthMiddleware } from '../auth/middleware.js';
+import {
+  createAuthMiddleware,
+  isHashedKey,
+  keyExpiry,
+  keyInactiveReason,
+  normalizeApiKeys,
+  type AuthedRequest,
+  type AuthMiddleware,
+} from '../auth/middleware.js';
+import { AuthLockout, withLockout } from '../security/lockout.js';
+import { securityWarnings } from '../security/posture.js';
 import { createRateLimiter, type RateLimitDecision, type RateLimiter } from '../auth/ratelimit.js';
 import { filterToolsByScope, isRestricted, isServerInScope, isToolInScope, type AccessScope } from '../auth/scopes.js';
 import { logger } from '../utils/logger.js';
 import { dedupeResources, routeResource } from '../mcp/catalog.js';
 import { LLM_SCHEMA_FORMATS, toLlmToolSchemas, type LlmSchemaFormat } from '../mcp/llm-schemas.js';
 import { VERSION } from '../utils/version.js';
+import { redactArgs } from '../security/redact.js';
 
 export type ApiRouter = express.Router & {
   close(): void;
@@ -32,7 +43,21 @@ export type ApiRouter = express.Router & {
   takeRateLimit(req: Request): RateLimitDecision | undefined;
   /** Current scope of a client id (api keys); see `AuthMiddleware.resolveClient`. */
   resolveClient(clientId: string | undefined): { known: boolean; scope?: AccessScope } | undefined;
+  /** The brute-force lockout tracker (undefined unless `security.authLockout`). */
+  lockout(): AuthLockout | undefined;
 };
+
+/** Whether `args` serialise to more than `limit` bytes (0 / undefined = no limit). */
+export function argumentsTooLarge(args: unknown, limit: number | undefined): boolean {
+  if (!limit) return false;
+  return Buffer.byteLength(JSON.stringify(args ?? {}), 'utf8') > limit;
+}
+
+function lockoutFor(config: GatewayConfig): AuthLockout | undefined {
+  const lo = config.security?.authLockout;
+  if (!lo || config.auth?.strategy === undefined || config.auth.strategy === 'none') return undefined;
+  return new AuthLockout(lo === true ? {} : lo);
+}
 
 export interface ApiRouterOptions {
   /** Enables POST /servers/:id/reconnect and reconnect info. */
@@ -92,6 +117,7 @@ export function redactServer(server: McpServerConfig): McpServerConfig {
   if (server.env) out.env = mask(server.env);
   if (server.headers) out.headers = mask(server.headers);
   if (server.url) out.url = redactUrl(server.url);
+  if (server.args) out.args = redactArgs(server.args);
   return out;
 }
 
@@ -173,17 +199,26 @@ export function createApiRouter(
 
   // Stable wrappers: routes keep pointing at these while the inner
   // middleware is swapped on hot reload.
-  const auth: RequestHandler = (req, res, next) => authMw(req, res, next);
+  let lockout = lockoutFor(cfg);
+  const auth: RequestHandler = withLockout((req, res, next) => authMw(req, res, next), () => lockout);
   const rateLimit: RequestHandler = (req, res, next) => limiterFor(req)(req, res, next);
   const protectable =
     (flag: 'health' | 'metrics'): RequestHandler =>
     (req, res, next) =>
-      cfg.auth?.protect?.[flag] ? authMw(req, res, next) : next();
+      cfg.auth?.protect?.[flag] ? auth(req, res, next) : next();
+  const argLimit = () => cfg.security?.maxToolArgumentsBytes;
+  const tooLarge = (res: Response) =>
+    res.status(413).json({
+      error: 'Payload Too Large',
+      message: `"arguments" exceed security.maxToolArgumentsBytes (${argLimit()} bytes)`,
+    });
 
   router.close = () => {
     rateLimiter.close();
     resetKeyLimiters();
+    lockout?.close();
   };
+  router.lockout = () => lockout;
   router.authenticate = auth;
   router.takeRateLimit = (req) => limiterFor(req).take(req);
   router.resolveClient = (clientId) => authMw.resolveClient?.(clientId);
@@ -212,8 +247,64 @@ export function createApiRouter(
           : 'Rate limit disabled',
       );
     }
-    cfg = { ...cfg, auth: nextAuth, rateLimit: next.rateLimit, monitor: next.monitor, mcp: next.mcp };
+    if (!same(cfg.security?.authLockout, next.security?.authLockout) || !same(cfg.auth?.strategy, nextAuth?.strategy)) {
+      lockout?.close();
+      lockout = lockoutFor({ ...next, auth: nextAuth });
+    }
+    cfg = { ...cfg, auth: nextAuth, rateLimit: next.rateLimit, monitor: next.monitor, mcp: next.mcp, security: next.security, host: cfg.host };
   };
+
+  // ─── Security posture ───────────────────────────────────────────────────────
+
+  // Configuration warnings and key hygiene (never key material). Restricted
+  // (scoped) clients are refused: this is an operator view.
+  router.get('/security', auth, (req, res) => {
+    if (isRestricted(scopeOf(req))) {
+      res.status(403).json({ error: 'Forbidden', message: 'Scoped clients cannot read the security posture' });
+      return;
+    }
+    const now = Date.now();
+    const keys = cfg.auth?.strategy === 'api-key' ? normalizeApiKeys(cfg.auth.apiKeys) : [];
+    const sec = cfg.security ?? {};
+    const lo = lockout?.config;
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      authStrategy: cfg.auth?.strategy ?? 'none',
+      warnings: securityWarnings(cfg, now),
+      apiKeys: {
+        total: keys.length,
+        hashed: keys.filter((k) => isHashedKey(k.key)).length,
+        disabled: keys.filter((k) => keyInactiveReason(k, now) === 'disabled').length,
+        expired: keys.filter((k) => keyInactiveReason(k, now) === 'expired').length,
+        expiring: keys
+          .filter((k) => !keyInactiveReason(k, now) && keyExpiry(k) !== undefined)
+          .map((k) => ({ name: k.name ?? null, expiresAt: new Date(keyExpiry(k)!).toISOString() }))
+          .sort((a, b) => (a.expiresAt < b.expiresAt ? -1 : 1)),
+      },
+      jwt:
+        cfg.auth?.strategy === 'jwt'
+          ? {
+              keySource: cfg.auth.jwt?.jwksUrl ? 'jwks' : cfg.auth.jwt?.publicKey ? 'publicKey' : 'secret',
+              issuer: cfg.auth.jwt?.issuer ?? null,
+              audience: cfg.auth.jwt?.audience ?? null,
+              requireExp: cfg.auth.jwt?.requireExp ?? false,
+            }
+          : null,
+      settings: {
+        headers: sec.headers !== false,
+        hsts: !!sec.hsts,
+        dnsRebindingProtection: !!sec.dnsRebindingProtection,
+        allowedHosts: sec.allowedHosts ?? null,
+        ipAllowlist: sec.ipAllowlist?.length ?? 0,
+        trustProxy: sec.trustProxy ?? false,
+        maxBodyBytes: sec.maxBodyBytes ?? 10 * 1024 * 1024,
+        maxToolArgumentsBytes: sec.maxToolArgumentsBytes ?? 0,
+        redactPatterns: sec.redactPatterns?.length ?? 0,
+        authLockout: lo ?? null,
+      },
+      lockout: lockout ? lockout.status() : null,
+    });
+  });
 
   // ─── Health & Status ────────────────────────────────────────────────────────
 
@@ -375,6 +466,7 @@ export function createApiRouter(
         res.status(400).json({ error: 'Bad Request', message: '"arguments" must be an object' });
         return;
       }
+      if (argumentsTooLarge(args, argLimit())) return void tooLarge(res);
 
       const scope = scopeOf(req);
       const forbidden = (message: string) => res.status(403).json({ error: 'Forbidden', message });
@@ -622,6 +714,7 @@ export function createApiRouter(
         res.status(400).json({ error: 'Bad Request', message: '"arguments" must be an object' });
         return;
       }
+      if (argumentsTooLarge(args, argLimit())) return void tooLarge(res);
       let target = server;
       if (!target) {
         const all = registry.getAllPrompts().filter((p) => p.name === name);

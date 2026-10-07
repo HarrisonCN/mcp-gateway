@@ -18,6 +18,10 @@
  *    `disconnect()`. The gateway supervisor uses it to reconnect.
  *  - `tools-changed` (serverId, tools) — the server announced a new tool list.
  *  - `catalog-changed` (serverId, catalog) — new resource / prompt lists.
+ *  - `connected` (serverId) — a session finished its handshake.
+ *  - `notification` (serverId, message) — any other server notification
+ *    (`notifications/message`, `notifications/resources/updated`, …);
+ *    `notifications/progress` goes to the request's `onProgress` instead.
  *
  * Fixes kept from v0.2.0 / the audit: per-server connect mutex (BUG-001),
  * monotonic ids (BUG-002), no leaked sessions on failed `initialize`, an old
@@ -61,9 +65,21 @@ export const ERR_TIMEOUT = -32001;
 /** The caller cancelled the request (e.g. a downstream `notifications/cancelled`). */
 export const ERR_CANCELLED = -32800;
 
+export interface ProgressUpdate {
+  progress: number;
+  total?: number;
+  message?: string;
+}
+
 export interface RequestOptions {
   /** Abort the request: upstream gets `notifications/cancelled`, the result is `ERR_CANCELLED`. */
   signal?: AbortSignal;
+  /**
+   * Receive `notifications/progress` for this request. The proxy sends its own
+   * unique `_meta.progressToken` upstream, so tokens of different clients
+   * never collide.
+   */
+  onProgress?: (update: ProgressUpdate) => void;
 }
 
 // ── Monotonic ID counter (fix BUG-002) ──────────────────────────────────────
@@ -107,6 +123,8 @@ interface Session {
   connectedAt?: Date;
   capabilities?: Record<string, unknown>;
   catalog: ServerCatalog;
+  /** Progress callbacks by the progress token the gateway sent upstream. */
+  progress: Map<string, (update: ProgressUpdate) => void>;
 }
 
 export interface SessionInfo {
@@ -167,6 +185,7 @@ export class McpProxy extends EventEmitter {
         limiter: new Semaphore(config.maxConcurrency ?? Infinity),
         closed: false,
         catalog: { resources: [], resourceTemplates: [], prompts: [] },
+        progress: new Map(),
       };
 
       channel.onmessage = (msg) => this._onMessage(session, msg);
@@ -184,6 +203,7 @@ export class McpProxy extends EventEmitter {
       try {
         const tools = await this._handshake(session);
         session.connectedAt = new Date();
+        this.emit('connected', config.id);
         return tools;
       } catch (err) {
         await this._disconnectUnlocked(config.id);
@@ -410,6 +430,7 @@ export class McpProxy extends EventEmitter {
       timeout ?? session.config.timeout ?? DEFAULT_TIMEOUT_MS,
       true,
       options.signal,
+      options.onProgress,
     );
   }
 
@@ -486,6 +507,21 @@ export class McpProxy extends EventEmitter {
         msg.method === 'notifications/prompts/list_changed'
       ) {
         this._refreshCatalog(session);
+      } else if (msg.method === 'notifications/progress') {
+        const p = isPlainObject(msg.params) ? msg.params : {};
+        const cb = session.progress.get(String(p.progressToken));
+        if (cb && typeof p.progress === 'number') {
+          const update: ProgressUpdate = { progress: p.progress };
+          if (typeof p.total === 'number') update.total = p.total;
+          if (typeof p.message === 'string') update.message = p.message;
+          try {
+            cb(update);
+          } catch (err) {
+            logger.debug(`[${session.config.id}] progress handler failed: ${String(err)}`);
+          }
+        }
+      } else if (session.connectedAt) {
+        this.emit('notification', session.config.id, msg);
       }
       return;
     }
@@ -547,6 +583,7 @@ export class McpProxy extends EventEmitter {
     timeout = DEFAULT_TIMEOUT_MS,
     limited = true,
     signal?: AbortSignal,
+    onProgress?: (update: ProgressUpdate) => void,
   ): Promise<ProxyResponse> {
     const serverId = session.config.id;
     const startTime = Date.now();
@@ -601,9 +638,15 @@ export class McpProxy extends EventEmitter {
 
       if (signal?.aborted) return cancelled();
 
-      return await new Promise<ProxyResponse>((resolve) => {
+      return await new Promise<ProxyResponse>((resolveRaw) => {
         const id = nextId();
         const remaining = Math.max(0, deadline - Date.now());
+        const progressToken = onProgress ? `mcp-gateway-${id}` : undefined;
+        if (progressToken) session.progress.set(progressToken, onProgress!);
+        const resolve = (r: ProxyResponse) => {
+          if (progressToken) session.progress.delete(progressToken);
+          resolveRaw(r);
+        };
 
         // Ask the server to stop working on it, then free channel resources.
         const cancelUpstream = (reason: string) => {
@@ -638,8 +681,14 @@ export class McpProxy extends EventEmitter {
         });
         signal?.addEventListener('abort', onAbort, { once: true });
 
+        let sendParams = params;
+        if (progressToken) {
+          const base = isPlainObject(params) ? params : {};
+          const meta = isPlainObject(base._meta) ? base._meta : {};
+          sendParams = { ...base, _meta: { ...meta, progressToken } };
+        }
         const payload: JsonRpcMessage =
-          params === undefined ? { jsonrpc: '2.0', id, method } : { jsonrpc: '2.0', id, method, params };
+          sendParams === undefined ? { jsonrpc: '2.0', id, method } : { jsonrpc: '2.0', id, method, params: sendParams };
         session.channel.send(payload).catch((err: unknown) => {
           const pending = session.pendingRequests.get(id);
           if (!pending) return; // already answered / timed out

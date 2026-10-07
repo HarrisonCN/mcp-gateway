@@ -17,9 +17,17 @@ See the [configuration reference](configuration.md) for every setting mentioned 
 |---|---|
 | `none` (default) | nothing |
 | `api-key` | `Authorization: Bearer <key>` or `X-API-Key: <key>` |
-| `jwt` (HS256/384/512) | `Authorization: Bearer <jwt>` |
+| `jwt` (HMAC secret, PEM public key or JWKS) | `Authorization: Bearer <jwt>` |
 
-Missing / invalid credentials → `401 {"error":"Unauthorized","message":"…"}`.
+Missing / invalid / expired / disabled credentials → `401 {"error":"Unauthorized","message":"…"}`.
+With `security.authLockout`, an IP with too many recent failures gets
+`429 {"error":"Too Many Requests","retryAfter":…}` + `Retry-After` on every authenticated route (incl. `/mcp`).
+
+**Network guards** (`security`): clients outside `ipAllowlist` and requests whose `Host` is not allowed
+(`allowedHosts` / `dnsRebindingProtection`) get `403` on every route except `/health/live` and `/health/ready`.
+Bodies larger than `maxBodyBytes` → `413`; `arguments` larger than `maxToolArgumentsBytes` → `413` (REST) /
+`-32602` (`/mcp`). Responses carry security headers (`X-Content-Type-Options`, `X-Frame-Options`,
+`Referrer-Policy`, `Content-Security-Policy`, optional `Strict-Transport-Security`).
 
 Always public: `GET /api/v1/health/live`, `GET /api/v1/health/ready`. Public unless
 `auth.protect.health` / `auth.protect.metrics`: `GET /api/v1/health`, `GET /api/v1/metrics`. Everything else
@@ -174,6 +182,31 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
 ```
 `kind` is present for resources and prompts. Invalid parameters → `400`.
 
+### Security posture
+
+#### `GET /security`
+
+Requires auth; scoped (restricted) clients get `403`. Never contains key material.
+
+```json
+{
+  "authStrategy": "api-key",
+  "warnings": [{ "id": "plaintext-api-keys", "level": "info", "message": "…" }],
+  "apiKeys": { "total": 3, "hashed": 2, "disabled": 0, "expired": 0,
+               "expiring": [{ "name": "ci", "expiresAt": "2027-01-01T00:00:00.000Z" }] },
+  "jwt": null,
+  "settings": { "headers": true, "hsts": false, "dnsRebindingProtection": false, "allowedHosts": null,
+                "ipAllowlist": 0, "trustProxy": false, "maxBodyBytes": 10485760, "maxToolArgumentsBytes": 0,
+                "redactPatterns": 0, "authLockout": { "maxFailures": 10, "windowSeconds": 300, "lockoutSeconds": 900 } },
+  "lockout": { "lockedClients": 0, "trackedClients": 1, "lockoutsTotal": 0 }
+}
+```
+
+`warnings[].level` is `warn` (likely exposure) or `info` (hardening hint); ids are listed in
+[Security warnings](configuration.md#security-warnings). `jwt` (for the jwt strategy) is
+`{ keySource: "secret" | "publicKey" | "jwks", issuer, audience, requireExp }`. `authLockout` / `lockout` are
+`null` when lockout is off. The dashboard shows this on its *Connect* page.
+
 ### Live data (dashboard)
 
 Both endpoints require auth (like `/servers`). Clients restricted by a scope only see their own calls and
@@ -223,15 +256,17 @@ MCP Streamable HTTP, protocol **2025-06-18** (2025-03-26 accepted). Path configu
 
 | Method | Purpose |
 |---|---|
-| `POST /mcp` | JSON-RPC requests / notifications / batches. Answers `application/json`; notifications-only bodies → `202`. |
+| `POST /mcp` | JSON-RPC requests / notifications / batches. Answers `application/json`, or `text/event-stream` for a single `tools/call` with `_meta.progressToken` once progress arrives (see below); notifications-only bodies → `202`. |
 | `GET /mcp` | `text/event-stream` for server→client notifications (`Accept: text/event-stream`, else `406`). |
 | `DELETE /mcp` | End the session → `204`. |
 
 **Session.** `initialize` returns `Mcp-Session-Id`; every later request must send it (`400` missing, `404`
 unknown / expired / created by another client). `MCP-Protocol-Version`, when sent, must be a supported version
-(`400`). Requests with an `Origin` header must match `mcp.allowedOrigins` (default `corsOrigins`), else `403`.
+(`400`). Requests with an `Origin` header must match `mcp.allowedOrigins` (default `corsOrigins`), else `403`;
+with `security.dnsRebindingProtection` only same-origin, loopback and explicitly listed origins pass.
 
-**Server capabilities:** `tools`, `resources`, `prompts` — all with `listChanged: true`.
+**Server capabilities:** `tools`, `resources` (`subscribe: true`), `prompts` — all with `listChanged: true` —
+plus `logging` and `completions`.
 
 | Method | Notes |
 |---|---|
@@ -241,11 +276,21 @@ unknown / expired / created by another client). `MCP-Protocol-Version`, when sen
 | `tools/call` | routed upstream; see errors below |
 | `resources/list`, `resources/templates/list`, `resources/read` | aggregated / routed as on REST |
 | `prompts/list`, `prompts/get` | names follow `toolNaming` |
+| `resources/subscribe`, `resources/unsubscribe` | routed like `resources/read`; the owning server must announce `resources.subscribe` (else `-32601`). One upstream subscription per (server, URI) is shared by all sessions and restored after a reconnect; it is released when the last session unsubscribes or ends |
+| `logging/setLevel` | sets the session's minimum level (`debug` … `emergency`, else `-32602`); upstream servers with the `logging` capability are set to the most verbose level any session asked for |
+| `completion/complete` | `ref/prompt` (exposed prompt name, translated back to the upstream name) or `ref/resource` (template or URI) routed to the owning server; servers without the `completions` capability answer `{ values: [], hasMore: false }` |
 | `notifications/cancelled` | cancels the in-flight request; the upstream receives its own `notifications/cancelled` |
 
 Notifications sent on the `GET` stream: `notifications/tools/list_changed`,
 `notifications/resources/list_changed`, `notifications/prompts/list_changed` — only when the list *that session
-sees* changed.
+sees* changed; `notifications/resources/updated` for subscribed URIs; `notifications/message` from upstream
+servers in the session's scope at or above its `logging/setLevel` level (none before the client sets a level),
+with `logger` set to `<serverId>` or `<serverId>/<upstream logger>`.
+
+**Progress.** A `tools/call` whose `params._meta.progressToken` is set, sent alone (not in a batch) by a client
+that accepts `text/event-stream`, is forwarded with a gateway-generated token; upstream
+`notifications/progress` are translated back to the client's token and the response switches to an SSE stream
+(progress events, then the result). Without progress the answer stays `application/json`.
 
 **Tool names.** `toolNaming: auto` keeps names unless two (visible) servers share one; then each copy is
 `<serverId>__<tool>`. `prefix` always prefixes. In `auto` mode the prefixed alias is also accepted.
@@ -279,14 +324,16 @@ mcp-gateway follows [Semantic Versioning](https://semver.org/) from 1.0.0. Withi
   capabilities may be added.
 - Configuration keys and their meaning (YAML / JSON and `MCP_GATEWAY_*` variables). New keys may be added;
   existing keys are only deprecated with a warning before removal in the next major.
-- CLI commands and flags (`start`, `init`, `validate`, `-c`, `-p`, `--log-level`, `--no-watch`).
+- CLI commands and flags (`start`, `init`, `validate`, `hash-key`, `gen-key`, `-c`, `-p`, `--log-level`,
+  `--no-watch`, `--strict`).
 - Library exports from the package root (`@winstonsayno/mcp-gateway`) and their documented signatures.
 - Prometheus metric names and labels listed above.
 
 **Not covered**
 
 - Deep imports (`@winstonsayno/mcp-gateway/dist/...`), anything not exported from the package root.
-- Log line format, dashboard HTML/JS, exact error `message` texts.
+- Log line format, dashboard HTML/JS, exact error `message` texts (including security warning messages; their
+  `id`s are stable).
 - The audit log's on-disk SQLite schema (use `GET /requests` or `AuditStore`).
 - `node:sqlite` itself is still marked experimental by Node.js.
 - The client packages in `clients/` are versioned separately and are pre-1.0.

@@ -10,12 +10,19 @@
  *  - The client id attached to a request is a hash fingerprint of the key,
  *    never a prefix of the key itself (prefixes were leaking into logs and the
  *    /requests endpoint, and keys sharing a prefix shared a rate-limit bucket).
+ *  - Keys may be stored as SHA-256 digests (`sha256:<hex>`), so the config
+ *    file never holds a usable key. A digest key and its plain form produce
+ *    the same client id.
+ *  - Keys can expire (`expiresAt`) or be switched off (`disabled`).
+ *  - JWTs: HMAC secret, PEM public key or JWKS URL; algorithm allowlist that
+ *    never mixes HMAC and asymmetric algorithms; optional issuer / audience /
+ *    exp / max-age checks and clock tolerance.
  */
 
-import { createHash, timingSafeEqual } from 'crypto';
+import { createHash, createPublicKey, timingSafeEqual, type KeyObject } from 'crypto';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
-import { jwtVerify } from 'jose';
-import type { ApiKeyConfig, AuthConfig } from '../utils/types.js';
+import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey, type JWTVerifyOptions } from 'jose';
+import type { ApiKeyConfig, AuthConfig, JwtConfig } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { scopeFromJwt, type AccessScope } from './scopes.js';
 
@@ -52,7 +59,39 @@ function scopeOf(entry: ApiKeyConfig): AccessScope | undefined {
   return Object.keys(scope).length > 0 ? scope : undefined;
 }
 
-const JWT_ALGORITHMS = ['HS256', 'HS384', 'HS512'];
+export const HMAC_ALGORITHMS = ['HS256', 'HS384', 'HS512'];
+export const ASYMMETRIC_ALGORITHMS = [
+  'RS256', 'RS384', 'RS512',
+  'PS256', 'PS384', 'PS512',
+  'ES256', 'ES384', 'ES512',
+  'EdDSA',
+];
+
+const HASHED_KEY_RE = /^sha256:([0-9a-f]{64})$/i;
+
+/** Whether a configured key is a `sha256:<hex>` digest rather than the key itself. */
+export function isHashedKey(key: string): boolean {
+  return HASHED_KEY_RE.test(key);
+}
+
+/** `sha256:<hex>` digest of a key, the form to store in the config file. */
+export function hashApiKey(key: string): string {
+  return `sha256:${createHash('sha256').update(key, 'utf8').digest('hex')}`;
+}
+
+/** Expiry of a key entry as epoch ms (undefined = never; NaN for an unparsable date). */
+export function keyExpiry(entry: ApiKeyConfig): number | undefined {
+  if (entry.expiresAt === undefined) return undefined;
+  return Date.parse(entry.expiresAt);
+}
+
+/** Why a key is currently unusable, or undefined when it is active. */
+export function keyInactiveReason(entry: ApiKeyConfig, now = Date.now()): 'disabled' | 'expired' | undefined {
+  if (entry.disabled) return 'disabled';
+  const exp = keyExpiry(entry);
+  if (exp !== undefined && !(exp > now)) return 'expired';
+  return undefined;
+}
 
 export function createAuthMiddleware(config?: AuthConfig): AuthMiddleware {
   if (!config || config.strategy === 'none') {
@@ -75,15 +114,8 @@ export function createAuthMiddleware(config?: AuthConfig): AuthMiddleware {
       }
       return apiKeyMiddleware(keys);
     }
-    case 'jwt': {
-      if (!config.jwtSecret) {
-        throw new Error('auth.strategy is "jwt" but auth.jwtSecret is not configured');
-      }
-      if (config.jwtSecret.length < 32) {
-        logger.warn('auth.jwtSecret is shorter than 32 characters; use a longer random secret');
-      }
-      return jwtMiddleware(config.jwtSecret);
-    }
+    case 'jwt':
+      return jwtMiddleware(buildJwtVerifier(config));
     default:
       // Fail closed. Previously this fell back to *no auth*, so configuring the
       // advertised-but-unimplemented "oauth2" strategy exposed every endpoint.
@@ -95,7 +127,15 @@ function digest(value: string): Buffer {
   return createHash('sha256').update(value, 'utf8').digest();
 }
 
+/** Digest of a configured key: the stored digest for `sha256:` keys, else SHA-256 of the key. */
+function configuredDigest(key: string): Buffer {
+  const m = HASHED_KEY_RE.exec(key);
+  return m ? Buffer.from(m[1]!, 'hex') : digest(key);
+}
+
 export function fingerprint(key: string): string {
+  const m = HASHED_KEY_RE.exec(key);
+  if (m) return m[1]!.toLowerCase().slice(0, 12);
   return createHash('sha256').update(key, 'utf8').digest('hex').slice(0, 12);
 }
 
@@ -126,7 +166,12 @@ function extractKey(req: Request): string | undefined {
 }
 
 function apiKeyMiddleware(entries: ApiKeyConfig[]): AuthMiddleware {
-  const keyDigests = entries.map((e) => digest(e.key));
+  for (const e of entries) {
+    if (e.expiresAt !== undefined && Number.isNaN(keyExpiry(e))) {
+      throw new Error(`auth.apiKeys: invalid expiresAt "${e.expiresAt}"${e.name ? ` (key "${e.name}")` : ''}`);
+    }
+  }
+  const keyDigests = entries.map((e) => configuredDigest(e.key));
   const clients = entries.map((e) => ({
     clientId: e.name ? `key:${e.name}` : `key:${fingerprint(e.key)}`,
     scope: scopeOf(e),
@@ -144,19 +189,100 @@ function apiKeyMiddleware(entries: ApiKeyConfig[]): AuthMiddleware {
     }
 
     const client = clients[index]!;
+    const inactive = keyInactiveReason(entries[index]!);
+    if (inactive) {
+      logger.warn(`Unauthorized request from ${req.ip}: API key ${client.clientId} is ${inactive}`);
+      res.status(401).json({ error: 'Unauthorized', message: 'Valid API key required' });
+      return;
+    }
     (req as AuthedRequest).clientId = client.clientId;
     if (client.scope) (req as AuthedRequest).scope = client.scope;
     next();
   };
   mw.resolveClient = (clientId) => {
     const c = clientId ? byClientId.get(clientId) : undefined;
-    return c ? { known: true, scope: c.scope } : { known: false };
+    if (!c || keyInactiveReason(entries[clients.indexOf(c)]!)) return { known: false };
+    return { known: true, scope: c.scope };
   };
   return mw;
 }
 
-function jwtMiddleware(secret: string): AuthMiddleware {
-  const secretKey = new TextEncoder().encode(secret);
+export interface JwtVerifier {
+  key: Uint8Array | KeyObject | JWTVerifyGetKey;
+  options: JWTVerifyOptions;
+}
+
+const asList = (v: string | string[] | undefined) => (v === undefined ? undefined : Array.isArray(v) ? v : [v]);
+
+/**
+ * Key source + verification options for the `jwt` strategy. Throws on
+ * misconfiguration (missing / conflicting key sources, algorithms that do not
+ * fit the key type, non-HTTPS JWKS URL).
+ */
+export function buildJwtVerifier(config: AuthConfig): JwtVerifier {
+  const jwt: JwtConfig = config.jwt ?? {};
+  const sources = [config.jwtSecret ? 'jwtSecret' : '', jwt.publicKey ? 'jwt.publicKey' : '', jwt.jwksUrl ? 'jwt.jwksUrl' : ''].filter(Boolean);
+  if (sources.length === 0) {
+    throw new Error('auth.strategy is "jwt" but none of auth.jwtSecret, auth.jwt.publicKey or auth.jwt.jwksUrl is configured');
+  }
+  if (sources.length > 1) throw new Error(`auth: configure only one of ${sources.join(', ')}`);
+  const hmac = !!config.jwtSecret;
+  const allowed = hmac ? HMAC_ALGORITHMS : ASYMMETRIC_ALGORITHMS;
+  const algorithms = jwt.algorithms ?? allowed;
+  if (algorithms.length === 0) throw new Error('auth.jwt.algorithms must not be empty');
+  const bad = algorithms.filter((a) => !allowed.includes(a));
+  if (bad.length > 0) {
+    throw new Error(
+      `auth.jwt.algorithms: ${bad.join(', ')} cannot be used with ${sources[0]} (allowed: ${allowed.join(', ')})`,
+    );
+  }
+
+  let key: JwtVerifier['key'];
+  if (config.jwtSecret) {
+    if (config.jwtSecret.length < 32) {
+      logger.warn('auth.jwtSecret is shorter than 32 characters; use a longer random secret');
+    }
+    key = new TextEncoder().encode(config.jwtSecret);
+  } else if (jwt.publicKey) {
+    try {
+      key = createPublicKey(jwt.publicKey);
+    } catch (err) {
+      throw new Error(`auth.jwt.publicKey is not a valid PEM public key: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  } else {
+    let url: URL;
+    try {
+      url = new URL(jwt.jwksUrl!);
+    } catch {
+      throw new Error(`auth.jwt.jwksUrl is not a valid URL: ${jwt.jwksUrl}`);
+    }
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local)) {
+      throw new Error('auth.jwt.jwksUrl must use https:// (http:// is only allowed for localhost)');
+    }
+    key = createRemoteJWKSet(url, {
+      cacheMaxAge: (jwt.jwksCacheSeconds ?? 600) * 1000,
+      cooldownDuration: 30_000,
+      timeoutDuration: 5_000,
+    });
+  }
+
+  const options: JWTVerifyOptions = { algorithms };
+  const issuer = asList(jwt.issuer);
+  const audience = asList(jwt.audience);
+  if (issuer) options.issuer = issuer;
+  if (audience) options.audience = audience;
+  if (jwt.clockToleranceSeconds) options.clockTolerance = jwt.clockToleranceSeconds;
+  if (jwt.requireExp) options.requiredClaims = ['exp'];
+  if (jwt.maxTokenAgeSeconds) options.maxTokenAge = jwt.maxTokenAgeSeconds;
+  return { key, options };
+}
+
+function jwtMiddleware(verifier: JwtVerifier): AuthMiddleware {
+  const verify = (token: string) =>
+    typeof verifier.key === 'function'
+      ? jwtVerify(token, verifier.key, verifier.options)
+      : jwtVerify(token, verifier.key, verifier.options);
 
   return (req: Request, res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization;
@@ -169,7 +295,7 @@ function jwtMiddleware(secret: string): AuthMiddleware {
 
     // Two-argument then(): an error thrown downstream of next() must not be
     // misreported as an auth failure.
-    jwtVerify(token, secretKey, { algorithms: JWT_ALGORITHMS }).then(
+    verify(token).then(
       ({ payload }) => {
         (req as AuthedRequest).jwtPayload = payload;
         (req as AuthedRequest).clientId = `jwt:${String(payload.sub ?? 'unknown')}`;
@@ -178,7 +304,7 @@ function jwtMiddleware(secret: string): AuthMiddleware {
         next();
       },
       (err: unknown) => {
-        logger.warn(`JWT verification failed: ${err instanceof Error ? err.message : String(err)}`);
+        logger.warn(`JWT verification failed from ${req.ip}: ${err instanceof Error ? err.message : String(err)}`);
         if (!res.headersSent) {
           res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired token' });
         }

@@ -46,11 +46,29 @@ export const ErrorCodes = {
   VALIDATION_ERROR: 'VALIDATION_ERROR',
 } as const;
 
-export function errorHandler(
+/**
+ * Error middleware. Messages and stack traces of unexpected errors (500s)
+ * only reach the client when `exposeDetails()` is true or
+ * NODE_ENV=development (they used to be shown whenever NODE_ENV was not
+ * "production", i.e. by default). Deliberate `GatewayError` details are
+ * still shown outside production.
+ */
+export function createErrorHandler(exposeDetails: () => boolean = () => false) {
+  return (err: unknown, req: Request, res: Response, next: NextFunction): void =>
+    handleError(err, req, res, next, exposeDetails() || process.env.NODE_ENV === 'development');
+}
+
+/** Error middleware with the default (safe) settings. */
+export function errorHandler(err: unknown, req: Request, res: Response, next: NextFunction): void {
+  handleError(err, req, res, next, process.env.NODE_ENV === 'development');
+}
+
+function handleError(
   err: unknown,
   req: Request,
   res: Response,
   _next: NextFunction,
+  exposeInternals: boolean,
 ): void {
   const isDev = process.env.NODE_ENV !== 'production';
 
@@ -90,14 +108,14 @@ export function errorHandler(
 
   // Unknown / unexpected errors
   const message =
-    isDev && err instanceof Error ? err.message : 'Internal server error';
+    exposeInternals && err instanceof Error ? err.message : 'Internal server error';
 
   const body: ErrorResponse = {
     error: {
       code: ErrorCodes.INTERNAL_ERROR,
       message,
       requestId: (req as any).requestId,
-      ...(isDev && err instanceof Error ? { details: err.stack } : {}),
+      ...(exposeInternals && err instanceof Error ? { details: err.stack } : {}),
     },
   };
 

@@ -196,6 +196,12 @@ main { max-width: 1320px; margin: 0 auto; padding: 20px 16px 96px; }
 .kv b { font-size: 13.5px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .srv .err { color: var(--bad); font-size: 12px; overflow-wrap: anywhere; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sec-card { margin-top: 14px; }
+.sec-card .kv { margin-bottom: 12px; }
+.sec-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.sec-list li { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.45; color: var(--text); }
+.sec-list li .badge { flex: none; margin-top: 1px; }
+@media (max-width: 560px) { .sec-card .kv { grid-template-columns: repeat(2, 1fr); } }
 .chip { font-family: var(--mono); font-size: 11.5px; padding: 3px 8px; border-radius: 7px; background: var(--surface-2); border: 1px solid var(--border); cursor: pointer; transition: border-color .2s, transform .15s var(--ease); }
 .chip:hover { border-color: var(--accent); }
 .chip:active { transform: scale(.95); }
@@ -478,6 +484,7 @@ tbody tr:hover { background: var(--surface-2); }
   <section class="view" id="view-connect" role="tabpanel" aria-labelledby="tab-connect">
     <div class="page-head"><div><h1 data-i18n="cnTitle">Connect a client</h1><p data-i18n="cnSub">Point any MCP client at this gateway</p></div></div>
     <div class="card" id="connectCard"></div>
+    <div class="card sec-card" id="securityCard" hidden></div>
   </section>
 </main>
 
@@ -567,6 +574,7 @@ const I18N = {
     via: 'Via', kind: 'Kind', any: 'Any', ok: 'OK', failed: 'Failed', apply: 'Apply', reset: 'Reset', time: 'Time', duration: 'Duration',
     prev: '← Newer', next: 'Older →', page: 'Page {n}', srcAudit: 'Persistent audit log', srcMemory: 'In-memory log',
     cnTitle: 'Connect a client', cnSub: 'Point any MCP client at this gateway',
+    secTitle: 'Security posture', secOk: 'No issues', secIssues: '{n} to review', secAuth: 'Auth', secKeys: 'Hashed keys', secLockout: 'Lockout', secRebind: 'DNS-rebinding guard', secHeaders: 'Security headers', secLocked: 'Locked IPs', secOn: 'on', secOff: 'off', secWarn: 'warning', secHint: 'hint', secNone: 'Nothing to report.',
     ob1Eye: 'Step 1 · Connect', ob1Title: 'Welcome to your MCP gateway',
     ob1Lead: "One endpoint for every MCP server — with auth, rate limits and live metrics. Let's get you connected in under a minute.",
     hero1: 'Many servers', hero1s: 'stdio, SSE, WebSocket, HTTP', hero2: 'One secure door', hero2s: 'keys, scopes, limits', hero3: 'Live insight', hero3s: 'latency, errors, usage',
@@ -611,6 +619,7 @@ const I18N = {
     via: '通道', kind: '类型', any: '全部', ok: '成功', failed: '失败', apply: '应用', reset: '重置', time: '时间', duration: '耗时',
     prev: '← 较新', next: '较早 →', page: '第 {n} 页', srcAudit: '持久化审计日志', srcMemory: '内存日志',
     cnTitle: '接入客户端', cnSub: '让任意 MCP 客户端连接到本网关',
+    secTitle: '安全状态', secOk: '无问题', secIssues: '{n} 项待处理', secAuth: '认证', secKeys: '已哈希的密钥', secLockout: '失败锁定', secRebind: 'DNS 重绑定防护', secHeaders: '安全响应头', secLocked: '已锁定 IP', secOn: '开', secOff: '关', secWarn: '警告', secHint: '建议', secNone: '暂无可报告的问题。',
     ob1Eye: '第 1 步 · 连接', ob1Title: '欢迎使用 MCP 网关',
     ob1Lead: '一个入口接入所有 MCP 服务器——自带鉴权、限流与实时监控。一分钟内即可完成连接。',
     hero1: '多个服务器', hero1s: 'stdio、SSE、WebSocket、HTTP', hero2: '统一安全入口', hero2s: '密钥、权限范围、限流', hero3: '实时洞察', hero3s: '延迟、错误、用量',
@@ -828,7 +837,7 @@ function go(view, push = true) {
   if (view === 'servers') loadServers();
   if (view === 'playground') renderPlayground($('#pgMain'), 'main');
   if (view === 'history') loadHistory();
-  if (view === 'connect') renderSnippets($('#connectCard'), 'main');
+  if (view === 'connect') { renderSnippets($('#connectCard'), 'main'); loadSecurity(); }
   if (view === 'overview') requestAnimationFrame(renderCharts);
 }
 window.addEventListener('hashchange', () => go(location.hash.slice(1), false));
@@ -1537,6 +1546,36 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// ─── Security posture (Connect page) ─────────────────────────────────────────
+async function loadSecurity() {
+  try { state.security = await api('/security'); }
+  catch { state.security = null; }  // older gateway, scoped key or no access: hide the card
+  renderSecurity();
+}
+function renderSecurity() {
+  const card = $('#securityCard');
+  const s = state.security;
+  if (!s || !Array.isArray(s.warnings)) { card.hidden = true; return; }
+  card.hidden = false;
+  const warns = s.warnings.filter((w) => w.level === 'warn').length;
+  const onOff = (v) => esc(v ? t('secOn') : t('secOff'));
+  const k = s.apiKeys || { total: 0, hashed: 0 };
+  const facts = [
+    [t('secAuth'), esc(s.authStrategy)],
+    [t('secKeys'), k.total ? `${k.hashed}/${k.total}` : '—'],
+    [t('secLockout'), onOff(s.settings?.authLockout)],
+    [t('secRebind'), onOff(s.settings?.dnsRebindingProtection)],
+    [t('secHeaders'), onOff(s.settings?.headers)],
+    [t('secLocked'), s.lockout ? String(s.lockout.lockedClients) : '—'],
+  ];
+  card.innerHTML =
+    `<h2><span>${esc(t('secTitle'))}</span><span class="badge ${warns ? 'warn' : 'ok'}" style="margin-left:auto">${esc(warns ? t('secIssues').replace('{n}', warns) : t('secOk'))}</span></h2>` +
+    `<div class="kv">${facts.map(([a, b]) => `<div><span>${esc(a)}</span><b>${b}</b></div>`).join('')}</div>` +
+    (s.warnings.length
+      ? `<ul class="sec-list">${s.warnings.map((w) => `<li><span class="badge ${w.level === 'warn' ? 'warn' : 'info'}">${esc(w.level === 'warn' ? t('secWarn') : t('secHint'))}</span><span>${esc(w.message)}</span></li>`).join('')}</ul>`
+      : `<div class="empty">${esc(t('secNone'))}</div>`);
+}
+
 // ─── Language ────────────────────────────────────────────────────────────────
 $('#langBtn').addEventListener('click', () => transition(() => {
   lang = lang === 'zh' ? 'en' : 'zh';
@@ -1545,7 +1584,7 @@ $('#langBtn').addEventListener('click', () => transition(() => {
   if (state.servers.length) renderServers();
   delete $('#pgMain').dataset.built; delete $('#obPg').dataset.built;
   if (state.view === 'playground') renderPlayground($('#pgMain'), 'main');
-  if (state.view === 'connect') renderSnippets($('#connectCard'), 'main');
+  if (state.view === 'connect') { renderSnippets($('#connectCard'), 'main'); renderSecurity(); }
   if (state.view === 'history') loadHistory();
   if (!$('#ob').hidden) showStep(obState.step);
 }));

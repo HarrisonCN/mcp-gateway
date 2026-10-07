@@ -89,4 +89,37 @@ describe('cli', () => {
     expect(l.code).toBe(1);
     expect(l.err).toMatch(/Invalid --log-level "loud"/);
   });
+
+  it('hash-key prints the sha256 digest from an argument or stdin', () => {
+    const a = run(['hash-key', 'test']);
+    expect(a.code).toBe(0);
+    expect(a.out.trim()).toBe('sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08');
+    const env = { ...process.env };
+    const b = spawnSync(process.execPath, [TSX, CLI, 'hash-key'], { input: 'test\n', env, encoding: 'utf-8', timeout: 30_000 });
+    expect(b.stdout.trim()).toBe(a.out.trim());
+    const empty = spawnSync(process.execPath, [TSX, CLI, 'hash-key'], { input: '', env, encoding: 'utf-8', timeout: 30_000 });
+    expect(empty.status).toBe(1);
+  });
+
+  it('gen-key prints a random key and its digest', () => {
+    const r = run(['gen-key', '--json']);
+    expect(r.code).toBe(0);
+    const { key, hash } = JSON.parse(r.out);
+    expect(key).toMatch(/^mgw_[A-Za-z0-9_-]{40,}$/);
+    expect(run(['hash-key', key]).out.trim()).toBe(hash);
+    const text = run(['gen-key', '--bytes', '16', '--prefix', 'x_']);
+    expect(text.out).toMatch(/^key: {2}x_/m);
+    expect(text.out).toMatch(/^hash: sha256:[0-9a-f]{64}$/m);
+    expect(run(['gen-key', '--bytes', '4']).code).toBe(1);
+  });
+
+  it('validate reports security warnings and --strict fails on them', () => {
+    const d = tmp();
+    writeFileSync(join(d, 'gw.yml'), 'host: 0.0.0.0\n');
+    const r = run(['validate', '-c', 'gw.yml'], d);
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/Security:/);
+    expect(r.out).toMatch(/Authentication is disabled/);
+    expect(run(['validate', '-c', 'gw.yml', '--strict'], d).code).toBe(2);
+  });
 });
