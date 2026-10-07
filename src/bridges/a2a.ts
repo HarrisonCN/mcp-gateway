@@ -21,6 +21,7 @@ import { filterToolsByScope, type AccessScope } from '../auth/scopes.js';
 import type { AuthedRequest } from '../auth/middleware.js';
 import { CapturedResponse, type ToolCallResponse } from '../gateway/api.js';
 import { VERSION } from '../utils/version.js';
+import { DEPRECATIONS, deprecate } from '../utils/deprecations.js';
 
 export const A2A_PROTOCOL_VERSION = '0.3.0';
 
@@ -103,6 +104,10 @@ export function createA2ARouter(deps: A2ABridgeDeps): express.Router {
     return deps.authenticate(req, res, next);
   };
   router.get(['/.well-known/agent-card.json', '/.well-known/agent.json'], cardAuth, (req, res) => {
+    if (req.path === '/.well-known/agent.json') {
+      deprecate(DEPRECATIONS.agentJson);
+      res.set('Deprecation', 'true').set('Link', '</.well-known/agent-card.json>; rel="successor-version"');
+    }
     res.set('Cache-Control', 'no-store').json(card(req));
   });
 

@@ -294,6 +294,26 @@ curl -N -H "Authorization: Bearer $KEY" http://localhost:4000/api/v1/events
 
 ---
 
+## Admin API (`/api/v1/admin`)
+
+Operators only. Writes need `admin.configApi: true`. See [Declarative config](guides/declarative-config.md).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/config` | Running config (secrets `<redacted>`) |
+| `POST` | `/admin/config/validate` | Validate a config body |
+| `POST` | `/admin/config/diff` | Diff a config body against the running config |
+| `PUT` | `/admin/config?dryRun=` | Hot-apply a config body |
+| `POST` | `/admin/reload` | Re-read the config file |
+| `GET` | `/admin/deprecations` | Deprecated keys / usages |
+
+## Bridges
+
+- OpenAI-compatible: `GET /openai/v1/tools`, `POST /openai/v1/tool_calls`, `POST /openai/v1/chat/completions`.
+- A2A: `GET /.well-known/agent-card.json`, `POST /a2a` (JSON-RPC `message/send`, `tasks/get`).
+
+See [Bridges](guides/bridges.md).
+
 ## MCP endpoint (`/mcp`)
 
 MCP Streamable HTTP, protocol **2025-06-18** (2025-03-26 accepted). Path configurable (`mcp.path`).

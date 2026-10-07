@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-10-07
+
+Admin REST API, declarative config (`mcp-gateway diff` / `apply`) and 3.0 deprecation warnings.
+
+### Added
+- **Admin API** (`/api/v1/admin`, operators only): `GET config` (secrets redacted), `POST config/validate`,
+  `POST config/diff`, `PUT config[?dryRun=true]` (hot-apply), `POST reload` (re-read the file), `GET deprecations`.
+  Writes need `admin.configApi: true`. `<redacted>` values keep the running value.
+- **`mcp-gateway diff`** (against a running gateway, or another file with `--against`; exit 3 on changes) and
+  **`mcp-gateway apply [--dry-run]`**; `--url` / `--key` or `MCP_GATEWAY_URL` / `MCP_GATEWAY_ADMIN_KEY`.
+- 3.0 config names accepted now: `cors.origins`, `health.intervalMs`; optional `version: 2`.
+
+### Deprecated (removed in 3.0)
+- `corsOrigins` → `cors.origins`; `healthCheckIntervalMs` → `health.intervalMs`.
+- `/.well-known/agent.json` → `/.well-known/agent-card.json` (responses carry `Deprecation: true`).
+- Warnings are logged at startup, printed by `mcp-gateway validate` and listed by `GET /api/v1/admin/deprecations`.
+
+- Docs: [Declarative config](docs/guides/declarative-config.md).
+
 ## [2.8.0] - 2026-10-07
 
 Policy as code and audit export to SIEMs.

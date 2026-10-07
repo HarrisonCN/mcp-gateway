@@ -1,3 +1,4 @@
+import type { Deprecation } from './deprecations.js';
 /**
  * Core type definitions for mcp-gateway
  */
@@ -143,13 +144,23 @@ export interface GatewayConfig {
   monitor?: MonitorConfig;
   /** Registered MCP servers */
   servers: McpServerConfig[];
-  /** CORS origins */
+  /** Config schema version (2; 3.0 introduces `version: 3`). */
+  version?: 2;
+  /** CORS origins. @deprecated since 2.9 — use `cors.origins` (removed in 3.0). */
   corsOrigins?: string[];
+  /** CORS settings (3.0 name of `corsOrigins`). */
+  cors?: { origins?: string[] };
+  /** Health checks (3.0 name of `healthCheckIntervalMs`). */
+  health?: { intervalMs?: number };
+  /** Admin REST API (`/api/v1/admin`). */
+  admin?: AdminConfig;
+  /** Deprecated keys found by `loadConfig` (set by the loader). */
+  deprecations?: Deprecation[];
   /** Log level */
   logLevel?: 'debug' | 'info' | 'warn' | 'error';
   /** Automatic reconnect of crashed / disconnected servers */
   reconnect?: Partial<ReconnectConfig>;
-  /** Interval between health pings (ms, default 30000) */
+  /** Interval between health pings (ms, default 30000). @deprecated since 2.9 — use `health.intervalMs`. */
   healthCheckIntervalMs?: number;
   /** Web dashboard */
   dashboard?: { enabled?: boolean };
@@ -181,6 +192,12 @@ export interface GatewayConfig {
   a2a?: A2ABridgeConfig;
   /** Directory of the loaded config file (set by `loadConfig`; plugin paths resolve against it). */
   configDir?: string;
+}
+
+/** `admin:` — admin REST API. */
+export interface AdminConfig {
+  /** Allow `PUT /api/v1/admin/config` and `POST /api/v1/admin/reload` (default false; read-only endpoints are always on for operators). */
+  configApi?: boolean;
 }
 
 /** `openai:` — OpenAI-compatible tools proxy. */

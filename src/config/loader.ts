@@ -13,6 +13,7 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
+import { configDeprecations } from '../utils/deprecations.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
 import { ASYMMETRIC_ALGORITHMS, HMAC_ALGORITHMS } from '../auth/middleware.js';
@@ -416,7 +417,11 @@ const GatewayConfigSchema = z.object({
     })
     .optional(),
   servers: z.array(McpServerSchema).default([]),
+  version: z.literal(2).optional(),
   corsOrigins: z.array(z.string()).optional(),
+  cors: z.object({ origins: z.array(z.string()).optional() }).strict().optional(),
+  health: z.object({ intervalMs: z.number().int().min(1000).optional() }).strict().optional(),
+  admin: z.object({ configApi: z.boolean().optional() }).strict().optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   healthCheckIntervalMs: z.number().int().min(1000).default(30_000),
@@ -665,7 +670,20 @@ export function validateConfig(raw: unknown): GatewayConfig {
       `Invalid configuration:\n${result.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n')}`
     );
   }
-  return result.data as GatewayConfig;
+  const config = result.data as GatewayConfig;
+  const r = raw as Record<string, unknown>;
+  if (r.corsOrigins !== undefined && config.cors?.origins !== undefined) {
+    throw new Error('Invalid configuration:\n  - cors.origins: set either cors.origins or the deprecated corsOrigins, not both');
+  }
+  if (r.healthCheckIntervalMs !== undefined && config.health?.intervalMs !== undefined) {
+    throw new Error('Invalid configuration:\n  - health.intervalMs: set either health.intervalMs or the deprecated healthCheckIntervalMs, not both');
+  }
+  // 3.0 names → the 2.x fields the gateway reads.
+  if (config.cors?.origins !== undefined) config.corsOrigins = config.cors.origins;
+  if (config.health?.intervalMs !== undefined) config.healthCheckIntervalMs = config.health.intervalMs;
+  const deprecations = configDeprecations(raw);
+  if (deprecations.length > 0) config.deprecations = deprecations;
+  return config;
 }
 
 export async function loadConfig(configPath?: string): Promise<GatewayConfig> {
