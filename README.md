@@ -78,6 +78,8 @@ As [MCP](https://modelcontextprotocol.io) becomes the standard protocol for AI a
 - **YAML/JSON config** — simple, declarative configuration with env var overrides
 - **Docker-ready** — official Docker image, Compose examples included
 - **TypeScript SDK** — embed the gateway as a library in your own project
+- **Client libraries** — a dependency-free TypeScript client ([`clients/js`](clients/js), browser + Node) and a Kotlin/JVM/Android client ([`clients/kotlin`](clients/kotlin))
+- **LLM tool schemas** — `GET /api/v1/tools?format=openai|anthropic` returns ready-to-use function-calling definitions
 
 ## Quick Start
 
@@ -210,7 +212,7 @@ What the endpoint does:
 | `GET` | `/api/v1/health` | Gateway health and server summary |
 | `GET` | `/api/v1/servers` | List all registered servers |
 | `GET` | `/api/v1/servers/:id` | Get server details and tools |
-| `GET` | `/api/v1/tools` | List all tools (filterable by `?server=` or `?tag=`) |
+| `GET` | `/api/v1/tools` | List all tools (filterable by `?server=` or `?tag=`; `?format=openai\|openai-responses\|anthropic` for LLM schemas) |
 | `POST` | `/api/v1/tools/call` | Invoke a tool |
 | `POST` | `/api/v1/servers/:id/reconnect` | Reconnect a server now (resets backoff) |
 | `GET` | `/api/v1/health/live` | Liveness probe — always public, returns only `{"status":"ok"}` |
@@ -224,6 +226,35 @@ to require auth for them too (`/health/live` and `/health/ready` always stay pub
 Every other route requires auth when it is enabled.
 `/metrics` returns JSON by default (`?window=<ms>`); with `monitor.prometheus: true` it returns the
 Prometheus text format when the client asks for `text/plain` (as Prometheus does) or passes `?format=prometheus`.
+
+### LLM tool schemas
+
+`GET /api/v1/tools?format=openai` (Chat Completions), `openai-responses` (Responses API) or `anthropic` (Messages API)
+returns the tools the caller may use as function-calling definitions, plus a `mapping` from each LLM tool
+name back to the gateway server and tool:
+
+```json
+{
+  "format": "anthropic",
+  "tools": [{ "name": "github__create_issue", "description": "…", "input_schema": { "type": "object", "properties": { … } } }],
+  "mapping": { "github__create_issue": { "server": "github", "tool": "create_issue" } },
+  "total": 1
+}
+```
+
+Pass `tools` straight to the provider; when the model calls a tool, look it up in `mapping` and
+`POST /api/v1/tools/call` with that `server` / `tool` (the clients' `callLlmTool()` does this).
+Names follow `mcp.toolNaming`, are sanitised to `^[a-zA-Z0-9_-]{1,64}$` and de-duplicated; `$schema` is stripped and
+`parameters` is always an object schema. Scopes and `?server=` / `?tag=` filters apply.
+
+### Client libraries
+
+| | |
+|---|---|
+| **TypeScript / JavaScript** — [`clients/js`](clients/js) | `@winstonsayno/mcp-gateway-client`: zero dependencies, `fetch`-based (browser, Node 18+, Deno, Bun, React Native), typed `health`, `servers`, `listTools`, `toolSchemas`, `callTool`, `callLlmTool`, plus a small MCP-over-`/mcp` session helper |
+| **Kotlin / JVM / Android** — [`clients/kotlin`](clients/kotlin) | OkHttp + kotlinx.serialization, Java 11 bytecode; same API surface, `McpSession` for `/mcp` |
+
+Both are in this repository and not yet published to npm / Maven Central.
 
 `POST /api/v1/tools/call` responses:
 
@@ -477,6 +508,7 @@ process.on('SIGTERM', () => gateway.stop());
 
 | Feature | Description |
 |---------|-------------|
+| **Clients & LLM schemas** | TypeScript client (`clients/js`), Kotlin client (`clients/kotlin`), `GET /api/v1/tools?format=openai\|openai-responses\|anthropic` |
 | **Per-key scopes** | API keys can carry `servers` / `tools` globs and their own `rateLimit`; JWTs carry `mcp_servers` / `mcp_tools` claims. Enforced on REST and `/mcp`, hot reloadable |
 | **`/mcp` endpoint** | The gateway is an MCP server (Streamable HTTP, 2025-06-18): sessions, aggregated + paginated `tools/list`, deterministic collision naming, routed `tools/call`, `list_changed` notifications, cancellation |
 
@@ -505,7 +537,7 @@ process.on('SIGTERM', () => gateway.stop());
 | Web dashboard UI | ✅ Done (v0.2.0) |
 | Downstream MCP endpoint (`/mcp`) | ✅ Done (unreleased, v0.5) |
 | Per-key scopes and limits | ✅ Done (unreleased, v0.6) |
-| JS / Kotlin clients, OpenAI / Anthropic tool schemas | 📋 Planned (v0.7) |
+| JS / Kotlin clients, OpenAI / Anthropic tool schemas | ✅ Done (unreleased, v0.7) |
 | Resources & prompts passthrough, persistent audit log | 📋 Planned (v0.8) |
 | Redis-backed rate limiting | 📋 Planned |
 | OAuth2 / OIDC auth | 📋 Planned |

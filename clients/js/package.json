@@ -1,0 +1,42 @@
+{
+  "name": "@winstonsayno/mcp-gateway-client",
+  "version": "0.1.0",
+  "description": "Typed, dependency-free client for mcp-gateway (REST API + MCP over /mcp). Works in browsers, Node 18+, Deno, Bun and React Native.",
+  "keywords": ["mcp", "model-context-protocol", "mcp-gateway", "client", "llm", "tools"],
+  "homepage": "https://github.com/HarrisonCN/mcp-gateway/tree/main/clients/js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HarrisonCN/mcp-gateway.git",
+    "directory": "clients/js"
+  },
+  "license": "MIT",
+  "author": "HarrisonCN",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.2",
+    "vitest": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

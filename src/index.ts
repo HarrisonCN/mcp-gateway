@@ -26,6 +26,8 @@ export {
 export type { AccessScope } from './auth/scopes.js';
 export { McpEndpoint, DOWNSTREAM_PROTOCOL_VERSIONS, ERR_RATE_LIMITED } from './mcp/endpoint.js';
 export type { McpSessionSummary } from './mcp/endpoint.js';
+export { toLlmToolSchemas, sanitizeToolName, LLM_SCHEMA_FORMATS } from './mcp/llm-schemas.js';
+export type { LlmSchemaFormat, LlmToolSchemas } from './mcp/llm-schemas.js';
 export { buildToolIndex, prefixedName, TOOL_NAME_SEPARATOR } from './mcp/naming.js';
 export type {
   GatewayConfig,
