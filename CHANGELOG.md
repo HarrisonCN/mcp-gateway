@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Downstream MCP endpoint** `POST/GET/DELETE /mcp`: the gateway is now an MCP server over Streamable HTTP (protocol `2025-06-18`, `2025-03-26` accepted). Sessions via `Mcp-Session-Id` (bound to the authenticated key / JWT subject, idle expiry, LRU eviction at `maxSessions`), `initialize`, `ping`, aggregated and paginated `tools/list`, `tools/call` routed upstream, `notifications/tools/list_changed` on the `GET` SSE stream whenever the aggregated list changes, and `notifications/cancelled` propagated to the upstream server. JSON-RPC batches are accepted. Reuses auth, the rate limiter (per `tools/call`), `maxConcurrency`, timeouts, metrics and the request log. Origin validation (`mcp.allowedOrigins`, default `corsOrigins`) against DNS rebinding.
+- `mcp` config block: `enabled`, `path`, `toolNaming` (`auto` — prefix `<serverId>__` only on name collisions — or `prefix`), `pageSize`, `sessionIdleTimeoutSeconds`, `maxSessions`, `allowedOrigins`, `instructions`. Everything except `enabled` / `path` hot reloads.
+- `McpProxy.request()` for arbitrary upstream methods and an optional `AbortSignal` on `callTool()` (`ERR_CANCELLED`).
+- Tool `title`, `outputSchema` and `annotations` are kept from upstream `tools/list` and exposed on `/api/v1/tools` and `/mcp`.
+- Request records carry `via: "rest" | "mcp"`.
+- Library exports: `McpEndpoint`, `buildToolIndex`, `prefixedName`, `DOWNSTREAM_PROTOCOL_VERSIONS`, `ERR_RATE_LIMITED`, types `McpEndpointConfig`, `ToolNaming`, `McpSessionSummary`; `Gateway#getMcpEndpoint()`.
+- Conformance tests with the official `@modelcontextprotocol/sdk` client (list, call, ping, `list_changed`, cancellation, session termination, auth).
+- CORS allows the `Mcp-Session-Id`, `MCP-Protocol-Version` and `Last-Event-ID` request headers and exposes `Mcp-Session-Id`.
+
 ## [0.4.0] - 2026-10-07
 
 ### Added

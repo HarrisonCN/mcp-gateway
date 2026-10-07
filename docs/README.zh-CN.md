@@ -67,6 +67,7 @@ curl -X POST http://localhost:4000/api/v1/tools/call \
 | 功能 | 说明 |
 |------|------|
 | **统一 API 端点** | 一个 URL 访问所有 MCP 工具，按工具名自动路由 |
+| **面向客户端的 MCP 端点** | `/mcp` 实现 MCP Streamable HTTP（2025-06-18 / 2025-03-26），Claude Code、Cursor 等任意 MCP 客户端通过一个服务器即可使用所有上游工具，并共享鉴权、限流与指标 |
 | **全部 MCP 传输方式** | 上游服务器支持 `stdio`、`streamable-http`（最新规范）、旧版 `sse`（HTTP+SSE）和 `websocket`，可为每个服务器配置请求头用于上游鉴权 |
 | **自动重连** | 崩溃或断开的服务器按指数退避 + 随机抖动自动重连，状态可在 `/servers`、`/health`、面板和 Prometheus 中查看 |
 | **鉴权** | 支持 API Key（常量时间比较）、JWT（HS256/384/512）或无鉴权模式；配置错误时拒绝启动 |
@@ -78,6 +79,58 @@ curl -X POST http://localhost:4000/api/v1/tools/call \
 | **工具发现** | `GET /api/v1/tools` 列出所有服务器的所有工具 |
 | **YAML 配置** | 简洁的声明式配置，支持环境变量覆盖 |
 | **Docker 支持** | 官方 Docker 镜像，附带 Compose 示例 |
+
+## 作为 MCP 服务器使用（`/mcp`）
+
+网关本身就是一个 MCP 服务器：`http://<host>:4000/mcp` 实现
+[Streamable HTTP 传输](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)（协议 `2025-06-18`，兼容 `2025-03-26`）。
+客户端看到的是聚合、过滤后的统一工具列表；调用会被路由到对应的上游服务器，并复用网关的鉴权、限流、`maxConcurrency`、超时、指标和请求日志。
+
+**Claude Code**
+
+```bash
+claude mcp add --transport http gateway http://localhost:4000/mcp \
+  --header "Authorization: Bearer your-secret-key"
+```
+
+**Cursor**（`~/.cursor/mcp.json` 或项目内 `.cursor/mcp.json`）
+
+```json
+{
+  "mcpServers": {
+    "gateway": {
+      "url": "http://localhost:4000/mcp",
+      "headers": { "Authorization": "Bearer your-secret-key" }
+    }
+  }
+}
+```
+
+只支持 stdio 的客户端可用 [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) 桥接：
+`npx mcp-remote http://localhost:4000/mcp --header "Authorization: Bearer your-secret-key"`。
+
+| | |
+|---|---|
+| `POST /mcp` | JSON-RPC：`initialize`、`ping`、`tools/list`（分页）、`tools/call`、通知（含 `notifications/cancelled`），支持批量，响应为 `application/json` |
+| `GET /mcp` | SSE 通知流：聚合工具列表变化时发送 `notifications/tools/list_changed`（上游新增工具、服务器连接、热更新删除服务器等） |
+| `DELETE /mcp` | 结束会话 |
+| 会话 | `initialize` 返回 `Mcp-Session-Id`，之后的请求必须携带（缺失 `400`，未知或过期 `404`）。会话与创建它的 API Key / JWT 主体绑定，空闲超过 `mcp.sessionIdleTimeoutSeconds` 自动过期 |
+| 工具命名 | `toolNaming: auto`（默认）仅在多个服务器有同名工具时改为 `<serverId>__<tool>`；`prefix` 则全部加前缀。顺序确定（按服务器 id、工具名排序）。`auto` 模式下 `tools/call` 也接受带前缀的名字 |
+| 错误 | 未知工具 / 参数错误 → JSON-RPC `-32602`；限流 → `-32029`（`data.retryAfter`）；服务器离线或超时 → 返回 `isError: true` 的普通结果；上游 JSON-RPC 错误原样转发；取消 → `-32800` |
+| 取消 | `notifications/cancelled`（或客户端断开 HTTP 请求）会取消上游调用，上游会收到自己的 `notifications/cancelled` |
+| 安全 | 与 REST API 使用相同的 `auth`。带 `Origin` 头的请求必须匹配 `mcp.allowedOrigins`（默认取 `corsOrigins`），否则返回 `403`；网关监听在可访问地址时请务必配置 |
+
+```yaml
+mcp:
+  enabled: true               # 修改需重启
+  path: /mcp                  # 修改需重启；不能是 "/" 或位于 /api、/dashboard 下
+  toolNaming: auto            # auto | prefix
+  pageSize: 500               # 每页 tools/list 数量
+  sessionIdleTimeoutSeconds: 1800
+  maxSessions: 1000           # 超出时淘汰最久未使用的空闲会话
+  # allowedOrigins: ["https://your-app.com"]
+  # instructions: "ACME 工作区的工具"   # 在 initialize 中返回
+```
 
 ## 远程服务器与自动重连
 
@@ -130,7 +183,8 @@ servers:
 | `auth`（策略、API Key、JWT 密钥、`protect`） | `monitor.retentionHours` |
 | `rateLimit`（变更时计数器重置） | `healthCheckIntervalMs` |
 | `corsOrigins`、`monitor.requestLog`、`monitor.prometheus` | `dashboard` |
-| `reconnect`、`logLevel` | |
+| `reconnect`、`logLevel` | `mcp.enabled`、`mcp.path` |
+| `mcp.toolNaming` / `pageSize` / 会话设置 / `allowedOrigins` | |
 
 配置文件无效时会被拒绝，继续使用当前配置。
 
@@ -147,6 +201,10 @@ servers:
 - ✅ 自动重连（指数退避）
 - ✅ 配置热更新（服务器、鉴权、限流、CORS）
 - ✅ Web 可视化面板
+- ✅ 下游 MCP 端点 `/mcp`（未发布，v0.5）
+- 📋 按 Key 的权限范围与限流（v0.6）
+- 📋 JS / Kotlin 客户端，OpenAI / Anthropic 工具 schema（v0.7）
+- 📋 resources / prompts 透传，持久化审计日志（v0.8）
 - 📋 Redis 限流后端
 - 📋 OAuth2 / OIDC 鉴权
 - 📋 工具级 RBAC 权限控制

@@ -15,6 +15,9 @@ export { MetricsCollector } from './monitor/index.js';
 export { loadConfig, generateDefaultConfig } from './config/loader.js';
 export { logger } from './utils/logger.js';
 export { isToolAllowed, filterTools } from './utils/tool-filter.js';
+export { McpEndpoint, DOWNSTREAM_PROTOCOL_VERSIONS, ERR_RATE_LIMITED } from './mcp/endpoint.js';
+export type { McpSessionSummary } from './mcp/endpoint.js';
+export { buildToolIndex, prefixedName, TOOL_NAME_SEPARATOR } from './mcp/naming.js';
 export type {
   GatewayConfig,
   McpServerConfig,
@@ -30,4 +33,6 @@ export type {
   ReconnectConfig,
   ReconnectState,
   ToolFilterConfig,
+  McpEndpointConfig,
+  ToolNaming,
 } from './utils/types.js';

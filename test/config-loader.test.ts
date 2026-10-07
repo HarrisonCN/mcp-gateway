@@ -97,6 +97,19 @@ describe('config loader', () => {
     await expect(loadConfig(b)).rejects.toThrow(/reconnect\.multiplier[\s\S]*reconnect\.jitter/);
   });
 
+  it('validates the mcp endpoint block', async () => {
+    const d = tmp();
+    const ok = join(d, 'ok.yml');
+    writeFileSync(ok, 'mcp: {path: /v1/mcp, toolNaming: prefix}\n');
+    const c = await loadConfig(ok);
+    expect(c.mcp).toMatchObject({ enabled: true, path: '/v1/mcp', toolNaming: 'prefix', pageSize: 500 });
+    for (const bad of ['mcp: {path: /api/v1/mcp}', 'mcp: {path: "/"}', 'mcp: {path: mcp}', 'mcp: {toolNaming: weird}', 'mcp: {nope: 1}']) {
+      const p = join(d, 'bad.yml');
+      writeFileSync(p, bad + '\n');
+      await expect(loadConfig(p), bad).rejects.toThrow(/mcp/);
+    }
+  });
+
   describe('resolveConfigPath', () => {
     it('resolves an explicit path to absolute', () => {
       expect(resolveConfigPath('rel/x.yml')).toBe(join(cwd, 'rel/x.yml'));

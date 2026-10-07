@@ -119,6 +119,37 @@ export interface GatewayConfig {
   healthCheckIntervalMs?: number;
   /** Web dashboard */
   dashboard?: { enabled?: boolean };
+  /** Downstream MCP endpoint (Streamable HTTP) that aggregates every server */
+  mcp?: McpEndpointConfig;
+}
+
+// ─── Downstream MCP endpoint ─────────────────────────────────────────────────
+
+/**
+ * How tool names are exposed on `/mcp`:
+ * - `auto` (default): a tool keeps its name unless another server exposes the
+ *   same name; then every copy is exposed as `<serverId>__<tool>`.
+ * - `prefix`: every tool is exposed as `<serverId>__<tool>`.
+ */
+export type ToolNaming = 'auto' | 'prefix';
+
+export interface McpEndpointConfig {
+  /** Serve the MCP endpoint (default true). Restart required. */
+  enabled?: boolean;
+  /** URL path (default "/mcp"). Restart required. */
+  path?: string;
+  /** Tool naming / collision strategy (default "auto"). */
+  toolNaming?: ToolNaming;
+  /** Tools per `tools/list` page (default 500). */
+  pageSize?: number;
+  /** Drop sessions idle (no requests, no open stream) for this long (default 1800). */
+  sessionIdleTimeoutSeconds?: number;
+  /** Upper bound on concurrent sessions; the least recently used idle one is evicted (default 1000). */
+  maxSessions?: number;
+  /** Origins allowed to call the endpoint from a browser (default: `corsOrigins`). */
+  allowedOrigins?: string[];
+  /** Optional `instructions` returned from `initialize`. */
+  instructions?: string;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -181,6 +212,8 @@ export interface RequestMetric {
   errorMessage?: string;
   clientId?: string;
   tokenCount?: number;
+  /** Which downstream interface served the call: REST API or the `/mcp` endpoint. */
+  via?: 'rest' | 'mcp';
 }
 
 export interface AggregatedMetrics {
@@ -219,8 +252,14 @@ export interface ProxyResponse {
 
 export interface ToolInfo {
   name: string;
+  /** Human-readable title (MCP 2025-06-18), passed through from the server. */
+  title?: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
+  /** JSON Schema of `structuredContent` (MCP 2025-06-18), passed through. */
+  outputSchema?: Record<string, unknown>;
+  /** Tool annotations (`readOnlyHint`, `destructiveHint`, …), passed through. */
+  annotations?: Record<string, unknown>;
   serverId: string;
   serverName: string;
 }

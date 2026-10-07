@@ -21,9 +21,24 @@ interface WindowEntry {
   previous: number;
 }
 
+export interface RateLimitDecision {
+  allowed: boolean;
+  limit: number;
+  remaining: number;
+  /** End of the current window (ms epoch). */
+  resetAt: number;
+  /** Seconds until a retry can succeed (only when not allowed). */
+  retryAfter?: number;
+}
+
 export interface RateLimiter extends RequestHandler {
   /** Stop the background cleanup timer and drop all state. */
   close(): void;
+  /**
+   * Count one request for `req` without responding (used by `/mcp`, where a
+   * limit hit becomes a JSON-RPC error). Returns undefined when unlimited.
+   */
+  take(req: Request): RateLimitDecision | undefined;
 }
 
 export function createRateLimiter(
@@ -33,6 +48,7 @@ export function createRateLimiter(
   if (!config) {
     const passthrough = ((_req: Request, _res: Response, next: NextFunction) => next()) as RateLimiter;
     passthrough.close = () => {};
+    passthrough.take = () => undefined;
     return passthrough;
   }
 
@@ -50,7 +66,7 @@ export function createRateLimiter(
   }, Math.max(windowMs, 1000));
   cleanup.unref();
 
-  const limiter = ((req: Request, res: Response, next: NextFunction) => {
+  const take = (req: Request): RateLimitDecision => {
     const clientId = perKey
       ? ((req as Request & { clientId?: string }).clientId ?? req.ip ?? 'anonymous')
       : 'global';
@@ -75,21 +91,29 @@ export function createRateLimiter(
     const resetAt = windowStart + windowMs;
 
     if (estimated >= limit) {
-      const retryAfter = Math.max(1, Math.ceil((resetAt - t) / 1000));
       logger.warn(`Rate limit exceeded for ${clientId}`);
-      setRateLimitHeaders(res, limit, 0, resetAt);
-      res.status(429).set('Retry-After', String(retryAfter)).json({
-        error: 'Too Many Requests',
-        message: `Rate limit of ${limit} requests per ${windowSeconds}s exceeded`,
-        retryAfter,
-      });
-      return;
+      return { allowed: false, limit, remaining: 0, resetAt, retryAfter: Math.max(1, Math.ceil((resetAt - t) / 1000)) };
     }
 
     entry.current++;
-    setRateLimitHeaders(res, limit, Math.floor(limit - estimated - 1), resetAt);
+    return { allowed: true, limit, remaining: Math.max(0, Math.floor(limit - estimated - 1)), resetAt };
+  };
+
+  const limiter = ((req: Request, res: Response, next: NextFunction) => {
+    const d = take(req);
+    setRateLimitHeaders(res, d.limit, d.remaining, d.resetAt);
+    if (!d.allowed) {
+      res.status(429).set('Retry-After', String(d.retryAfter)).json({
+        error: 'Too Many Requests',
+        message: `Rate limit of ${limit} requests per ${windowSeconds}s exceeded`,
+        retryAfter: d.retryAfter,
+      });
+      return;
+    }
     next();
   }) as RateLimiter;
+
+  limiter.take = take;
 
   limiter.close = () => {
     clearInterval(cleanup);
@@ -99,7 +123,7 @@ export function createRateLimiter(
   return limiter;
 }
 
-function setRateLimitHeaders(
+export function setRateLimitHeaders(
   res: Response,
   limit: number,
   remaining: number,

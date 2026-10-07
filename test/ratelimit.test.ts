@@ -49,3 +49,18 @@ describe('rate limiter', () => {
     expect(run(rl).passed).toBe(true);
   });
 });
+
+describe('rate limiter take()', () => {
+  it('counts without responding and shares the bucket with the middleware', () => {
+    const t = 5_000_000;
+    const rl = createRateLimiter({ limit: 2, windowSeconds: 10 }, () => t);
+    const req: any = { clientId: 'c', ip: '1.1.1.1' };
+    expect(rl.take(req)).toMatchObject({ allowed: true, remaining: 1, limit: 2 });
+    expect(run(rl).passed).toBe(true);
+    const d = rl.take(req)!;
+    expect(d.allowed).toBe(false);
+    expect(d.retryAfter).toBeGreaterThan(0);
+    rl.close();
+    expect(createRateLimiter(undefined).take(req)).toBeUndefined();
+  });
+});
