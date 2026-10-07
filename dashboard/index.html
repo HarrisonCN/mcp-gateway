@@ -432,9 +432,10 @@ tbody tr:hover { background: var(--surface-2); }
         <div class="legend"><span><i style="background:var(--accent-2)"></i>p50</span><span><i style="background:var(--accent)"></i>p95</span></div>
       </div>
     </div>
-    <div class="grid three" style="margin-top:14px">
+    <div class="grid two" style="margin-top:14px">
       <div class="card"><h2><span data-i18n="topTools">Top tools</span></h2><div class="bars" id="topTools"></div></div>
       <div class="card"><h2><span data-i18n="perKey">Usage per key</span></h2><div class="bars" id="perKey"></div></div>
+      <div class="card"><h2><span data-i18n="perServer">Calls per server</span></h2><div class="bars" id="perServer"></div></div>
       <div class="card"><h2><span data-i18n="errRate">Error rate</span><span class="right" id="errNote"></span></h2><div class="chart-wrap" id="errChart"></div></div>
     </div>
     <div class="grid two" style="margin-top:14px">
@@ -564,7 +565,7 @@ const I18N = {
     remember: 'Remember on this device', saveConnect: 'Save & connect', clear: 'Clear', close: 'Close',
     tabOverview: 'Overview', tabServers: 'Servers', tabPlayground: 'Playground', tabHistory: 'History', tabConnect: 'Connect',
     ovTitle: 'Overview', ovSub: 'Live traffic through the gateway', window: 'Time window',
-    reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key',
+    reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server',
     errRate: 'Error rate', liveStream: 'Live requests', pause: 'Pause', health: 'Server health',
     kRpm: 'Requests / min', kP50: 'p50 latency', kP95: 'p95 latency', kErr: 'Error rate', kSrv: 'Servers online',
     kTotal: '{n} in window', kP99: 'p99 {v}', kErrN: '{n} failed', kTools: '{n} tools',
@@ -609,7 +610,7 @@ const I18N = {
     remember: '在此设备上记住', saveConnect: '保存并连接', clear: '清除', close: '关闭',
     tabOverview: '总览', tabServers: '服务器', tabPlayground: '调试台', tabHistory: '历史', tabConnect: '接入',
     ovTitle: '总览', ovSub: '网关实时流量', window: '时间范围',
-    reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量',
+    reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用',
     errRate: '错误率', liveStream: '实时请求', pause: '暂停', health: '服务器健康',
     kRpm: '每分钟请求', kP50: 'p50 延迟', kP95: 'p95 延迟', kErr: '错误率', kSrv: '在线服务器',
     kTotal: '窗口内 {n} 次', kP99: 'p99 {v}', kErrN: '{n} 次失败', kTools: '{n} 个工具',
@@ -998,6 +999,7 @@ function renderOverview() {
   $('#errNote').textContent = (sm.errorRate * 100).toFixed(1) + '%';
   renderBars($('#topTools'), s.tools.map((x) => ({ name: x.name, tag: x.serverId, count: x.count, errors: x.errors, extra: 'p95 ' + fmtMs(x.p95) })), t('noData'));
   renderBars($('#perKey'), s.clients.map((x) => ({ name: x.id, count: x.count, errors: x.errors, extra: fmtTime(x.lastSeen) })), t('noKeys'));
+  renderBars($('#perServer'), (s.servers || []).map((x) => ({ name: x.id, count: x.count, errors: x.errors, extra: 'p95 ' + fmtMs(x.p95) })), t('noData'));
   scheduleCharts();
 }
 function renderServerKpi() {

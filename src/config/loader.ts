@@ -313,6 +313,24 @@ const GatewayConfigSchema = z.object({
     .strict()
     .optional(),
   security: SecuritySchema.optional(),
+  observability: z
+    .object({
+      tracing: z
+        .object({
+          enabled: z.boolean().default(false),
+          exporter: z.enum(['otlp-http', 'console', 'otel-api']).default('otlp-http'),
+          endpoint: z.string().url().optional(),
+          headers: z.record(z.string()).optional(),
+          serviceName: z.string().min(1).optional(),
+          resourceAttributes: z.record(z.string()).optional(),
+          sampleRatio: z.number().min(0).max(1).optional(),
+          flushIntervalMs: z.number().int().min(100).optional(),
+        })
+        .strict()
+        .optional(),
+    })
+    .strict()
+    .optional(),
   state: z
     .object({
       store: z.enum(['memory', 'redis']).default('memory'),

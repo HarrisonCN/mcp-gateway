@@ -16,6 +16,19 @@ export {
 } from './state/index.js';
 export type { StateStore } from './state/index.js';
 export {
+  createTracer,
+  BatchTracer,
+  OtlpHttpExporter,
+  NOOP_TRACER,
+  parseTraceparent,
+  formatTraceparent,
+  toOtlpJson,
+} from './observability/tracing.js';
+export type { Tracer, Span, SpanExporter } from './observability/tracing.js';
+export { ToolInvoker } from './gateway/invoker.js';
+export type { InvokeContext, InvokeResult } from './gateway/invoker.js';
+export { LATENCY_BUCKETS_SECONDS } from './monitor/index.js';
+export {
   OAuthVerifier,
   protectedResourceMetadata,
   bearerChallenge,
@@ -86,6 +99,8 @@ export type {
   AuditConfig,
   OAuthConfig,
   StateConfig,
+  TracingConfig,
+  ObservabilityConfig,
   ResourceInfo,
   ResourceTemplateInfo,
   PromptInfo,

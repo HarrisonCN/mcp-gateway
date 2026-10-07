@@ -13,7 +13,7 @@ import type { GatewayConfig, McpServerConfig } from '../utils/types.js';
 import { ServerRegistry } from '../registry/index.js';
 import { McpProxy } from '../proxy/index.js';
 import { MetricsCollector } from '../monitor/index.js';
-import { createApiRouter, type ApiRouter } from './api.js';
+import { createApiRouter, serverStateSamples, type ApiRouter } from './api.js';
 import { ServerSupervisor } from './supervisor.js';
 import { createLiveRouter, type LiveRouter } from './live.js';
 import { corsMiddleware } from '../middleware/cors.js';
@@ -29,6 +29,8 @@ import { VERSION } from '../utils/version.js';
 import { McpEndpoint } from '../mcp/endpoint.js';
 import { SqliteAuditStore } from '../monitor/audit.js';
 import { createStateStore, type StateStore } from '../state/index.js';
+import { createTracer, NOOP_TRACER, type Tracer } from '../observability/tracing.js';
+import { ToolInvoker } from './invoker.js';
 import { PROTECTED_RESOURCE_METADATA_PATH, protectedResourceMetadata } from '../auth/oauth.js';
 
 function findDashboard(): string | undefined {
@@ -60,6 +62,8 @@ export class Gateway {
   private started = false;
   private stopping?: Promise<void>;
   private stateStore?: StateStore;
+  private tracer: Tracer = NOOP_TRACER;
+  private invoker?: ToolInvoker;
 
   constructor(
     private config: GatewayConfig,
@@ -114,11 +118,21 @@ export class Gateway {
       }
     }
 
+    this.tracer = await createTracer(this.config.observability?.tracing);
+    if (this.tracer.enabled) logger.info(`Tracing enabled (${this.config.observability?.tracing?.exporter ?? 'otlp-http'})`);
+    this.invoker = new ToolInvoker({
+      proxy: this.proxy,
+      metrics: this.metrics,
+      tracer: () => this.tracer,
+      requestLog: () => this.config.monitor?.requestLog !== false,
+    });
+
     // Builds auth/rate-limit; throws on insecure misconfiguration (fail closed)
     this.router = createApiRouter(this.config, this.registry, this.proxy, this.metrics, {
       supervisor: this.supervisor,
       isShuttingDown: () => this.stopping !== undefined,
       shared,
+      invoker: this.invoker,
     });
 
     this.app.disable('x-powered-by');
@@ -162,6 +176,7 @@ export class Gateway {
         maxBodyBytes: () => this.maxBodyBytes(),
         maxArgumentsBytes: () => this.config.security?.maxToolArgumentsBytes ?? 0,
         sessionStore: shared?.store,
+        invoker: this.invoker,
       });
       this.app.use(this.mcp.router());
     }
@@ -172,6 +187,17 @@ export class Gateway {
     this.live = createLiveRouter(this.metrics, this.registry, { authenticate: this.router.authenticate });
     this.app.use('/api/v1', this.live);
     this.app.use('/api/v1', this.router);
+
+    // Conventional Prometheus scrape path (same data as GET /api/v1/metrics?format=prometheus).
+    this.app.get('/metrics', (req, res, next) => {
+      if (!this.config.monitor?.prometheus) return next();
+      const send = () =>
+        res
+          .set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+          .send(this.metrics.toPrometheusText(serverStateSamples(this.registry, this.proxy)));
+      if (this.config.auth?.protect?.metrics) return this.router!.authenticate(req, res, () => send());
+      send();
+    });
 
     const dashboard = this.config.dashboard?.enabled === false ? undefined : findDashboard();
     if (dashboard) {
@@ -317,6 +343,7 @@ export class Gateway {
     this.router?.close();
     await this.proxy.disconnectAll();
     if (this.stateStore && !this.options.stateStore) await this.stateStore.close().catch(() => undefined);
+    await this.tracer.shutdown().catch(() => undefined);
   }
 
   /**
@@ -347,7 +374,7 @@ export class Gateway {
       });
 
       const applied: string[] = [];
-      for (const field of ['port', 'host', 'healthCheckIntervalMs', 'dashboard', 'audit', 'state'] as const) {
+      for (const field of ['port', 'host', 'healthCheckIntervalMs', 'dashboard', 'audit', 'state', 'observability'] as const) {
         if (!same(this.config[field], next[field])) {
           logger.warn(`Config "${field}" changed — restart required for it to take effect`);
         }
