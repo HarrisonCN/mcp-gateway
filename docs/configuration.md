@@ -421,6 +421,9 @@ the text; both add `_meta["mcp-gateway/flags"]`. `block` replaces the result wit
 `isError: true` result on `/mcp`). `GET /api/v1/policy` shows findings per detector. These are heuristics: they
 lower, not remove, injection risk.
 
+Policy rules can also live in version-controlled files (`policy.files`) with unit tests run by
+`mcp-gateway policy test` — see [Policy as code](guides/policy-as-code.md).
+
 ## Plugins
 
 ```yaml
@@ -513,6 +516,9 @@ audit:
 ```
 
 Requires Node.js 22.5+ (`node:sqlite`); the Docker image ships Node 22. Stores request metadata only.
+
+Forward audit records to a SIEM with `audit.export` (syslog or webhooks) — see
+[SIEM export](guides/policy-as-code.md#audit-export-to-a-siem).
 
 ## Security
 

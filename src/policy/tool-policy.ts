@@ -132,3 +132,26 @@ export function invalidPolicy(policy: ToolPolicyConfig | undefined): string | un
   }
   return undefined;
 }
+
+export interface PolicyTestResult {
+  name: string;
+  passed: boolean;
+  expected: string;
+  actual: string;
+  rule?: string;
+}
+
+/** Run policy unit tests (`policy.tests` + policy file tests) against the merged rules. */
+export function runPolicyTests(policy: ToolPolicyConfig | undefined): PolicyTestResult[] {
+  return (policy?.tests ?? []).map((t, i) => {
+    const d = evaluatePolicy(policy, { clientId: t.call.client, serverId: t.call.server, tool: t.call.tool, args: t.call.args ?? {} });
+    const ruleOk = t.rule === undefined || t.rule === d.rule;
+    return {
+      name: t.name ?? `test #${i + 1} (${t.call.server}/${t.call.tool})`,
+      passed: d.effect === t.expect && ruleOk,
+      expected: t.rule ? `${t.expect} by ${t.rule}` : t.expect,
+      actual: d.rule ? `${d.effect} by ${d.rule}` : `${d.effect} (default)`,
+      rule: d.rule,
+    };
+  });
+}
