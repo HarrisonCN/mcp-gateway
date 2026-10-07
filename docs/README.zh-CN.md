@@ -78,6 +78,8 @@ curl -X POST http://localhost:4000/api/v1/tools/call \
 | **配置热更新** | 服务器、API Key / 鉴权、限流、CORS、重连策略修改后无需重启即可生效 |
 | **指标收集** | 兼容 Prometheus 的 `/metrics` 端点 + JSON 聚合 |
 | **工具发现** | `GET /api/v1/tools` 列出所有服务器的所有工具 |
+| **LLM 工具 schema** | `GET /api/v1/tools?format=openai\|openai-responses\|anthropic` 直接返回可用于函数调用的工具定义 |
+| **客户端库** | 零依赖 TypeScript 客户端（[`clients/js`](../clients/js)，浏览器 + Node）和 Kotlin/JVM/Android 客户端（[`clients/kotlin`](../clients/kotlin)） |
 | **YAML 配置** | 简洁的声明式配置，支持环境变量覆盖 |
 | **Docker 支持** | 官方 Docker 镜像，附带 Compose 示例 |
 
@@ -132,6 +134,30 @@ mcp:
   # allowedOrigins: ["https://your-app.com"]
   # instructions: "ACME 工作区的工具"   # 在 initialize 中返回
 ```
+
+## LLM 工具 schema 与客户端库
+
+`GET /api/v1/tools?format=openai`（Chat Completions）、`openai-responses`（Responses API）或 `anthropic`（Messages API）
+返回调用方可用工具的函数调用定义，以及从 LLM 工具名映射回网关服务器 / 工具的 `mapping`：
+
+```json
+{
+  "format": "anthropic",
+  "tools": [{ "name": "github__create_issue", "description": "…", "input_schema": { "type": "object", "properties": {} } }],
+  "mapping": { "github__create_issue": { "server": "github", "tool": "create_issue" } },
+  "total": 1
+}
+```
+
+把 `tools` 直接传给模型；模型调用工具时，通过 `mapping` 找到 `server` / `tool`，再调用 `POST /api/v1/tools/call`（客户端的 `callLlmTool()` 已封装）。
+名字遵循 `mcp.toolNaming`，并会规范为 `^[a-zA-Z0-9_-]{1,64}$` 且去重；会移除 `$schema`，`parameters` 始终是 object schema。权限范围和 `?server=` / `?tag=` 过滤同样生效。
+
+| 客户端 | 说明 |
+|---|---|
+| **TypeScript / JavaScript**（[`clients/js`](../clients/js)） | `@winstonsayno/mcp-gateway-client`：零依赖、基于 `fetch`（浏览器、Node 18+、Deno、Bun、React Native），类型完整的 `health`、`servers`、`listTools`、`toolSchemas`、`callTool`、`callLlmTool`，以及简易的 `/mcp` 会话助手 |
+| **Kotlin / JVM / Android**（[`clients/kotlin`](../clients/kotlin)） | OkHttp + kotlinx.serialization，Java 11 字节码；API 相同，`McpSession` 用于 `/mcp` |
+
+两者都在本仓库中，尚未发布到 npm / Maven Central。
 
 ## 按 Key 的权限范围（scopes）
 
@@ -228,7 +254,7 @@ servers:
 - ✅ Web 可视化面板
 - ✅ 下游 MCP 端点 `/mcp`（未发布，v0.5）
 - ✅ 按 Key 的权限范围与限流（未发布，v0.6）
-- 📋 JS / Kotlin 客户端，OpenAI / Anthropic 工具 schema（v0.7）
+- ✅ JS / Kotlin 客户端，OpenAI / Anthropic 工具 schema（未发布，v0.7）
 - 📋 resources / prompts 透传，持久化审计日志（v0.8）
 - 📋 Redis 限流后端
 - 📋 OAuth2 / OIDC 鉴权

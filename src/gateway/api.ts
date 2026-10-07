@@ -14,6 +14,7 @@ import { createAuthMiddleware, type AuthedRequest, type AuthMiddleware } from '.
 import { createRateLimiter, type RateLimitDecision, type RateLimiter } from '../auth/ratelimit.js';
 import { filterToolsByScope, isRestricted, isServerInScope, isToolInScope, type AccessScope } from '../auth/scopes.js';
 import { logger } from '../utils/logger.js';
+import { LLM_SCHEMA_FORMATS, toLlmToolSchemas, type LlmSchemaFormat } from '../mcp/llm-schemas.js';
 import { VERSION } from '../utils/version.js';
 
 export type ApiRouter = express.Router & {
@@ -210,7 +211,7 @@ export function createApiRouter(
           : 'Rate limit disabled',
       );
     }
-    cfg = { ...cfg, auth: nextAuth, rateLimit: next.rateLimit, monitor: next.monitor };
+    cfg = { ...cfg, auth: nextAuth, rateLimit: next.rateLimit, monitor: next.monitor, mcp: next.mcp };
   };
 
   // ─── Health & Status ────────────────────────────────────────────────────────
@@ -332,6 +333,20 @@ export function createApiRouter(
       tools = tools.filter((t) => taggedServerIds.has(t.serverId));
     }
     tools = filterToolsByScope(scopeOf(req), tools);
+
+    // ?format=openai|openai-responses|anthropic → LLM function-calling schemas
+    const format = req.query.format;
+    if (format !== undefined && format !== 'mcp') {
+      if (typeof format !== 'string' || !(LLM_SCHEMA_FORMATS as readonly string[]).includes(format)) {
+        res.status(400).json({
+          error: 'Bad Request',
+          message: `"format" must be one of: mcp, ${LLM_SCHEMA_FORMATS.join(', ')}`,
+        });
+        return;
+      }
+      res.json(toLlmToolSchemas(tools, format as LlmSchemaFormat, cfg.mcp?.toolNaming ?? 'auto'));
+      return;
+    }
 
     res.json({ tools, total: tools.length });
   });
