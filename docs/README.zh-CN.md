@@ -70,10 +70,11 @@ curl -X POST http://localhost:4000/api/v1/tools/call \
 | 功能 | 说明 |
 |------|------|
 | **统一 API 端点** | 一个 URL 访问所有 MCP 工具，按工具名自动路由 |
-| **面向客户端的 MCP 端点** | `/mcp` 实现 MCP Streamable HTTP（2025-06-18 / 2025-03-26），Claude Code、Cursor 等任意 MCP 客户端通过一个服务器即可使用所有上游工具，并共享鉴权、限流与指标 |
+| **面向客户端的 MCP 端点** | `/mcp` 实现 MCP Streamable HTTP（2025-06-18 / 2025-03-26），Claude Code、Cursor 等任意 MCP 客户端通过一个服务器即可使用所有上游工具，并共享鉴权、限流与指标；支持进度通知、取消、日志、补全与资源订阅 |
 | **全部 MCP 传输方式** | 上游服务器支持 `stdio`、`streamable-http`（最新规范）、旧版 `sse`（HTTP+SSE）和 `websocket`，可为每个服务器配置请求头用于上游鉴权 |
 | **自动重连** | 崩溃或断开的服务器按指数退避 + 随机抖动自动重连，状态可在 `/servers`、`/health`、面板和 Prometheus 中查看 |
-| **鉴权** | 支持 API Key（常量时间比较）、JWT（HS256/384/512）或无鉴权模式；配置错误时拒绝启动 |
+| **鉴权** | API Key（常量时间比较，可存为 `sha256:` 摘要，支持过期 / 停用）、JWT（HMAC 密钥、PEM 公钥或 JWKS URL，可校验 issuer / audience / exp）或无鉴权模式；配置错误时拒绝启动 |
+| **安全加固** | 安全响应头 + 基于哈希的 CSP、IP 白名单、防 DNS 重绑定的 Host / Origin 校验、请求体与参数大小限制、暴力破解锁定、日志与历史中的密钥脱敏、启动时安全告警（`mcp-gateway validate --strict`） |
 | **可选保护 health / metrics** | `/health`、`/metrics` 默认公开，可通过 `auth.protect` 要求鉴权；面板支持输入 API Key |
 | **限流** | 按 Key 的滑动窗口限流，标准 `X-RateLimit-*` 响应头 |
 | **按 Key 的权限范围** | 可将 API Key（或通过 claims 的 JWT）限制在部分服务器 / 工具上，并设置独立限流；REST 与 `/mcp` 均生效 |
@@ -119,8 +120,8 @@ claude mcp add --transport http gateway http://localhost:4000/mcp \
 
 | | |
 |---|---|
-| `POST /mcp` | JSON-RPC：`initialize`、`ping`、`tools/list`（分页）、`tools/call`、通知（含 `notifications/cancelled`），支持批量，响应为 `application/json` |
-| `GET /mcp` | SSE 通知流：聚合工具列表变化时发送 `notifications/tools/list_changed`（上游新增工具、服务器连接、热更新删除服务器等） |
+| `POST /mcp` | JSON-RPC：`initialize`、`ping`、`tools/list`（分页）、`tools/call`、`resources/*`（含 `subscribe` / `unsubscribe`）、`prompts/*`、`logging/setLevel`、`completion/complete`、通知（含 `notifications/cancelled`），支持批量，响应为 `application/json`；带 `_meta.progressToken` 的单个 `tools/call` 在收到上游进度时改为 SSE 响应（先 `notifications/progress`，后结果） |
+| `GET /mcp` | SSE 通知流：`notifications/tools\|resources\|prompts/list_changed`、已订阅资源的 `notifications/resources/updated`，以及按会话日志级别过滤的上游 `notifications/message`（`logger` 为 `<serverId>/<logger>`） |
 | `DELETE /mcp` | 结束会话 |
 | 会话 | `initialize` 返回 `Mcp-Session-Id`，之后的请求必须携带（缺失 `400`，未知或过期 `404`）。会话与创建它的 API Key / JWT 主体绑定，空闲超过 `mcp.sessionIdleTimeoutSeconds` 自动过期 |
 | 工具命名 | `toolNaming: auto`（默认）仅在多个服务器有同名工具时改为 `<serverId>__<tool>`；`prefix` 则全部加前缀。顺序确定（按服务器 id、工具名排序）。`auto` 模式下 `tools/call` 也接受带前缀的名字 |
@@ -221,6 +222,34 @@ auth:
 - **JWT**：在 `mcp_servers` / `mcp_tools` claims 中放通配（数组，或空格/逗号分隔的字符串），格式错误的 claim 视为全部禁止。
 - 支持热更新：修改后下一个请求即生效；已打开的 `/mcp` 会话会收到 `notifications/tools/list_changed`，被删除 Key 的会话会被关闭。
 
+## 安全加固（v1.2）
+
+```yaml
+auth:
+  strategy: api-key
+  apiKeys:
+    - sha256:<64 位十六进制>            # 只存摘要：mcp-gateway gen-key / echo -n "$KEY" | mcp-gateway hash-key
+    - key: ${CI_KEY}
+      name: ci
+      expiresAt: "2027-01-01"           # 到期后返回 401；disabled: true 可临时停用
+security:
+  authLockout: true                     # 同一 IP 多次鉴权失败后返回 429（默认 5 分钟内 10 次，锁定 15 分钟）
+  dnsRebindingProtection: true          # 本地无鉴权网关推荐：校验 Host，/mcp 只接受同源与 loopback Origin
+  ipAllowlist: ["10.0.0.0/8", "127.0.0.1"]
+  trustProxy: ["10.0.0.1"]              # 反向代理地址，决定 req.ip
+  maxBodyBytes: 10485760
+  maxToolArgumentsBytes: 262144
+  redactPatterns: ["internal-[0-9a-f]{32}"]
+```
+
+- **JWT**：`auth.jwt` 支持 `issuer`、`audience`、`algorithms`（HMAC 与非对称算法不可混用，杜绝算法混淆）、`clockToleranceSeconds`、`requireExp`、`maxTokenAgeSeconds`，以及 PEM `publicKey` 或带缓存的 `jwksUrl`（可直接对接 OAuth 2.0 / OIDC 提供方签发的 JWT）。
+- **安全响应头**默认开启：`nosniff`、`X-Frame-Options: DENY`、`Referrer-Policy: no-referrer`、API 的严格 CSP；面板的 CSP 只允许其内联脚本（SHA-256 哈希）。`security.hsts` 可在 HTTPS 后开启 HSTS。
+- **脱敏**：日志、请求记录、审计日志和 `/servers` 输出中的 Bearer token、JWT、常见服务商 API Key、`password=` 等会被替换为 `***`。
+- **未预期的 500 错误**不再向客户端返回错误信息和堆栈（除非 `security.exposeErrorDetails` 或 `NODE_ENV=development`）。
+- 启动时会输出安全告警；`mcp-gateway validate --strict` 在有告警时以退出码 2 结束；`GET /api/v1/security` 与面板的「接入」页显示当前安全状态。
+
+详见[配置参考](configuration.md#security)。
+
 ## 远程服务器与自动重连
 
 ```yaml
@@ -309,8 +338,11 @@ Docker 镜像：每次发布都会构建多架构镜像 `ghcr.io/harrisoncn/mcp-
 - ✅ JS / Kotlin 客户端，OpenAI / Anthropic 工具 schema（v1.0）
 - ✅ resources / prompts 透传，持久化审计日志（v1.0）
 - ✅ 稳定 API、文档、容器镜像（v1.0）
+- ✅ 安全加固：哈希 Key、JWKS、失败锁定、DNS 重绑定防护、CSP（v1.2）
+- ✅ `/mcp` 进度通知、日志、补全、资源订阅（v1.2）
 - 📋 Redis 限流后端
-- 📋 OAuth2 / OIDC 鉴权
+- 🟡 OAuth2 / OIDC 鉴权（v1.2 已可通过 `auth.jwt.jwksUrl` 校验 JWT 访问令牌）
+- 📋 将 sampling / elicitation / roots 请求转发给下游客户端
 - ✅ 工具级权限控制（通过按 Key 的 scopes，v0.6）
 - 📋 OpenTelemetry 追踪
 
