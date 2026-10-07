@@ -207,6 +207,62 @@ monitor:
   retentionHours: 24           # in-memory history / metrics window (restart)
 ```
 
+## Tool policy
+
+```yaml
+policy:
+  default: allow               # decision when no rule matches: allow | deny | approve
+  rules:                       # first match wins
+    - name: no-deletes
+      effect: deny
+      tools: ["delete_*", "github/delete_*"]
+      message: "Deleting is disabled on this gateway"
+    - name: fs-sandbox
+      effect: deny
+      tools: ["fs/write_file", "fs/edit_file"]
+      args: [{ path: path, notUnder: ["/workspace"] }]      # ".." is resolved first
+    - name: aura-may-file-issues
+      effect: allow
+      clients: ["key:aura"]
+      tools: ["github/create_issue"]
+    - name: review-github-writes
+      effect: approve           # held until approved in the dashboard / API
+      servers: ["github"]
+      tools: ["create_*", "update_*", "merge_*"]
+    - name: no-shell-pipes
+      effect: deny
+      tools: ["shell/run"]
+      args: [{ path: command, regex: "[|;&`$]" }]
+  approval:
+    timeoutSeconds: 300        # unanswered → denied
+    allowSelfApproval: false   # the calling client cannot approve its own call
+  outputFilter:
+    action: redact             # redact (default) | flag | block
+    builtins: true             # built-in prompt-injection detectors
+    patterns: ["(?i)BEGIN PRIVATE KEY"]
+    tools: ["web/*", "fetch"]  # default: every tool
+```
+
+**Rule conditions** (all must hold): `clients` (globs on client ids: `key:<name>`, `jwt:<sub>`, `oauth:<sub>`,
+`anonymous`), `servers`, `tools` (a pattern with `/` matches `<server>/<tool>`) and `args`, a list of matchers on
+argument values addressed by dotted path (`path`, `options.mode`, `files.0`) with operators `exists`, `equals`, `in`,
+`glob`, `notGlob`, `regex`, `notRegex`, `longerThan`, `under`, `notUnder`. The `not…` operators only match when the
+value is present. Policies apply to tool calls from REST and `/mcp` and are hot reloadable.
+
+**Results:** `deny` → REST `403` / JSON-RPC `-32003` with `data.rule`; an approval that is denied, expires or is
+cancelled → `403` / `-32004`. Refusals appear in the request log as failed calls.
+
+**Approvals:** `GET /api/v1/approvals` (pending + recent), `GET /api/v1/approvals/:id`,
+`POST /api/v1/approvals/:id/approve` / `deny` (optional `{"reason": "…"}`). The dashboard shows a *Pending approvals*
+card with Approve / Deny buttons. Scoped clients cannot list or decide approvals.
+
+**Output filter:** scans `content[].text`, embedded resource text and `structuredContent` of tool results for
+prompt-injection phrasings ("ignore previous instructions", fake `<system>` tags, system-prompt exfiltration, tool
+hijacking, markdown-image exfiltration URLs, hidden Unicode). `redact` replaces matches with `[filtered]`, `flag` keeps
+the text; both add `_meta["mcp-gateway/flags"]`. `block` replaces the result with an error (`502` on REST,
+`isError: true` result on `/mcp`). `GET /api/v1/policy` shows findings per detector. These are heuristics: they
+lower, not remove, injection risk.
+
 ## Observability
 
 ```yaml

@@ -13,6 +13,8 @@
   const VERSION = '1.2.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
+  // One held tool call so the approvals card can be tried out.
+  let demoApprovals = [{ id: 'demo-approval-1', status: 'pending', serverId: 'github', tool: 'create_issue', clientId: 'key:aura', via: 'mcp', rule: 'review-github-writes', arguments: { repo: 'HarrisonCN/aura', title: 'Crash on launch' }, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600e3).toISOString() }];
   const rnd = (a, b) => a + Math.random() * (b - a);
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => { const r = (Math.random() * 16) | 0; return (c === 'x' ? r : (r & 3) | 8).toString(16); }));
@@ -227,6 +229,13 @@
     });
     if (p === '/tools') return json({ tools: SERVERS.filter((s) => isUp(s.id)).flatMap((s) => s.tools.map((t) => ({ ...t, serverId: s.id, serverName: s.name }))), total: SERVERS.reduce((a, s) => a + (isUp(s.id) ? s.tools.length : 0), 0) });
     let m;
+    if (p === '/approvals') return json({ pending: demoApprovals, recent: [] });
+    if ((m = p.match(/^\/approvals\/([^/]+)\/(approve|deny)$/)) && method === 'POST') {
+      const a = demoApprovals.find((x) => x.id === decodeURIComponent(m[1]));
+      if (!a) return json({ error: 'Approval request not found' }, 404);
+      demoApprovals = demoApprovals.filter((x) => x !== a);
+      return json({ ...a, status: m[2] === 'approve' ? 'approved' : 'denied', decidedAt: new Date().toISOString() });
+    }
     if ((m = p.match(/^\/servers\/([^/]+)\/reconnect$/)) && method === 'POST') {
       const id = decodeURIComponent(m[1]);
       if (!health.has(id)) return json({ error: 'Not Found', message: `Server "${id}" not found` }, 404);

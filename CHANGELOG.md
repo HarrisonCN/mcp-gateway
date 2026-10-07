@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-07
+
+Tool policy: argument rules, human approval and output filtering.
+
+### Added
+- **`policy.rules`** — ordered allow / deny / approve rules per client (`clients` globs on client ids), server and
+  tool, with argument conditions on dotted paths: `exists`, `equals`, `in`, `glob`, `notGlob`, `regex`, `notRegex`,
+  `longerThan`, `under` / `notUnder` (path containment after resolving `..`). First match wins; `policy.default`
+  (allow) applies otherwise. Enforced for REST and `/mcp` tool calls; refusals are recorded in the request / audit
+  log. REST `403` + `code: -32003` + `policy.rule`; `/mcp` JSON-RPC `-32003` with `data.rule`.
+- **Human approval** (`effect: approve`): the call is held until an operator approves or denies it, or
+  `policy.approval.timeoutSeconds` (300) passes. `GET /api/v1/approvals[/:id]`, `POST /api/v1/approvals/:id/approve|deny`
+  (with optional `reason`), self-approval refused unless `allowSelfApproval`, cancelled when the client disconnects.
+  Dashboard: *Pending approvals* card with Approve / Deny (also in the demo). Rejections → `403` / `-32004`.
+- **Output filtering** (`policy.outputFilter`): built-in prompt-injection detectors (instruction override, fake role
+  tags, system-prompt exfiltration, tool hijack, markdown-image exfiltration, hidden Unicode) plus custom `patterns`;
+  `action` `redact` (default) / `flag` (annotate `_meta["mcp-gateway/flags"]`) / `block`; per-tool scoping.
+  `GET /api/v1/policy` reports rules, pending approvals and findings per detector.
+- Policy settings are validated at load (regexes compile) and hot reloadable.
+
 ## [1.5.0] - 2026-10-07
 
 Observability: tracing, a Prometheus latency histogram and more dashboard charts.

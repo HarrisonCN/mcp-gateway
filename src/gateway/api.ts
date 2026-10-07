@@ -30,7 +30,8 @@ import { dedupeResources, routeResource } from '../mcp/catalog.js';
 import { LLM_SCHEMA_FORMATS, toLlmToolSchemas, type LlmSchemaFormat } from '../mcp/llm-schemas.js';
 import { VERSION } from '../utils/version.js';
 import { redactArgs } from '../security/redact.js';
-import { ToolInvoker } from './invoker.js';
+import { ToolInvoker, POLICY_ERROR_CODES, ERR_OUTPUT_BLOCKED } from './invoker.js';
+import { ApprovalError } from '../policy/approvals.js';
 
 export type ApiRouter = express.Router & {
   close(): void;
@@ -193,7 +194,7 @@ export function createApiRouter(
   const router = express.Router() as ApiRouter;
   let cfg = config;
   const invoker =
-    options.invoker ?? new ToolInvoker({ proxy, metrics, requestLog: () => cfg.monitor?.requestLog !== false });
+    options.invoker ?? new ToolInvoker({ proxy, metrics, requestLog: () => cfg.monitor?.requestLog !== false, policy: () => cfg.policy });
   // Built eagerly so a misconfiguration fails at startup (fail closed).
   const authOptions = { mcpPath: () => cfg.mcp?.path ?? '/mcp' };
   let authMw: AuthMiddleware = createAuthMiddleware(cfg.auth, authOptions);
@@ -274,7 +275,8 @@ export function createApiRouter(
       lockout?.close();
       lockout = lockoutFor({ ...next, auth: nextAuth }, shared);
     }
-    cfg = { ...cfg, auth: nextAuth, rateLimit: next.rateLimit, monitor: next.monitor, mcp: next.mcp, security: next.security, host: cfg.host };
+    cfg = { ...cfg, auth: nextAuth, rateLimit: next.rateLimit, monitor: next.monitor, mcp: next.mcp, security: next.security, policy: next.policy, host: cfg.host };
+    invoker.refreshPolicy();
   };
 
   // ─── Security posture ───────────────────────────────────────────────────────
@@ -586,6 +588,16 @@ export function createApiRouter(
       if (res.headersSent) return;
       if (result.traceparent) res.set('traceparent', result.traceparent);
 
+      if (!result.success && result.error && POLICY_ERROR_CODES.has(result.error.code)) {
+        res.status(result.error.code === ERR_OUTPUT_BLOCKED ? 502 : 403).json({
+          error: result.error.code === ERR_OUTPUT_BLOCKED ? 'Tool Output Blocked' : 'Forbidden',
+          message: result.error.message,
+          code: result.error.code,
+          policy: result.error.data,
+        });
+        return;
+      }
+
       if (!result.success) {
         // 504 for upstream timeouts, 502 for upstream errors (was always 500).
         const status = result.error?.code === ERR_TIMEOUT ? 504 : 502;
@@ -774,6 +786,55 @@ export function createApiRouter(
       }));
     }),
   );
+
+  // ─── Approvals (policy rules with effect "approve") ─────────────────────────
+
+  const operatorOnly = (req: Request, res: Response): boolean => {
+    if (!isRestricted(scopeOf(req))) return true;
+    res.status(403).json({ error: 'Forbidden', message: 'Scoped clients cannot manage approvals' });
+    return false;
+  };
+
+  router.get('/approvals', auth, (req, res) => {
+    if (!operatorOnly(req, res)) return;
+    res.set('Cache-Control', 'no-store').json(invoker.approvals.list());
+  });
+
+  router.get('/approvals/:id', auth, (req, res) => {
+    if (!operatorOnly(req, res)) return;
+    const a = invoker.approvals.get(req.params.id!);
+    if (!a) return void res.status(404).json({ error: 'Not Found', message: 'Approval request not found' });
+    res.json(a);
+  });
+
+  for (const action of ['approve', 'deny'] as const) {
+    router.post(`/approvals/:id/${action}`, auth, (req, res) => {
+      if (!operatorOnly(req, res)) return;
+      const body = (req.body ?? {}) as { reason?: unknown };
+      const reason = typeof body.reason === 'string' ? body.reason.slice(0, 500) : undefined;
+      try {
+        const decided = invoker.approvals.decide(req.params.id!, action === 'approve', (req as AuthedRequest).clientId, reason);
+        logger.info(`Approval ${decided.id.slice(0, 8)} ${decided.status} by ${decided.decidedBy ?? 'operator'} (${decided.serverId}/${decided.tool})`);
+        res.json(decided);
+      } catch (err) {
+        if (err instanceof ApprovalError) return void res.status(err.status).json({ error: err.message });
+        throw err;
+      }
+    });
+  }
+
+  // Output-filter findings since start (operator view).
+  router.get('/policy', auth, (req, res) => {
+    if (!operatorOnly(req, res)) return;
+    res.json({
+      rules: cfg.policy?.rules?.length ?? 0,
+      default: cfg.policy?.default ?? 'allow',
+      approval: { pending: invoker.approvals.pendingCount(), timeoutSeconds: cfg.policy?.approval?.timeoutSeconds ?? 300 },
+      outputFilter: cfg.policy?.outputFilter
+        ? { enabled: cfg.policy.outputFilter.enabled !== false, action: cfg.policy.outputFilter.action ?? 'redact', findings: Object.fromEntries(invoker.filterFindings) }
+        : null,
+    });
+  });
 
   // ─── Recent Requests ────────────────────────────────────────────────────────
 
