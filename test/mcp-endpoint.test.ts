@@ -357,8 +357,11 @@ describe('/mcp protocol details (raw HTTP)', () => {
 
   it('expires idle sessions and evicts the least recently used one at maxSessions', async () => {
     const url = await start({ ...base, mcp: { maxSessions: 2, sessionIdleTimeoutSeconds: 60 } });
+    const tick = () => new Promise((r) => setTimeout(r, 5)); // distinct lastSeen timestamps
     const a = await openSession(url);
+    await tick();
     const b = await openSession(url);
+    await tick();
     await post(url, rpc(1, 'ping'), { 'mcp-session-id': a.sid }); // a is now more recent than b
     await openSession(url);
     const ids = gw!.getMcpEndpoint()!.getSessions().map((s) => s.id);
