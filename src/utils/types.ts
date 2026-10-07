@@ -70,6 +70,15 @@ export interface McpServerConfig {
   timeout?: number;
   /** Maximum concurrent requests */
   maxConcurrency?: number;
+  /** Expose only some of this server's tools (glob patterns; deny wins) */
+  tools?: ToolFilterConfig;
+}
+
+export interface ToolFilterConfig {
+  /** Only tools matching at least one pattern are exposed (empty/absent = all). */
+  allow?: string[];
+  /** Tools matching any pattern are hidden, even if allowed. */
+  deny?: string[];
 }
 
 export interface ServerHealth {

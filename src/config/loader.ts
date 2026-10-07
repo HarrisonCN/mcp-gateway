@@ -35,6 +35,15 @@ function safeProtocol(url: string): string {
   }
 }
 
+const ToolPatternList = z.array(z.string().min(1, 'patterns must be non-empty'));
+
+const ToolFilterSchema = z
+  .object({
+    allow: ToolPatternList.optional(),
+    deny: ToolPatternList.optional(),
+  })
+  .strict();
+
 const McpServerSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -51,6 +60,7 @@ const McpServerSchema = z.object({
   enabled: z.boolean().default(true),
   timeout: z.number().positive().default(30000),
   maxConcurrency: z.number().int().positive().default(10),
+  tools: ToolFilterSchema.optional(),
 }).superRefine((s, ctx) => {
   if (s.transport === 'stdio' && !s.command) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['command'], message: 'required for stdio transport' });

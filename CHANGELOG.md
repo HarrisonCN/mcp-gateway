@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Per-server tool filtering**: `servers[].tools.allow` / `servers[].tools.deny` glob patterns (`*`, `?`; deny wins). Hidden tools are removed from discovery, counts and routing; calling one with an explicit `server` returns `403`. Applied to `tools/list_changed` updates and on hot reload. `isToolAllowed` / `filterTools` are exported for library use.
+
 ## [0.3.0] - 2026-10-07
 
 ### Added
