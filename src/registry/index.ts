@@ -11,6 +11,7 @@ import type {
   ToolInfo,
 } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
+import { filterTools, isToolAllowed } from '../utils/tool-filter.js';
 
 export class ServerRegistry extends EventEmitter {
   private servers = new Map<string, McpServerConfig>();
@@ -76,7 +77,16 @@ export class ServerRegistry extends EventEmitter {
 
   // ─── Tool Registry ──────────────────────────────────────────────────────────
 
-  setTools(serverId: string, tools: ToolInfo[]): void {
+  /**
+   * Store a server's tool list, applying its `tools` allow/deny filter.
+   * Only exposed tools are kept, so discovery, routing and counts never see
+   * filtered ones.
+   */
+  setTools(serverId: string, all: ToolInfo[]): void {
+    const tools = filterTools(all, this.servers.get(serverId)?.tools);
+    if (tools.length !== all.length) {
+      logger.debug(`Server "${serverId}": ${all.length - tools.length} of ${all.length} tools hidden by its tools filter`);
+    }
     for (const t of tools) {
       const owners = this.findTools(t.name).filter((o) => o.serverId !== serverId);
       if (owners.length > 0) {
@@ -88,6 +98,11 @@ export class ServerRegistry extends EventEmitter {
     }
     this.tools.set(serverId, tools);
     this.emit('tools-updated', serverId, tools);
+  }
+
+  /** Whether the server's `tools` filter lets `toolName` through. */
+  isToolExposed(serverId: string, toolName: string): boolean {
+    return isToolAllowed(toolName, this.servers.get(serverId)?.tools);
   }
 
   getTools(serverId: string): ToolInfo[] {
