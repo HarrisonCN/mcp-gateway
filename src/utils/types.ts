@@ -175,8 +175,49 @@ export interface GatewayConfig {
   cache?: CacheConfig;
   /** Plugins (hooks: onRequest, onToolCall before policy, onResponse after the output filter). */
   plugins?: PluginConfig[];
+  /** OpenAI-compatible tools proxy (`/openai/v1/tools`, `/tool_calls`, `/chat/completions`). */
+  openai?: OpenAIBridgeConfig;
+  /** A2A (Agent2Agent) bridge: agent card at `/.well-known/agent-card.json` + JSON-RPC endpoint. */
+  a2a?: A2ABridgeConfig;
   /** Directory of the loaded config file (set by `loadConfig`; plugin paths resolve against it). */
   configDir?: string;
+}
+
+/** `openai:` — OpenAI-compatible tools proxy. */
+export interface OpenAIBridgeConfig {
+  /** Serve the proxy (default true when the `openai:` block is present). */
+  enabled?: boolean;
+  /** Mount path (default "/openai/v1"). Restart required. */
+  path?: string;
+  /** Add the gateway tools to `chat/completions` requests (default true). */
+  injectTools?: boolean;
+  /** Maximum gateway tool-call rounds per `chat/completions` request (default 5). */
+  maxToolRounds?: number;
+  /** OpenAI-compatible upstream for `chat/completions` (omit to serve only `tools` / `tool_calls`). */
+  upstream?: {
+    /** e.g. https://api.openai.com/v1 */
+    baseUrl: string;
+    apiKey?: string;
+    headers?: Record<string, string>;
+    timeoutMs?: number;
+  };
+}
+
+/** `a2a:` — Agent2Agent bridge. */
+export interface A2ABridgeConfig {
+  /** Serve the agent card and JSON-RPC endpoint (default false). */
+  enabled?: boolean;
+  /** JSON-RPC path (default "/a2a"). */
+  path?: string;
+  /** Public base URL advertised in the card (default: from the request). */
+  url?: string;
+  name?: string;
+  description?: string;
+  provider?: { organization: string; url?: string };
+  /** Serve the agent card without authentication (skills = tools visible to anonymous callers). */
+  public?: boolean;
+  /** How long finished tasks stay readable via `tasks/get` (default 600 s). */
+  taskRetentionSeconds?: number;
 }
 
 /** One `plugins:` entry. */

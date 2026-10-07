@@ -318,6 +318,21 @@ cache:
 - `GET /api/v1/cache` (stats: entries, hits, misses, deduped, evictions), `DELETE /api/v1/cache[?server=id]` (purge).
   Changing `cache:` purges the cache (hot reload). The cache is in memory per instance.
 
+## Bridges (OpenAI / A2A)
+
+```yaml
+openai:                 # OpenAI-compatible tools proxy (on when the block is present)
+  path: /openai/v1
+  maxToolRounds: 5
+  upstream: { baseUrl: https://api.openai.com/v1, apiKey: sk-... }
+a2a:                    # Agent2Agent bridge (off by default)
+  enabled: true
+  path: /a2a
+  public: false
+```
+
+See the [bridges guide](guides/bridges.md).
+
 ## Rate limiting
 
 ```yaml

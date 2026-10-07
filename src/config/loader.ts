@@ -484,6 +484,37 @@ const GatewayConfigSchema = z.object({
     })
     .strict()
     .optional(),
+  openai: z
+    .object({
+      enabled: z.boolean().optional(),
+      path: z.string().regex(/^\/[^\s]*$/, 'must start with "/"').optional(),
+      injectTools: z.boolean().optional(),
+      maxToolRounds: z.number().int().min(0).max(50).optional(),
+      upstream: z
+        .object({
+          baseUrl: z.string().url(),
+          apiKey: z.string().min(1).optional(),
+          headers: z.record(z.string()).optional(),
+          timeoutMs: z.number().int().positive().optional(),
+        })
+        .strict()
+        .optional(),
+    })
+    .strict()
+    .optional(),
+  a2a: z
+    .object({
+      enabled: z.boolean().optional(),
+      path: z.string().regex(/^\/[^\s]*$/, 'must start with "/"').optional(),
+      url: z.string().url().optional(),
+      name: z.string().min(1).optional(),
+      description: z.string().optional(),
+      provider: z.object({ organization: z.string().min(1), url: z.string().url().optional() }).strict().optional(),
+      public: z.boolean().optional(),
+      taskRetentionSeconds: z.number().int().positive().optional(),
+    })
+    .strict()
+    .optional(),
   plugins: z
     .array(
       z
@@ -565,6 +596,17 @@ export function resolveConfigPath(configPath?: string): string | undefined {
   return undefined;
 }
 
+/** Validate (and apply defaults to) a raw config object; throws a readable error listing every issue. */
+export function validateConfig(raw: unknown): GatewayConfig {
+  const result = GatewayConfigSchema.safeParse(raw);
+  if (!result.success) {
+    throw new Error(
+      `Invalid configuration:\n${result.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n')}`
+    );
+  }
+  return result.data as GatewayConfig;
+}
+
 export async function loadConfig(configPath?: string): Promise<GatewayConfig> {
   const filePath = resolveConfigPath(configPath);
   let raw: unknown = filePath ? await readConfigFile(filePath) : {};
@@ -579,14 +621,7 @@ export async function loadConfig(configPath?: string): Promise<GatewayConfig> {
   // Apply environment variable overrides
   raw = applyEnvOverrides(raw as Record<string, unknown>);
 
-  const result = GatewayConfigSchema.safeParse(raw);
-  if (!result.success) {
-    throw new Error(
-      `Invalid configuration:\n${result.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n')}`
-    );
-  }
-
-  const config = result.data as GatewayConfig;
+  const config = validateConfig(raw);
   if (filePath) config.configDir = dirname(filePath);
   return config;
 }

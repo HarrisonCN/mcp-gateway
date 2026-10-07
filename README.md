@@ -579,6 +579,15 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v2.7
+
+| Feature | Description |
+|---------|-------------|
+| **OpenAI tools proxy** | `/openai/v1/tools`, `/tool_calls`, `/chat/completions` with an automatic tool loop |
+| **A2A bridge** | Agent Card at `/.well-known/agent-card.json` + JSON-RPC `message/send` — [guide](docs/guides/bridges.md) |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v2.6
 
 | Feature | Description |
