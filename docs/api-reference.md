@@ -182,6 +182,14 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
 ```
 `kind` is present for resources and prompts. Invalid parameters → `400`.
 
+### Catalog
+
+| | |
+|---|---|
+| `GET /catalog` | `{ install, entries: [{ id, name, description, template, env?, args?, installed: [serverIds] }], installedServers }` |
+| `POST /catalog/:id/install` | `{ "serverId": "fs", "env": { "TOKEN": "…" }, "args": ["/data"] }` → `201`; `403` when `catalog.install` is off, `400` missing input, `404`, `409` id taken |
+| `DELETE /catalog/servers/:id` | remove a catalog-installed server |
+
 ### Tenants
 
 | | |

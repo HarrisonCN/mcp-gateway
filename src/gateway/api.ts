@@ -30,6 +30,7 @@ import { dedupeResources, routeResource } from '../mcp/catalog.js';
 import { LLM_SCHEMA_FORMATS, toLlmToolSchemas, type LlmSchemaFormat } from '../mcp/llm-schemas.js';
 import { VERSION } from '../utils/version.js';
 import { redactArgs } from '../security/redact.js';
+import type { CatalogEntry, InstallRequest } from '../catalog/index.js';
 import { withTenantScope, canCall, highestRole, roleIn, ROLE_RANK } from '../auth/tenants.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { ToolInvoker, POLICY_ERROR_CODES, ERR_OUTPUT_BLOCKED } from './invoker.js';
@@ -83,6 +84,14 @@ export interface ApiRouterOptions {
   invoker?: ToolInvoker;
   /** Called after tenant members change at runtime (refreshes MCP sessions). */
   onTenantsChanged?: () => void;
+  /** Upstream catalog (GET /catalog, one-click install). */
+  catalog?: {
+    installEnabled(): boolean;
+    entries(): Array<CatalogEntry & { installed: string[] }>;
+    install(id: string, req: InstallRequest): Promise<{ status: number; body: Record<string, unknown> }>;
+    uninstall(id: string): Promise<boolean>;
+    installedIds(): string[];
+  };
 }
 
 const traceparentOf = (req: Request): string | undefined =>
@@ -932,6 +941,45 @@ export function createApiRouter(
     options.onTenantsChanged?.();
     res.json(tenantView(t, roleIn(t, (req as AuthedRequest).clientId), isOperator(req)));
   });
+
+  // ─── Catalog (operator) ─────────────────────────────────────────────────────
+
+  router.get('/catalog', auth, (req, res) => {
+    if (!operatorOnly(req, res)) return;
+    const c = options.catalog;
+    res.json({ install: c?.installEnabled() ?? false, entries: c?.entries() ?? [], installedServers: c?.installedIds() ?? [] });
+  });
+  router.post(
+    '/catalog/:id/install',
+    auth,
+    asyncHandler(async (req, res) => {
+      if (!operatorOnly(req, res)) return;
+      if (!options.catalog) return void res.status(501).json({ error: 'Not Implemented' });
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const strMap = (v: unknown) =>
+        v && typeof v === 'object' && !Array.isArray(v)
+          ? Object.fromEntries(Object.entries(v as Record<string, unknown>).filter(([, x]) => typeof x === 'string')) as Record<string, string>
+          : undefined;
+      const r = await options.catalog.install(req.params.id!, {
+        serverId: typeof b.serverId === 'string' && b.serverId ? b.serverId : undefined,
+        name: typeof b.name === 'string' && b.name ? b.name : undefined,
+        env: strMap(b.env),
+        args: Array.isArray(b.args) ? b.args.filter((x): x is string => typeof x === 'string') : undefined,
+        tags: Array.isArray(b.tags) ? b.tags.filter((x): x is string => typeof x === 'string') : undefined,
+      });
+      res.status(r.status).json(r.body);
+    }),
+  );
+  router.delete(
+    '/catalog/servers/:id',
+    auth,
+    asyncHandler(async (req, res) => {
+      if (!operatorOnly(req, res)) return;
+      const ok = (await options.catalog?.uninstall(req.params.id!)) ?? false;
+      if (!ok) return void res.status(404).json({ error: 'Not Found', message: 'No catalog-installed server with that id' });
+      res.json({ removed: req.params.id });
+    }),
+  );
 
   // Tool result cache: stats and purge (operator view).
   router.get('/cache', auth, (req, res) => {

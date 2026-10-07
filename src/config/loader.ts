@@ -415,6 +415,15 @@ const GatewayConfigSchema = z.object({
       if (bad) ctx.addIssue({ code: z.ZodIssueCode.custom, message: bad });
     })
     .optional(),
+  catalog: z
+    .object({
+      builtins: z.boolean().optional(),
+      sources: z.array(z.string().min(1)).optional(),
+      install: z.boolean().optional(),
+      serversFile: z.string().min(1).optional(),
+    })
+    .strict()
+    .optional(),
   tenants: z
     .array(
       z
