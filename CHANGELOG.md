@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-07
+
+Tool result caching and in-flight de-duplication.
+
+### Added
+- **`cache:`** — per-tool opt-in result cache (`rules` by server / tool glob, `ttlSeconds`, `scope: client | shared`),
+  LRU bounded by `maxEntries`, `defaultTtlSeconds`. Keys use canonical argument JSON; only successful, non-`isError`
+  results are stored. Refused calls never reach it; the output filter and `onResponse` hooks run on cached results.
+- **In-flight de-duplication** (`dedupe`, default on for cached tools; `dedupeOnly` to share without caching).
+- `GET /api/v1/cache` stats, `DELETE /api/v1/cache[?server=]` purge; trace attribute `mcp.cache` (`hit` / `miss` /
+  `shared`); hot reload purges the cache when `cache:` changes.
+- Exports: `ToolCache`, `canonicalJson`, and `LoadBalancer` / `expandReplicas` (missing from the 2.1 entry point).
+
 ## [2.1.0] - 2026-10-07
 
 Multi-upstream load balancing, failover and member health checks.

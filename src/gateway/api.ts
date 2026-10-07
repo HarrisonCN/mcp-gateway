@@ -823,6 +823,17 @@ export function createApiRouter(
     });
   }
 
+  // Tool result cache: stats and purge (operator view).
+  router.get('/cache', auth, (req, res) => {
+    if (!operatorOnly(req, res)) return;
+    res.json(invoker.cache?.snapshot() ?? { enabled: false });
+  });
+  router.delete('/cache', auth, (req, res) => {
+    if (!operatorOnly(req, res)) return;
+    const server = typeof req.query.server === 'string' && req.query.server ? req.query.server : undefined;
+    res.json({ purged: invoker.cache?.purge(server) ?? 0 });
+  });
+
   // Load balancing: members, health and ejection per server with replicas (operator view).
   router.get('/load-balancing', auth, (req, res) => {
     if (!operatorOnly(req, res)) return;

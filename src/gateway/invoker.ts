@@ -30,6 +30,7 @@ export { ERR_PLUGIN_REJECTED };
 import { logger } from '../utils/logger.js';
 import { ERR_NOT_CONNECTED, ERR_TIMEOUT } from '../proxy/index.js';
 import type { FailureKind, LoadBalancer } from './balancer.js';
+import type { ToolCache } from './cache.js';
 import { NOOP_TRACER, type Tracer } from '../observability/tracing.js';
 
 export type CallKind = 'tool' | 'resource' | 'prompt';
@@ -70,6 +71,8 @@ export interface InvokerDeps {
   plugins?: PluginHost;
   /** Routes calls on servers with `replicas:` (load balancing + failover). */
   balancer?: LoadBalancer;
+  /** Tool result cache + in-flight de-duplication (`cache:` config). */
+  cache?: ToolCache;
 }
 
 export class ToolInvoker {
@@ -178,7 +181,14 @@ export class ToolInvoker {
     if (refused) return refused;
     let result: ProxyResponse;
     try {
-      result = await this.callUpstream(ctx, span);
+      const cache = ctx.kind === 'tool' ? this.deps.cache : undefined;
+      if (cache) {
+        const out = await cache.run({ serverId: ctx.serverId, tool: ctx.name, args: ctx.params, clientId: ctx.clientId }, () => this.callUpstream(ctx, span));
+        if (out.status !== 'bypass') span.setAttribute('mcp.cache', out.status);
+        result = out.status === 'hit' || out.status === 'shared' ? { ...out.result, durationMs: out.status === 'hit' ? 0 : out.result.durationMs } : out.result;
+      } else {
+        result = await this.callUpstream(ctx, span);
+      }
     } catch (err) {
       span.setError(err instanceof Error ? err.message : String(err));
       span.end();
@@ -202,6 +212,10 @@ export class ToolInvoker {
       }
     }
     return this.finish(ctx, call, result, span);
+  }
+
+  get cache(): ToolCache | undefined {
+    return this.deps.cache;
   }
 
   get balancer(): LoadBalancer | undefined {
