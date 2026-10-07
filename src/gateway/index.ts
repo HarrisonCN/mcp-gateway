@@ -9,7 +9,7 @@ import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import type { GatewayConfig, McpServerConfig } from '../utils/types.js';
+import type { GatewayConfig, McpServerConfig, RequestMetric } from '../utils/types.js';
 import { ServerRegistry } from '../registry/index.js';
 import { McpProxy } from '../proxy/index.js';
 import { MetricsCollector } from '../monitor/index.js';
@@ -30,6 +30,7 @@ import { Mutex } from '../utils/mutex.js';
 import { VERSION } from '../utils/version.js';
 import { McpEndpoint } from '../mcp/endpoint.js';
 import { SqliteAuditStore } from '../monitor/audit.js';
+import { AuditExporter, type ExporterStats } from '../monitor/siem.js';
 import { createStateStore, type StateStore } from '../state/index.js';
 import { createTracer, NOOP_TRACER, type Tracer } from '../observability/tracing.js';
 import { ToolInvoker } from './invoker.js';
@@ -61,6 +62,8 @@ export class Gateway {
   private readonly registry: ServerRegistry;
   private readonly proxy: McpProxy;
   private readonly metrics: MetricsCollector;
+  private auditExporter?: AuditExporter;
+  private onMetric?: (m: RequestMetric) => void;
   private readonly supervisor: ServerSupervisor;
   private router?: ApiRouter;
   private mcp?: McpEndpoint;
@@ -305,6 +308,16 @@ export class Gateway {
       }
     }
 
+    if (this.config.audit?.export?.length) {
+      const exporter = new AuditExporter(this.config.audit.export);
+      if (exporter.size > 0) {
+        this.auditExporter = exporter;
+        this.onMetric = (m: RequestMetric) => exporter.push(m);
+        this.metrics.on('metric', this.onMetric);
+        logger.info(`Audit export: ${exporter.stats().map((s) => `${s.type} ${s.target}`).join(', ')}`);
+      }
+    }
+
     this.installed.load();
     await this.catalog.refresh();
     await this.connectServers(expandReplicas(this.withInstalled(this.config.servers)));
@@ -401,6 +414,10 @@ export class Gateway {
     this.supervisor.stop();
     this.registry.stopHealthChecks();
     this.metrics.stop();
+    if (this.onMetric) this.metrics.off('metric', this.onMetric);
+    this.onMetric = undefined;
+    await this.auditExporter?.close();
+    this.auditExporter = undefined;
     const audit = this.metrics.getAuditStore();
     if (audit) {
       this.metrics.setAuditStore(undefined);
@@ -628,6 +645,16 @@ export class Gateway {
   }
 
   /** Active plugins (in hook order). */
+  /** Per-target SIEM export counters (empty when `audit.export` is not configured). */
+  auditExportStats(): ExporterStats[] {
+    return this.auditExporter?.stats() ?? [];
+  }
+
+  /** Send queued audit export records now. */
+  flushAuditExport(): Promise<void> {
+    return this.auditExporter?.flush() ?? Promise.resolve();
+  }
+
   getPlugins(): readonly string[] {
     return this.plugins.list().map((p) => p.name);
   }

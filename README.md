@@ -579,6 +579,15 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v2.8
+
+| Feature | Description |
+|---------|-------------|
+| **Policy as code** | `policy.files` + policy unit tests, `mcp-gateway policy test` for CI |
+| **SIEM export** | Audit records to syslog (UDP / TCP / TLS) or webhooks — [guide](docs/guides/policy-as-code.md) |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v2.7
 
 | Feature | Description |

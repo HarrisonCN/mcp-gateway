@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-10-07
+
+Policy as code and audit export to SIEMs.
+
+### Added
+- **Policy files** (`policy.files`): YAML / JSON rule files (relative to the config) appended after inline rules;
+  optional `default` and `tests`. Re-read on every config reload; invalid files reject the reload.
+- **Policy tests**: `policy.tests` / file `tests` (`call`, `expect`, optional `rule`) and the
+  `mcp-gateway policy test [--json]` command (exit 1 on failure) for CI.
+- **SIEM export** (`audit.export`): RFC 5424 syslog over UDP / TCP (octet counting) / TLS, and batched HTTP webhooks
+  (JSON or NDJSON) with retries, a bounded queue, `failuresOnly` and `kinds` filters. Works with or without the
+  SQLite audit store. `Gateway#auditExportStats()` / `flushAuditExport()`.
+- Docs: [Policy as code and SIEM export](docs/guides/policy-as-code.md).
+
 ## [2.7.0] - 2026-10-07
 
 Bridges: OpenAI-compatible tools proxy and A2A agent card.

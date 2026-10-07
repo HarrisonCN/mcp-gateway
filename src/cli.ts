@@ -9,6 +9,7 @@ import { existsSync } from 'fs';
 import { writeFile } from 'fs/promises';
 import { loadConfig, generateDefaultConfig, resolveConfigPath } from './config/loader.js';
 import { ConfigWatcher } from './config/watcher.js';
+import { runPolicyTests } from './policy/tool-policy.js';
 import { Gateway } from './gateway/index.js';
 import { logger } from './utils/logger.js';
 import { VERSION } from './utils/version.js';
@@ -151,6 +152,31 @@ program
       }
     } catch (err) {
       logger.error(`Invalid configuration: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('policy')
+  .description('Policy-as-code tools')
+  .command('test')
+  .description('Run policy tests (policy.tests and the tests in policy.files) against the merged rules')
+  .option('-c, --config <path>', 'Path to config file')
+  .option('--json', 'Print results as JSON')
+  .action(async (options) => {
+    try {
+      const config = await loadConfig(options.config);
+      const results = runPolicyTests(config.policy);
+      const failed = results.filter((r) => !r.passed);
+      if (options.json) console.log(JSON.stringify({ total: results.length, failed: failed.length, results }, null, 2));
+      else {
+        console.log(`Policy: ${config.policy?.rules?.length ?? 0} rules, default ${config.policy?.default ?? 'allow'}`);
+        for (const r of results) console.log(`  ${r.passed ? '✓' : '✗'} ${r.name}${r.passed ? '' : ` — expected ${r.expected}, got ${r.actual}`}`);
+        console.log(results.length === 0 ? 'No policy tests defined.' : `${results.length - failed.length}/${results.length} passed`);
+      }
+      if (failed.length > 0) process.exit(1);
+    } catch (err) {
+      logger.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });

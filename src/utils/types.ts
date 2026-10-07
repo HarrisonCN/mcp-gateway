@@ -294,8 +294,21 @@ export interface OutputFilterConfig {
   tools?: string[];
 }
 
+/** A policy unit test (`policy.tests` or a policy file's `tests`), run by `mcp-gateway policy test`. */
+export interface PolicyTest {
+  name?: string;
+  call: { client?: string; server: string; tool: string; args?: Record<string, unknown> };
+  expect: 'allow' | 'deny' | 'approve';
+  /** Expected matching rule name (optional). */
+  rule?: string;
+}
+
 export interface ToolPolicyConfig {
   rules?: PolicyRule[];
+  /** Policy-as-code files (YAML / JSON, relative to the config file) appended after the inline rules. */
+  files?: string[];
+  /** Policy unit tests. */
+  tests?: PolicyTest[];
   /** Decision when no rule matches (default `allow`). */
   default?: 'allow' | 'deny' | 'approve';
   approval?: {
@@ -655,7 +668,45 @@ export interface AuditConfig {
   path?: string;
   /** Delete records older than this many days (default 30; 0 = keep forever). */
   retentionDays?: number;
+  /** Forward every record to SIEM targets (works with or without the SQLite store). */
+  export?: AuditExportTarget[];
 }
+
+interface AuditExportCommon {
+  enabled?: boolean;
+  /** Only export these kinds (default all). */
+  kinds?: Array<'tool' | 'resource' | 'prompt'>;
+  /** Only export failed requests. */
+  failuresOnly?: boolean;
+  /** Records per send (default 1 for syslog, 100 for webhooks). */
+  batchSize?: number;
+  /** Max wait before a partial batch is sent (default 1000 ms). */
+  flushIntervalMs?: number;
+  /** Retries per batch (default 2, exponential backoff). */
+  retries?: number;
+  /** Queue bound; oldest records are dropped beyond it (default 10000). */
+  maxQueue?: number;
+}
+
+/** One `audit.export` target: RFC 5424 syslog or an HTTP webhook. */
+export type AuditExportTarget =
+  | (AuditExportCommon & {
+      type: 'syslog';
+      host: string;
+      /** Default 514 (udp / tcp) or 6514 (tls). */
+      port?: number;
+      protocol?: 'udp' | 'tcp' | 'tls';
+      facility?: string;
+      appName?: string;
+    })
+  | (AuditExportCommon & {
+      type: 'webhook';
+      url: string;
+      headers?: Record<string, string>;
+      /** `json` (default: `{ "events": [...] }`) or `ndjson`. */
+      format?: 'json' | 'ndjson';
+      timeoutMs?: number;
+    });
 
 // ─── JSON-RPC (used by network transports) ───────────────────────────────────
 

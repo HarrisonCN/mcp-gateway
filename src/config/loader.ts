@@ -11,7 +11,7 @@ import { existsSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
-import type { GatewayConfig } from '../utils/types.js';
+import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
@@ -249,6 +249,96 @@ const SecuritySchema = z
   })
   .strict();
 
+const PolicyRuleSchema = z
+            .object({
+              name: z.string().optional(),
+              effect: z.enum(['allow', 'deny', 'approve']),
+              clients: z.array(z.string()).optional(),
+              servers: z.array(z.string()).optional(),
+              tools: z.array(z.string()).optional(),
+              args: z
+                .array(
+                  z
+                    .object({
+                      path: z.string().min(1),
+                      exists: z.boolean().optional(),
+                      equals: z.union([z.string(), z.number(), z.boolean()]).optional(),
+                      in: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
+                      glob: z.array(z.string()).optional(),
+                      notGlob: z.array(z.string()).optional(),
+                      regex: z.string().optional(),
+                      notRegex: z.string().optional(),
+                      longerThan: z.number().int().min(0).optional(),
+                      under: z.array(z.string()).optional(),
+                      notUnder: z.array(z.string()).optional(),
+                    })
+                    .strict(),
+                )
+                .optional(),
+              message: z.string().optional(),
+            })
+            .strict();
+
+const ExportCommon = {
+  enabled: z.boolean().optional(),
+  kinds: z.array(z.enum(['tool', 'resource', 'prompt'])).optional(),
+  failuresOnly: z.boolean().optional(),
+  batchSize: z.number().int().positive().max(10_000).optional(),
+  flushIntervalMs: z.number().int().min(10).optional(),
+  retries: z.number().int().min(0).max(10).optional(),
+  maxQueue: z.number().int().positive().optional(),
+};
+
+const AuditExportSchema = z.discriminatedUnion('type', [
+  z
+    .object({
+      type: z.literal('syslog'),
+      host: z.string().min(1),
+      port: z.number().int().min(1).max(65535).optional(),
+      protocol: z.enum(['udp', 'tcp', 'tls']).optional(),
+      facility: z.enum(['kern', 'user', 'daemon', 'auth', 'syslog', 'authpriv', 'local0', 'local1', 'local2', 'local3', 'local4', 'local5', 'local6', 'local7']).optional(),
+      appName: z.string().min(1).optional(),
+      ...ExportCommon,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('webhook'),
+      url: z.string().url(),
+      headers: z.record(z.string()).optional(),
+      format: z.enum(['json', 'ndjson']).optional(),
+      timeoutMs: z.number().int().positive().optional(),
+      ...ExportCommon,
+    })
+    .strict(),
+]);
+
+const PolicyTestSchema = z
+  .object({
+    name: z.string().optional(),
+    call: z
+      .object({
+        client: z.string().optional(),
+        server: z.string().min(1),
+        tool: z.string().min(1),
+        args: z.record(z.unknown()).optional(),
+      })
+      .strict(),
+    expect: z.enum(['allow', 'deny', 'approve']),
+    rule: z.string().optional(),
+  })
+  .strict();
+
+/** A policy-as-code file (`policy.files`): rules, an optional default and optional tests. */
+export const PolicyFileSchema = z
+  .object({
+    version: z.literal(1).optional(),
+    default: z.enum(['allow', 'deny', 'approve']).optional(),
+    rules: z.array(PolicyRuleSchema).default([]),
+    tests: z.array(PolicyTestSchema).optional(),
+  })
+  .strict();
+
 const GatewayConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(4000),
   host: z.string().default('0.0.0.0'),
@@ -336,6 +426,7 @@ const GatewayConfigSchema = z.object({
       enabled: z.boolean().default(false),
       path: z.string().min(1).default('mcp-gateway-audit.db'),
       retentionDays: z.number().int().min(0).default(30),
+      export: z.array(AuditExportSchema).optional(),
     })
     .strict()
     .optional(),
@@ -360,39 +451,9 @@ const GatewayConfigSchema = z.object({
   security: SecuritySchema.optional(),
   policy: z
     .object({
-      rules: z
-        .array(
-          z
-            .object({
-              name: z.string().optional(),
-              effect: z.enum(['allow', 'deny', 'approve']),
-              clients: z.array(z.string()).optional(),
-              servers: z.array(z.string()).optional(),
-              tools: z.array(z.string()).optional(),
-              args: z
-                .array(
-                  z
-                    .object({
-                      path: z.string().min(1),
-                      exists: z.boolean().optional(),
-                      equals: z.union([z.string(), z.number(), z.boolean()]).optional(),
-                      in: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
-                      glob: z.array(z.string()).optional(),
-                      notGlob: z.array(z.string()).optional(),
-                      regex: z.string().optional(),
-                      notRegex: z.string().optional(),
-                      longerThan: z.number().int().min(0).optional(),
-                      under: z.array(z.string()).optional(),
-                      notUnder: z.array(z.string()).optional(),
-                    })
-                    .strict(),
-                )
-                .optional(),
-              message: z.string().optional(),
-            })
-            .strict(),
-        )
-        .optional(),
+      rules: z.array(PolicyRuleSchema).optional(),
+      files: z.array(z.string().min(1)).optional(),
+      tests: z.array(PolicyTestSchema).optional(),
       default: z.enum(['allow', 'deny', 'approve']).optional(),
       approval: z
         .object({ timeoutSeconds: z.number().int().positive().optional(), allowSelfApproval: z.boolean().optional() })
@@ -623,7 +684,38 @@ export async function loadConfig(configPath?: string): Promise<GatewayConfig> {
 
   const config = validateConfig(raw);
   if (filePath) config.configDir = dirname(filePath);
+  if (config.policy?.files?.length) config.policy = await loadPolicyFiles(config.policy, config.configDir ?? process.cwd());
   return config;
+}
+
+/**
+ * Merge `policy.files` into the policy: inline rules first, then each file's rules in order (first match wins).
+ * A file's `default` applies when the inline policy sets none (the last file with one wins). Tests are collected.
+ */
+export async function loadPolicyFiles(policy: ToolPolicyConfig, baseDir: string): Promise<ToolPolicyConfig> {
+  const rules = [...(policy.rules ?? [])];
+  const tests = [...(policy.tests ?? [])];
+  let fileDefault: ToolPolicyConfig['default'];
+  for (const f of policy.files ?? []) {
+    const path = resolve(baseDir, f);
+    let raw: unknown;
+    try {
+      raw = await readConfigFile(path);
+    } catch (err) {
+      throw new Error(`Invalid configuration: policy file ${f}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    const parsed = PolicyFileSchema.safeParse(Array.isArray(raw) ? { rules: raw } : (raw ?? {}));
+    if (!parsed.success) {
+      throw new Error(`Invalid configuration: policy file ${f}:\n${parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n')}`);
+    }
+    rules.push(...(parsed.data.rules as PolicyRule[]).map((r, i) => ({ ...r, name: r.name ?? `${f}#${i + 1}` })));
+    tests.push(...(parsed.data.tests ?? []));
+    if (parsed.data.default) fileDefault = parsed.data.default;
+  }
+  const merged: ToolPolicyConfig = { ...policy, rules, tests, default: policy.default ?? fileDefault };
+  const bad = invalidPolicy(merged);
+  if (bad) throw new Error(`Invalid configuration: ${bad}`);
+  return merged;
 }
 
 async function readConfigFile(filePath: string): Promise<unknown> {
