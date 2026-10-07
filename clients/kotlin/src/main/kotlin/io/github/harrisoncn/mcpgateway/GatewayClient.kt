@@ -36,7 +36,7 @@ public class GatewayException(
     }
 
     /** True when a gateway policy (rule, approval or output filter) refused the call. */
-    public val isPolicyError: Boolean get() = code == -32003 || code == -32004 || code == -32005
+    public val isPolicyError: Boolean get() = code == -32003 || code == -32004 || code == -32005 || code == -32006
 }
 
 /**

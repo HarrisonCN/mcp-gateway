@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-07
+
+Plugins and signal-driven reloads. **Breaking** — see [docs/guides/migrating-to-v2.md](docs/guides/migrating-to-v2.md).
+
+### Breaking
+- **Node.js ≥ 22** (`engines.node`); CI runs on Node 22 and 24 (the JS client on 20 / 22 / 24). Docker stays on `node:22-alpine`.
+- **`SIGHUP` reloads the configuration** (also with `--no-watch`) instead of terminating the process.
+- Plugin refusals add JSON-RPC **`-32006`** to the policy error codes the REST API maps to `403`.
+
+### Added
+- **Plugin hooks** (`plugins:` config, or `new Gateway(config, { plugins })`): `onRequest` Express middleware (after the
+  network guards, before CORS / auth / routes), `onToolCall` before the policy rules (rewrite arguments, `deny`, or
+  `respond` without contacting the server), `onResponse` after the output filter (replace the result), `close`.
+  Module paths resolve against the config file; factory exports get `ctx.options`, `ctx.logger`, `ctx.apiVersion`.
+  Hooks fail closed (`-32006`); a plugin requiring a newer plugin API is refused. `PLUGIN_API_VERSION = 1`.
+- **Hot reload of `plugins:`** — changed entries are reloaded and the old instances closed; a broken plugin keeps
+  the current set. `ConfigWatcher.reloadNow()`; `Gateway.getPlugins()`.
+- Clients 2.0.0: `isPolicyError` covers `-32006`.
+- Docs: [Plugins](docs/guides/plugins.md), [Migrating to v2](docs/guides/migrating-to-v2.md).
+
 ## [1.7.0] - 2026-10-07
 
 Clients 1.7: policy-aware JS and Kotlin clients, release-ready packaging.

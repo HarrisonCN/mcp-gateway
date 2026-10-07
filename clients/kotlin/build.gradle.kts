@@ -10,7 +10,7 @@ plugins {
 
 group = "io.github.harrisoncn"
 // Release version: -PreleaseVersion=1.7.0 (set by .github/workflows/clients-publish.yml from the git tag).
-version = (findProperty("releaseVersion") as String?) ?: "1.7.0"
+version = (findProperty("releaseVersion") as String?) ?: "2.0.0"
 
 dependencies {
     api("com.squareup.okhttp3:okhttp:4.12.0")

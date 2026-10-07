@@ -24,7 +24,9 @@ export const ERR_APPROVAL_REJECTED = -32004;
 export const ERR_OUTPUT_BLOCKED = -32005;
 
 /** Error codes produced by the gateway's own policy layer (REST maps them to 403). */
-export const POLICY_ERROR_CODES = new Set([ERR_POLICY_DENIED, ERR_APPROVAL_REJECTED, ERR_OUTPUT_BLOCKED]);
+export const POLICY_ERROR_CODES = new Set([ERR_POLICY_DENIED, ERR_APPROVAL_REJECTED, ERR_OUTPUT_BLOCKED, ERR_PLUGIN_REJECTED]);
+import { ERR_PLUGIN_REJECTED, PluginError, type PluginCall, type PluginHost } from '../plugins/index.js';
+export { ERR_PLUGIN_REJECTED };
 import { logger } from '../utils/logger.js';
 import { NOOP_TRACER, type Tracer } from '../observability/tracing.js';
 
@@ -62,6 +64,8 @@ export interface InvokerDeps {
   policy?: () => ToolPolicyConfig | undefined;
   /** Queue for `approve` rules; created when absent. */
   approvals?: ApprovalQueue;
+  /** Plugin hooks (`onToolCall` before policy, `onResponse` after the output filter). */
+  plugins?: PluginHost;
 }
 
 export class ToolInvoker {
@@ -146,6 +150,26 @@ export class ToolInvoker {
         'mcp.client.id': ctx.clientId,
       },
     });
+    const plugins = this.deps.plugins && this.deps.plugins.size > 0 ? this.deps.plugins : undefined;
+    const call: PluginCall | undefined = plugins
+      ? { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, method: ctx.method, arguments: ctx.params, clientId: ctx.clientId, via: ctx.via, state: new Map() }
+      : undefined;
+    if (plugins && call) {
+      try {
+        const pre = await plugins.beforeCall(call);
+        if (pre && 'deny' in pre) {
+          return this.refuse(ctx, ERR_PLUGIN_REJECTED, pre.deny, { decision: 'deny', plugin: pre.plugin }, span);
+        }
+        if (pre && 'respond' in pre) {
+          span.setAttribute('mcp.plugin.respond', pre.plugin);
+          return this.finish(ctx, call, { success: true, durationMs: 0, result: pre.respond }, span);
+        }
+      } catch (err) {
+        const plugin = err instanceof PluginError ? err.plugin : undefined;
+        return this.refuse(ctx, ERR_PLUGIN_REJECTED, err instanceof Error ? err.message : String(err), { decision: 'error', plugin }, span);
+      }
+      ctx = { ...ctx, params: call.arguments };
+    }
     const refused = await this.checkPolicy(ctx, span);
     if (refused) return refused;
     let result: ProxyResponse;
@@ -177,6 +201,19 @@ export class ToolInvoker {
               error: { code: ERR_OUTPUT_BLOCKED, message: 'Tool output blocked: possible prompt injection', data: { patterns: ids, result: out.result } },
             }
           : { ...result, result: out.result };
+      }
+    }
+    return this.finish(ctx, call, result, span);
+  }
+
+  /** `onResponse` hooks, metrics, request log and span end. */
+  private async finish(ctx: InvokeContext, call: PluginCall | undefined, result: ProxyResponse, span: ReturnType<Tracer['startSpan']>): Promise<InvokeResult> {
+    if (call && this.deps.plugins) {
+      try {
+        result = await this.deps.plugins.afterCall(call, result);
+      } catch (err) {
+        const plugin = err instanceof PluginError ? err.plugin : undefined;
+        result = { success: false, durationMs: result.durationMs, error: { code: ERR_PLUGIN_REJECTED, message: err instanceof Error ? err.message : String(err), data: { plugin } } };
       }
     }
     this.deps.metrics.record({

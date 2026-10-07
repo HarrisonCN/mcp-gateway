@@ -25,7 +25,9 @@ export {
   toOtlpJson,
 } from './observability/tracing.js';
 export type { Tracer, Span, SpanExporter } from './observability/tracing.js';
-export { ToolInvoker, ERR_POLICY_DENIED, ERR_APPROVAL_REJECTED, ERR_OUTPUT_BLOCKED } from './gateway/invoker.js';
+export { ToolInvoker, ERR_POLICY_DENIED, ERR_APPROVAL_REJECTED, ERR_OUTPUT_BLOCKED, ERR_PLUGIN_REJECTED } from './gateway/invoker.js';
+export { PluginHost, PluginError, loadPlugin, PLUGIN_API_VERSION } from './plugins/index.js';
+export type { GatewayPlugin, PluginCall, PluginContext, PluginFactory, PluginSource, ToolCallOutcome } from './plugins/index.js';
 export { evaluatePolicy, argMatches, isUnder } from './policy/tool-policy.js';
 export type { PolicyDecision, PolicyRequest, PolicyEffect } from './policy/tool-policy.js';
 export { ApprovalQueue, ApprovalError } from './policy/approvals.js';
@@ -56,6 +58,7 @@ export {
   buildPromptIndex,
 } from './mcp/catalog.js';
 export { loadConfig, generateDefaultConfig } from './config/loader.js';
+export { ConfigWatcher } from './config/watcher.js';
 export { logger } from './utils/logger.js';
 export { isToolAllowed, filterTools } from './utils/tool-filter.js';
 export {
