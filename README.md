@@ -579,6 +579,15 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v2.3
+
+| Feature | Description |
+|---------|-------------|
+| **Tenants** | `tenants:` workspaces owning servers, with members matched by client id |
+| **RBAC** | owner / admin / viewer roles enforced on REST, `/mcp` and approvals; dashboard *Workspaces* card |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v2.2
 
 | Feature | Description |

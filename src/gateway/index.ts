@@ -156,6 +156,7 @@ export class Gateway {
       isShuttingDown: () => this.stopping !== undefined,
       shared,
       invoker: this.invoker,
+      onTenantsChanged: () => this.mcp?.refreshClients(),
     });
 
     this.app.disable('x-powered-by');
@@ -405,6 +406,7 @@ export class Gateway {
       const prevPolicy = this.config.policy;
       const prevPlugins = this.config.plugins;
       const prevCache = this.config.cache;
+      const prevTenants = this.config.tenants;
       for (const field of ['port', 'host', 'healthCheckIntervalMs', 'dashboard', 'audit', 'state', 'observability'] as const) {
         if (!same(this.config[field], next[field])) {
           logger.warn(`Config "${field}" changed — restart required for it to take effect`);
@@ -470,8 +472,13 @@ export class Gateway {
         policy: next.policy,
         plugins: next.plugins,
         cache: next.cache,
+        tenants: next.tenants,
         configDir: next.configDir ?? this.config.configDir,
       };
+      if (!same(prevTenants, next.tenants)) {
+        this.mcp?.refreshClients();
+        applied.push('tenants');
+      }
       if (!same(prevCache, next.cache)) {
         this.invoker?.cache?.purge();
         applied.push('cache');

@@ -423,6 +423,10 @@ tbody tr:hover { background: var(--surface-2); }
       <h2><span data-i18n="approvals">Pending approvals</span><span class="right" id="approvalsNote"></span></h2>
       <ul class="stream" id="approvals"></ul>
     </div>
+    <div class="card" id="tenantsCard" hidden style="margin-bottom:14px">
+      <h2><span data-i18n="tenants">Workspaces</span><span class="right" id="tenantsNote"></span></h2>
+      <ul class="stream" id="tenants"></ul>
+    </div>
     <div class="grid kpis stagger" id="kpis"></div>
     <div class="grid two" style="margin-top:14px">
       <div class="card">
@@ -569,7 +573,7 @@ const I18N = {
     remember: 'Remember on this device', saveConnect: 'Save & connect', clear: 'Clear', close: 'Close',
     tabOverview: 'Overview', tabServers: 'Servers', tabPlayground: 'Playground', tabHistory: 'History', tabConnect: 'Connect',
     ovTitle: 'Overview', ovSub: 'Live traffic through the gateway', window: 'Time window',
-    reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server', approvals: 'Pending approvals', approve: 'Approve', deny: 'Deny', approved: 'Approved', denied: 'Denied', expires: 'expires',
+    reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server', approvals: 'Pending approvals', tenants: 'Workspaces', role: 'Role', members: 'members', roleSaved: 'Role updated', approve: 'Approve', deny: 'Deny', approved: 'Approved', denied: 'Denied', expires: 'expires',
     errRate: 'Error rate', liveStream: 'Live requests', pause: 'Pause', health: 'Server health',
     kRpm: 'Requests / min', kP50: 'p50 latency', kP95: 'p95 latency', kErr: 'Error rate', kSrv: 'Servers online',
     kTotal: '{n} in window', kP99: 'p99 {v}', kErrN: '{n} failed', kTools: '{n} tools',
@@ -614,7 +618,7 @@ const I18N = {
     remember: '在此设备上记住', saveConnect: '保存并连接', clear: '清除', close: '关闭',
     tabOverview: '总览', tabServers: '服务器', tabPlayground: '调试台', tabHistory: '历史', tabConnect: '接入',
     ovTitle: '总览', ovSub: '网关实时流量', window: '时间范围',
-    reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用', approvals: '待审批调用', approve: '批准', deny: '拒绝', approved: '已批准', denied: '已拒绝', expires: '到期',
+    reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用', approvals: '待审批调用', tenants: '工作区', role: '角色', members: '成员', roleSaved: '角色已更新', approve: '批准', deny: '拒绝', approved: '已批准', denied: '已拒绝', expires: '到期',
     errRate: '错误率', liveStream: '实时请求', pause: '暂停', health: '服务器健康',
     kRpm: '每分钟请求', kP50: 'p50 延迟', kP95: 'p95 延迟', kErr: '错误率', kSrv: '在线服务器',
     kTotal: '窗口内 {n} 次', kP99: 'p99 {v}', kErrN: '{n} 次失败', kTools: '{n} 个工具',
@@ -965,6 +969,35 @@ document.addEventListener('click', async (e) => {
   try { await api(`/approvals/${encodeURIComponent(id)}/${ok ? 'approve' : 'deny'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); toast(t(ok ? 'approved' : 'denied')); }
   catch (err) { toast(err.message || String(err)); }
   loadApprovals();
+});
+
+// Tenants / workspaces (RBAC): hidden unless the gateway has tenants the caller can see.
+async function loadTenants() {
+  const card = $('#tenantsCard');
+  let r;
+  try { r = await api('/tenants'); } catch { card.hidden = true; return; }
+  const list = r.tenants || [];
+  card.hidden = list.length === 0;
+  $('#tenantsNote').textContent = list.length ? `${r.clientId}` : '';
+  const roles = ['owner', 'admin', 'viewer'];
+  $('#tenants').innerHTML = list.map((tn) => {
+    const manage = tn.role === 'owner' || tn.role === 'operator';
+    const members = (tn.members || []).map((m) => manage
+      ? `<span class="pill mono">${esc(m.client)} <select class="input" style="padding:0 4px;height:22px" data-tenant="${esc(tn.id)}" data-client="${esc(m.client)}" aria-label="${esc(t('role'))}">${roles.map((x) => `<option value="${x}"${x === m.role ? ' selected' : ''}>${x}</option>`).join('')}</select></span>`
+      : `<span class="pill mono">${esc(m.client)} · ${esc(m.role)}</span>`).join(' ');
+    return `<li><div style="flex:1;min-width:0"><b>${esc(tn.name)}</b> <span class="badge ${tn.role === 'viewer' ? '' : 'ok'}">${esc(tn.role || '')}</span>
+      <span class="muted"> · ${esc((tn.serverIds || []).join(', ') || tn.servers.join(', '))}</span>
+      ${members ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">${members}</div>` : ''}</div></li>`;
+  }).join('');
+}
+document.addEventListener('change', async (e) => {
+  const sel = e.target.closest && e.target.closest('select[data-tenant]');
+  if (!sel) return;
+  try {
+    await api(`/tenants/${encodeURIComponent(sel.dataset.tenant)}/members`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client: sel.dataset.client, role: sel.value }) });
+    toast(t('roleSaved'));
+  } catch (err) { toast(err.message || String(err)); }
+  loadTenants();
 });
 
 async function loadServers() {
@@ -1644,6 +1677,8 @@ reloadAll().then(() => {
 });
 // Refresh the slower-moving pieces in the background.
 setInterval(() => { if (!document.hidden) loadApprovals(); }, 3000);
+loadTenants();
+setInterval(() => { if (!document.hidden) loadTenants(); }, 30000);
 setInterval(() => { if (!document.hidden) { loadServers(); if (state.live === 'live') loadStats().catch(() => {}); } }, 10000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && state.live !== 'live') startLive(); });
 })();

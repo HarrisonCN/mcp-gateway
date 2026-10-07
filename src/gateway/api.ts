@@ -5,7 +5,7 @@
 
 import express from 'express';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
-import type { GatewayConfig, McpServerConfig } from '../utils/types.js';
+import type { GatewayConfig, McpServerConfig, TenantConfig, TenantRole } from '../utils/types.js';
 import type { ServerRegistry } from '../registry/index.js';
 import { ERR_TIMEOUT, type McpProxy } from '../proxy/index.js';
 import type { MetricsCollector, ServerStateSample } from '../monitor/index.js';
@@ -30,6 +30,8 @@ import { dedupeResources, routeResource } from '../mcp/catalog.js';
 import { LLM_SCHEMA_FORMATS, toLlmToolSchemas, type LlmSchemaFormat } from '../mcp/llm-schemas.js';
 import { VERSION } from '../utils/version.js';
 import { redactArgs } from '../security/redact.js';
+import { withTenantScope, canCall, highestRole, roleIn, ROLE_RANK } from '../auth/tenants.js';
+import { globToRegExp } from '../utils/tool-filter.js';
 import { ToolInvoker, POLICY_ERROR_CODES, ERR_OUTPUT_BLOCKED } from './invoker.js';
 import { ApprovalError } from '../policy/approvals.js';
 
@@ -79,6 +81,8 @@ export interface ApiRouterOptions {
   shared?: SharedState;
   /** Upstream call pipeline (metrics, logging, tracing, …); created when absent. */
   invoker?: ToolInvoker;
+  /** Called after tenant members change at runtime (refreshes MCP sessions). */
+  onTenantsChanged?: () => void;
 }
 
 const traceparentOf = (req: Request): string | undefined =>
@@ -224,7 +228,22 @@ export function createApiRouter(
   // Stable wrappers: routes keep pointing at these while the inner
   // middleware is swapped on hot reload.
   let lockout = lockoutFor(cfg, shared);
-  const auth: RequestHandler = withLockout((req, res, next) => authMw(req, res, next), () => lockout);
+  // Tenant memberships narrow the scope (servers of the client's tenants, read-only for viewers).
+  const applyTenant = (req: Request) => {
+    if (!cfg.tenants?.length) return;
+    const r = req as AuthedRequest;
+    const scoped = withTenantScope(cfg.tenants, r.clientId, r.scope);
+    if (scoped) r.scope = scoped;
+  };
+  const auth: RequestHandler = withLockout(
+    (req, res, next) =>
+      authMw(req, res, (err?: unknown) => {
+        if (err) return next(err);
+        applyTenant(req);
+        next();
+      }),
+    () => lockout,
+  );
   const rateLimit: RequestHandler = (req, res, next) => limiterFor(req)(req, res, next);
   const protectable =
     (flag: 'health' | 'metrics'): RequestHandler =>
@@ -245,7 +264,10 @@ export function createApiRouter(
   router.lockout = () => lockout;
   router.authenticate = auth;
   router.takeRateLimit = (req) => limiterFor(req).take(req);
-  router.resolveClient = (clientId) => authMw.resolveClient?.(clientId);
+  router.resolveClient = (clientId) => {
+    const r = authMw.resolveClient?.(clientId);
+    return r && cfg.tenants?.length ? { ...r, scope: withTenantScope(cfg.tenants, clientId, r.scope) } : r;
+  };
   router.update = (next: GatewayConfig) => {
     const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
     let nextAuth = cfg.auth;
@@ -275,7 +297,7 @@ export function createApiRouter(
       lockout?.close();
       lockout = lockoutFor({ ...next, auth: nextAuth }, shared);
     }
-    cfg = { ...cfg, auth: nextAuth, rateLimit: next.rateLimit, monitor: next.monitor, mcp: next.mcp, security: next.security, policy: next.policy, host: cfg.host };
+    cfg = { ...cfg, auth: nextAuth, rateLimit: next.rateLimit, monitor: next.monitor, mcp: next.mcp, security: next.security, policy: next.policy, tenants: next.tenants, host: cfg.host };
     invoker.refreshPolicy();
   };
 
@@ -553,6 +575,10 @@ export function createApiRouter(
         return;
       }
 
+      if (isToolInScope(scope, targetServerId, tool) && !canCall(scope, targetServerId)) {
+        forbidden(`Read-only role: tool calls on server "${targetServerId}" need the admin or owner role`);
+        return;
+      }
       if (!isToolInScope(scope, targetServerId, tool)) {
         forbidden(`Tool "${tool}" on server "${targetServerId}" is not allowed for this client`);
         return;
@@ -794,22 +820,36 @@ export function createApiRouter(
     res.status(403).json({ error: 'Forbidden', message: 'Scoped clients cannot manage approvals' });
     return false;
   };
+  /** Operators, or tenant admins / owners (for their tenants' servers) without key-level restrictions. */
+  const approverOnly = (req: Request, res: Response): boolean => {
+    const scope = scopeOf(req);
+    if (!isRestricted(scope)) return true;
+    const role = highestRole(scope);
+    if (scope && !scope.servers && !scope.tools && role && ROLE_RANK[role] >= ROLE_RANK.admin) return true;
+    res.status(403).json({ error: 'Forbidden', message: 'Scoped clients cannot manage approvals' });
+    return false;
+  };
+  const approvalVisible = (req: Request, serverId: string) => canCall(scopeOf(req), serverId) && isServerInScope(scopeOf(req), serverId);
 
   router.get('/approvals', auth, (req, res) => {
-    if (!operatorOnly(req, res)) return;
-    res.set('Cache-Control', 'no-store').json(invoker.approvals.list());
+    if (!approverOnly(req, res)) return;
+    const list = invoker.approvals.list();
+    const mine = (a: { serverId: string }) => approvalVisible(req, a.serverId);
+    res.set('Cache-Control', 'no-store').json({ ...list, pending: list.pending.filter(mine), recent: list.recent.filter(mine) });
   });
 
   router.get('/approvals/:id', auth, (req, res) => {
-    if (!operatorOnly(req, res)) return;
+    if (!approverOnly(req, res)) return;
     const a = invoker.approvals.get(req.params.id!);
-    if (!a) return void res.status(404).json({ error: 'Not Found', message: 'Approval request not found' });
+    if (!a || !approvalVisible(req, a.serverId)) return void res.status(404).json({ error: 'Not Found', message: 'Approval request not found' });
     res.json(a);
   });
 
   for (const action of ['approve', 'deny'] as const) {
     router.post(`/approvals/:id/${action}`, auth, (req, res) => {
-      if (!operatorOnly(req, res)) return;
+      if (!approverOnly(req, res)) return;
+      const held = invoker.approvals.get(req.params.id!);
+      if (held && !approvalVisible(req, held.serverId)) return void res.status(404).json({ error: 'Not Found', message: 'Approval request not found' });
       const body = (req.body ?? {}) as { reason?: unknown };
       const reason = typeof body.reason === 'string' ? body.reason.slice(0, 500) : undefined;
       try {
@@ -822,6 +862,76 @@ export function createApiRouter(
       }
     });
   }
+
+  // ─── Tenants (workspaces, RBAC) ─────────────────────────────────────────────
+
+  const tenantView = (t: TenantConfig, role: TenantRole | undefined, operator: boolean) => ({
+    id: t.id,
+    name: t.name ?? t.id,
+    role: role ?? (operator ? 'operator' : undefined),
+    servers: t.servers,
+    serverIds: registry
+      .getAllServers()
+      .filter((s) => !s.replicaOf && t.servers.some((p) => globToRegExp(p).test(s.id)))
+      .map((s) => s.id),
+    ...(operator || (role && ROLE_RANK[role] >= ROLE_RANK.admin) ? { members: t.members ?? [] } : {}),
+  });
+  const isOperator = (req: Request) => !isRestricted(scopeOf(req));
+  const findTenant = (id: string) => cfg.tenants?.find((t) => t.id === id);
+
+  router.get('/tenants', auth, (req, res) => {
+    const clientId = (req as AuthedRequest).clientId;
+    const operator = isOperator(req);
+    const list = (cfg.tenants ?? [])
+      .map((t) => ({ t, role: roleIn(t, clientId) }))
+      .filter(({ role }) => operator || role)
+      .map(({ t, role }) => tenantView(t, role, operator));
+    res.json({ tenants: list, clientId: clientId ?? 'anonymous', operator });
+  });
+
+  router.get('/tenants/:id', auth, (req, res) => {
+    const t = findTenant(req.params.id!);
+    const role = t ? roleIn(t, (req as AuthedRequest).clientId) : undefined;
+    if (!t || (!role && !isOperator(req))) return void res.status(404).json({ error: 'Not Found', message: 'Tenant not found' });
+    res.json(tenantView(t, role, isOperator(req)));
+  });
+
+  // Owners (and operators) manage members at runtime. Not persisted: also update the config file.
+  const ownerOf = (req: Request, res: Response): TenantConfig | undefined => {
+    const t = findTenant(req.params.id!);
+    const role = t ? roleIn(t, (req as AuthedRequest).clientId) : undefined;
+    if (!t || (!role && !isOperator(req))) return void res.status(404).json({ error: 'Not Found', message: 'Tenant not found' });
+    if (!isOperator(req) && role !== 'owner') return void res.status(403).json({ error: 'Forbidden', message: 'Only tenant owners can manage members' });
+    return t;
+  };
+  router.put('/tenants/:id/members', auth, (req, res) => {
+    const t = ownerOf(req, res);
+    if (!t) return;
+    const body = (req.body ?? {}) as { client?: unknown; role?: unknown };
+    if (typeof body.client !== 'string' || !body.client || !['owner', 'admin', 'viewer'].includes(String(body.role))) {
+      return void res.status(400).json({ error: 'Bad Request', message: 'Body must be { "client": "<client id glob>", "role": "owner" | "admin" | "viewer" }' });
+    }
+    const members = (t.members ??= []);
+    const existing = members.find((m) => m.client === body.client);
+    if (existing) existing.role = body.role as TenantRole;
+    else members.push({ client: body.client, role: body.role as TenantRole });
+    logger.info(`Tenant ${t.id}: ${body.client} is now ${String(body.role)} (by ${(req as AuthedRequest).clientId ?? 'operator'})`);
+    options.onTenantsChanged?.();
+    res.json(tenantView(t, roleIn(t, (req as AuthedRequest).clientId), isOperator(req)));
+  });
+  router.delete('/tenants/:id/members/:client', auth, (req, res) => {
+    const t = ownerOf(req, res);
+    if (!t) return;
+    const before = t.members?.length ?? 0;
+    const remaining = (t.members ?? []).filter((m) => m.client !== req.params.client);
+    if (remaining.length === before) return void res.status(404).json({ error: 'Not Found', message: 'Member not found' });
+    if (!remaining.some((m) => m.role === 'owner') && (t.members ?? []).some((m) => m.role === 'owner')) {
+      return void res.status(409).json({ error: 'Conflict', message: 'A tenant must keep at least one owner' });
+    }
+    t.members = remaining;
+    options.onTenantsChanged?.();
+    res.json(tenantView(t, roleIn(t, (req as AuthedRequest).clientId), isOperator(req)));
+  });
 
   // Tool result cache: stats and purge (operator view).
   router.get('/cache', auth, (req, res) => {

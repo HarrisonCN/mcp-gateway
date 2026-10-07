@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-07
+
+Tenants / workspaces with role-based access control.
+
+### Added
+- **`tenants:`** — workspaces that own servers (`servers` globs) and members (client id globs) with roles
+  **owner / admin / viewer**. Members are confined to their tenants' servers on top of their key / token scope; tool
+  calls (REST and `/mcp`) need `admin` or `owner` on the server's tenant (viewers are read-only: `403` / `-32003`).
+  Clients outside every tenant keep operator access.
+- Tenant-aware approvals: admins / owners list and decide held calls for their tenants' servers only.
+- **API**: `GET /api/v1/tenants[/:id]`, `PUT /api/v1/tenants/:id/members`, `DELETE /api/v1/tenants/:id/members/:client`
+  (owners / operators; last owner protected; runtime changes are not persisted). MCP sessions pick up membership
+  changes.
+- **Dashboard**: *Workspaces* card (role badges, member role selectors for owners), also in the demo.
+- Hot reloadable; exports `withTenantScope`, `membershipsOf`, `roleIn`, `canCall`, `ROLE_RANK`.
+
 ## [2.2.0] - 2026-10-07
 
 Tool result caching and in-flight de-duplication.

@@ -38,6 +38,7 @@ import { originAllowed } from '../middleware/cors.js';
 import { isLoopbackOrigin, isSameOrigin } from '../security/network.js';
 import type { AuthedRequest } from '../auth/middleware.js';
 import { filterToolsByScope, isToolInScope, type AccessScope } from '../auth/scopes.js';
+import { canCall } from '../auth/tenants.js';
 import { logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
 import { buildToolIndex, toMcpTool, type ToolIndex } from './naming.js';
@@ -951,6 +952,9 @@ export class McpEndpoint {
     const { serverId } = tool;
     if (!this.deps.registry.isToolExposed(serverId, tool.name)) {
       return rpcError(id, { code: JSONRPC_INVALID_PARAMS, message: `Unknown tool: ${name}` });
+    }
+    if (!canCall(session.auth.scope, serverId)) {
+      return rpcError(id, { code: ERR_FORBIDDEN, message: `Forbidden: read-only role on server "${serverId}" (tool calls need admin or owner)` });
     }
 
     const limited = await this.applyRateLimit(req, res, id, single);
