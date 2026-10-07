@@ -85,6 +85,7 @@ program
         w.on('reload', (next) => {
           // CLI overrides keep precedence over the file
           if (options.logLevel) next.logLevel = options.logLevel;
+          if (options.port !== undefined) next.port = config.port;
           gw.reload(next).catch((err: unknown) => {
             logger.error(`Hot reload failed: ${err instanceof Error ? err.message : String(err)}`);
           });

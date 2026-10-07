@@ -1,0 +1,18 @@
+# Prometheus scrape config for the docker-compose example.
+# mcp-gateway exposes Prometheus text at /api/v1/metrics when `monitor.prometheus: true`.
+
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: mcp-gateway
+    metrics_path: /api/v1/metrics
+    params:
+      format: [prometheus]
+    static_configs:
+      - targets: ["mcp-gateway:4000"]
+    # Only needed when `auth.protect.metrics: true`; harmless otherwise.
+    # The compose file writes $GATEWAY_API_KEY to this file at container start.
+    authorization:
+      type: Bearer
+      credentials_file: /tmp/gateway-key

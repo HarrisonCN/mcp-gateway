@@ -26,19 +26,28 @@ src/
 ├── cli.ts              # CLI entry point
 ├── index.ts            # Public library API
 ├── gateway/
-│   ├── index.ts        # Gateway bootstrap & HTTP server
-│   └── api.ts          # Express route handlers
+│   ├── index.ts        # Gateway bootstrap, HTTP server, hot reload
+│   ├── api.ts          # Express route handlers (hot-swappable auth / rate limit)
+│   └── supervisor.ts   # Connect + automatic reconnect with backoff
 ├── registry/
-│   └── index.ts        # Server registry & lifecycle
+│   └── index.ts        # Server registry & health state
 ├── proxy/
-│   └── index.ts        # MCP stdio/SSE/WS proxy
+│   └── index.ts        # Transport-independent MCP session layer
+├── transport/
+│   ├── channel.ts      # UpstreamChannel interface
+│   ├── stdio.ts        # child process, newline-delimited JSON-RPC
+│   ├── streamable-http.ts  # MCP Streamable HTTP (2025-03-26+)
+│   ├── sse.ts          # MCP HTTP+SSE (2024-11-05)
+│   ├── websocket.ts    # WebSocket ("mcp" subprotocol)
+│   └── sse-parser.ts   # incremental text/event-stream parser
 ├── auth/
 │   ├── middleware.ts   # Auth middleware (API key, JWT)
 │   └── ratelimit.ts    # Rate limiting middleware
 ├── monitor/
 │   └── index.ts        # Metrics collection & Prometheus export
 ├── config/
-│   └── loader.ts       # YAML/JSON config loading & validation
+│   ├── loader.ts       # YAML/JSON config loading & validation
+│   └── watcher.ts      # config file watcher (hot reload)
 └── utils/
     ├── types.ts        # Shared TypeScript types
     └── logger.ts       # Structured logger
@@ -46,11 +55,18 @@ src/
 
 ## Adding a New Transport
 
-Currently, only `stdio` transport is fully implemented. To add `sse` or `websocket`:
+Transports are small *channels* that only move JSON-RPC messages; the MCP
+handshake, request correlation, timeouts/cancellation, `maxConcurrency` and
+reconnects are shared and need no changes.
 
-1. Add the connection logic in `src/proxy/index.ts`
-2. Handle the new transport type in the `connect()` method
-3. Add tests in `test/proxy.test.ts` (see `test/fixtures/fake-mcp-server.mjs`)
+1. Implement `UpstreamChannel` (`src/transport/channel.ts`) in `src/transport/<name>.ts`:
+   `start()`, `send()`, `close()`, and call `onmessage` / `onclose` (only for
+   *unexpected* loss — the supervisor reconnects on it).
+2. Add the transport name to `ServerTransport` (`src/utils/types.ts`), the config
+   schema (`src/config/loader.ts`) and `defaultChannelFactory` (`src/proxy/index.ts`).
+3. Add tests in `test/transports.test.ts`. Where possible test against the
+   official SDK server (see `test/fixtures/remote-servers.ts`); stdio tests use
+   `test/fixtures/fake-mcp-server.mjs`.
 
 ## Pull Request Guidelines
 

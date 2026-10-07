@@ -1,0 +1,65 @@
+# Remote MCP servers over HTTP / SSE / WebSocket, with automatic reconnect.
+#
+# Try it with any server built on the official SDK, e.g. the "everything"
+# reference server started in Streamable HTTP mode
+# (npx -y @modelcontextprotocol/server-everything streamableHttp — check its
+# README for the port it listens on and adjust `url` below).
+
+port: 4000
+host: 127.0.0.1
+logLevel: info
+
+auth:
+  strategy: api-key
+  apiKeys: ["dev-key-replace-me"]
+  protect:
+    health: true       # /api/v1/health/live stays public for probes
+    metrics: true
+
+monitor:
+  prometheus: true
+
+# Gateway-wide reconnect policy (each server can override it)
+reconnect:
+  enabled: true
+  initialDelayMs: 1000
+  maxDelayMs: 60000
+  multiplier: 2
+  jitter: 0.2
+  maxAttempts: 0       # retry forever
+
+healthCheckIntervalMs: 15000
+
+servers:
+  # Current MCP transport (2025-03-26+)
+  - id: everything
+    name: Everything (Streamable HTTP)
+    transport: streamable-http
+    url: http://localhost:3001/mcp
+    timeout: 30000
+
+  # Hosted server that needs a token; ${VAR} is read from the gateway's environment
+  - id: hosted
+    name: Hosted MCP
+    transport: streamable-http
+    url: https://mcp.example.com/mcp
+    headers:
+      Authorization: "Bearer ${HOSTED_MCP_TOKEN}"
+    enabled: false
+
+  # Legacy HTTP+SSE transport (2024-11-05)
+  - id: legacy-sse
+    name: Legacy SSE server
+    transport: sse
+    url: http://localhost:8080/sse
+    reconnect:
+      maxAttempts: 10  # give up after 10 failed retries
+    enabled: false
+
+  # WebSocket (one JSON-RPC message per frame, "mcp" subprotocol)
+  - id: ws
+    name: WebSocket server
+    transport: websocket
+    url: ws://localhost:8081
+    subprotocol: mcp   # set to "" if the server rejects subprotocols
+    enabled: false

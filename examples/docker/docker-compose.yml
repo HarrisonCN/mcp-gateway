@@ -12,7 +12,8 @@ services:
     environment:
       MCP_GATEWAY_PORT: "4000"
       MCP_GATEWAY_LOG_LEVEL: "info"
-      MCP_GATEWAY_API_KEYS: "your-secret-key"
+      # Same key is used by Prometheus (see prometheus.yml / the prometheus service below)
+      MCP_GATEWAY_API_KEYS: "${GATEWAY_API_KEY:-change-me}"
       GITHUB_TOKEN: "${GITHUB_TOKEN}"
       DATABASE_URL: "postgresql://user:pass@postgres:5432/mydb"
     volumes:
@@ -23,7 +24,8 @@ services:
     restart: unless-stopped
     healthcheck:
       # node:alpine ships wget, not curl
-      test: ["CMD", "wget", "-qO-", "http://localhost:4000/api/v1/health"]
+      # /health/live stays public even with auth.protect.health enabled
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/api/v1/health/live"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -38,13 +40,22 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
 
-  # Optional: Prometheus + Grafana for metrics visualization
+  # Optional: Prometheus for metrics (requires `monitor.prometheus: true` in mcp-gateway.yml)
   prometheus:
     image: prom/prometheus:latest
+    # The scrape config reads the bearer token from a file so the key is not baked into prometheus.yml.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - 'printf %s "$$GATEWAY_API_KEY" > /tmp/gateway-key && exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus'
+    environment:
+      GATEWAY_API_KEY: "${GATEWAY_API_KEY:-change-me}"
     ports:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - mcp-gateway
     restart: unless-stopped
 
 volumes:

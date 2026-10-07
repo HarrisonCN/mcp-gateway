@@ -122,8 +122,10 @@ export class ServerRegistry extends EventEmitter {
     serverId: string,
     status: ServerStatus,
     latencyMs?: number,
-    errorMessage?: string
+    errorMessage?: string,
+    extra: Pick<ServerHealth, 'connectedSince' | 'reconnect'> = {},
   ): void {
+    if (!this.servers.has(serverId)) return; // never resurrect an unregistered server
     const prev = this.health.get(serverId);
     const updated: ServerHealth = {
       serverId,
@@ -132,7 +134,11 @@ export class ServerRegistry extends EventEmitter {
       latencyMs,
       errorMessage,
       toolCount: this.tools.get(serverId)?.length,
+      connectedSince: 'connectedSince' in extra ? extra.connectedSince : prev?.connectedSince,
+      reconnect: 'reconnect' in extra ? extra.reconnect : prev?.reconnect,
     };
+    if (!updated.connectedSince) delete updated.connectedSince;
+    if (!updated.reconnect) delete updated.reconnect;
     this.health.set(serverId, updated);
 
     if (prev?.status !== status) {
@@ -176,6 +182,7 @@ export class ServerRegistry extends EventEmitter {
     online: number;
     offline: number;
     degraded: number;
+    reconnecting: number;
     unknown: number;
     totalTools: number;
   } {
@@ -185,6 +192,7 @@ export class ServerRegistry extends EventEmitter {
       online: allHealth.filter((h) => h.status === 'online').length,
       offline: allHealth.filter((h) => h.status === 'offline').length,
       degraded: allHealth.filter((h) => h.status === 'degraded').length,
+      reconnecting: allHealth.filter((h) => h.status === 'reconnecting').length,
       unknown: allHealth.filter((h) => h.status === 'unknown').length,
       totalTools: this.getAllTools().length,
     };

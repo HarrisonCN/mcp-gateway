@@ -1,224 +1,179 @@
 /**
- * WebSocket Transport for MCP servers
+ * WebSocket channel — one JSON-RPC message per text frame, using the `mcp`
+ * subprotocol by default (the same convention as the official SDK's
+ * `WebSocketClientTransport`; override per server with `subprotocol`). Uses the `ws` package so custom headers work
+ * and Node 20 (no global WebSocket) is supported.
  *
- * Connects to MCP servers that expose a WebSocket endpoint,
- * enabling full-duplex communication with lower latency than SSE.
- *
- * Audit fixes:
- *  - Uses the `ws` package (already a dependency). The previous code relied on
- *    a global WebSocket that does not exist on Node 20 (the declared engine)
- *    and whose constructor ignores the `headers` option anyway.
- *  - An intentional disconnect() no longer triggers the auto-reconnect loop.
- *  - Request ids come from a monotonic counter instead of Date.now().
- *  - Pending requests are rejected when the socket closes instead of waiting
- *    for their timeouts.
- *  - Reconnect / ping timers are unref()'d and cleared on disconnect.
- *
- * NOTE: not yet wired into McpProxy — see CONTRIBUTING.md.
+ * Keep-alive pings detect half-open connections: if a pong does not arrive
+ * before the next ping, the socket is terminated and reported as lost.
+ * Reconnection is handled by the gateway supervisor, which re-runs the MCP
+ * handshake on a fresh socket.
  *
  * @module transport/websocket
  */
 
-import { EventEmitter } from 'events';
 import WebSocket from 'ws';
-import type { Logger } from '../utils/logger.js';
-import type { MCPRequest, MCPResponse } from '../utils/types.js';
+import type { McpServerConfig } from '../utils/types.js';
+import { logger } from '../utils/logger.js';
+import { expandRecord, type ChannelOptions, type JsonRpcMessage, type UpstreamChannel } from './channel.js';
 
-export interface WebSocketTransportOptions {
-  url: string;
-  headers?: Record<string, string>;
-  reconnectIntervalMs?: number;
-  maxReconnectAttempts?: number;
-  timeoutMs?: number;
+const SUBPROTOCOL = 'mcp';
+const MAX_PAYLOAD = 16 * 1024 * 1024;
+
+export interface WebSocketChannelOptions extends ChannelOptions {
   pingIntervalMs?: number;
 }
 
-type PendingRequest = {
-  resolve: (value: MCPResponse) => void;
-  reject: (reason: Error) => void;
-  timer: NodeJS.Timeout;
-};
+export class WebSocketChannel implements UpstreamChannel {
+  readonly kind = 'websocket';
+  onmessage?: (message: JsonRpcMessage) => void;
+  onclose?: (error: Error) => void;
 
-let _idSeq = 0;
+  private ws?: WebSocket;
+  private closed = false;
+  private lost = false;
+  private pingTimer?: NodeJS.Timeout;
+  private awaitingPong = false;
 
-export class WebSocketTransport extends EventEmitter {
-  private options: Required<WebSocketTransportOptions>;
-  private logger: Logger;
-  private ws: WebSocket | null = null;
-  private connected = false;
-  private closedByUser = false;
-  private reconnectAttempts = 0;
-  private reconnectTimer: NodeJS.Timeout | null = null;
-  private pendingRequests = new Map<string | number, PendingRequest>();
-  private pingTimer: NodeJS.Timeout | null = null;
-
-  constructor(options: WebSocketTransportOptions, logger: Logger) {
-    super();
-    this.options = {
-      reconnectIntervalMs: 3000,
-      maxReconnectAttempts: 10,
-      timeoutMs: 30000,
-      headers: {},
-      pingIntervalMs: 30000,
-      ...options,
-    };
-    this.logger = logger;
+  constructor(
+    private readonly config: McpServerConfig,
+    private readonly options: WebSocketChannelOptions,
+  ) {
+    if (!config.url) throw new Error(`Server "${config.id}" has no url configured`);
   }
 
-  async connect(): Promise<void> {
-    this.closedByUser = false;
-    return new Promise((resolve, reject) => {
-      this._openSocket(resolve, reject);
-    });
-  }
+  start(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      // `subprotocol: ""` connects without requesting one (for servers that reject it).
+      const sub = this.config.subprotocol ?? SUBPROTOCOL;
+      const ws = new WebSocket(this.config.url!, sub ? [sub] : [], {
+        headers: expandRecord(this.config.headers),
+        handshakeTimeout: this.options.connectTimeoutMs,
+        maxPayload: MAX_PAYLOAD,
+      });
+      this.ws = ws;
 
-  private _openSocket(onConnect?: () => void, onError?: (e: Error) => void): void {
-    let settled = false;
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(this.options.url, { headers: this.options.headers });
-    } catch (err) {
-      onError?.(err instanceof Error ? err : new Error(String(err)));
-      return;
-    }
-    this.ws = ws;
-
-    ws.on('open', () => {
-      settled = true;
-      this.connected = true;
-      this.reconnectAttempts = 0;
-      this.logger.info(`WebSocket transport connected to ${this.options.url}`);
-      onConnect?.();
-      this.emit('connect');
-      this._startPing();
-    });
-
-    ws.on('message', (raw) => {
-      let data: MCPResponse;
-      try {
-        data = JSON.parse(raw.toString());
-      } catch {
-        this.logger.debug(`Non-JSON WebSocket message: ${raw.toString()}`);
-        return;
-      }
-      const id = data.id;
-      const pending = id !== undefined ? this.pendingRequests.get(id) : undefined;
-      if (pending && data.method === undefined) {
-        clearTimeout(pending.timer);
-        this.pendingRequests.delete(id!);
-        pending.resolve(data);
-      } else {
-        this.emit('message', data);
-      }
-    });
-
-    ws.on('error', (err) => {
-      this.logger.error(`WebSocket error: ${err.message}`);
-      if (!settled) {
+      ws.on('open', () => {
         settled = true;
-        onError?.(err);
-      }
-    });
+        this.startPing();
+        resolve();
+      });
 
-    ws.on('close', (code, reason) => {
-      if (this.ws === ws) this.ws = null;
-      this.connected = false;
-      this._stopPing();
-      this._rejectAll(new Error('WebSocket closed'));
-      if (this.closedByUser) return;
-      this.logger.warn(`WebSocket closed (code=${code}, reason=${reason.toString() || 'none'})`);
-      this._scheduleReconnect();
-    });
-  }
-
-  private _rejectAll(err: Error): void {
-    for (const [, pending] of this.pendingRequests) {
-      clearTimeout(pending.timer);
-      pending.reject(err);
-    }
-    this.pendingRequests.clear();
-  }
-
-  private _startPing(): void {
-    this._stopPing();
-    this.pingTimer = setInterval(() => {
-      if (this.connected && this.ws?.readyState === WebSocket.OPEN) {
-        try {
-          this.ws.ping();
-        } catch {
-          // ignore ping errors
-        }
-      }
-    }, this.options.pingIntervalMs);
-    this.pingTimer.unref();
-  }
-
-  private _stopPing(): void {
-    if (this.pingTimer) {
-      clearInterval(this.pingTimer);
-      this.pingTimer = null;
-    }
-  }
-
-  private _scheduleReconnect(): void {
-    if (this.closedByUser || this.reconnectTimer) return;
-    if (this.reconnectAttempts >= this.options.maxReconnectAttempts) {
-      this.logger.error(`WebSocket max reconnect attempts (${this.options.maxReconnectAttempts}) reached`);
-      this.emit('disconnect');
-      return;
-    }
-    this.reconnectAttempts++;
-    const delay = this.options.reconnectIntervalMs * Math.min(this.reconnectAttempts, 5);
-    this.logger.info(`WebSocket reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})…`);
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      if (!this.closedByUser) this._openSocket();
-    }, delay);
-    this.reconnectTimer.unref();
-  }
-
-  async send(request: MCPRequest): Promise<MCPResponse> {
-    const ws = this.ws;
-    if (!this.connected || !ws) {
-      throw new Error('WebSocket transport is not connected');
-    }
-
-    return new Promise((resolve, reject) => {
-      const id = request.id ?? ++_idSeq;
-      const payload = JSON.stringify({ ...request, id });
-
-      const timer = setTimeout(() => {
-        this.pendingRequests.delete(id);
-        reject(new Error(`WebSocket request timed out after ${this.options.timeoutMs}ms`));
-      }, this.options.timeoutMs);
-
-      this.pendingRequests.set(id, { resolve, reject, timer });
-
-      ws.send(payload, (err) => {
-        if (err) {
-          clearTimeout(timer);
-          this.pendingRequests.delete(id);
+      ws.on('unexpected-response', (_req, res) => {
+        res.resume();
+        const err = new Error(`WebSocket upgrade rejected with HTTP ${res.statusCode}`);
+        ws.terminate();
+        if (!settled) {
+          settled = true;
           reject(err);
         }
+      });
+
+      ws.on('message', (raw, isBinary) => {
+        if (isBinary) return;
+        let msg: unknown;
+        try {
+          msg = JSON.parse(raw.toString());
+        } catch {
+          logger.debug(`[${this.config.id}] ignoring non-JSON WebSocket frame`);
+          return;
+        }
+        // Batches are arrays of messages.
+        for (const m of Array.isArray(msg) ? msg : [msg]) {
+          if (m && typeof m === 'object') this.onmessage?.(m as JsonRpcMessage);
+        }
+      });
+
+      ws.on('pong', () => {
+        this.awaitingPong = false;
+      });
+
+      ws.on('error', (err) => {
+        logger.debug(`[${this.config.id}] WebSocket error: ${err.message}`);
+        if (!settled) {
+          settled = true;
+          reject(err);
+        }
+      });
+
+      ws.on('close', (code, reason) => {
+        this.stopPing();
+        if (!settled) {
+          settled = true;
+          reject(new Error(`WebSocket closed during connect (code=${code})`));
+          return;
+        }
+        this.lose(new Error(`WebSocket closed (code=${code}, reason=${reason.toString() || 'none'})`));
       });
     });
   }
 
-  disconnect(): void {
-    this.closedByUser = true;
-    this.connected = false;
-    this._stopPing();
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    this.ws?.close(1000, 'Client disconnect');
-    this.ws = null;
-    this._rejectAll(new Error('WebSocket transport disconnected'));
-    this.emit('disconnect');
+  private lose(err: Error): void {
+    if (this.closed || this.lost) return;
+    this.lost = true;
+    logger.warn(`[${this.config.id}] ${err.message}`);
+    this.onclose?.(err);
   }
 
-  isConnected(): boolean {
-    return this.connected;
+  private startPing(): void {
+    const interval = this.options.pingIntervalMs ?? 30_000;
+    if (!(interval > 0)) return;
+    this.pingTimer = setInterval(() => {
+      const ws = this.ws;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      if (this.awaitingPong) {
+        // No pong since the last ping: the connection is dead.
+        ws.terminate();
+        return;
+      }
+      this.awaitingPong = true;
+      try {
+        ws.ping();
+      } catch {
+        // ignore — 'close' will follow
+      }
+    }, interval);
+    this.pingTimer.unref();
+  }
+
+  private stopPing(): void {
+    if (this.pingTimer) clearInterval(this.pingTimer);
+    this.pingTimer = undefined;
+  }
+
+  send(message: JsonRpcMessage): Promise<void> {
+    const ws = this.ws;
+    if (this.closed || this.lost || !ws || ws.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error('WebSocket channel is not connected'));
+    }
+    return new Promise<void>((resolve, reject) => {
+      ws.send(JSON.stringify(message), (err) => (err ? reject(err) : resolve()));
+    });
+  }
+
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    this.stopPing();
+    const ws = this.ws;
+    if (!ws) return;
+    if (ws.readyState === WebSocket.CLOSED) return;
+    await new Promise<void>((resolve) => {
+      const force = setTimeout(() => {
+        ws.terminate();
+        resolve();
+      }, this.options.killGraceMs);
+      force.unref();
+      ws.once('close', () => {
+        clearTimeout(force);
+        resolve();
+      });
+      try {
+        ws.close(1000, 'Client disconnect');
+      } catch {
+        ws.terminate();
+      }
+    });
   }
 }

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Minimal line-delimited JSON-RPC MCP server used by the tests.
-// Behaviour knobs via env: FAIL_INIT=1, TOOL_PAGES=n, SLOW_MS=n
+// Behaviour knobs via env: FAIL_INIT=1, FAIL_INIT_IF_EXISTS=<path>, TOOL_PAGES=n, SLOW_MS=n
 import { createInterface } from 'readline';
+import { existsSync } from 'fs';
 
 const pages = Number(process.env.TOOL_PAGES ?? 1);
 const slowMs = Number(process.env.SLOW_MS ?? 0);
@@ -12,13 +13,16 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (msg.id === undefined) return; // notification
   switch (msg.method) {
     case 'initialize':
-      if (process.env.FAIL_INIT) return send({ jsonrpc: '2.0', id: msg.id, error: { code: -1, message: 'nope' } });
+      const failFile = process.env.FAIL_INIT_IF_EXISTS;
+      if (process.env.FAIL_INIT || (failFile && existsSync(failFile))) return send({ jsonrpc: '2.0', id: msg.id, error: { code: -1, message: 'nope' } });
       return send({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'fake', version: '1' } } });
     case 'tools/list': {
       const page = Number(msg.params?.cursor ?? 0);
       const next = page + 1 < pages ? String(page + 1) : undefined;
       return send({ jsonrpc: '2.0', id: msg.id, result: { tools: [{ name: `echo${page || ''}`, description: 'echo' }], ...(next ? { nextCursor: next } : {}) } });
     }
+    case 'ping':
+      return send({ jsonrpc: '2.0', id: msg.id, result: {} });
     case 'tools/call': {
       const { name, arguments: args } = msg.params;
       if (name === 'crash') process.exit(3);

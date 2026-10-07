@@ -12,15 +12,41 @@ import type { GatewayConfig } from '../utils/types.js';
 
 // ─── Zod Schema ───────────────────────────────────────────────────────────────
 
+const ReconnectSchema = z.object({
+  enabled: z.boolean().optional(),
+  initialDelayMs: z.number().int().positive().optional(),
+  maxDelayMs: z.number().int().positive().optional(),
+  multiplier: z.number().min(1).optional(),
+  jitter: z.number().min(0).max(1).optional(),
+  maxAttempts: z.number().int().min(0).optional(),
+});
+
+const URL_PROTOCOLS: Record<string, string[]> = {
+  sse: ['http:', 'https:'],
+  'streamable-http': ['http:', 'https:'],
+  websocket: ['ws:', 'wss:'],
+};
+
+function safeProtocol(url: string): string {
+  try {
+    return new URL(url).protocol;
+  } catch {
+    return '';
+  }
+}
+
 const McpServerSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   description: z.string().optional(),
-  transport: z.enum(['stdio', 'sse', 'websocket']),
+  transport: z.enum(['stdio', 'sse', 'websocket', 'streamable-http']),
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
   url: z.string().url().optional(),
   env: z.record(z.string()).optional(),
+  headers: z.record(z.string()).optional(),
+  subprotocol: z.string().optional(),
+  reconnect: ReconnectSchema.optional(),
   tags: z.array(z.string()).optional(),
   enabled: z.boolean().default(true),
   timeout: z.number().positive().default(30000),
@@ -29,8 +55,17 @@ const McpServerSchema = z.object({
   if (s.transport === 'stdio' && !s.command) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['command'], message: 'required for stdio transport' });
   }
-  if ((s.transport === 'sse' || s.transport === 'websocket') && !s.url) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['url'], message: `required for ${s.transport} transport` });
+  const protocols = URL_PROTOCOLS[s.transport];
+  if (protocols) {
+    if (!s.url) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['url'], message: `required for ${s.transport} transport` });
+    } else if (!protocols.includes(safeProtocol(s.url))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['url'],
+        message: `${s.transport} transport needs a ${protocols.map((p) => p.replace(':', '://')).join(' or ')} URL`,
+      });
+    }
   }
 });
 
@@ -42,6 +77,12 @@ const GatewayConfigSchema = z.object({
       strategy: z.enum(['none', 'api-key', 'jwt', 'oauth2']).default('none'),
       apiKeys: z.array(z.string()).optional(),
       jwtSecret: z.string().optional(),
+      protect: z
+        .object({
+          health: z.boolean().default(false),
+          metrics: z.boolean().default(false),
+        })
+        .optional(),
     })
     .superRefine((a, ctx) => {
       if (a.strategy === 'api-key' && !(a.apiKeys ?? []).some((k) => k.length > 0)) {
@@ -72,6 +113,9 @@ const GatewayConfigSchema = z.object({
   servers: z.array(McpServerSchema).default([]),
   corsOrigins: z.array(z.string()).optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+  reconnect: ReconnectSchema.optional(),
+  healthCheckIntervalMs: z.number().int().min(1000).default(30_000),
+  dashboard: z.object({ enabled: z.boolean().default(true) }).optional(),
 }).superRefine((c, ctx) => {
   const seen = new Set<string>();
   c.servers.forEach((s, i) => {
@@ -149,6 +193,7 @@ function applyEnvOverrides(config: Record<string, unknown>): Record<string, unkn
     overrides.logLevel = process.env.MCP_GATEWAY_LOG_LEVEL;
   }
   if (process.env.MCP_GATEWAY_API_KEYS) {
+    // Keeps other auth settings (e.g. auth.protect) from the file.
     overrides.auth = {
       ...(overrides.auth as Record<string, unknown> ?? {}),
       strategy: 'api-key',
@@ -167,11 +212,23 @@ port: 4000
 host: 0.0.0.0
 logLevel: info
 
-# Authentication (optional)
+# Authentication (optional; keys can be changed without a restart)
 # auth:
 #   strategy: api-key
 #   apiKeys:
 #     - your-secret-key-here
+#   protect:
+#     health: false    # true = /api/v1/health requires a key (/health/live stays public)
+#     metrics: false   # true = /api/v1/metrics requires a key (configure your scraper)
+
+# Automatic reconnect of crashed / disconnected servers (defaults shown)
+# reconnect:
+#   enabled: true
+#   initialDelayMs: 1000
+#   maxDelayMs: 60000
+#   multiplier: 2
+#   jitter: 0.2
+#   maxAttempts: 0     # 0 = retry forever
 
 # Rate limiting (optional)
 # rateLimit:
@@ -206,5 +263,23 @@ servers:
       GITHUB_PERSONAL_ACCESS_TOKEN: \${GITHUB_TOKEN}
     tags: [github, vcs]
     enabled: true
+
+  # Remote servers
+  # - id: remote-http
+  #   name: Remote (Streamable HTTP)
+  #   transport: streamable-http
+  #   url: https://mcp.example.com/mcp
+  #   headers:
+  #     Authorization: "Bearer \${REMOTE_MCP_TOKEN}"
+  #
+  # - id: legacy-sse
+  #   name: Legacy SSE server
+  #   transport: sse
+  #   url: http://localhost:8080/sse
+  #
+  # - id: websocket
+  #   name: WebSocket server
+  #   transport: websocket
+  #   url: ws://localhost:8081
 `;
 }

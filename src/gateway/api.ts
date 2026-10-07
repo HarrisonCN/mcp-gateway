@@ -8,13 +8,27 @@ import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import type { GatewayConfig, McpServerConfig } from '../utils/types.js';
 import type { ServerRegistry } from '../registry/index.js';
 import { ERR_TIMEOUT, type McpProxy } from '../proxy/index.js';
-import type { MetricsCollector } from '../monitor/index.js';
+import type { MetricsCollector, ServerStateSample } from '../monitor/index.js';
+import type { ServerSupervisor } from './supervisor.js';
 import { createAuthMiddleware, type AuthedRequest } from '../auth/middleware.js';
 import { createRateLimiter } from '../auth/ratelimit.js';
 import { logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
 
-export type ApiRouter = express.Router & { close(): void };
+export type ApiRouter = express.Router & {
+  close(): void;
+  /**
+   * Apply hot-reloadable settings from a new config: auth (strategy, keys,
+   * secret, protect flags), rate limits and monitor flags. Invalid auth keeps
+   * the current middleware (fail safe).
+   */
+  update(next: GatewayConfig): void;
+};
+
+export interface ApiRouterOptions {
+  /** Enables POST /servers/:id/reconnect and reconnect info. */
+  supervisor?: ServerSupervisor;
+}
 
 /** Wrap async handlers so a thrown error reaches the error middleware instead
  *  of becoming an unhandled promise rejection (Express 4 does not do this). */
@@ -26,10 +40,42 @@ const asyncHandler =
 
 /** Never expose env values (tokens are commonly configured there). */
 export function redactServer(server: McpServerConfig): McpServerConfig {
-  if (!server.env) return server;
-  const env: Record<string, string> = {};
-  for (const k of Object.keys(server.env)) env[k] = '***';
-  return { ...server, env };
+  const mask = (r: Record<string, string>) => Object.fromEntries(Object.keys(r).map((k) => [k, '***']));
+  const out = { ...server };
+  if (server.env) out.env = mask(server.env);
+  if (server.headers) out.headers = mask(server.headers);
+  if (server.url) out.url = redactUrl(server.url);
+  return out;
+}
+
+/** Strip credentials and query values (tokens are often passed there) from a URL. */
+function redactUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    if (u.username || u.password) {
+      u.username = '***';
+      u.password = '';
+    }
+    for (const k of [...u.searchParams.keys()]) u.searchParams.set(k, '***');
+    return u.toString();
+  } catch {
+    return raw;
+  }
+}
+
+/** Per-server state for /metrics and Prometheus. */
+export function serverStateSamples(registry: ServerRegistry, proxy: McpProxy): ServerStateSample[] {
+  return registry.getAllServers().map((s) => {
+    const h = registry.getHealth(s.id);
+    return {
+      id: s.id,
+      status: h?.status ?? 'unknown',
+      up: proxy.isConnected(s.id) ? 1 : 0,
+      reconnects: h?.reconnect?.reconnects ?? 0,
+      reconnectAttempt: h?.reconnect?.attempt ?? 0,
+      latencyMs: h?.latencyMs,
+    };
+  });
 }
 
 function parseIntParam(value: unknown, fallback: number, min: number, max: number): number {
@@ -52,17 +98,61 @@ export function createApiRouter(
   registry: ServerRegistry,
   proxy: McpProxy,
   metrics: MetricsCollector,
+  options: ApiRouterOptions = {},
 ): ApiRouter {
   const router = express.Router() as ApiRouter;
-  const auth = createAuthMiddleware(config.auth);
-  const rateLimit = createRateLimiter(config.rateLimit);
-  router.close = () => rateLimit.close();
+  let cfg = config;
+  // Built eagerly so a misconfiguration fails at startup (fail closed).
+  let authMw = createAuthMiddleware(cfg.auth);
+  let rateLimiter = createRateLimiter(cfg.rateLimit);
+
+  // Stable wrappers: routes keep pointing at these while the inner
+  // middleware is swapped on hot reload.
+  const auth: RequestHandler = (req, res, next) => authMw(req, res, next);
+  const rateLimit: RequestHandler = (req, res, next) => rateLimiter(req, res, next);
+  const protectable =
+    (flag: 'health' | 'metrics'): RequestHandler =>
+    (req, res, next) =>
+      cfg.auth?.protect?.[flag] ? authMw(req, res, next) : next();
+
+  router.close = () => rateLimiter.close();
+  router.update = (next: GatewayConfig) => {
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    let nextAuth = cfg.auth;
+    if (!same(cfg.auth, next.auth)) {
+      try {
+        authMw = createAuthMiddleware(next.auth);
+        nextAuth = next.auth;
+        logger.info(`Auth settings reloaded (strategy: ${next.auth?.strategy ?? 'none'})`);
+      } catch (err) {
+        logger.error(
+          `Auth reload rejected, keeping current auth: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    if (!same(cfg.rateLimit, next.rateLimit)) {
+      const old = rateLimiter;
+      rateLimiter = createRateLimiter(next.rateLimit);
+      old.close();
+      logger.info(
+        next.rateLimit
+          ? `Rate limit reloaded: ${next.rateLimit.limit} per ${next.rateLimit.windowSeconds}s`
+          : 'Rate limit disabled',
+      );
+    }
+    cfg = { ...cfg, auth: nextAuth, rateLimit: next.rateLimit, monitor: next.monitor };
+  };
 
   // ─── Health & Status ────────────────────────────────────────────────────────
 
-  router.get('/health', (_req, res) => {
+  // Liveness probe: always public, reveals nothing (for Docker / k8s).
+  router.get('/health/live', (_req, res) => {
+    res.json({ status: 'ok' });
+  });
+
+  router.get('/health', protectable('health'), (_req, res) => {
     const summary = registry.getSummary();
-    const status = summary.offline > 0 ? 'degraded' : 'ok';
+    const status = summary.offline > 0 || summary.reconnecting > 0 ? 'degraded' : 'ok';
     res.status(status === 'ok' ? 200 : 207).json({
       status,
       version: VERSION,
@@ -71,13 +161,14 @@ export function createApiRouter(
     });
   });
 
-  router.get('/metrics', (req, res) => {
-    if (config.monitor?.prometheus && wantsPrometheus(req)) {
-      res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8').send(metrics.toPrometheusText());
+  router.get('/metrics', protectable('metrics'), (req, res) => {
+    const samples = serverStateSamples(registry, proxy);
+    if (cfg.monitor?.prometheus && wantsPrometheus(req)) {
+      res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8').send(metrics.toPrometheusText(samples));
       return;
     }
     const windowMs = parseIntParam(req.query.window, 3_600_000, 1_000, 365 * 24 * 3_600_000);
-    res.json(metrics.aggregate(windowMs));
+    res.json({ ...metrics.aggregate(windowMs), servers: samples });
   });
 
   // ─── Server Registry ────────────────────────────────────────────────────────
@@ -86,6 +177,7 @@ export function createApiRouter(
     const servers = registry.getAllServers().map((s) => ({
       ...redactServer(s),
       health: registry.getHealth(s.id),
+      session: proxy.getSessionInfo(s.id),
       toolCount: registry.getTools(s.id).length,
     }));
     res.json({ servers, total: servers.length });
@@ -100,9 +192,34 @@ export function createApiRouter(
     res.json({
       ...redactServer(server),
       health: registry.getHealth(server.id),
+      session: proxy.getSessionInfo(server.id),
       tools: registry.getTools(server.id),
     });
   });
+
+  // Force an immediate (re)connect, resetting any backoff.
+  router.post(
+    '/servers/:id/reconnect',
+    auth,
+    rateLimit,
+    asyncHandler(async (req, res) => {
+      const server = registry.getServer(req.params.id!);
+      if (!server) {
+        res.status(404).json({ error: 'Server not found' });
+        return;
+      }
+      if (!options.supervisor) {
+        res.status(501).json({ error: 'Not Implemented', message: 'Reconnect is not available' });
+        return;
+      }
+      const ok = await options.supervisor.connect(server);
+      res.status(ok ? 200 : 502).json({
+        server: server.id,
+        connected: ok,
+        health: registry.getHealth(server.id),
+      });
+    }),
+  );
 
   // ─── Tool Discovery ─────────────────────────────────────────────────────────
 
@@ -171,7 +288,14 @@ export function createApiRouter(
       }
 
       if (!proxy.isConnected(targetServerId)) {
-        res.status(503).json({ error: 'Service Unavailable', message: `Server "${targetServerId}" is not connected` });
+        const health = registry.getHealth(targetServerId);
+        const retryAt = health?.reconnect?.state === 'scheduled' ? health.reconnect.nextAttemptAt : undefined;
+        if (retryAt) res.set('Retry-After', String(Math.max(1, Math.ceil((retryAt.getTime() - Date.now()) / 1000))));
+        res.status(503).json({
+          error: 'Service Unavailable',
+          message: `Server "${targetServerId}" is not connected`,
+          status: health?.status,
+        });
         return;
       }
 
@@ -188,7 +312,7 @@ export function createApiRouter(
         errorMessage: result.error?.message,
         clientId: (req as AuthedRequest).clientId,
       });
-      if (config.monitor?.requestLog !== false) {
+      if (cfg.monitor?.requestLog !== false) {
         logger.info(`${tool} → ${targetServerId} ${result.success ? 'ok' : 'failed'} ${result.durationMs}ms`);
       }
 
