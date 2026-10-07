@@ -70,3 +70,7 @@ servers and tools.
 |---|---|
 | ![Onboarding](../docs/images/dashboard-onboarding-try-tool.png) | ![Playground (中文)](../docs/images/dashboard-playground-zh.png) |
 | ![Light theme](../docs/images/dashboard-overview-light.png) | ![Mobile](../docs/images/dashboard-mobile-zh.png) |
+
+## Demo build
+
+`demo/mock.js` replaces `fetch` for the gateway API with an in-browser simulation (servers, tools, request stream, SSE events). The GitHub Pages workflow (`.github/workflows/pages.yml`) injects it before the dashboard script and publishes the result to <https://harrisoncn.github.io/mcp-gateway/>. It is not shipped in the npm package or Docker image.
