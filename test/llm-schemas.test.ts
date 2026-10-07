@@ -74,6 +74,8 @@ describe('GET /api/v1/tools?format=', () => {
     const filtered: any = await (await get('?format=openai-responses&server=b')).json();
     expect(filtered.tools.map((x: any) => x.name)).toEqual(['echo']);
     expect((await get('?format=gemini')).status).toBe(400);
-    expect(((await (await get('?format=mcp')).json()) as any).tools[0].serverId).toBe('a');
+    // Plain MCP listing: order follows server connect order, which is not deterministic.
+    const plain: any = await (await get('?format=mcp')).json();
+    expect(plain.tools.map((x: any) => x.serverId).sort()).toEqual(['a', 'b']);
   });
 });

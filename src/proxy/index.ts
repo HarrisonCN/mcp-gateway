@@ -395,7 +395,8 @@ export class McpProxy extends EventEmitter {
     options: RequestOptions = {},
   ): Promise<ProxyResponse> {
     const session = this.sessions.get(serverId);
-    if (!session || session.closed) {
+    // Requests are only forwarded once the handshake (initialize → initialized) is done.
+    if (!session || session.closed || !session.connectedAt) {
       return {
         success: false,
         error: { code: ERR_NOT_CONNECTED, message: `Server "${serverId}" is not connected` },
@@ -425,9 +426,10 @@ export class McpProxy extends EventEmitter {
     return r.durationMs;
   }
 
+  /** True once the MCP handshake has completed (not while it is still in progress). */
   isConnected(serverId: string): boolean {
     const s = this.sessions.get(serverId);
-    return !!s && !s.closed;
+    return !!s && !s.closed && !!s.connectedAt;
   }
 
   /** Negotiated session details (for /servers). */
