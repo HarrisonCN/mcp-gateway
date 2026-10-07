@@ -41,4 +41,6 @@ What you expected to happen.
 - mcp-gateway version: `mcp-gateway --version`
 - Node.js version: `node --version`
 - OS: (e.g., macOS 14, Ubuntu 22.04, Windows 11)
-- MCP servers in use: (e.g., `@modelcontextprotocol/server-filesystem`)
+- MCP servers in use: (e.g., `@modelcontextprotocol/server-filesystem`) and their transports
+- Interface: REST `/api/v1` · MCP `/mcp` (which client?) · JS / Kotlin client
+- Deployment: npm · Docker (`ghcr.io/harrisoncn/mcp-gateway:<tag>`) · Kubernetes

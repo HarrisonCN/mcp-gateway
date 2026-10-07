@@ -10,7 +10,7 @@ This guide walks you through setting up mcp-gateway from scratch in under 5 minu
 ## Step 1: Install
 
 ```bash
-npm install -g mcp-gateway
+npm install -g @winstonsayno/mcp-gateway
 ```
 
 Verify the installation:
