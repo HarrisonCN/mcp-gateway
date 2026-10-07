@@ -31,7 +31,7 @@
 ### 安装
 
 ```bash
-npm install -g mcp-gateway
+npm install -g @winstonsayno/mcp-gateway
 ```
 
 ### 初始化配置

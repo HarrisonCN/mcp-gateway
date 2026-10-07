@@ -81,9 +81,9 @@ As [MCP](https://modelcontextprotocol.io) becomes the standard protocol for AI a
 ### Install
 
 ```bash
-npm install -g mcp-gateway
+npm install -g @winstonsayno/mcp-gateway
 # or
-npx mcp-gateway init
+npx @winstonsayno/mcp-gateway init
 ```
 
 ### Configure
