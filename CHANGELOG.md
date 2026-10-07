@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-10-07
+
+Edge runtimes: Cloudflare Workers, Deno and Bun adapters for the HTTP transport.
+
+### Added
+- **`@winstonsayno/mcp-gateway/edge`** (new package export): a dependency-free Fetch-API gateway —
+  `createEdgeGateway({ servers, apiKeys, toolNaming, corsOrigins })` → `fetch(request)`. Fronts remote Streamable
+  HTTP upstreams (sessions, JSON and SSE replies, paging, re-initialize on `404`), aggregates tools (collision or
+  always-prefixed names, per-server allow / deny), serves `/mcp` (initialize, ping, tools/list, tools/call, batches;
+  stateless JSON) and `GET /api/v1/health`, `GET /api/v1/tools`, `POST /api/v1/tools/call`. API keys plain or
+  `sha256:` (Web Crypto), constant-time compare, CORS.
+- **Adapters**: `workersHandler()` (Cloudflare Workers module syntax, config from bindings), `serveDeno()`,
+  `serveBun()`, `serveNode()`; `configFromEnv()`. Examples in `examples/edge` (worker + `wrangler.toml`, Deno, Bun).
+- Docs: [Edge runtimes](docs/guides/edge.md).
+
 ## [2.5.0] - 2026-10-07
 
 Usage quotas and metering export.
