@@ -579,6 +579,16 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v1.5
+
+| Feature | Description |
+|---------|-------------|
+| **Tracing** | `observability.tracing`: spans per tool / resource / prompt call, W3C `traceparent` propagation, built-in OTLP/HTTP exporter or `@opentelemetry/api` |
+| **Prometheus `/metrics`** | conventional scrape path + latency histogram `mcp_gateway_request_duration_seconds` |
+| **Dashboard charts** | calls per server (calls / errors / p95) alongside rate, latency and error charts |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v1.4
 
 | Feature | Description |
@@ -666,7 +676,7 @@ unknown fields). Deep imports, log format, the dashboard and the audit database 
 | Tool-level access control | ✅ Done via per-key scopes (v0.6) |
 | Request replay & debugging | 📋 Planned (history is available via the audit log) |
 | Multi-tenant mode | 📋 Planned |
-| OpenTelemetry tracing | 📋 Planned |
+| OpenTelemetry tracing, Prometheus histogram | ✅ Done (v1.5) |
 
 ## Contributing
 

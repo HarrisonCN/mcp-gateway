@@ -207,6 +207,31 @@ monitor:
   retentionHours: 24           # in-memory history / metrics window (restart)
 ```
 
+## Observability
+
+```yaml
+monitor:
+  prometheus: true             # GET /metrics and /api/v1/metrics?format=prometheus
+observability:
+  tracing:
+    enabled: true
+    exporter: otlp-http        # otlp-http (built-in) | console | otel-api (@opentelemetry/api + your SDK)
+    endpoint: http://otel-collector:4318/v1/traces   # default: $OTEL_EXPORTER_OTLP_TRACES_ENDPOINT or localhost:4318
+    headers: { "x-honeycomb-team": "${HONEYCOMB_KEY}" }
+    serviceName: mcp-gateway
+    resourceAttributes: { deployment.environment: prod }
+    sampleRatio: 1.0           # for new traces; an incoming sampled traceparent is always followed
+```
+
+- **Tracing**: one span per upstream call (`mcp.tools/call <tool>`, `mcp.resources/read <uri>`,
+  `mcp.prompts/get <name>`) for REST and `/mcp`, with `mcp.server.id`, `mcp.tool.name`, `mcp.via`, `mcp.client.id`,
+  `mcp.duration_ms`, `mcp.success`, `mcp.error.code`. A W3C `traceparent` request header makes the span a child of the
+  caller's trace; responses carry the gateway span's `traceparent`. Spans are batched (every 2 s / 256 spans) and
+  exported as OTLP/HTTP JSON — no OpenTelemetry SDK needed. `otel-api` delegates to a TracerProvider you register.
+- **Prometheus**: `GET /metrics` (conventional scrape path; protected with `auth.protect.metrics`) adds a latency
+  histogram `mcp_gateway_request_duration_seconds{server}` (buckets 5 ms … 30 s) to the existing counters and gauges.
+- **Dashboard**: request rate, latency (p50 / p95), error rate, top tools, usage per key and calls per server charts.
+
 ## MCP endpoint
 
 ```yaml

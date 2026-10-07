@@ -43,7 +43,12 @@ interface ServerCounters {
   requests: number;
   errors: number;
   durationMsSum: number;
+  /** Cumulative histogram bucket counts (aligned with LATENCY_BUCKETS_SECONDS). */
+  buckets: number[];
 }
+
+/** Bucket bounds (seconds) of `mcp_gateway_request_duration_seconds`. */
+export const LATENCY_BUCKETS_SECONDS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30];
 
 export class MetricsCollector extends EventEmitter {
   private metrics: RequestMetric[] = [];
@@ -78,10 +83,19 @@ export class MetricsCollector extends EventEmitter {
       this.metrics.splice(0, this.metrics.length - this.maxEntries);
     }
 
-    const c = this.counters.get(metric.serverId) ?? { requests: 0, errors: 0, durationMsSum: 0 };
+    const c = this.counters.get(metric.serverId) ?? {
+      requests: 0,
+      errors: 0,
+      durationMsSum: 0,
+      buckets: new Array<number>(LATENCY_BUCKETS_SECONDS.length).fill(0),
+    };
     c.requests++;
     if (!metric.success) c.errors++;
     c.durationMsSum += metric.durationMs;
+    const sec = metric.durationMs / 1000;
+    LATENCY_BUCKETS_SECONDS.forEach((le, i) => {
+      if (sec <= le) c.buckets[i]!++;
+    });
     this.counters.set(metric.serverId, c);
 
     if (this.audit) {
@@ -250,6 +264,19 @@ export class MetricsCollector extends EventEmitter {
     );
     for (const [id, c] of this.counters) {
       lines.push(`mcp_gateway_server_duration_ms_sum{server="${escapeLabel(id)}"} ${c.durationMsSum}`);
+    }
+    lines.push(
+      '# HELP mcp_gateway_request_duration_seconds Upstream call latency per server (histogram)',
+      '# TYPE mcp_gateway_request_duration_seconds histogram',
+    );
+    for (const [id, c] of this.counters) {
+      const server = escapeLabel(id);
+      LATENCY_BUCKETS_SECONDS.forEach((le, i) => {
+        lines.push(`mcp_gateway_request_duration_seconds_bucket{server="${server}",le="${le}"} ${c.buckets[i]}`);
+      });
+      lines.push(`mcp_gateway_request_duration_seconds_bucket{server="${server}",le="+Inf"} ${c.requests}`);
+      lines.push(`mcp_gateway_request_duration_seconds_sum{server="${server}"} ${(c.durationMsSum / 1000).toFixed(6)}`);
+      lines.push(`mcp_gateway_request_duration_seconds_count{server="${server}"} ${c.requests}`);
     }
     lines.push(
       '# HELP mcp_gateway_success_rate Request success rate over the last minute (0-1)',

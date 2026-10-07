@@ -23,6 +23,7 @@
  * @module mcp/endpoint
  */
 
+import { ToolInvoker } from '../gateway/invoker.js';
 import type { StateStore } from '../state/store.js';
 import express from 'express';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
@@ -190,12 +191,17 @@ export interface McpEndpointDeps {
   maxBodyBytes?: () => number;
   /** Maximum `arguments` size of tools/call / prompts/get / completion (bytes, 0 = no limit). */
   maxArgumentsBytes?: () => number;
+  /** Upstream call pipeline shared with the REST API (created when absent). */
+  invoker?: ToolInvoker;
 }
 
 const SSE_KEEPALIVE_MS = 25_000;
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const idKey = (id: JsonRpcId) => `${typeof id}:${String(id)}`;
+
+const traceparentOf = (req: Request): string | undefined =>
+  typeof req.headers.traceparent === 'string' ? req.headers.traceparent : undefined;
 
 function rpcError(id: JsonRpcId | null | undefined, error: JsonRpcError): JsonRpcMessage {
   return { jsonrpc: '2.0', id: id ?? null, error };
@@ -237,12 +243,14 @@ export class McpEndpoint {
   private readonly onUpstreamConnected = (serverId: string) => this.handleUpstreamConnected(serverId);
   private readonly onUpstreamDisconnected = (serverId: string) => this.upstreamLogLevel.delete(serverId);
   private jsonParser?: { limit: number; mw: RequestHandler };
+  private readonly invoker: ToolInvoker;
 
   constructor(
     config: McpEndpointConfig | undefined,
     private readonly deps: McpEndpointDeps,
   ) {
     this.cfg = { ...DEFAULT_MCP_CONFIG, ...stripUndefined(config ?? {}) };
+    this.invoker = deps.invoker ?? new ToolInvoker({ proxy: deps.proxy, metrics: deps.metrics, requestLog: () => deps.requestLog() });
     deps.registry.on('tools-updated', this.onRegistryChange);
     deps.registry.on('unregistered', this.onRegistryChange);
     deps.registry.on('catalog-updated', this.onRegistryChange);
@@ -785,20 +793,18 @@ export class McpEndpoint {
     if (!server || !this.deps.proxy.isConnected(serverId)) {
       return rpcError(id, { code: ERR_NOT_CONNECTED, message: `Server "${serverId}" is not connected` });
     }
-    const result = await this.deps.proxy.request(serverId, method, params, server.timeout, { signal });
-    this.deps.metrics.record({
+    const result = await this.invoker.invoke({
       serverId,
-      toolName: label,
-      durationMs: result.durationMs,
-      success: result.success,
-      errorMessage: result.error?.message,
+      name: label,
+      kind,
+      method,
+      params: params as Record<string, unknown>,
+      timeoutMs: server.timeout,
       clientId: (req as AuthedRequest).clientId,
       via: 'mcp',
-      kind,
+      signal,
+      traceparent: traceparentOf(req),
     });
-    if (this.deps.requestLog()) {
-      logger.info(`${method} ${label} → ${serverId} ${result.success ? 'ok' : 'failed'} ${result.durationMs}ms (mcp)`);
-    }
     if (result.success) return { jsonrpc: '2.0', id, result: result.result ?? {} };
     const err = result.error ?? { code: JSONRPC_INTERNAL_ERROR, message: 'Unknown error' };
     return rpcError(id, err.code === ERR_CANCELLED ? { code: ERR_CANCELLED, message: 'Request cancelled' } : err);
@@ -956,19 +962,20 @@ export class McpEndpoint {
       return toolError(`Server "${serverId}" is not connected${status ? ` (${status})` : ''}; try again later.`);
     }
 
-    const result = await this.deps.proxy.callTool(serverId, tool.name, args, server.timeout, { signal, onProgress });
-    this.deps.metrics.record({
+    const result = await this.invoker.invoke({
       serverId,
-      toolName: tool.name,
-      durationMs: result.durationMs,
-      success: result.success,
-      errorMessage: result.error?.message,
+      name: tool.name,
+      kind: 'tool',
+      method: 'tools/call',
+      params: args,
+      timeoutMs: server.timeout,
       clientId: (req as AuthedRequest).clientId,
       via: 'mcp',
+      signal,
+      onProgress,
+      traceparent: traceparentOf(req),
     });
-    if (this.deps.requestLog()) {
-      logger.info(`${tool.name} → ${serverId} ${result.success ? 'ok' : 'failed'} ${result.durationMs}ms (mcp)`);
-    }
+    if (single && result.traceparent && !res.headersSent) res.set('traceparent', result.traceparent);
 
     if (result.success) return { jsonrpc: '2.0', id, result: result.result ?? { content: [] } };
     const err = result.error ?? { code: JSONRPC_INTERNAL_ERROR, message: 'Unknown error' };

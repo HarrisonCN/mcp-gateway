@@ -127,9 +127,29 @@ export interface GatewayConfig {
   security?: SecurityConfig;
   /** Shared state for multi-instance deployments (rate limits, lockouts, MCP sessions). */
   state?: StateConfig;
+  /** Tracing (OpenTelemetry / OTLP). */
+  observability?: ObservabilityConfig;
 }
 
 // ─── Security ────────────────────────────────────────────────────────────────
+
+export interface TracingConfig {
+  enabled?: boolean;
+  /** `otlp-http` (default, built-in OTLP/HTTP JSON exporter), `console`, or `otel-api` (use @opentelemetry/api). */
+  exporter?: 'otlp-http' | 'console' | 'otel-api';
+  /** OTLP traces endpoint (default env OTEL_EXPORTER_OTLP_TRACES_ENDPOINT or http://localhost:4318/v1/traces). */
+  endpoint?: string;
+  headers?: Record<string, string>;
+  serviceName?: string;
+  resourceAttributes?: Record<string, string>;
+  /** Fraction of new traces recorded (0–1, default 1). Incoming sampled `traceparent`s are always followed. */
+  sampleRatio?: number;
+  flushIntervalMs?: number;
+}
+
+export interface ObservabilityConfig {
+  tracing?: TracingConfig;
+}
 
 /** `state` — where rate-limit windows, lockouts and MCP session metadata live. */
 export interface StateConfig {

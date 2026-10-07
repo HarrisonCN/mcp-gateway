@@ -30,6 +30,7 @@ import { dedupeResources, routeResource } from '../mcp/catalog.js';
 import { LLM_SCHEMA_FORMATS, toLlmToolSchemas, type LlmSchemaFormat } from '../mcp/llm-schemas.js';
 import { VERSION } from '../utils/version.js';
 import { redactArgs } from '../security/redact.js';
+import { ToolInvoker } from './invoker.js';
 
 export type ApiRouter = express.Router & {
   close(): void;
@@ -75,7 +76,12 @@ export interface ApiRouterOptions {
   isShuttingDown?: () => boolean;
   /** Shared state store: rate limits and lockouts hold across gateway instances. */
   shared?: SharedState;
+  /** Upstream call pipeline (metrics, logging, tracing, …); created when absent. */
+  invoker?: ToolInvoker;
 }
+
+const traceparentOf = (req: Request): string | undefined =>
+  typeof req.headers.traceparent === 'string' ? req.headers.traceparent : undefined;
 
 export interface Readiness {
   ready: boolean;
@@ -186,6 +192,8 @@ export function createApiRouter(
 ): ApiRouter {
   const router = express.Router() as ApiRouter;
   let cfg = config;
+  const invoker =
+    options.invoker ?? new ToolInvoker({ proxy, metrics, requestLog: () => cfg.monitor?.requestLog !== false });
   // Built eagerly so a misconfiguration fails at startup (fail closed).
   const authOptions = { mcpPath: () => cfg.mcp?.path ?? '/mcp' };
   let authMw: AuthMiddleware = createAuthMiddleware(cfg.auth, authOptions);
@@ -563,22 +571,20 @@ export function createApiRouter(
       // Argument values may contain secrets; log only their keys.
       logger.debug(`Tool call: ${tool} → ${targetServerId}`, { argKeys: Object.keys(args) });
 
-      const result = await proxy.callTool(targetServerId, tool, args as Record<string, unknown>, server.timeout);
-
-      metrics.record({
+      const result = await invoker.invoke({
         serverId: targetServerId,
-        toolName: tool,
-        durationMs: result.durationMs,
-        success: result.success,
-        errorMessage: result.error?.message,
+        name: tool,
+        kind: 'tool',
+        method: 'tools/call',
+        params: args as Record<string, unknown>,
+        timeoutMs: server.timeout,
         clientId: (req as AuthedRequest).clientId,
         via: 'rest',
+        traceparent: traceparentOf(req),
       });
-      if (cfg.monitor?.requestLog !== false) {
-        logger.info(`${tool} → ${targetServerId} ${result.success ? 'ok' : 'failed'} ${result.durationMs}ms`);
-      }
 
       if (res.headersSent) return;
+      if (result.traceparent) res.set('traceparent', result.traceparent);
 
       if (!result.success) {
         // 504 for upstream timeouts, 502 for upstream errors (was always 500).
@@ -652,20 +658,18 @@ export function createApiRouter(
       });
       return;
     }
-    const result = await proxy.request(serverId, method, params, server.timeout);
-    metrics.record({
+    const result = await invoker.invoke({
       serverId,
-      toolName: label,
-      durationMs: result.durationMs,
-      success: result.success,
-      errorMessage: result.error?.message,
+      name: label,
+      kind,
+      method,
+      params: params as Record<string, unknown>,
+      timeoutMs: server.timeout,
       clientId: (req as AuthedRequest).clientId,
       via: 'rest',
-      kind,
+      traceparent: traceparentOf(req),
     });
-    if (cfg.monitor?.requestLog !== false) {
-      logger.info(`${method} ${label} → ${serverId} ${result.success ? 'ok' : 'failed'} ${result.durationMs}ms`);
-    }
+    if (result.traceparent && !res.headersSent) res.set('traceparent', result.traceparent);
     if (res.headersSent) return;
     if (!result.success) {
       const status = result.error?.code === ERR_TIMEOUT ? 504 : 502;

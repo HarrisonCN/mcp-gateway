@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-07
+
+Observability: tracing, a Prometheus latency histogram and more dashboard charts.
+
+### Added
+- **Optional distributed tracing** (`observability.tracing`): one span per upstream call (tools, `resources/read`,
+  `prompts/get`) from REST and `/mcp`, W3C Trace Context (`traceparent` in → child span, `traceparent` out on the
+  response), attributes `mcp.server.id` / `mcp.tool.name` / `mcp.via` / `mcp.client.id` / `mcp.duration_ms` /
+  `mcp.success` / `mcp.error.code`. Exporters: built-in batched **OTLP/HTTP JSON** (`endpoint`, `headers`,
+  `serviceName`, `resourceAttributes`, `sampleRatio`; honours `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`), `console`, or
+  `otel-api` (delegates to `@opentelemetry/api` and your registered SDK). No new dependency.
+- **`GET /metrics`**: conventional Prometheus scrape path when `monitor.prometheus` is on (respects
+  `auth.protect.metrics`), plus a per-server latency histogram `mcp_gateway_request_duration_seconds`.
+- **Dashboard**: *Calls per server* chart (calls, errors, p95) next to request rate, latency, error rate, top tools and
+  usage per key (also in the GitHub Pages demo).
+- `ToolInvoker`: a single pipeline for every upstream call (REST + `/mcp`) — metrics, request log and tracing live in
+  one place (the hook point for upcoming policy, caching and plugin features). Exported for embedders together with the
+  tracing helpers.
+
 ## [1.4.0] - 2026-10-07
 
 Multi-instance deployments: a pluggable shared state store.
