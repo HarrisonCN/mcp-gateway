@@ -13,7 +13,7 @@ const req = (headers: Record<string, string | undefined> = {}): any => ({ header
 
 describe('auth middleware', () => {
   it('fails closed for unsupported strategies instead of disabling auth', () => {
-    expect(() => createAuthMiddleware({ strategy: 'oauth2' })).toThrow(/not supported/);
+    expect(() => createAuthMiddleware({ strategy: 'oauth2' })).toThrow(/auth.oauth is not configured/);
     expect(() => createAuthMiddleware({ strategy: 'bogus' as any })).toThrow();
   });
 

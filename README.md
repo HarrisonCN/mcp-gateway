@@ -292,7 +292,7 @@ host: 0.0.0.0                 # Bind address (env: MCP_GATEWAY_HOST)
 logLevel: info                # debug | info | warn | error
 
 auth:
-  strategy: api-key           # none | api-key | jwt   (oauth2 is not implemented and is rejected)
+  strategy: api-key           # none | api-key | jwt | oauth2 (OAuth 2.1 resource server, see docs/configuration.md)
   apiKeys:
     - "your-secret-key"       # full access
     - "sha256:…"              # a key stored as its digest (mcp-gateway gen-key / hash-key)
@@ -579,6 +579,15 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v1.3
+
+| Feature | Description |
+|---------|-------------|
+| **OAuth 2.1 (MCP authorization)** | `auth.strategy: oauth2`: RFC 9728 protected-resource metadata, JWT validation via (discovered) JWKS or RFC 7662 introspection, audience binding (RFC 8707), `WWW-Authenticate` challenges, `requiredScopes` |
+| **Resumable streams** | `Last-Event-ID` replay on `GET /mcp` from a per-session event buffer (`mcp.eventBufferSize`) |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v1.2
 
 | Feature | Description |
@@ -643,7 +652,8 @@ unknown fields). Deep imports, log format, the dashboard and the audit database 
 | Security hardening (hashed keys, JWKS, lockout, DNS-rebinding guard, CSP) | ✅ Done (v1.2) |
 | Progress, logging, completions, resource subscriptions on `/mcp` | ✅ Done (v1.2) |
 | Redis-backed rate limiting | 📋 Planned |
-| OAuth2 / OIDC auth | 🟡 JWT access tokens via `auth.jwt.jwksUrl` (v1.2); discovery / token introspection planned |
+| OAuth 2.1 / OIDC auth (MCP authorization spec) | ✅ Done (v1.3) |
+| Streamable HTTP resumability (`Last-Event-ID`) | ✅ Done (v1.3) |
 | Forwarding sampling / elicitation / roots requests to downstream clients | 📋 Planned |
 | Tool-level access control | ✅ Done via per-key scopes (v0.6) |
 | Request replay & debugging | 📋 Planned (history is available via the audit log) |

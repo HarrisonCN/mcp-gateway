@@ -77,6 +77,7 @@ export const DEFAULT_MCP_CONFIG: Required<Omit<McpEndpointConfig, 'allowedOrigin
   pageSize: 500,
   sessionIdleTimeoutSeconds: 1800,
   maxSessions: 1000,
+  eventBufferSize: 256,
 };
 
 type JsonRpcId = string | number;
@@ -110,6 +111,8 @@ interface DownstreamSession {
   resourcesFingerprint?: string;
   promptsFingerprint?: string;
   eventSeq: number;
+  /** Recently sent server-to-client events, for `Last-Event-ID` replay (resumability). */
+  eventLog: Array<{ id: number; data: string }>;
   /** Identity + scope of the client, refreshed on every request (used for notifications). */
   auth: ClientIdentity;
   /** Minimum level of forwarded `notifications/message` (unset = none forwarded). */
@@ -472,6 +475,7 @@ export class McpEndpoint {
       streams: [],
       inflight: new Map(),
       eventSeq: 0,
+      eventLog: [],
       auth: identityOf(req),
       subscriptions: new Set(),
     };
@@ -538,6 +542,14 @@ export class McpEndpoint {
     });
     res.flushHeaders();
     res.write(': connected\n\n');
+    // Resumability: replay events the client missed after a dropped stream.
+    const lastEventId = req.headers['last-event-id'];
+    if (typeof lastEventId === 'string' && /^\d+$/.test(lastEventId.trim())) {
+      const after = Number(lastEventId.trim());
+      const missed = session.eventLog.filter((e) => e.id > after);
+      for (const e of missed) res.write(`id: ${e.id}\nevent: message\ndata: ${e.data}\n\n`);
+      if (missed.length) logger.debug(`MCP session ${session.id.slice(0, 8)} resumed: replayed ${missed.length} event(s)`);
+    }
     session.streams.push(res);
     req.socket.setTimeout(0);
     res.on('close', () => {
@@ -1132,11 +1144,23 @@ export class McpEndpoint {
   }
 
   /** Send a message on the session's most recent stream. */
+  /**
+   * Send a message on the session's most recent stream. Every event gets a
+   * session-wide id and is kept in a bounded buffer (`mcp.eventBufferSize`),
+   * so a client that reconnects with `Last-Event-ID` receives what it missed —
+   * including events emitted while no stream was open.
+   */
   private send(session: DownstreamSession, msg: JsonRpcMessage): boolean {
+    const id = ++session.eventSeq;
+    const data = JSON.stringify(msg);
+    const cap = this.cfg.eventBufferSize;
+    if (cap > 0) {
+      session.eventLog.push({ id, data });
+      if (session.eventLog.length > cap) session.eventLog.splice(0, session.eventLog.length - cap);
+    }
     const stream = session.streams[session.streams.length - 1];
     if (!stream) return false;
-    session.eventSeq++;
-    stream.write(`id: ${session.eventSeq}\nevent: message\ndata: ${JSON.stringify(msg)}\n\n`);
+    stream.write(`id: ${id}\nevent: message\ndata: ${data}\n\n`);
     return true;
   }
 

@@ -73,7 +73,7 @@ Changing a server (any field) reconnects it on hot reload; removing or disabling
 
 ```yaml
 auth:
-  strategy: api-key            # none | api-key | jwt   (oauth2 is rejected: not implemented)
+  strategy: api-key            # none | api-key | jwt | oauth2
   apiKeys:
     - "admin-key"              # plain string: full access
     - "sha256:2c26b46b…"       # the SHA-256 digest of a key (mcp-gateway hash-key) — recommended
@@ -93,6 +93,36 @@ auth:
 
 Misconfiguration fails closed: `api-key` without keys, `jwt` without a key source or an unknown strategy refuse to
 start (and are rejected on hot reload, keeping the current auth).
+
+### OAuth 2.1 (MCP authorization spec)
+
+`strategy: oauth2` makes the gateway an OAuth 2.1 *protected resource* as required by the MCP authorization
+specification. MCP clients discover the authorization server from the gateway itself.
+
+```yaml
+auth:
+  strategy: oauth2
+  oauth:
+    authorizationServers: ["https://auth.example.com"]   # issuers advertised in the metadata
+    resource: "https://gw.example.com/mcp"               # canonical resource URI (RFC 8707); default: derived from Host
+    # issuer / audience default to authorizationServers / resource
+    # jwksUrl: https://auth.example.com/jwks             # default: jwks_uri from the issuer's RFC 8414 / OIDC metadata
+    introspection:                                       # optional, for opaque tokens (RFC 7662)
+      url: https://auth.example.com/oauth/introspect
+      clientId: mcp-gateway
+      clientSecret: "${INTROSPECTION_SECRET}"
+      cacheSeconds: 60
+    scopesSupported: ["mcp:tools", "mcp:resources"]
+    requiredScopes: ["mcp:tools"]
+    algorithms: ["RS256", "ES256"]                       # asymmetric only
+```
+
+- `GET /.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp` serve RFC 9728 metadata.
+- Missing / invalid tokens → `401` with `WWW-Authenticate: Bearer resource_metadata="…", error="invalid_token"`;
+  missing `requiredScopes` → `403` with `error="insufficient_scope", scope="…"`.
+- JWTs must carry `exp`, an accepted `iss` and an `aud` matching the resource; introspected tokens must be `active`.
+- The `mcp_servers` / `mcp_tools` claims restrict a token like a scoped key (see *Per-key scopes*).
+- Client ids are `oauth:<sub>` (or `oauth:<client_id>`).
 
 ### Hashed keys
 
@@ -189,7 +219,12 @@ mcp:
   maxSessions: 1000            # least recently used idle session evicted beyond this
   allowedOrigins: ["https://app.example.com"]   # default: corsOrigins
   instructions: "Tools for the ACME workspace"  # returned from initialize
+  eventBufferSize: 256         # events kept per session for Last-Event-ID replay (0 = off)
 ```
+
+**Resumability:** every server-to-client event on the `GET` stream carries a session-wide `id`. A client whose stream
+dropped reconnects with `Last-Event-ID: <last id>` and receives the events it missed (up to `eventBufferSize`),
+including notifications emitted while no stream was open.
 
 ## Audit log
 

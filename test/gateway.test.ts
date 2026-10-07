@@ -123,8 +123,10 @@ describe('Gateway startup', () => {
     await expect(other.start()).rejects.toThrow(/EADDRINUSE/);
   });
 
-  it('refuses to start with an unsupported auth strategy', async () => {
+  it('refuses to start with an unsupported or incomplete auth strategy', async () => {
     const other = new Gateway({ ...config, servers: [], auth: { strategy: 'oauth2' } });
-    await expect(other.start()).rejects.toThrow(/not supported/);
+    await expect(other.start()).rejects.toThrow(/auth.oauth is not configured/);
+    const bogus = new Gateway({ ...config, servers: [], auth: { strategy: 'kerberos' as never } });
+    await expect(bogus.start()).rejects.toThrow(/not supported/);
   });
 });

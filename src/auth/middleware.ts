@@ -25,13 +25,22 @@ import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey, type JWTVerifyOpti
 import type { ApiKeyConfig, AuthConfig, JwtConfig } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { scopeFromJwt, type AccessScope } from './scopes.js';
+import { oauthMiddleware, type TokenInfo } from './oauth.js';
 
 export type AuthedRequest = Request & {
   clientId?: string;
   jwtPayload?: unknown;
   /** Servers / tools / rate limit this client is restricted to (absent = unrestricted). */
   scope?: AccessScope;
+  /** Validated OAuth access token (strategy `oauth2`). */
+  oauth?: TokenInfo;
 };
+
+export interface AuthMiddlewareOptions {
+  /** Path of the MCP endpoint (OAuth resource URI / metadata). Default `/mcp`. */
+  mcpPath?: () => string;
+  fetch?: typeof fetch;
+}
 
 /** An auth middleware that can also look up the current scope of a known client id (api keys). */
 export type AuthMiddleware = RequestHandler & {
@@ -93,7 +102,7 @@ export function keyInactiveReason(entry: ApiKeyConfig, now = Date.now()): 'disab
   return undefined;
 }
 
-export function createAuthMiddleware(config?: AuthConfig): AuthMiddleware {
+export function createAuthMiddleware(config?: AuthConfig, options: AuthMiddlewareOptions = {}): AuthMiddleware {
   if (!config || config.strategy === 'none') {
     const none: AuthMiddleware = (_req: Request, _res: Response, next: NextFunction) => next();
     none.resolveClient = () => ({ known: true });
@@ -116,6 +125,9 @@ export function createAuthMiddleware(config?: AuthConfig): AuthMiddleware {
     }
     case 'jwt':
       return jwtMiddleware(buildJwtVerifier(config));
+    case 'oauth2':
+      if (!config.oauth) throw new Error('auth.strategy is "oauth2" but auth.oauth is not configured');
+      return oauthMiddleware(config.oauth, { mcpPath: options.mcpPath ?? (() => '/mcp'), fetch: options.fetch });
     default:
       // Fail closed. Previously this fell back to *no auth*, so configuring the
       // advertised-but-unimplemented "oauth2" strategy exposed every endpoint.

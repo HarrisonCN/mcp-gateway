@@ -91,7 +91,7 @@ describe('config loader', () => {
     const d = tmp();
     const a = join(d, 'a.yml');
     writeFileSync(a, 'auth: {strategy: oauth2}\n');
-    await expect(loadConfig(a)).rejects.toThrow(/oauth2 is not implemented/);
+    await expect(loadConfig(a)).rejects.toThrow(/oauth2 strategy needs auth.oauth/);
     const b = join(d, 'b.yml');
     writeFileSync(b, 'reconnect: {multiplier: 0.5, jitter: 2}\n');
     await expect(loadConfig(b)).rejects.toThrow(/reconnect\.multiplier[\s\S]*reconnect\.jitter/);
