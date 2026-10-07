@@ -15,19 +15,22 @@ plugins:
 // plugins/tenant-header.mjs
 export default (ctx) => ({
   name: 'tenant-header',
-  apiVersion: 1,
-  onRequest(req, res, next) {                       // Express middleware
+  apiVersion: 2,
+  onRequest(req, res, next, hook) {                 // Express middleware; hook = { plugin, logger, … }
     if (!req.headers[ctx.options.header]) return res.status(400).json({ error: 'missing tenant' });
     next();
   },
-  onToolCall(call) {                                // before policy rules
+  onToolCall(call, hook) {                          // before policy rules
     if (call.name === 'delete_repo') return { deny: 'not through the gateway' };
     if (call.name === 'search') return { arguments: { ...call.arguments, limit: 20 } };
     // return { respond: { content: [...] } } to answer without contacting the server
   },
-  onResponse(call, result) {                        // after the output filter
+  onResponse(call, result, hook) {                  // after the output filter
     ctx.logger.info(`${call.serverId}/${call.name} → ${result.success}`);
     return result;                                  // or a replacement ProxyResponse
+  },
+  onError(call, error, hook) {                      // API v2: observe failed calls (never changes them)
+    hook.logger.warn(`${call.name} failed: ${error.message}`);
   },
   close() {},                                       // stop, or unloaded by a config reload
 });
@@ -56,9 +59,18 @@ upstream call ─▶ onToolCall ▶ policy rules / approval ▶ upstream server 
 |---|---|
 | `ctx.options` | the entry's `options` |
 | `ctx.logger` | the gateway logger |
-| `ctx.gatewayVersion` | e.g. `2.0.0` |
-| `ctx.apiVersion` | plugin API implemented by the gateway (`1`) |
+| `ctx.gatewayVersion` | e.g. `3.0.0` |
+| `ctx.apiVersion` | plugin API implemented by the gateway (`2`) |
 
-A plugin declaring a higher `apiVersion` than the gateway implements is refused at load.
+## Plugin API v2 (3.0)
+
+- Declare `apiVersion: 2`. Every hook receives a hook context as its **last** argument:
+  `{ plugin, logger, gatewayVersion, apiVersion }`.
+- New `onError(call, error, hook)`: runs for every failed call after `onResponse`; observe-only — exceptions are logged
+  and never fail the call.
+- Plugins without `apiVersion` (v1) still load but log a deprecation warning (listed by
+  `GET /api/v1/admin/deprecations`); v1 support is removed in 4.0. v1 hooks work unchanged on v2 — the extra argument
+  is ignored — so migrating is adding `apiVersion: 2`.
+- A plugin declaring a higher `apiVersion` than the gateway implements is refused at load.
 
 TypeScript types: `import type { GatewayPlugin, PluginFactory } from '@winstonsayno/mcp-gateway'`.

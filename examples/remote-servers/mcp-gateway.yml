@@ -28,7 +28,8 @@ reconnect:
   jitter: 0.2
   maxAttempts: 0       # retry forever
 
-healthCheckIntervalMs: 15000
+health:
+  intervalMs: 15000
 
 servers:
   # Current MCP transport (2025-03-26+)

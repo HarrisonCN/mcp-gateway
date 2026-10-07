@@ -55,7 +55,7 @@ export interface ConfigChange {
   after?: unknown;
 }
 
-const RESTART_KEYS = new Set(['port', 'host', 'healthCheckIntervalMs', 'health', 'dashboard', 'audit', 'state', 'observability']);
+const RESTART_KEYS = new Set(['port', 'host', 'health', 'dashboard', 'audit', 'state', 'observability']);
 const IGNORED = new Set(['configDir', 'deprecations']);
 
 const stable = (v: unknown): string =>

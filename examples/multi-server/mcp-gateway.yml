@@ -18,9 +18,10 @@ rateLimit:
   perKey: true
 
 # CORS (restrict to your frontend domain in production)
-corsOrigins:
-  - "http://localhost:3000"
-  - "https://your-app.example.com"
+cors:
+  origins:
+    - "http://localhost:3000"
+    - "https://your-app.example.com"
 
 monitor:
   requestLog: true

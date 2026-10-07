@@ -23,7 +23,7 @@ const config: GatewayConfig = {
   auth: { strategy: 'api-key', apiKeys: ['test-key'] },
   rateLimit: { limit: 1000, windowSeconds: 60 },
   monitor: { prometheus: true, requestLog: false },
-  corsOrigins: ['https://a.example', 'https://b.example'],
+  cors: { origins: ['https://a.example', 'https://b.example'] },
   servers: [server('one', { SECRET: 'hunter2' }), server('two')],
 };
 

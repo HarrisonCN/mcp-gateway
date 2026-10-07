@@ -1,10 +1,10 @@
 /**
- * Deprecations scheduled for removal in 3.0.
+ * Deprecations and removals.
  *
- * Config deprecations are detected on the raw (pre-validation) config by `loadConfig` and stored on
- * `config.deprecations`; runtime deprecations (legacy endpoints) are recorded once per id with
- * {@link deprecate}. Both are logged as warnings and listed by `GET /api/v1/admin/deprecations` and
- * `mcp-gateway validate`. See docs/guides/migrating-to-v3.md.
+ * 3.0 removed the 2.x deprecations (`corsOrigins`, `healthCheckIntervalMs`, `/.well-known/agent.json`): using a
+ * removed config key is a validation error naming its replacement ({@link removedConfigKeys}). Current deprecations
+ * (scheduled for 4.0) are recorded once per id with {@link deprecate}, logged as warnings and listed by
+ * `GET /api/v1/admin/deprecations` and `mcp-gateway validate`. See docs/guides/migrating-to-v3.md.
  *
  * @module utils/deprecations
  */
@@ -15,25 +15,35 @@ export interface Deprecation {
   id: string;
   message: string;
   /** Version that removes it. */
-  removedIn: '3.0.0';
+  removedIn: string;
   /** What to use instead. */
   replacement?: string;
 }
 
 export const DEPRECATIONS = {
-  corsOrigins: { id: 'corsOrigins', removedIn: '3.0.0', replacement: 'cors.origins', message: '`corsOrigins` is deprecated; use `cors: { origins: [...] }`' },
-  healthCheckIntervalMs: { id: 'healthCheckIntervalMs', removedIn: '3.0.0', replacement: 'health.intervalMs', message: '`healthCheckIntervalMs` is deprecated; use `health: { intervalMs: ... }`' },
-  agentJson: { id: 'well-known-agent-json', removedIn: '3.0.0', replacement: '/.well-known/agent-card.json', message: '`/.well-known/agent.json` is deprecated; use `/.well-known/agent-card.json`' },
+  pluginApiV1: { id: 'plugin-api-v1', removedIn: '4.0.0', replacement: 'apiVersion: 2', message: 'plugin API v1 is deprecated; declare `apiVersion: 2` (hooks receive a context argument)' },
 } as const satisfies Record<string, Deprecation>;
 
-/** Deprecated keys used in a raw config object. */
-export function configDeprecations(raw: unknown): Deprecation[] {
+/** Config keys removed in 3.0 → replacement. */
+export const REMOVED_IN_3: Record<string, string> = {
+  corsOrigins: 'cors: { origins: [...] }',
+  healthCheckIntervalMs: 'health: { intervalMs: ... }',
+};
+
+/** Validation errors for removed keys used in a raw config object. */
+export function removedConfigKeys(raw: unknown): string[] {
   if (typeof raw !== 'object' || raw === null) return [];
   const r = raw as Record<string, unknown>;
-  const out: Deprecation[] = [];
-  if (r.corsOrigins !== undefined) out.push(DEPRECATIONS.corsOrigins);
-  if (r.healthCheckIntervalMs !== undefined) out.push(DEPRECATIONS.healthCheckIntervalMs);
+  const out = Object.entries(REMOVED_IN_3)
+    .filter(([k]) => r[k] !== undefined)
+    .map(([k, v]) => `${k}: removed in 3.0 — use \`${v}\` (see docs/guides/migrating-to-v3.md)`);
+  if (r.version !== undefined && r.version !== 3) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 3.x reads \`version: 3\` (see docs/guides/migrating-to-v3.md)`);
   return out;
+}
+
+/** Deprecated keys used in a raw config object (none in 3.0; kept for the 4.0 cycle). */
+export function configDeprecations(_raw: unknown): Deprecation[] {
+  return [];
 }
 
 const seen = new Map<string, Deprecation & { detail?: string }>();

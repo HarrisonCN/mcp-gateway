@@ -144,13 +144,11 @@ export interface GatewayConfig {
   monitor?: MonitorConfig;
   /** Registered MCP servers */
   servers: McpServerConfig[];
-  /** Config schema version (2; 3.0 introduces `version: 3`). */
-  version?: 2;
-  /** CORS origins. @deprecated since 2.9 — use `cors.origins` (removed in 3.0). */
-  corsOrigins?: string[];
-  /** CORS settings (3.0 name of `corsOrigins`). */
+  /** Config schema version (`3`; optional). */
+  version?: 3;
+  /** CORS: allowed browser origins (default `["*"]`). */
   cors?: { origins?: string[] };
-  /** Health checks (3.0 name of `healthCheckIntervalMs`). */
+  /** Health checks: ping interval (ms, default 30000). Restart required. */
   health?: { intervalMs?: number };
   /** Admin REST API (`/api/v1/admin`). */
   admin?: AdminConfig;
@@ -160,8 +158,6 @@ export interface GatewayConfig {
   logLevel?: 'debug' | 'info' | 'warn' | 'error';
   /** Automatic reconnect of crashed / disconnected servers */
   reconnect?: Partial<ReconnectConfig>;
-  /** Interval between health pings (ms, default 30000). @deprecated since 2.9 — use `health.intervalMs`. */
-  healthCheckIntervalMs?: number;
   /** Web dashboard */
   dashboard?: { enabled?: boolean };
   /** Downstream MCP endpoint (Streamable HTTP) that aggregates every server */
@@ -385,7 +381,7 @@ export interface SecurityConfig {
    * DNS-rebinding protection (default false): `Host` must be in
    * `allowedHosts` (default: localhost names + the bind address), and `/mcp`
    * accepts browser requests only from the same origin or loopback origins
-   * unless `mcp.allowedOrigins` / `corsOrigins` list others.
+   * unless `mcp.allowedOrigins` / `cors.origins` list others.
    */
   dnsRebindingProtection?: boolean;
   /** Maximum JSON request body in bytes (default 10 MiB). */
@@ -423,7 +419,7 @@ export interface McpEndpointConfig {
   sessionIdleTimeoutSeconds?: number;
   /** Upper bound on concurrent sessions; the least recently used idle one is evicted (default 1000). */
   maxSessions?: number;
-  /** Origins allowed to call the endpoint from a browser (default: `corsOrigins`). */
+  /** Origins allowed to call the endpoint from a browser (default: `cors.origins`). */
   allowedOrigins?: string[];
   /** Optional `instructions` returned from `initialize`. */
   instructions?: string;

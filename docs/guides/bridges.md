@@ -52,7 +52,7 @@ a2a:
   taskRetentionSeconds: 600
 ```
 
-- `GET /.well-known/agent-card.json` (also `/.well-known/agent.json`): the Agent Card (protocol `0.3.0`), one skill
+- `GET /.well-known/agent-card.json`: the Agent Card (protocol `0.3.0`), one skill
   per tool the caller can see. When auth is on the card advertises a bearer security scheme.
 - `POST /a2a` JSON-RPC 2.0: `message/send`, `tasks/get` (`tasks/cancel` returns an error: tasks complete
   synchronously).

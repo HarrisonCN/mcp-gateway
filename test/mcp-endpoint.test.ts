@@ -345,7 +345,7 @@ describe('/mcp protocol details (raw HTTP)', () => {
   });
 
   it('rejects disallowed browser origins (DNS rebinding protection)', async () => {
-    const url = await start({ ...base, corsOrigins: ['https://app.example'] });
+    const url = await start({ ...base, cors: { origins: ['https://app.example'] } });
     const init = rpc(1, 'initialize', { protocolVersion: '2025-06-18' });
     expect((await post(url, init, { origin: 'https://evil.example' })).status).toBe(403);
     expect((await post(url, init, { origin: 'https://app.example' })).status).toBe(200);

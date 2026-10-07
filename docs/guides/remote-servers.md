@@ -84,9 +84,9 @@ for Docker / Kubernetes liveness probes. `GET /api/v1/health/ready` is public to
 
 ## Hot reload
 
-Saving the config file applies `servers`, `auth`, `rateLimit`, `corsOrigins`,
+Saving the config file applies `servers`, `auth`, `rateLimit`, `cors`,
 `monitor.requestLog`, `monitor.prometheus`, `reconnect` and `logLevel` immediately.
-`port`, `host`, `monitor.retentionHours`, `healthCheckIntervalMs` and `dashboard` are
+`port`, `host`, `monitor.retentionHours`, `health` and `dashboard` are
 logged as “restart required”. Rate-limit counters restart when the rate-limit block changes.
 An invalid file — or an auth block that cannot be used — is rejected and the running
 settings are kept.

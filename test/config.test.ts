@@ -78,7 +78,7 @@ describe('loadConfig', () => {
     expect(c.reconnect).toEqual({ initialDelayMs: 500, maxAttempts: 5 });
     expect(c.auth?.protect).toEqual({ health: false, metrics: true });
     expect(c.dashboard).toEqual({ enabled: false });
-    expect(c.healthCheckIntervalMs).toBe(30000);
+    expect(c.health?.intervalMs).toBeUndefined();
     await expect(loadConfig(file('reconnect: {jitter: 2}\n'))).rejects.toThrow(/jitter/);
   });
 

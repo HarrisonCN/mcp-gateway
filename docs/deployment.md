@@ -161,7 +161,7 @@ location / {
 
 - Enable `auth` (API keys or JWT) whenever the gateway is reachable from anything but localhost; give each app its own
   scoped key.
-- Set `corsOrigins` / `mcp.allowedOrigins` to the browser origins that may call the gateway (DNS-rebinding
+- Set `cors.origins` / `mcp.allowedOrigins` to the browser origins that may call the gateway (DNS-rebinding
   protection for `/mcp`).
 - Store API keys as digests (`mcp-gateway gen-key` / `hash-key` → `sha256:…`), give keys an `expiresAt`, and
   rotate by adding the new key before removing the old one (hot reload).

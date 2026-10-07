@@ -127,7 +127,7 @@ claude mcp add --transport http gateway http://localhost:4000/mcp \
 | 工具命名 | `toolNaming: auto`（默认）仅在多个服务器有同名工具时改为 `<serverId>__<tool>`；`prefix` 则全部加前缀。顺序确定（按服务器 id、工具名排序）。`auto` 模式下 `tools/call` 也接受带前缀的名字 |
 | 错误 | 未知工具 / 参数错误 → JSON-RPC `-32602`；限流 → `-32029`（`data.retryAfter`）；服务器离线或超时 → 返回 `isError: true` 的普通结果；上游 JSON-RPC 错误原样转发；取消 → `-32800` |
 | 取消 | `notifications/cancelled`（或客户端断开 HTTP 请求）会取消上游调用，上游会收到自己的 `notifications/cancelled` |
-| 安全 | 与 REST API 使用相同的 `auth`。带 `Origin` 头的请求必须匹配 `mcp.allowedOrigins`（默认取 `corsOrigins`），否则返回 `403`；网关监听在可访问地址时请务必配置 |
+| 安全 | 与 REST API 使用相同的 `auth`。带 `Origin` 头的请求必须匹配 `mcp.allowedOrigins`（默认取 `cors.origins`），否则返回 `403`；网关监听在可访问地址时请务必配置 |
 
 ```yaml
 mcp:
@@ -299,8 +299,8 @@ servers:
 |----------|----------|
 | `servers`（增 / 改 / 删 / 禁用） | `port`、`host` |
 | `auth`（策略、API Key、JWT 密钥、`protect`） | `monitor.retentionHours` |
-| `rateLimit`（变更时计数器重置） | `healthCheckIntervalMs` |
-| `corsOrigins`、`monitor.requestLog`、`monitor.prometheus` | `dashboard` |
+| `rateLimit`（变更时计数器重置） | `health.intervalMs` |
+| `cors.origins`、`monitor.requestLog`、`monitor.prometheus` | `dashboard` |
 | `reconnect`、`logLevel` | `mcp.enabled`、`mcp.path`、`audit` |
 | `mcp.toolNaming` / `pageSize` / 会话设置 / `allowedOrigins` | |
 
@@ -326,25 +326,8 @@ Docker 镜像：每次发布都会构建多架构镜像 `ghcr.io/harrisoncn/mcp-
 
 ## 路线图
 
-- ✅ stdio 传输
-- ✅ SSE 传输
-- ✅ WebSocket 传输
-- ✅ Streamable HTTP 传输（暂不使用独立的 GET 通知流）
-- ✅ 自动重连（指数退避）
-- ✅ 配置热更新（服务器、鉴权、限流、CORS）
-- ✅ Web 可视化面板
-- ✅ 下游 MCP 端点 `/mcp`（v1.0）
-- ✅ 按 Key 的权限范围与限流（v1.0）
-- ✅ JS / Kotlin 客户端，OpenAI / Anthropic 工具 schema（v1.0）
-- ✅ resources / prompts 透传，持久化审计日志（v1.0）
-- ✅ 稳定 API、文档、容器镜像（v1.0）
-- ✅ 安全加固：哈希 Key、JWKS、失败锁定、DNS 重绑定防护、CSP（v1.2）
-- ✅ `/mcp` 进度通知、日志、补全、资源订阅（v1.2）
-- 📋 Redis 限流后端
-- 🟡 OAuth2 / OIDC 鉴权（v1.2 已可通过 `auth.jwt.jwksUrl` 校验 JWT 访问令牌）
-- 📋 将 sampling / elicitation / roots 请求转发给下游客户端
-- ✅ 工具级权限控制（通过按 Key 的 scopes，v0.6）
-- 📋 OpenTelemetry 追踪
+3.0 已完成 1.x / 2.x 规划（传输、`/mcp` 端点、安全、OAuth、租户、策略、缓存、插件、边缘运行时、桥接、策略即代码、声明式配置）。
+3.0 之后的计划见 [ROADMAP.md](ROADMAP.md)；从 2.x 升级见 [迁移指南](guides/migrating-to-v3.md)。
 
 ## 许可证
 

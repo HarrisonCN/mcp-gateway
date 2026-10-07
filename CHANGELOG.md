@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-07
+
+**Breaking release.** Config schema v3, the 2.9 deprecations removed, plugin API v2. Migration:
+[docs/guides/migrating-to-v3.md](docs/guides/migrating-to-v3.md). Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md).
+
+### Breaking
+- `corsOrigins` removed → `cors.origins`; `healthCheckIntervalMs` removed → `health.intervalMs`. Old keys are
+  validation errors that name the replacement.
+- Config schema v3: `version`, when set, must be `3`.
+- A2A: `/.well-known/agent.json` removed → `/.well-known/agent-card.json`.
+- Plugin API v2 (`PLUGIN_API_VERSION = 2`): hooks receive a hook context (`{ plugin, logger, gatewayVersion,
+  apiVersion }`) as their last argument. v1 plugins still load with a deprecation warning (removed in 4.0).
+- TypeScript: `GatewayConfig.corsOrigins` / `healthCheckIntervalMs` removed. `/admin/deprecations` entries carry
+  their own `removedIn`.
+
+### Added
+- Plugin `onError(call, error, hook)` hook (observe-only, never fails a call).
+- `docs/ROADMAP.md` (3.1 – 4.0 plan), migration guide, docs refreshed for the v3 schema.
+
+Unchanged: REST `/api/v1`, `/mcp`, JS / Kotlin clients (2.x work against 3.0), Node 22+, Docker `node:22-alpine`,
+dashboard CSP.
+
 ## [2.9.0] - 2026-10-07
 
 Admin REST API, declarative config (`mcp-gateway diff` / `apply`) and 3.0 deprecation warnings.

@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { Gateway } from '../src/gateway/index.js';
 import { PluginHost, loadPlugin, PLUGIN_API_VERSION, type GatewayPlugin } from '../src/plugins/index.js';
+import { resetDeprecations, runtimeDeprecations } from '../src/utils/deprecations.js';
 import { loadConfig } from '../src/config/loader.js';
 import { ConfigWatcher } from '../src/config/watcher.js';
 import type { GatewayConfig } from '../src/utils/types.js';
@@ -51,6 +52,27 @@ describe('PluginHost', () => {
     await expect(PluginHost.build(undefined, [{ name: 'future', apiVersion: PLUGIN_API_VERSION + 1 }])).rejects.toThrow(/needs plugin API/);
   });
 
+  it('API v2: hooks get a context, onError observes failures, v1 plugins are deprecated', async () => {
+    resetDeprecations();
+    const seen: string[] = [];
+    const host = new PluginHost();
+    const plugins = await PluginHost.build(undefined, [
+      { name: 'v2', apiVersion: 2, onToolCall: (_c, ctx) => void seen.push(`call:${ctx.plugin}:${ctx.apiVersion}`), onError: (_c, e, ctx) => void seen.push(`err:${ctx.plugin}:${e.message}`) },
+      { name: 'broken-observer', apiVersion: 2, onError: () => { throw new Error('ignored'); } },
+      { name: 'legacy', onResponse: (_c, r) => r },
+    ]);
+    await host.set(plugins);
+    expect(runtimeDeprecations().map((d) => `${d.id} ${d.detail}`)).toEqual(['plugin-api-v1 plugin "legacy"']);
+    const call = { serverId: 's', name: 't', kind: 'tool' as const, method: 'tools/call', arguments: {}, via: 'rest' as const, state: new Map() };
+    await host.beforeCall(call);
+    const failed = await host.afterCall(call, { success: false, durationMs: 1, error: { code: -32000, message: 'upstream down' } });
+    expect(failed.success).toBe(false);
+    await host.afterCall(call, { success: true, durationMs: 1, result: 1 });
+    expect(seen).toEqual(['call:v2:2', 'err:v2:upstream down']);
+    await expect(PluginHost.build(undefined, [{ name: 'zero', apiVersion: 0 }])).rejects.toThrow(/unsupported plugin API v0/);
+    await host.close();
+  });
+
   it('loads a module path relative to the config dir with options (factory export)', async () => {
     const dir = tmp();
     writeFileSync(
@@ -60,7 +82,7 @@ describe('PluginHost', () => {
     const p = await loadPlugin({ module: './tagger.mjs', options: { tag: 'x' } }, dir);
     expect(p.name).toBe('tagger');
     const out = await p.onResponse!({} as never, { success: true, durationMs: 0, result: 5 });
-    expect(out).toMatchObject({ result: { tag: 'x', v: 1, r: 5 } });
+    expect(out).toMatchObject({ result: { tag: 'x', v: 2, r: 5 } });
     const renamed = await loadPlugin({ module: join(dir, 'tagger.mjs'), name: 'renamed' }, '/');
     expect(renamed.name).toBe('renamed');
   });

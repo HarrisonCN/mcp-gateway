@@ -78,12 +78,12 @@ describe('config loader', () => {
     const p = join(tmp(), 'gw.yml');
     writeFileSync(
       p,
-      'port: 0\nhealthCheckIntervalMs: 10\nservers:\n  - {id: w, name: W, transport: websocket, url: "http://x"}\n',
+      'port: 0\nhealth: { intervalMs: 10 }\nservers:\n  - {id: w, name: W, transport: websocket, url: "http://x"}\n',
     );
     const err = (await loadConfig(p).catch((e) => e)) as Error;
     expect(err.message).toMatch(/^Invalid configuration:/);
     expect(err.message).toMatch(/- port:/);
-    expect(err.message).toMatch(/- healthCheckIntervalMs:/);
+    expect(err.message).toMatch(/- health\.intervalMs:/);
     expect(err.message).toMatch(/- servers\.0\.url: websocket transport needs a ws:\/\/ or wss:\/\/ URL/);
   });
 

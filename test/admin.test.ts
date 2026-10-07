@@ -8,7 +8,7 @@ import { createRequire } from 'module';
 import { Gateway } from '../src/gateway/index.js';
 import { loadConfig, validateConfig } from '../src/config/loader.js';
 import { diffConfigs, formatDiff, redactConfig, restoreRedacted, REDACTED } from '../src/config/diff.js';
-import { configDeprecations, resetDeprecations, runtimeDeprecations } from '../src/utils/deprecations.js';
+import { configDeprecations, deprecate, DEPRECATIONS, removedConfigKeys, resetDeprecations } from '../src/utils/deprecations.js';
 import type { GatewayConfig } from '../src/utils/types.js';
 import { logger } from '../src/utils/logger.js';
 
@@ -47,30 +47,29 @@ describe('config diff and redaction', () => {
   });
 });
 
-describe('v3 deprecations', () => {
+describe('3.0 removals', () => {
   beforeEach(() => resetDeprecations());
 
-  it('flags corsOrigins / healthCheckIntervalMs and accepts the 3.0 names', () => {
-    expect(configDeprecations({ corsOrigins: [], healthCheckIntervalMs: 5000 }).map((d) => d.id)).toEqual(['corsOrigins', 'healthCheckIntervalMs']);
-    const cfg = validateConfig({ servers: [], cors: { origins: ['https://a.example'] }, health: { intervalMs: 5000 } });
-    expect(cfg.corsOrigins).toEqual(['https://a.example']);
-    expect(cfg.healthCheckIntervalMs).toBe(5000);
-    expect(cfg.deprecations).toBeUndefined();
-    expect(validateConfig({ servers: [], corsOrigins: ['*'] }).deprecations?.[0]?.replacement).toBe('cors.origins');
-    expect(() => validateConfig({ servers: [], corsOrigins: ['*'], cors: { origins: ['*'] } })).toThrow(/not both/);
-    expect(() => validateConfig({ servers: [], healthCheckIntervalMs: 2000, health: { intervalMs: 2000 } })).toThrow(/not both/);
+  it('rejects removed keys and foreign config versions with the replacement', () => {
+    expect(removedConfigKeys({ corsOrigins: [], healthCheckIntervalMs: 5000 })).toHaveLength(2);
+    expect(configDeprecations({ corsOrigins: [] })).toEqual([]);
+    const cfg = validateConfig({ version: 3, servers: [], cors: { origins: ['https://a.example'] }, health: { intervalMs: 5000 } });
+    expect(cfg.cors?.origins).toEqual(['https://a.example']);
+    expect(cfg.health?.intervalMs).toBe(5000);
+    expect(() => validateConfig({ servers: [], corsOrigins: ['*'] })).toThrow(/corsOrigins: removed in 3.0 — use `cors: \{ origins/);
+    expect(() => validateConfig({ servers: [], healthCheckIntervalMs: 2000 })).toThrow(/health: \{ intervalMs/);
+    expect(() => validateConfig({ version: 2, servers: [] })).toThrow(/config version 2 is not supported/);
   });
 
-  it('`validate` prints deprecations', () => {
+  it('`validate` explains removed keys', () => {
     const require = createRequire(import.meta.url);
     const TSX = join(require.resolve('tsx/package.json'), '..', 'dist', 'cli.mjs');
     const CLI = resolve(__dirname, '..', 'src', 'cli.ts');
     const d = tmp();
     writeFileSync(join(d, 'c.yml'), 'servers: []\ncorsOrigins: ["https://x.example"]\n');
     const r = spawnSync(process.execPath, [TSX, CLI, 'validate', '-c', join(d, 'c.yml')], { encoding: 'utf-8', timeout: 30_000 });
-    expect(r.status).toBe(0);
-    expect(r.stdout).toContain('Deprecated (removed in 3.0)');
-    expect(r.stdout).toContain('cors: { origins');
+    expect(r.status).toBe(1);
+    expect(r.stdout + r.stderr).toContain('migrating-to-v3');
   }, 60_000);
 });
 
@@ -132,7 +131,8 @@ describe('admin REST API', () => {
   it('reloads from disk and lists deprecations', async () => {
     resetDeprecations();
     let calls = 0;
-    const url = await start({ admin: { configApi: true }, deprecations: configDeprecations({ corsOrigins: [] }) }, async () => {
+    deprecate(DEPRECATIONS.pluginApiV1, 'plugin "old"');
+    const url = await start({ admin: { configApi: true } }, async () => {
       calls++;
       return validateConfig({ servers: [server('fake')], auth: { strategy: 'api-key', apiKeys: ['op'] }, admin: { configApi: true }, logLevel: 'error', monitor: { requestLog: false } });
     });
@@ -140,9 +140,9 @@ describe('admin REST API', () => {
     expect(calls).toBe(1);
     expect(r.applied).toBe(true);
     expect(r.changes.map((c) => c.path)).toContain('auth');
-    const d = (await (await fetch(`${url}/deprecations`, { headers: op })).json()) as { config: Array<{ id: string }>; runtime: Array<{ id: string }> };
-    expect(d.config.map((x) => x.id)).toEqual(['corsOrigins']);
-    expect(runtimeDeprecations().map((x) => x.id)).toContain('corsOrigins');
+    const d = (await (await fetch(`${url}/deprecations`, { headers: op })).json()) as { config: unknown[]; runtime: Array<{ id: string }> };
+    expect(d.config).toEqual([]);
+    expect(d.runtime.map((x) => x.id)).toEqual(['plugin-api-v1']);
   });
 
   it('reload without a config source is 501', async () => {
@@ -198,21 +198,6 @@ describe('mcp-gateway diff / apply', () => {
       await gw.stop();
     }
   }, 90_000);
-});
-
-describe('legacy agent.json alias', () => {
-  it('answers with a Deprecation header', async () => {
-    resetDeprecations();
-    const gw = new Gateway({ port: 0, host: '127.0.0.1', logLevel: 'error', monitor: { requestLog: false }, servers: [], a2a: { enabled: true } } as GatewayConfig);
-    await gw.start();
-    try {
-      const r = await fetch(`http://127.0.0.1:${gw.address()!.port}/.well-known/agent.json`);
-      expect(r.headers.get('deprecation')).toBe('true');
-      expect(runtimeDeprecations().map((d) => d.id)).toContain('well-known-agent-json');
-    } finally {
-      await gw.stop();
-    }
-  });
 });
 
 void loadConfig;

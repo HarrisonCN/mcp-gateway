@@ -218,7 +218,7 @@ describe('securityWarnings', () => {
     const w = ids({
       ...base,
       auth: { strategy: 'api-key', apiKeys: ['short', { key: hashApiKey('x'), name: 'soon', expiresAt: soon }] },
-      corsOrigins: ['*'],
+      cors: { origins: ['*'] },
       security: { headers: false, exposeErrorDetails: true },
     });
     expect(w).toEqual(expect.arrayContaining(['plaintext-api-keys', 'short-api-keys', 'api-keys-expiring', 'no-auth-lockout', 'headers-disabled', 'error-details', 'cors-wildcard']));
