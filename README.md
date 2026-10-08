@@ -586,6 +586,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v4.8
+
+| Feature | Description |
+|---------|-------------|
+| **Edge config sync** | Edges pull ETag'd snapshots from a Node control plane and boot from the cached one offline |
+| **Offline queue** | Queue calls to unreachable upstreams (`offline.queueTools`), replay on the next sync |
+| **Usage outbox** | Edge calls flow back into the control plane's metrics; `/admin/edge/nodes` lists edges |
+
 ## What's New in v4.7
 
 | Feature | Description |

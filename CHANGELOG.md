@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.8.0] - 2026-10-08
+
+### Added
+- **Offline / edge sync** for the edge gateway (`@winstonsayno/mcp-gateway/edge`, new `EdgeSync`, `memoryStore`):
+  - **Config snapshots** from a Node gateway acting as control plane (`GET /api/v1/admin/edge/snapshot`, ETag /
+    `If-None-Match`): enabled `streamable-http` servers with their known tool catalog, unscoped API keys as `sha256:`
+    digests, tool naming, CORS. The last good snapshot is kept in a KV store (Workers KV compatible), so a cold isolate
+    boots while the control plane is down. Local servers / headers / settings win over the snapshot.
+  - Upstream headers are only included with `includeSecrets` (`?secrets=true`), which needs `admin.configApi: true`.
+  - **Offline tool lists**: when an upstream is unreachable, `tools/list` serves the last list or the snapshot catalog.
+  - **Offline queue** (`offline.queueTools` globs): calls to an unreachable / 5xx upstream are queued (REST `202`
+    with `queued`, MCP `structuredContent: { queued: true, id }`) and replayed on the next sync; rejected calls are
+    dropped and reported.
+  - **Usage outbox**: live / queued / replayed calls are pushed to `POST /api/v1/admin/edge/sync` and show up in the
+    control plane's metrics as client `edge:<edgeId>`; `GET /api/v1/admin/edge/nodes` lists edges.
+  - `gw.sync()`, background sync on requests (`syncIntervalMs`, Workers `waitUntil`), `GET /api/v1/edge/status`,
+    `POST /api/v1/edge/sync`; `workersHandler()` gains `scheduled` (Cron Triggers); `configFromEnv` reads
+    `MCP_GATEWAY_CONTROL_PLANE`, `_CONTROL_KEY`, `_EDGE_ID`, `_QUEUE_TOOLS`, `_SYNC_INTERVAL_MS` and the `MCP_GATEWAY_KV` binding.
+- The GitHub Pages demo simulates the edge control plane endpoints.
+
 ## [4.7.0] - 2026-10-08
 
 ### Added

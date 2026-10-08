@@ -16,6 +16,7 @@ import { MetricsCollector } from '../monitor/index.js';
 import { createApiRouter, serverStateSamples, type ApiRouter, type ToolCallResponse } from './api.js';
 import { createOpenAIRouter } from '../bridges/openai.js';
 import { createAdminRouter } from './admin.js';
+import { createEdgeControlRouter } from './edge-control.js';
 import { deprecate } from '../utils/deprecations.js';
 import { createA2ARouter } from '../bridges/a2a.js';
 import { ServerSupervisor } from './supervisor.js';
@@ -320,6 +321,16 @@ export class Gateway {
         config: () => this.config,
         apply: (next) => this.reload(next),
         reloadFromDisk: this.options.reloadFromDisk,
+        authenticate: this.router.authenticate,
+        isOperator: (req) => this.router!.isOperator(req),
+      }),
+    );
+    this.app.use(
+      '/api/v1',
+      createEdgeControlRouter({
+        config: () => this.config,
+        tools: () => this.registry.getAllTools(),
+        record: (m) => void this.metrics.record(m),
         authenticate: this.router.authenticate,
         isOperator: (req) => this.router!.isOperator(req),
       }),

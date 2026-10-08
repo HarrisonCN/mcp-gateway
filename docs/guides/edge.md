@@ -37,3 +37,37 @@ export default { fetch: (req: Request) => gw.fetch(req) };
 
 Upstream sessions (`Mcp-Session-Id`) are kept per isolate and re-initialized once when the upstream answers `404`;
 tool lists are cached for 30 s.
+
+## Offline / edge sync (4.8)
+
+An edge deployment can take its configuration from a Node gateway (the **control plane**) and keep working when
+either the control plane or an upstream is unreachable.
+
+```ts
+import { createEdgeGateway } from '@winstonsayno/mcp-gateway/edge';
+
+const gw = createEdgeGateway({
+  servers: [],                                   // local servers / headers still win over the snapshot
+  sync: { controlPlane: 'https://gw.example.com', apiKey: env.CONTROL_KEY, edgeId: 'cf-hkg', store: env.MCP_GATEWAY_KV },
+  offline: { queueTools: ['notify_*', 'github__create_issue'] },
+  syncIntervalMs: 60_000,                        // background sync on requests (0 = only explicit sync())
+});
+export default {
+  fetch: (req: Request, _env: unknown, ctx: ExecutionContext) => gw.fetch(req, (p) => ctx.waitUntil(p)),
+  scheduled: () => gw.sync(),                    // Cron Trigger: pull config, replay queue, push usage
+};
+```
+
+| Piece | Behaviour |
+|---|---|
+| **Config snapshot** | `GET /api/v1/admin/edge/snapshot` on the control plane: enabled `streamable-http` servers (url, tool filters, timeout, known tools), unscoped API keys as `sha256:` digests, tool naming, CORS. `ETag` / `If-None-Match`. The last good snapshot is kept in the store, so a cold isolate boots without the control plane. |
+| **Secrets** | Upstream `headers` are only in the snapshot with `sync.includeSecrets: true` (`?secrets=true`), which the control plane allows only with `admin.configApi: true`. Otherwise set them on the edge (`servers[].headers` merge over the snapshot). |
+| **Offline tool lists** | When `tools/list` to an upstream fails, the edge serves its last list, or the snapshot's catalog. |
+| **Offline queue** | Calls to tools matching `offline.queueTools` (exposed name or `<server>__<tool>`) are queued when the upstream is unreachable or answers 5xx: REST answers `202` with `queued`, MCP returns a result with `structuredContent: { queued: true, id }`. `sync()` replays them oldest-first; calls the upstream rejects are dropped (and reported). Only queue idempotent / fire-and-forget tools. |
+| **Usage outbox** | Every call (live, queued, replayed) is recorded and pushed to `POST /api/v1/admin/edge/sync`; it appears in the control plane's metrics as client `edge:<edgeId>`. Events stay in the outbox until accepted. |
+| **Status** | Edge: `GET /api/v1/edge/status` (snapshot ETag, last sync report, outbox / queue sizes, offline servers), `POST /api/v1/edge/sync`. Control plane: `GET /api/v1/admin/edge/nodes`. |
+
+The store is any `{ get, put, delete }` string KV — a Cloudflare KV namespace works as-is; `memoryStore()` is the
+default (per isolate). With `configFromEnv`, set `MCP_GATEWAY_CONTROL_PLANE`, `MCP_GATEWAY_CONTROL_KEY`,
+`MCP_GATEWAY_EDGE_ID`, `MCP_GATEWAY_QUEUE_TOOLS`, `MCP_GATEWAY_SYNC_INTERVAL_MS` and bind KV as `MCP_GATEWAY_KV`;
+`workersHandler()` then also exports `scheduled`.
