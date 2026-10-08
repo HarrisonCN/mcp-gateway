@@ -32,5 +32,6 @@ import './a2a-federation.js';
 import './debug-sessions.js';
 import './cost-advisor.js';
 import './blue-green.js';
+import './data-lineage.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

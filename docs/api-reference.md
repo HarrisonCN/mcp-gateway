@@ -489,6 +489,10 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/blue-green` | Blue/green deployments: active colour, in-flight calls, calls / errors per colour, verification, history (8.5) |
 | `POST` | `/admin/blue-green/:id/switch` | Probe the idle colour and switch all traffic `{ to?, force? }` (409 when the probe fails) (8.5) |
 | `POST` | `/admin/blue-green/:id/rollback` | Switch back to the previous colour immediately (8.5) |
+| `GET` | `/admin/data-lineage` | Data lineage: recent calls with input / output edge counts (8.6) |
+| `GET` | `/admin/data-lineage/nodes/:id?depth=` | Upstream and downstream lineage graph of a call (8.6) |
+| `POST` | `/admin/data-lineage/trace` | Every call that produced or consumed a value `{ value }` (8.6) |
+| `GET` | `/admin/data-lineage/export` | OpenLineage-style run events (8.6) |
 
 ## Bridges
 

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.6.0] - 2026-10-08
+
+### Added
+- **Data lineage** (`dataLineage`): links each tool call's arguments to the earlier results they came from by value
+  fingerprints (values never stored; JSON inside text content is walked), per client, tenant or globally.
+  `GET /api/v1/admin/data-lineage`, per-call upstream / downstream graph (`…/nodes/:id`), trace by value
+  (`POST …/trace`) and an OpenLineage-style export (`…/export`). [Guide](docs/guides/data-lineage.md).
+- Pages demo: a lineage chain.
+
 ## [8.5.0] - 2026-10-08
 
 ### Added

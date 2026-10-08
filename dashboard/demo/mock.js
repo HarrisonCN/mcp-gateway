@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '8.5.0';
+  const VERSION = '8.6.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -67,6 +67,7 @@
     { id: "debug-sessions", since: "8.3.0", summary: "Live collaborative debugging: shared sessions, live call stream (SSE), breakpoints, edit/resume/abort, notes, replay" },
     { id: "cost-advisor", since: "8.4.0", summary: "Cost optimization advisor: quantified caching, failure, cheaper-upstream and budget recommendations from live traffic" },
     { id: "blue-green", since: "8.5.0", summary: "Zero-downtime blue/green upgrades: probed atomic switch, in-flight drain, verification window with auto-rollback" },
+    { id: "data-lineage", since: "8.6.0", summary: "Data lineage: value fingerprints link tool outputs to later tool inputs (graph, trace by value, OpenLineage export)" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -702,6 +703,13 @@
       { id: 'search', blue: 'search-v1', green: 'search-v2', active: 'green', activeServer: 'search-v2', tools: ['*'], inFlight: { blue: 2, green: 14 }, calls: { blue: 48210, green: 1290 }, errors: { blue: 96, green: 3 }, verifying: { color: 'green', remainingSeconds: 74, calls: 1290, errors: 3 },
         history: [{ at: new Date(Date.now() - 46000).toISOString(), from: 'blue', to: 'green', reason: 'manual switch' }] },
     ] });
+    // 8.6: data lineage.
+    if (p === '/admin/data-lineage') return json({ enabled: true, scope: 'client', nodes: 3, edges: 2, recent: [
+      { id: 'n3', at: new Date().toISOString(), tool: 'mail/send', client: 'agent:travel-bot', success: true, inputs: 1, outputs: 0 },
+      { id: 'n2', at: new Date(Date.now() - 4000).toISOString(), tool: 'billing/invoices', client: 'agent:travel-bot', success: true, inputs: 1, outputs: 1 },
+      { id: 'n1', at: new Date(Date.now() - 9000).toISOString(), tool: 'crm/find', client: 'agent:travel-bot', success: true, inputs: 0, outputs: 1 },
+    ] });
+    if (p.startsWith('/admin/data-lineage/nodes/')) return json({ node: { id: 'n3', tool: 'mail/send', inputs: 1, outputs: 0 }, upstream: { nodes: [{ id: 'n2', tool: 'billing/invoices' }, { id: 'n1', tool: 'crm/find' }], edges: [{ from: 'n2', to: 'n3', path: 'body' }, { from: 'n1', to: 'n2', path: 'customer' }] }, downstream: { nodes: [], edges: [] } });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 8.0: nothing is deprecated (schema v7, `plugins[].wasm` and plugin API v4 were removed).
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });
