@@ -1,0 +1,21 @@
+name: Helm
+
+on:
+  push:
+    branches: [main]
+    paths: ['deploy/**', '.github/workflows/helm.yml']
+  pull_request:
+    paths: ['deploy/**', '.github/workflows/helm.yml']
+
+jobs:
+  lint:
+    name: Lint and render chart
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v4
+      - run: helm lint deploy/helm/mcp-gateway
+      - run: helm template t deploy/helm/mcp-gateway > /dev/null
+      - run: helm template t deploy/helm/mcp-gateway --set autoscaling.enabled=true --set podDisruptionBudget.enabled=true --set serviceMonitor.enabled=true --set operator.enabled=true --set existingSecret=s > /dev/null
+      - run: helm template t deploy/helm/mcp-gateway --set operator.enabled=true --set operator.watchNamespace=team-a > /dev/null

@@ -354,6 +354,10 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(((await (await f('/api/v1/admin/billing/invoices')).json()) as any).invoices).toHaveLength(3);
     expect(((await (await f('/api/v1/admin/billing/invoices/acme')).json()) as any).lines[0].target).toBe('llm/complete');
   });
+  it('renders Kubernetes manifests (6.8)', async () => {
+    const f = demoFetch();
+    expect(((await (await f('/api/v1/admin/k8s/manifests')).json()) as any).items.map((m: any) => m.kind)).toEqual(['ConfigMap', 'Deployment', 'Service', 'PodDisruptionBudget']);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

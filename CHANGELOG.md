@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.8.0] - 2026-10-08
+
+### Added
+- **Helm chart** (`deploy/helm/mcp-gateway`): ConfigMap from `values.config`, hardened Deployment (non-root,
+  read-only root FS, config-hash rollouts), Service, optional HPA, PDB, ServiceMonitor and the operator with RBAC.
+  Linted and rendered in CI (`.github/workflows/helm.yml`).
+- **Kubernetes operator** — `McpGateway` custom resource (`mcp-gateway.dev/v1alpha1`, CRD in
+  `deploy/crd/mcpgateways.yaml`) reconciled by `mcp-gateway operator` with server-side apply, owner references and
+  status conditions.
+- `GET /admin/k8s/manifests` renders manifests for the running config (API keys excluded); `GET /admin/k8s/crd`.
+  See [docs/guides/kubernetes.md](docs/guides/kubernetes.md).
+- Library: `renderManifests`, `K8sOperator`, `inClusterApi`, `configHash`, `MCPGATEWAY_CRD`.
+
 ## [6.7.0] - 2026-10-08
 
 ### Added

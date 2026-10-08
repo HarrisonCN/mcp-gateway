@@ -18,5 +18,6 @@ import './identity.js';
 import './policy-sim.js';
 import './anomaly.js';
 import './billing.js';
+import './k8s.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

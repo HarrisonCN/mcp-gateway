@@ -157,6 +157,8 @@ export { AnomalySchema, AnomalyDetector, anomalyDetector, injectionScore, ERR_AN
 export type { AnomalyConfig, AnomalyAlert } from './features/anomaly.js';
 export { BillingSchema, UsageMeter as BillingUsageMeter, usageMeter, priceFor, buildInvoice, invoiceCsv } from './features/billing.js';
 export type { BillingConfig, Invoice, InvoiceLine } from './features/billing.js';
+export { renderManifests, McpGatewaySpecSchema, K8sOperator, inClusterApi, configHash, MCPGATEWAY_CRD } from './features/k8s.js';
+export type { McpGatewaySpec, K8sApi } from './features/k8s.js';
 export type {
   GatewayConfig,
   McpServerConfig,

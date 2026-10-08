@@ -48,6 +48,9 @@ GATEWAY_API_KEY=change-me docker compose up
 
 ## Kubernetes
 
+> 6.8: there is a Helm chart and an operator — see [guides/kubernetes.md](guides/kubernetes.md). The plain
+> manifests below still work.
+
 ```yaml
 apiVersion: v1
 kind: Secret

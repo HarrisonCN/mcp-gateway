@@ -1,0 +1,47 @@
+# Gateway config (mcp-gateway.yml). API keys belong in the Secret below, not here.
+config:
+  version: 6
+  monitor: { prometheus: true }
+  servers: []
+
+replicaCount: 1
+image:
+  repository: ghcr.io/harrisoncn/mcp-gateway
+  tag: ""            # default: the chart's appVersion
+  pullPolicy: IfNotPresent
+port: 4000
+
+# Existing Secret with environment variables (e.g. MCP_GATEWAY_API_KEYS, upstream tokens).
+existingSecret: ""
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { memory: 512Mi }
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# The McpGateway operator (reconciles McpGateway resources; install the CRD from deploy/crd first).
+operator:
+  enabled: false
+  intervalSeconds: 15
+  watchNamespace: ""   # empty: all namespaces (ClusterRole); set to limit to one namespace

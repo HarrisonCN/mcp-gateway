@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v6.8
+
+| Feature | Description |
+|---------|-------------|
+| **Helm chart** | Hardened Deployment, HPA, PDB, ServiceMonitor, optional operator |
+| **Operator** | `McpGateway` resources reconciled with server-side apply and status |
+
 ## What's New in v6.7
 
 | Feature | Description |
