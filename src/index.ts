@@ -48,6 +48,8 @@ export {
   sigv4,
 } from './secrets/index.js';
 export type { SecretProvider, SecretStatus, SecretRef } from './secrets/index.js';
+export { PortalStore, PortalError, exampleArgs, toolSnippets, publicKey } from './portal/index.js';
+export type { PortalKey, PortalKeyStatus } from './portal/index.js';
 export { ComplianceEngine, scanPii, buildReport, reportMarkdown, evaluateControls, PII_CATEGORIES, ERR_RESIDENCY, ERR_PII_BLOCKED } from './policy/compliance.js';
 export type { PiiFinding, ControlResult } from './policy/compliance.js';
 export { Federation, signFederation, verifyFederation, FEDERATION_HEADER } from './gateway/federation.js';
@@ -153,6 +155,7 @@ export type {
   SecretsConfig,
   FederationConfig,
   ComplianceConfig,
+  PortalConfig,
   PiiCategory,
   SecretProviderConfig,
   SecretInjection,

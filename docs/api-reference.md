@@ -242,6 +242,13 @@ Viewers get `403` (REST) / `-32003` (`/mcp`) on tool calls.
                  "ejectedUntil": "2026-10-07T18:00:30.000Z" } ] } ] }
 ```
 
+### Developer portal (3.8)
+
+Public (no credentials): `GET /portal/info`, `POST /portal/signup` (`{ name, email }` → `201 { id, status, key, … }`; the key is shown once; `429` after 10 signups per IP per hour).
+Portal-key holders: `GET /portal/me` (key + 7-day usage: `calls`, `errors`, `avgLatencyMs`, `byTool`, `byDay`), `POST /portal/me/rotate`, `DELETE /portal/me`.
+Any authenticated caller: `GET /portal/tools` (tools in scope with `inputSchema`, `example`, `snippets: { curl, javascript, python }`).
+Operators: `GET /portal/keys[?status=]`, `POST /portal/keys/:id/approve|deny|revoke`. Key records never include the digest.
+
 ### Compliance (3.7)
 
 `GET /compliance` (operators): `{ pii: { action, scope, categories, servers } | null, residency: { rules, allowUnknown, servers: [{ id, region }] }, findings: { "<direction>:<category>": n }, blocked: { pii, residency } }`.

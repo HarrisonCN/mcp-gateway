@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark light" />
+<meta name="theme-color" content="#0b0d12" />
+<title>mcp-gateway · Developer portal</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236d5efc'/%3E%3Cpath d='M9 22V10l7 7 7-7v12' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<!--
+  mcp-gateway developer portal (3.8) — one self-contained file like the dashboard: no build step, no CDN.
+  Talks only to /api/v1/portal/* and /api/v1/tools/call. Served at /portal when portal.enabled.
+-->
+<style>
+:root { --radius: 14px; --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --accent: #7c6cff; --ok: #22c55e; --bad: #ef4444; --warn: #f59e0b;
+  --bg: #0b0d12; --surface: #161a24; --surface-2: #1c2130; --border: rgba(255,255,255,.09); --text: #e8ebf3; --muted: #9aa3b5; }
+@media (prefers-color-scheme: light) { :root { --bg: #f6f7fb; --surface: #fff; --surface-2: #f0f2f8; --border: rgba(10,20,40,.1); --text: #141822; --muted: #5b6475; } }
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.5 var(--font); background: var(--bg); color: var(--text); }
+header { max-width: 980px; margin: 0 auto; padding: 28px 20px 8px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+header h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; }
+header .ver { color: var(--muted); font-size: 13px; }
+header nav { margin-left: auto; display: flex; gap: 6px; }
+main { max-width: 980px; margin: 0 auto; padding: 8px 20px 60px; display: grid; gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; min-width: 0; }
+.card h2 { font-size: 16px; margin: 0 0 10px; }
+.muted { color: var(--muted); font-size: 13.5px; }
+label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+input, textarea { width: 100%; font: inherit; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; }
+textarea { font: 13px/1.45 var(--mono); min-height: 96px; resize: vertical; }
+button { font: 600 14px var(--font); border: 0; border-radius: 9px; padding: 9px 14px; cursor: pointer; background: var(--accent); color: #fff; }
+button.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+button.danger { background: transparent; color: var(--bad); border: 1px solid var(--bad); }
+button:disabled { opacity: .5; cursor: default; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.key { font: 600 14px var(--mono); word-break: break-all; padding: 10px 12px; border-radius: 9px; background: var(--surface-2); border: 1px dashed var(--accent); }
+.badge { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--border); }
+.badge.active { color: var(--ok); border-color: var(--ok); }
+.badge.pending { color: var(--warn); border-color: var(--warn); }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 8px 0; }
+.stat b { display: block; font-size: 22px; }
+.bars { display: flex; align-items: flex-end; gap: 4px; height: 60px; margin-top: 8px; }
+.bars span { flex: 1; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 2px; }
+.tools { display: grid; gap: 10px; }
+details.tool { background: var(--surface-2); border: 1px solid var(--border); border-radius: 11px; padding: 10px 14px; }
+details.tool summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+details.tool summary small { color: var(--muted); font-weight: 400; }
+pre { font: 12.5px/1.45 var(--mono); background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; overflow: auto; margin: 8px 0; white-space: pre-wrap; word-break: break-word; }
+.tabs { display: flex; gap: 6px; margin-top: 8px; }
+.tabs button { padding: 4px 10px; font-size: 12.5px; }
+.msg { margin-top: 10px; font-size: 13.5px; }
+.msg.err { color: var(--bad); }
+.hide { display: none !important; }
+@media (max-width: 560px) { header nav { margin-left: 0; } .stats { grid-template-columns: 1fr 1fr 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Developer portal</h1><span class="ver" id="ver"></span>
+  <nav><button class="ghost" id="lang" type="button">中文</button></nav>
+</header>
+<main>
+  <div class="grid2">
+    <section class="card" id="signup-card">
+      <h2 data-t="signup">Get an API key</h2>
+      <p class="muted" id="signup-note"></p>
+      <form id="signup">
+        <label for="name" data-t="name">Name or project</label>
+        <input id="name" name="name" required maxlength="80" autocomplete="name" />
+        <label for="email" data-t="email">E-mail</label>
+        <input id="email" name="email" type="email" required autocomplete="email" />
+        <div class="row"><button type="submit" data-t="create">Create key</button></div>
+      </form>
+      <div id="issued" class="hide">
+        <p class="msg" id="issued-msg"></p>
+        <div class="key" id="issued-key"></div>
+        <div class="row"><button class="ghost" id="copy" type="button" data-t="copy">Copy</button><button class="ghost" id="use" type="button" data-t="use">Use this key here</button></div>
+      </div>
+      <p class="msg err hide" id="signup-err"></p>
+    </section>
+    <section class="card">
+      <h2 data-t="mykey">Your key</h2>
+      <label for="key" data-t="paste">Paste your API key (kept in this tab only)</label>
+      <input id="key" type="password" autocomplete="off" spellcheck="false" />
+      <div class="row"><button id="load" type="button" data-t="load">Load usage &amp; tools</button><button class="ghost hide" id="rotate" type="button" data-t="rotate">Rotate</button><button class="danger hide" id="revoke" type="button" data-t="revoke">Revoke</button></div>
+      <div id="me" class="hide">
+        <p><span id="me-name"></span> <span class="badge" id="me-status"></span></p>
+        <div class="stats"><div class="stat"><b id="u-calls">0</b><span class="muted" data-t="calls">calls (7 days)</span></div><div class="stat"><b id="u-err">0</b><span class="muted" data-t="errors">errors</span></div><div class="stat"><b id="u-lat">0</b><span class="muted" data-t="latency">avg ms</span></div></div>
+        <div class="bars" id="bars" aria-label="Calls per day"></div>
+        <p class="muted" id="me-scope"></p>
+      </div>
+      <p class="msg err hide" id="me-err"></p>
+    </section>
+  </div>
+  <section class="card">
+    <h2 data-t="tools">Tools you can call</h2>
+    <p class="muted" data-t="toolsnote">Load your key to see the tools in its scope, with example arguments, snippets and a live “Try it”.</p>
+    <div class="tools" id="tools"></div>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const T = {
+    en: { signup: 'Get an API key', name: 'Name or project', email: 'E-mail', create: 'Create key', copy: 'Copy', use: 'Use this key here', mykey: 'Your key', paste: 'Paste your API key (kept in this tab only)', load: 'Load usage & tools', rotate: 'Rotate', revoke: 'Revoke', calls: 'calls (7 days)', errors: 'errors', latency: 'avg ms', tools: 'Tools you can call', toolsnote: 'Load your key to see the tools in its scope, with example arguments, snippets and a live “Try it”.', open: 'Keys work immediately.', approval: 'An operator approves new keys before they work.', closed: 'Self-service signup is closed — ask an operator for a key.', domains: 'Allowed e-mail domains: ', tryit: 'Try it', args: 'Arguments (JSON)', copied: 'Copied', confirmRevoke: 'Revoke this key? Apps using it stop working.', scope: 'Scope: ', none: 'No tools in this key’s scope yet.', expires: 'expires ' },
+    zh: { signup: '申请 API Key', name: '名称或项目', email: '邮箱', create: '创建 Key', copy: '复制', use: '在此页使用该 Key', mykey: '我的 Key', paste: '粘贴你的 API Key（仅保存在本标签页）', load: '加载用量与工具', rotate: '轮换', revoke: '吊销', calls: '次调用（7 天）', errors: '错误', latency: '平均毫秒', tools: '可调用的工具', toolsnote: '加载 Key 后可查看其权限范围内的工具、示例参数、代码片段，并可在线试用。', open: '新 Key 立即可用。', approval: '新 Key 需管理员审批后才能使用。', closed: '自助申请已关闭，请联系管理员获取 Key。', domains: '允许的邮箱域名：', tryit: '试一试', args: '参数（JSON）', copied: '已复制', confirmRevoke: '确定吊销该 Key？使用它的应用将无法访问。', scope: '范围：', none: '该 Key 的范围内暂无工具。', expires: '到期 ' },
+  };
+  let lang = (localStorage.getItem('mcp-gateway.lang') || navigator.language || 'en').startsWith('zh') ? 'zh' : 'en';
+  const t = (k) => T[lang][k] || T.en[k] || k;
+  const $ = (id) => document.getElementById(id);
+  const api = (p, init = {}) => {
+    const key = sessionStorage.getItem('mcp-gateway.portal.key');
+    const headers = { 'Content-Type': 'application/json', ...(init.auth !== false && key ? { Authorization: 'Bearer ' + key } : {}) };
+    return fetch('api/v1' + p, { ...init, headers }).then(async (r) => { const b = await r.json().catch(() => ({})); if (!r.ok) throw new Error(b.message || b.error || ('HTTP ' + r.status)); return b; });
+  };
+  const show = (el, on) => el.classList.toggle('hide', !on);
+  const err = (el, e) => { el.textContent = e ? String(e.message || e) : ''; show(el, !!e); };
+  let info = null;
+  function applyLang() {
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = t(el.dataset.t); });
+    $('lang').textContent = lang === 'zh' ? 'English' : '中文';
+    if (info) $('signup-note').textContent = t(info.signup) + (info.allowedEmailDomains.length ? ' ' + t('domains') + info.allowedEmailDomains.map((d) => '@' + d).join(', ') : '');
+  }
+  $('lang').addEventListener('click', () => { lang = lang === 'zh' ? 'en' : 'zh'; localStorage.setItem('mcp-gateway.lang', lang); applyLang(); });
+  api('/portal/info', { auth: false }).then((i) => {
+    info = i;
+    $('title').textContent = i.title;
+    $('ver').textContent = 'v' + i.version;
+    if (i.signup === 'closed') show($('signup'), false);
+    applyLang();
+  }).catch((e) => err($('signup-err'), e));
+
+  $('signup').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    err($('signup-err'));
+    api('/portal/signup', { method: 'POST', auth: false, body: JSON.stringify({ name: $('name').value, email: $('email').value }) }).then((r) => {
+      $('issued-msg').textContent = r.message;
+      $('issued-key').textContent = r.key;
+      show($('issued'), true);
+      show($('signup'), false);
+    }).catch((e) => err($('signup-err'), e));
+  });
+  $('copy').addEventListener('click', () => { navigator.clipboard?.writeText($('issued-key').textContent).then(() => { $('copy').textContent = t('copied'); }); });
+  $('use').addEventListener('click', () => { $('key').value = $('issued-key').textContent; load(); });
+  $('load').addEventListener('click', load);
+  $('key').addEventListener('keydown', (e) => { if (e.key === 'Enter') load(); });
+
+  function load() {
+    const k = $('key').value.trim();
+    if (!k) return;
+    sessionStorage.setItem('mcp-gateway.portal.key', k);
+    err($('me-err'));
+    api('/portal/me').then(renderMe).catch((e) => { show($('me'), false); err($('me-err'), e); });
+    api('/portal/tools').then(renderTools).catch(() => {});
+  }
+  function renderMe(m) {
+    show($('me'), true); show($('rotate'), true); show($('revoke'), true);
+    $('me-name').textContent = m.key.name + ' · ' + m.key.prefix + '…';
+    $('me-status').textContent = m.key.status;
+    $('me-status').className = 'badge ' + m.key.status;
+    $('u-calls').textContent = m.usage.calls;
+    $('u-err').textContent = m.usage.errors;
+    $('u-lat').textContent = m.usage.avgLatencyMs;
+    const max = Math.max(1, ...m.usage.byDay.map((d) => d.calls));
+    $('bars').replaceChildren(...m.usage.byDay.map((d) => { const s = document.createElement('span'); s.style.height = Math.round((d.calls / max) * 100) + '%'; s.title = d.day + ': ' + d.calls; return s; }));
+    $('me-scope').textContent = t('scope') + ((m.key.servers || ['*']).join(', ')) + (m.key.rateLimit ? ' · ' + m.key.rateLimit.limit + '/' + m.key.rateLimit.windowSeconds + 's' : '') + (m.key.expiresAt ? ' · ' + t('expires') + m.key.expiresAt.slice(0, 10) : '');
+  }
+  $('rotate').addEventListener('click', () => api('/portal/me/rotate', { method: 'POST' }).then((r) => { $('key').value = r.key; $('issued-msg').textContent = r.message; $('issued-key').textContent = r.key; show($('issued'), true); load(); }).catch((e) => err($('me-err'), e)));
+  $('revoke').addEventListener('click', () => { if (confirm(t('confirmRevoke'))) api('/portal/me', { method: 'DELETE' }).then(() => { sessionStorage.removeItem('mcp-gateway.portal.key'); $('key').value = ''; show($('me'), false); $('tools').replaceChildren(); }).catch((e) => err($('me-err'), e)); });
+
+  function el(tag, props = {}, ...kids) { const e = document.createElement(tag); Object.assign(e, props); e.append(...kids); return e; }
+  function renderTools(r) {
+    const box = $('tools');
+    if (!r.tools.length) return box.replaceChildren(el('p', { className: 'muted', textContent: t('none') }));
+    box.replaceChildren(...r.tools.map((tool) => {
+      const pre = el('pre', { textContent: tool.snippets.curl });
+      const tabs = el('div', { className: 'tabs' }, ...['curl', 'javascript', 'python'].map((lang2) => { const b = el('button', { type: 'button', className: 'ghost', textContent: lang2 }); b.addEventListener('click', () => { pre.textContent = tool.snippets[lang2]; }); return b; }));
+      const args = el('textarea', { value: JSON.stringify(tool.example, null, 2), spellcheck: false });
+      const out = el('pre', { className: 'hide' });
+      const run = el('button', { type: 'button', textContent: t('tryit') });
+      run.addEventListener('click', () => {
+        let a; try { a = JSON.parse(args.value || '{}'); } catch (e) { out.textContent = String(e.message); show(out, true); return; }
+        run.disabled = true;
+        api('/tools/call', { method: 'POST', body: JSON.stringify({ server: tool.server, tool: tool.name, arguments: a }) }).then((res) => { out.textContent = JSON.stringify(res.result, null, 2); }).catch((e) => { out.textContent = String(e.message); }).finally(() => { run.disabled = false; show(out, true); });
+      });
+      return el('details', { className: 'tool' },
+        el('summary', {}, tool.server + ' / ' + tool.name, el('small', { textContent: tool.description || '' })),
+        el('pre', { textContent: JSON.stringify(tool.inputSchema || {}, null, 2) }),
+        tabs, pre,
+        el('label', { textContent: t('args') }), args,
+        el('div', { className: 'row' }, run), out);
+    }));
+  }
+  applyLang();
+  const saved = sessionStorage.getItem('mcp-gateway.portal.key');
+  if (saved) { $('key').value = saved; load(); }
+})();
+</script>
+</body>
+</html>

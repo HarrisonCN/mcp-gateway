@@ -39,6 +39,7 @@ import { ApprovalError } from '../policy/approvals.js';
 import { jsonDiff } from './replay.js';
 import { FEDERATION_HEADER, verifyFederation } from './federation.js';
 import { buildReport, reportMarkdown, PII_CATEGORIES } from '../policy/compliance.js';
+import { PortalError, exampleArgs, publicKey, toolSnippets, type PortalStore } from '../portal/index.js';
 
 export type ApiRouter = express.Router & {
   close(): void;
@@ -121,6 +122,8 @@ export interface ApiRouterOptions {
   invoker?: ToolInvoker;
   /** Called after tenant members change at runtime (refreshes MCP sessions). */
   onTenantsChanged?: () => void;
+  /** Developer portal key store (3.8). */
+  portal?: PortalStore;
   /** Secrets (3.5): status (never values) and on-demand rotation. */
   secrets?: {
     providers(): Array<{ id: string; type: string }>;
@@ -1135,6 +1138,134 @@ export function createApiRouter(
   router.get('/load-balancing', auth, (req, res) => {
     if (!operatorOnly(req, res)) return;
     res.json({ groups: invoker.balancer?.snapshot() ?? [] });
+  });
+
+  // ─── Developer portal (3.8) ─────────────────────────────────────────────────
+  const portal = options.portal;
+  const portalOn = (res: Response): boolean => {
+    if (!portal || !cfg.portal?.enabled) {
+      res.status(404).json({ error: 'Not Found', message: 'The developer portal is not enabled' });
+      return false;
+    }
+    return true;
+  };
+  const portalFail = (res: Response, err: unknown) => {
+    if (err instanceof PortalError) return void res.status(err.status).json({ error: err.status === 404 ? 'Not Found' : err.status === 403 ? 'Forbidden' : err.status === 409 ? 'Conflict' : 'Bad Request', message: err.message });
+    throw err;
+  };
+  // Per-IP signup throttle (in memory): 10 per hour.
+  const signups = new Map<string, number[]>();
+  const publicBase = (req: Request) => (cfg.portal?.publicUrl ?? `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+
+  router.get('/portal/info', (_req, res) => {
+    if (!portalOn(res)) return;
+    res.json({ title: cfg.portal!.title ?? 'MCP Gateway developer portal', signup: cfg.portal!.signup ?? 'approval', allowedEmailDomains: cfg.portal!.allowedEmailDomains ?? [], version: VERSION, defaults: { servers: cfg.portal!.defaults?.servers ?? ['*'], rateLimit: cfg.portal!.defaults?.rateLimit ?? null, keyTtlDays: cfg.portal!.defaults?.keyTtlDays ?? null } });
+  });
+
+  router.post('/portal/signup', (req, res) => {
+    if (!portalOn(res)) return;
+    const ip = req.ip ?? 'unknown';
+    const now = Date.now();
+    const recent = (signups.get(ip) ?? []).filter((t) => now - t < 3_600_000);
+    if (recent.length >= 10) return void res.status(429).json({ error: 'Too Many Requests', message: 'Too many signups from this address; try again later' });
+    try {
+      const { record, key } = portal!.signup((req.body ?? {}) as Record<string, unknown>);
+      signups.set(ip, [...recent, now]);
+      res.status(201).set('Cache-Control', 'no-store').json({
+        ...publicKey(record),
+        key,
+        message: record.status === 'active' ? 'Your key is active. It is shown only once — store it now.' : 'Your key was created and waits for an operator to approve it. It is shown only once — store it now.',
+      });
+    } catch (err) {
+      portalFail(res, err);
+    }
+  });
+
+  /** The portal key of the caller (developer endpoints). */
+  const myKey = (req: Request, res: Response) => {
+    if (!portalOn(res)) return undefined;
+    const k = portal!.byClientId((req as AuthedRequest).clientId);
+    if (!k || k.status !== 'active') {
+      res.status(403).json({ error: 'Forbidden', message: 'This endpoint is for developer-portal keys' });
+      return undefined;
+    }
+    return k;
+  };
+
+  router.get('/portal/me', auth, (req, res) => {
+    const k = myKey(req, res);
+    if (!k) return;
+    const since = Date.now() - 7 * 86_400_000;
+    const byTool = new Map<string, number>();
+    const byDay = new Map<string, number>();
+    let calls = 0, errors = 0, totalMs = 0;
+    let cursor: string | undefined;
+    for (let page = 0; page < 20; page++) {
+      const p = metrics.queryRequests({ limit: 500, cursor, since, clientId: `key:portal-${k.id}` });
+      for (const r of p.requests) {
+        calls++;
+        if (!r.success) errors++;
+        totalMs += r.durationMs;
+        const tool = `${r.serverId}/${r.toolName}`;
+        byTool.set(tool, (byTool.get(tool) ?? 0) + 1);
+        const day = new Date(r.timestamp).toISOString().slice(0, 10);
+        byDay.set(day, (byDay.get(day) ?? 0) + 1);
+      }
+      if (!p.nextCursor) break;
+      cursor = p.nextCursor;
+    }
+    res.set('Cache-Control', 'no-store').json({
+      key: publicKey(k),
+      usage: {
+        since: new Date(since).toISOString(),
+        calls, errors, avgLatencyMs: calls ? Math.round(totalMs / calls) : 0,
+        byTool: [...byTool.entries()].sort((a, b) => b[1] - a[1]).map(([tool, n]) => ({ tool, calls: n })),
+        byDay: [...byDay.entries()].sort().map(([day, n]) => ({ day, calls: n })),
+      },
+    });
+  });
+
+  router.post('/portal/me/rotate', auth, (req, res) => {
+    const k = myKey(req, res);
+    if (!k) return;
+    const { record, key } = portal!.rotate(k.id);
+    res.set('Cache-Control', 'no-store').json({ ...publicKey(record), key, message: 'New key issued; the previous one no longer works.' });
+  });
+
+  router.delete('/portal/me', auth, (req, res) => {
+    const k = myKey(req, res);
+    if (!k) return;
+    res.json(publicKey(portal!.revoke(k.id)));
+  });
+
+  // Interactive docs: the tools the caller may use, with example arguments and snippets.
+  router.get('/portal/tools', auth, (req, res) => {
+    if (!portalOn(res)) return;
+    const base = publicBase(req);
+    const tools = filterToolsByScope(scopeOf(req), registry.getAllTools()).map((t) => {
+      const example = exampleArgs(t.inputSchema ?? { type: 'object' });
+      return { server: t.serverId, name: t.name, description: t.description, inputSchema: t.inputSchema, example, snippets: toolSnippets(base, t.serverId, t.name, example) };
+    });
+    res.json({ tools, total: tools.length, tryIt: `${base}/api/v1/tools/call` });
+  });
+
+  // Operators: review keys.
+  router.get('/portal/keys', auth, (req, res) => {
+    if (!operatorOnly(req, res) || !portalOn(res)) return;
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    res.set('Cache-Control', 'no-store').json({ keys: portal!.list().filter((k) => !status || k.status === status).map(publicKey) });
+  });
+
+  router.post('/portal/keys/:id/:action', auth, (req, res) => {
+    if (!operatorOnly(req, res) || !portalOn(res)) return;
+    const { id, action } = req.params as { id: string; action: string };
+    try {
+      if (action === 'approve' || action === 'deny') return void res.json(publicKey(portal!.decide(id, action === 'approve')));
+      if (action === 'revoke') return void res.json(publicKey(portal!.revoke(id)));
+      res.status(404).json({ error: 'Not Found', message: 'action must be approve, deny or revoke' });
+    } catch (err) {
+      portalFail(res, err);
+    }
   });
 
   // ─── Compliance (3.7) ───────────────────────────────────────────────────────

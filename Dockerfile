@@ -28,7 +28,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
-COPY dashboard/index.html ./dashboard/index.html
+COPY dashboard/index.html dashboard/portal.html ./dashboard/
 
 # Writable location for the optional audit log (audit.path: /app/data/audit.db)
 RUN mkdir -p /app/data && chown node:node /app/data

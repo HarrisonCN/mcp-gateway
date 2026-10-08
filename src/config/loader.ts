@@ -557,6 +557,27 @@ const GatewayConfigSchema = z.object({
       if (bad) ctx.addIssue({ code: z.ZodIssueCode.custom, message: bad });
     })
     .optional(),
+  portal: z
+    .object({
+      enabled: z.boolean().optional(),
+      signup: z.enum(['open', 'approval', 'closed']).optional(),
+      allowedEmailDomains: z.array(z.string().regex(/^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/)).optional(),
+      maxKeysPerEmail: z.number().int().min(1).max(100).optional(),
+      defaults: z
+        .object({
+          servers: z.array(z.string().min(1)).optional(),
+          tools: z.array(z.string().min(1)).optional(),
+          rateLimit: z.object({ limit: z.number().int().positive(), windowSeconds: z.number().int().positive() }).strict().optional(),
+          keyTtlDays: z.number().int().min(1).max(3650).optional(),
+        })
+        .strict()
+        .optional(),
+      keysFile: z.string().min(1).optional(),
+      title: z.string().min(1).max(80).optional(),
+      publicUrl: z.string().url().optional(),
+    })
+    .strict()
+    .optional(),
   compliance: z
     .object({
       pii: z
@@ -827,6 +848,9 @@ const GatewayConfigSchema = z.object({
     }
     seen.add(s.id);
   });
+  if (c.portal?.enabled && c.auth?.strategy !== 'api-key') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['portal', 'enabled'], message: 'the developer portal issues API keys and needs auth.strategy: api-key' });
+  }
   // secret:// references must name a configured provider (or the built-in "env").
   const providers = new Set(['env', ...(c.secrets?.providers ?? []).map((p) => p.id)]);
   c.servers.forEach((s, i) => {

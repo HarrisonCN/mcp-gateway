@@ -581,6 +581,16 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v3.8
+
+| Feature | Description |
+|---------|-------------|
+| **Self-serve keys** | `/portal`: sign up, get a scoped key; open, approval or closed signup |
+| **Usage** | 7-day calls, errors, latency per key; rotate / revoke |
+| **Interactive docs** | Tools in scope with schemas, example arguments, snippets and “Try it” |
+
+Details: [CHANGELOG](CHANGELOG.md) · [Configuration](docs/configuration.md#developer-portal-38).
+
 ## What's New in v3.7
 
 | Feature | Description |
