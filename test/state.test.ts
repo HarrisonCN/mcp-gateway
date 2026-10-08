@@ -84,6 +84,16 @@ describe('state stores', () => {
     expect(redis.commands.some((c) => c[1] === 'gw1:n')).toBe(true);
   });
 
+  it('redis store: a failed AUTH never leaves an unauthenticated connection behind (3.0.1)', async () => {
+    redis = await startFakeRedis({ password: 'right' });
+    const wrong = new RedisStateStore({ url: redis.url.replace(':right@', ':wrong@') });
+    await expect(wrong.ping()).rejects.toThrow(/WRONGPASS/);
+    // Second command must authenticate again (and fail the same way), not reuse the socket without AUTH.
+    await expect(wrong.ping()).rejects.toThrow(/WRONGPASS/);
+    expect(redis.commands.filter((c) => c[0] === 'AUTH').length).toBe(2);
+    await wrong.close();
+  });
+
   it('redis store rejects bad URLs and reports connection failures', async () => {
     expect(() => new RedisStateStore({ url: 'http://x' })).toThrow(/redis:\/\//);
     expect(() => createStateStore({ store: 'redis' })).toThrow(/url/);

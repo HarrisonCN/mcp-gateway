@@ -8,7 +8,7 @@ import { createServer as createTcpServer, type AddressInfo } from 'net';
 import { createServer, type Server } from 'http';
 import { spawnSync } from 'child_process';
 import { createRequire } from 'module';
-import { loadConfig } from '../src/config/loader.js';
+import { loadConfig, loadPolicyFiles } from '../src/config/loader.js';
 import { runPolicyTests, evaluatePolicy } from '../src/policy/tool-policy.js';
 import { AuditExporter, formatSyslog, toAuditEvent } from '../src/monitor/siem.js';
 import { Gateway } from '../src/gateway/index.js';
@@ -74,6 +74,14 @@ policy:
     const results = runPolicyTests(cfg.policy);
     expect(results).toHaveLength(4);
     expect(results.every((r) => r.passed)).toBe(true);
+  });
+
+  it('re-merging an already merged policy does not duplicate file rules (admin GET → PUT round trip, 3.0.1)', async () => {
+    const d = setup();
+    const cfg = await loadConfig(join(d, 'mcp-gateway.yml'));
+    const again = await loadPolicyFiles(JSON.parse(JSON.stringify(cfg.policy)), d);
+    expect(again.rules?.map((r) => r.name)).toEqual(['admin', 'fs-read', 'extra.json#1']);
+    expect(again.tests).toHaveLength(4);
   });
 
   it('reports failing tests and invalid files', async () => {

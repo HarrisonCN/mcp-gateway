@@ -156,6 +156,15 @@ export function createOpenAIRouter(deps: OpenAIBridgeDeps): express.Router {
         logger.debug(`OpenAI bridge: executed ${mine.length} tool call(s), round ${round + 1}`);
       }
     } catch (err) {
+      // Upstream unreachable / timed out: a gateway error, not an internal one.
+      const name = err instanceof Error ? err.name : '';
+      if (!res.headersSent && (name === 'TimeoutError' || name === 'AbortError' || (err instanceof TypeError && /fetch/i.test(err.message)))) {
+        const timeout = name === 'TimeoutError' || name === 'AbortError';
+        return void res.status(timeout ? 504 : 502).json({
+          error: timeout ? 'Gateway Timeout' : 'Bad Gateway',
+          message: timeout ? `Upstream did not answer within ${up.timeoutMs ?? 120_000}ms` : `Upstream request failed: ${(err as Error).message}`,
+        });
+      }
       next(err);
     }
   });

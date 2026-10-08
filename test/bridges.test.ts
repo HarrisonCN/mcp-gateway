@@ -109,6 +109,23 @@ describe('OpenAI-compatible tools proxy', () => {
     expect((await fetch(`${url}/tools`, { headers: auth })).status).toBe(200);
     expect((await post(`${url}/chat/completions`, { messages: [] }, auth)).status).toBe(501);
   });
+
+  it('maps an unreachable / slow upstream to 502 / 504 instead of 500 (3.0.1)', async () => {
+    const slow = createServer(() => {}); // never answers
+    await new Promise<void>((r) => slow.listen(0, '127.0.0.1', () => r()));
+    llm = slow;
+    const slowUrl = `http://127.0.0.1:${(slow.address() as AddressInfo).port}`;
+    gw = new Gateway(base({ openai: { upstream: { baseUrl: slowUrl, timeoutMs: 300 } } }));
+    await gw.start();
+    const url = `http://127.0.0.1:${gw.address()!.port}/openai/v1`;
+    const r = await post(`${url}/chat/completions`, { model: 'm', messages: [] });
+    expect(r.status).toBe(504);
+    await gw.stop();
+    gw = new Gateway(base({ openai: { upstream: { baseUrl: 'http://127.0.0.1:1' } } }));
+    await gw.start();
+    const r2 = await post(`http://127.0.0.1:${gw.address()!.port}/openai/v1/chat/completions`, { model: 'm', messages: [] });
+    expect(r2.status).toBe(502);
+  });
 });
 
 describe('A2A bridge', () => {
