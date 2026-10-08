@@ -375,6 +375,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(c.orgs.map((o: any) => `${o.id}:${o.plan}`)).toEqual(['acme:pro', 'globex:free']);
     expect(c.totals.orgs).toBe(2);
   });
+  it('reports output sanitisation counters (7.3)', async () => {
+    const f = demoFetch();
+    const s = (await (await f('/api/v1/admin/sanitize')).json()) as any;
+    expect(s.settings.injection.action).toBe('mark');
+    expect(s.stats.flagged).toBe(3);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v7.3
+
+| Feature | |
+|---------|---|
+| **Output sanitisation** | Hidden Unicode, ANSI, HTML blocks and exfiltration images stripped from tool results |
+| **Injection defence** | Flag / mark / block injected results, spotlighting, inbound blocking (-32017) — [guide](docs/guides/sanitize.md) |
+
 ## What's New in v7.2
 
 | Feature | |
