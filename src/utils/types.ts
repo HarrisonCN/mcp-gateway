@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Agent session recordings (5.5). */
+  sessions?: import('../features/sessions.js').SessionsConfig;
   /** Signed plugins: trusted keys, require signatures (5.4). */
   pluginTrust?: import('../plugins/trust.js').PluginTrustConfig;
   /** Plugin marketplace indexes (5.4). */

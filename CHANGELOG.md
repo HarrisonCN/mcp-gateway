@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.0] - 2026-10-08
+
+### Added
+- **Agent session recording, replay and evals** — record an agent's tool calls from the replay capture
+  (`POST /admin/sessions { name, clientId?, since?, until?, tools? }`), import / export recordings as JSON, and
+  replay them through the full pipeline graded by `success`, `structure` or `exact` mode
+  (`POST /admin/sessions/:name/replay`) → pass rate, per-step diffs, latency before / after.
+  `sessions: { dir, maxRecordings }` persists recordings. See [docs/guides/session-evals.md](docs/guides/session-evals.md).
+- `ReplayRecorder.list()`; library: `recordFrom`, `replayRecording`, `gradeStep`, `RecordingStore`.
+- Pages demo: recordings and a replay eval.
+
+### Fixed
+- Feature-module tool invocations (5.1+) pass tool arguments correctly.
+
 ## [5.4.0] - 2026-10-08
 
 ### Added

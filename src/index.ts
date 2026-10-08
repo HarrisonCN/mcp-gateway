@@ -135,6 +135,8 @@ export { PluginTrustSchema, generateSigningKey, signArtifact, verifyArtifact } f
 export type { PluginTrustConfig, PluginSignature } from './plugins/trust.js';
 export { MarketplaceSchema, parseIndex as parseMarketplaceIndex, installEntry as installMarketplaceEntry, compareVersions } from './features/marketplace.js';
 export type { MarketplaceConfig, MarketplaceEntry } from './features/marketplace.js';
+export { SessionsSchema, recordFrom, replayRecording, grade as gradeStep, RecordingStore } from './features/sessions.js';
+export type { SessionsConfig, Recording, RecordedStep, EvalReport, EvalMode } from './features/sessions.js';
 export type {
   GatewayConfig,
   McpServerConfig,

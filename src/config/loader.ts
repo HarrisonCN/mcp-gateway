@@ -15,6 +15,7 @@ import { RegionsSchema } from '../features/regions.js';
 import { EdgeFleetSchema } from '../features/edge-fleet.js';
 import { PluginTrustSchema } from '../plugins/trust.js';
 import { MarketplaceSchema } from '../features/marketplace.js';
+import { SessionsSchema } from '../features/sessions.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
@@ -480,6 +481,7 @@ const GatewayConfigSchema = z.object({
   edgeFleet: EdgeFleetSchema.optional(),
   pluginTrust: PluginTrustSchema.optional(),
   marketplace: MarketplaceSchema.optional(),
+  sessions: SessionsSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   dashboard: z.object({ enabled: z.boolean().default(true) }).optional(),

@@ -403,6 +403,9 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `POST` | `/admin/edge-fleet/push` | Ask edges to sync now `{ nodes?, labels?, onlyDrifted? }` → per-node results (5.3) |
 | `GET` | `/admin/marketplace` | Plugin marketplace entries from `marketplace.indexes` (`trusted` = signed by a `pluginTrust` key) (5.4) |
 | `POST` | `/admin/marketplace/install` | Download + verify (sha256, Ed25519) + write a plugin `{ name, version? }` → `plugins:` entry (5.4) |
+| `GET` / `POST` | `/admin/sessions` | Agent session recordings; `POST { name, clientId?, since?, until?, tools? }` records from captured calls (5.5) |
+| `GET` / `PUT` / `DELETE` | `/admin/sessions/:name` | Export / import `{ steps }` / delete a recording (5.5) |
+| `POST` | `/admin/sessions/:name/replay` | Replay and grade `{ mode: success\|structure\|exact, stopOnFailure? }` → eval report (5.5) |
 
 ## Bridges
 

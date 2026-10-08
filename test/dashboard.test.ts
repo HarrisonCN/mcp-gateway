@@ -287,6 +287,13 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const ok = (await (await f('/api/v1/admin/marketplace/install', { method: 'POST', body: JSON.stringify({ name: 'pii-guard' }) })).json()) as any;
     expect(ok.plugin.module).toBe('./plugins/pii-guard-1.2.0.mjs');
   });
+  it('simulates session recordings and a replay eval (5.5)', async () => {
+    const f = demoFetch();
+    const l = (await (await f('/api/v1/admin/sessions')).json()) as any;
+    expect(l.recordings.map((r: any) => r.name)).toContain('triage-flow');
+    const r = (await (await f('/api/v1/admin/sessions/triage-flow/replay', { method: 'POST', body: '{}' })).json()) as any;
+    expect(r).toMatchObject({ recording: 'triage-flow', failed: 1, passRate: 0.75 });
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {
