@@ -39,6 +39,7 @@ import { ToolInvoker } from './invoker.js';
 import { LoadBalancer, expandReplicas } from './balancer.js';
 import { SmartRouter } from './routing.js';
 import { SecretManager } from '../secrets/index.js';
+import { Federation } from './federation.js';
 import { ToolCache } from './cache.js';
 import { ReplayRecorder } from './replay.js';
 import { UsageMeter } from './usage.js';
@@ -79,6 +80,8 @@ export class Gateway {
   private ipFilter?: express.RequestHandler;
   private jsonParser: express.RequestHandler;
   private readonly reloadLock = new Mutex();
+  /** Peer gateways (3.6). */
+  federation?: Federation;
   /** Secret providers, resolution and rotation (3.5). */
   readonly secrets: SecretManager;
   private started = false;
@@ -174,6 +177,20 @@ export class Gateway {
       tenantsOf: (clientId) => (this.config.tenants?.length ? membershipsOf(this.config.tenants, clientId).map((m) => m.tenant) : []),
       secrets: this.secrets,
       serverConfig: (id) => this.registry.getServer(id),
+      federation: (this.federation = new Federation({
+        config: () => this.config.federation,
+        version: VERSION,
+        localServers: () =>
+          this.registry
+            .getAllServers()
+            .filter((s) => s.enabled !== false && !s.replicaOf)
+            .map((s) => ({
+              id: s.id,
+              name: s.name,
+              status: this.invoker?.balancer?.anyConnected(s.id) ?? this.proxy.isConnected(s.id) ? 'online' : (this.registry.getHealth(s.id)?.status ?? 'offline'),
+              tools: this.registry.getTools(s.id).filter((t) => this.registry.isToolExposed(s.id, t.name)).map((t) => t.name),
+            })),
+      })),
       router: new SmartRouter(() => this.config.routing, { isConnected: (id) => this.proxy.isConnected(id) }),
       balancer: new LoadBalancer({
         servers: () => this.registry.getAllServers(),
@@ -357,6 +374,7 @@ export class Gateway {
     await this.catalog.refresh();
     await this.connectServers(expandReplicas(this.withInstalled(this.config.servers)));
     this.startSecretRotation();
+    this.federation?.start();
 
     this.registry.startHealthChecks((serverId) => this.checkHealth(serverId));
 
@@ -465,6 +483,7 @@ export class Gateway {
     }
     this.router?.close();
     this.secrets.stopRotation();
+    this.federation?.stop();
     await this.proxy.disconnectAll();
     if (this.stateStore && !this.options.stateStore) await this.stateStore.close().catch(() => undefined);
     await this.tracer.shutdown().catch(() => undefined);
@@ -502,6 +521,7 @@ export class Gateway {
       const prevPlugins = this.config.plugins;
       const prevCache = this.config.cache;
       const prevSecrets = this.config.secrets;
+      const prevFederation = this.config.federation;
       const prevTenants = this.config.tenants;
       const prevCatalog = this.config.catalog;
       for (const field of ['port', 'host', 'health', 'dashboard', 'audit', 'state', 'observability'] as const) {
@@ -574,6 +594,7 @@ export class Gateway {
         quotas: next.quotas,
         routing: next.routing,
         secrets: next.secrets,
+        federation: next.federation,
         // openai.path is fixed at start; other bridge settings hot reload
         openai: next.openai ? { ...next.openai, path: this.config.openai?.path } : next.openai,
         a2a: next.a2a,
@@ -586,6 +607,11 @@ export class Gateway {
       if (!same(prevTenants, next.tenants)) {
         this.mcp?.refreshClients();
         applied.push('tenants');
+      }
+      if (!same(prevFederation, next.federation)) {
+        this.federation?.refreshPeers();
+        this.federation?.start();
+        applied.push('federation');
       }
       if (!same(prevSecrets, next.secrets)) {
         this.secrets.configure();

@@ -37,6 +37,7 @@ import { ERR_QUOTA_EXCEEDED, usageCsv, type UsageGroup } from './usage.js';
 import { ToolInvoker, POLICY_ERROR_CODES, ERR_OUTPUT_BLOCKED } from './invoker.js';
 import { ApprovalError } from '../policy/approvals.js';
 import { jsonDiff } from './replay.js';
+import { FEDERATION_HEADER, verifyFederation } from './federation.js';
 
 export type ApiRouter = express.Router & {
   close(): void;
@@ -57,7 +58,7 @@ export type ApiRouter = express.Router & {
   /** Whether the authenticated caller is an operator (no key scope / tenant restriction). */
   isOperator(req: Request): boolean;
   /** REST-semantics tool call (after `authenticate`), for bridges. */
-  runToolCall(req: Request, body: Record<string, unknown>, res: ToolCallResponse, opts?: { replayOf?: string }): Promise<void>;
+  runToolCall(req: Request, body: Record<string, unknown>, res: ToolCallResponse, opts?: { replayOf?: string; fromPeer?: string }): Promise<void>;
 };
 
 /** Whether `args` serialise to more than `limit` bytes (0 / undefined = no limit). */
@@ -557,7 +558,7 @@ export function createApiRouter(
    * One REST-semantics tool call (auth scope, tenants, routing, policy, quotas, status mapping).
    * Used by POST /tools/call and the OpenAI / A2A bridges.
    */
-  async function runToolCall(req: Request, body: Record<string, unknown>, res: ToolCallResponse, opts: { replayOf?: string } = {}): Promise<void> {
+  async function runToolCall(req: Request, body: Record<string, unknown>, res: ToolCallResponse, opts: { replayOf?: string; fromPeer?: string } = {}): Promise<void> {
     const { tool, server: serverId } = body;
     const args = body.arguments ?? {};
 
@@ -577,6 +578,22 @@ export function createApiRouter(
 
     const scope = scopeOf(req);
     const forbidden = (message: string) => res.status(403).json({ error: 'Forbidden', message });
+
+    // 3.6: `server: "<id>@<peer>"` calls a server of a peer gateway.
+    const fed = invoker.federation;
+    if (typeof serverId === 'string' && serverId.includes('@') && fed?.enabled && !opts.fromPeer) {
+      const at = serverId.lastIndexOf('@');
+      const remoteId = serverId.slice(0, at);
+      const peer = fed.peer(serverId.slice(at + 1));
+      if (!peer || !peer.servers.some((s) => s.id === remoteId)) {
+        return void res.status(404).json({ error: 'Not Found', message: `Server "${serverId}" is not exported by any peer gateway` });
+      }
+      if (!isToolInScope(scope, serverId, tool) || !canCall(scope, serverId)) return void forbidden(`Tool "${tool}" on server "${serverId}" is not allowed for this client`);
+      const r = await fed.forward(peer, { server: remoteId, tool, arguments: args as Record<string, unknown>, clientId: (req as AuthedRequest).clientId });
+      if (res.headersSent) return;
+      if (r.success) return void res.json({ result: r.result, server: serverId, tool, durationMs: r.durationMs, peer: peer.id });
+      return void res.status(502).json({ error: 'Bad Gateway', message: r.error?.message, code: r.error?.code, peer: peer.id });
+    }
 
     // Resolve server: use explicit serverId or auto-discover from tool name
     let targetServerId = serverId;
@@ -634,7 +651,11 @@ export function createApiRouter(
       return;
     }
 
-    if (!(invoker.balancer?.anyConnected(targetServerId) ?? proxy.isConnected(targetServerId))) {
+    if (opts.fromPeer && !invoker.federation?.exports(targetServerId)) {
+      return void forbidden(`Server "${targetServerId}" is not exported to peer gateways`);
+    }
+    const peerFailover = !opts.fromPeer && !!invoker.federation?.failsOver(targetServerId) && invoker.federation.candidates(targetServerId, tool).length > 0;
+    if (!peerFailover && !(invoker.balancer?.anyConnected(targetServerId) ?? proxy.isConnected(targetServerId))) {
       const health = registry.getHealth(targetServerId);
       const retryAt = health?.reconnect?.state === 'scheduled' ? health.reconnect.nextAttemptAt : undefined;
       if (retryAt) res.set('Retry-After', String(Math.max(1, Math.ceil((retryAt.getTime() - Date.now()) / 1000))));
@@ -660,6 +681,7 @@ export function createApiRouter(
       via: 'rest',
       traceparent: traceparentOf(req),
       ...(opts.replayOf ? { replayOf: opts.replayOf } : {}),
+      ...(opts.fromPeer ? { fromPeer: opts.fromPeer } : {}),
     });
 
     if (res.headersSent) return;
@@ -1108,6 +1130,62 @@ export function createApiRouter(
     if (!operatorOnly(req, res)) return;
     res.json({ groups: invoker.balancer?.snapshot() ?? [] });
   });
+
+  // ─── Federation (3.6) ───────────────────────────────────────────────────────
+  /** Peer endpoints are authenticated by the federation HMAC, not by client credentials. */
+  const peerAuth = (req: Request, res: Response): string | undefined => {
+    const fed = invoker.federation;
+    const fcfg = cfg.federation;
+    if (!fed?.enabled || !fcfg) {
+      res.status(404).json({ error: 'Not Found', message: 'Federation is not enabled' });
+      return undefined;
+    }
+    const body = req.method === 'GET' ? '' : JSON.stringify(req.body ?? {});
+    const v = verifyFederation(req.get(FEDERATION_HEADER), fcfg.sharedSecret, req.method, req.originalUrl.split('?')[0]!, body);
+    if ('error' in v) {
+      res.status(401).json({ error: 'Unauthorized', message: v.error });
+      return undefined;
+    }
+    if (!(fcfg.peers ?? []).some((p) => p.id === v.peer)) {
+      res.status(403).json({ error: 'Forbidden', message: `"${v.peer}" is not a configured peer` });
+      return undefined;
+    }
+    return v.peer;
+  };
+
+  router.get('/federation/catalog', (req, res) => {
+    if (!peerAuth(req, res)) return;
+    res.set('Cache-Control', 'no-store').json(invoker.federation!.catalog());
+  });
+
+  router.post(
+    '/federation/call',
+    asyncHandler(async (req, res) => {
+      const peer = peerAuth(req, res);
+      if (!peer) return;
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      (req as AuthedRequest).clientId = `peer:${peer}`;
+      await runToolCall(req, { server: b.server, tool: b.tool, arguments: b.arguments ?? {} }, res as unknown as ToolCallResponse, { fromPeer: peer });
+    }),
+  );
+
+  router.get('/federation', auth, (req, res) => {
+    if (!operatorOnly(req, res)) return;
+    const fed = invoker.federation;
+    res.json(fed ? { ...fed.snapshot(), exported: fed.enabled ? fed.catalog().servers.map((s) => s.id) : [] } : { enabled: false, peers: [] });
+  });
+
+  router.post(
+    '/federation/sync',
+    auth,
+    asyncHandler(async (req, res) => {
+      if (!operatorOnly(req, res)) return;
+      const fed = invoker.federation;
+      if (!fed?.enabled) return void res.status(404).json({ error: 'Not Found', message: 'Federation is not enabled' });
+      await fed.sync();
+      res.json(fed.snapshot());
+    }),
+  );
 
   // ─── Secrets (3.5) ──────────────────────────────────────────────────────────
   router.get('/secrets', auth, (req, res) => {

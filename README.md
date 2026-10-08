@@ -581,6 +581,16 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v3.6
+
+| Feature | Description |
+|---------|-------------|
+| **Peering** | Gateways in several regions, HMAC-signed peer requests |
+| **Catalog sync** | Each gateway sees its peers' servers and their health |
+| **Cross-region failover** | Calls to a downed local server are served by a peer; `server: "id@peer"` for remote-only servers |
+
+Details: [CHANGELOG](CHANGELOG.md) · [Configuration](docs/configuration.md#federation-36).
+
 ## What's New in v3.5
 
 | Feature | Description |

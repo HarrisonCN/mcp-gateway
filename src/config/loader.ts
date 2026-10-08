@@ -556,6 +556,30 @@ const GatewayConfigSchema = z.object({
       if (bad) ctx.addIssue({ code: z.ZodIssueCode.custom, message: bad });
     })
     .optional(),
+  federation: z
+    .object({
+      enabled: z.boolean().optional(),
+      gatewayId: z.string().regex(/^[A-Za-z0-9_.-]+$/),
+      region: z.string().min(1).optional(),
+      sharedSecret: z.string().min(32, 'federation.sharedSecret must be at least 32 characters'),
+      peers: z
+        .array(z.object({ id: z.string().regex(/^[A-Za-z0-9_.-]+$/), url: z.string().url(), region: z.string().min(1).optional(), priority: z.number().int().min(0).optional() }).strict())
+        .optional(),
+      export: z.array(z.string().min(1)).optional(),
+      import: z.array(z.string().min(1)).optional(),
+      sync: z.object({ intervalSeconds: z.number().int().min(5).max(3600).optional() }).strict().optional(),
+      failover: z.object({ enabled: z.boolean().optional(), servers: z.array(z.string().min(1)).optional() }).strict().optional(),
+    })
+    .strict()
+    .superRefine((f, ctx) => {
+      const ids = new Set<string>();
+      (f.peers ?? []).forEach((p, i) => {
+        if (p.id === f.gatewayId) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['peers', i, 'id'], message: 'a peer cannot have this gateway\'s own id' });
+        if (ids.has(p.id)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['peers', i, 'id'], message: `duplicate peer "${p.id}"` });
+        ids.add(p.id);
+      });
+    })
+    .optional(),
   secrets: z
     .object({
       providers: z

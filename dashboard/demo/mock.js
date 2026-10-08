@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '3.5.0';
+  const VERSION = '3.6.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -309,6 +309,15 @@
       });
     }
     if (p === '/secrets/rotate' && method === 'POST') { await sleep(rnd(80, 180)); return json({ rotated: ['github'] }); }
+    // 3.6: federation — this demo gateway peers with two other regions.
+    if (p === '/federation' || (p === '/federation/sync' && method === 'POST')) {
+      const exported = SERVERS.map((s) => s.id);
+      const peerServers = (down) => SERVERS.filter((s) => s.id !== down).map((s) => ({ id: s.id, name: s.name, status: 'online', tools: s.tools.map((t) => t.name) }));
+      return json({ enabled: true, gatewayId: 'demo-us', region: 'us-east-1', exported, peers: [
+        { id: 'eu-west', url: 'https://eu.gateway.example', region: 'eu-west-1', priority: 1, healthy: true, lastSync: iso(Date.now() - rnd(1000, 25000)), latencyMs: 84, servers: peerServers('postgres'), forwarded: 12 + Math.round((Date.now() - started) / 30000) },
+        { id: 'ap-south', url: 'https://ap.gateway.example', region: 'ap-south-1', priority: 2, healthy: !isUp('slack') ? true : Math.random() > 0.1, lastSync: iso(Date.now() - rnd(1000, 25000)), latencyMs: 211, servers: peerServers('slack'), forwarded: 3 },
+      ] });
+    }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     if (p === '/admin/deprecations') return json({ version: VERSION, deprecations: [] });
     if (p === '/tenants') return json({ clientId: 'key:demo', operator: true, tenants: demoTenants });

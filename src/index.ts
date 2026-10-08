@@ -48,6 +48,8 @@ export {
   sigv4,
 } from './secrets/index.js';
 export type { SecretProvider, SecretStatus, SecretRef } from './secrets/index.js';
+export { Federation, signFederation, verifyFederation, FEDERATION_HEADER } from './gateway/federation.js';
+export type { PeerCatalog, PeerState, ExportedServer } from './gateway/federation.js';
 export { SmartRouter, stableFraction } from './gateway/routing.js';
 export type { RouteDecision, SplitSnapshot, SplitVariantStats } from './gateway/routing.js';
 export { PluginHost, PluginError, loadPlugin, PLUGIN_API_VERSION } from './plugins/index.js';
@@ -147,6 +149,7 @@ export type {
   ServerCatalog,
   RoutingConfig,
   SecretsConfig,
+  FederationConfig,
   SecretProviderConfig,
   SecretInjection,
   TrafficSplitConfig,

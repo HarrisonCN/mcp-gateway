@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-10-08
+
+### Added
+- **Federated gateways.** `federation:` peers gateways across regions. Requests between peers are signed with
+  HMAC-SHA256 over a shared secret (`x-mcp-federation`, ±5 min skew); only configured peer ids are accepted.
+- **Catalog sync:** each gateway exports servers matching `federation.export` (status, tool names) at
+  `GET /api/v1/federation/catalog` and pulls its peers' catalogs every `sync.intervalSeconds` (filtered by `import`).
+- **Cross-region failover:** calls to a local server matching `failover.servers` that is not connected go to the best
+  healthy peer exporting it online (priority, then latency); the peer runs them through its own policy, quotas and
+  audit as `peer:<gatewayId>`, and never forwards them again.
+- **Remote servers:** `POST /api/v1/tools/call` with `server: "<id>@<peer>"`.
+- `GET /api/v1/federation`, `POST /api/v1/federation/sync`. `Federation`, `signFederation`, `verifyFederation`
+  exported. The GitHub Pages demo serves the new endpoints.
+
 ## [3.5.0] - 2026-10-08
 
 ### Added

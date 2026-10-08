@@ -242,6 +242,13 @@ Viewers get `403` (REST) / `-32003` (`/mcp`) on tool calls.
                  "ejectedUntil": "2026-10-07T18:00:30.000Z" } ] } ] }
 ```
 
+### Federation (3.6)
+
+`GET /federation` (operators): `{ enabled, gatewayId, region, exported, peers: [{ id, url, region, priority, healthy, lastSync, lastError?, latencyMs, servers: [{ id, status, tools }], forwarded }] }`.
+`POST /federation/sync` (operators): pull every peer catalog now.
+Peer-to-peer (HMAC header `x-mcp-federation`, no client credentials): `GET /federation/catalog`, `POST /federation/call` (`{ server, tool, arguments }` → `/tools/call` response).
+`POST /tools/call` accepts `server: "<id>@<peer>"`; the response adds `peer`.
+
 ### Secrets (3.5)
 
 `GET /secrets` (operators): `{ providers: [{ id, type }], rotation: { intervalSeconds }, secrets: [{ ref, provider, type, version, fetchedAt?, rotatedAt?, error?, usedBy }] }` — values are never returned.
