@@ -392,6 +392,11 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const r = (await (await f('/api/v1/admin/rollouts')).json()) as any;
     expect(r.rollouts[0]).toMatchObject({ id: 'search-v2', percent: 25, state: 'active' });
   });
+  it('shows the offline desktop mode (7.6)', async () => {
+    const f = demoFetch();
+    const o = (await (await f('/api/v1/admin/offline')).json()) as any;
+    expect(o).toMatchObject({ enabled: true, offline: false, servers: { local: ['filesystem'] } });
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

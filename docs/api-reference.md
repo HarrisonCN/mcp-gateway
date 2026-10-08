@@ -457,6 +457,8 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `DELETE` | `/admin/semantic-cache?tool=` | Purge the semantic cache (7.4) |
 | `GET` | `/admin/rollouts[/:id]` | Gradual rollouts: effective percent, state, calls / error rates per version (7.5) |
 | `POST` | `/admin/rollouts/:id/percent\|promote\|rollback\|reset[?persist=]` | Change a rollout at runtime (`persist=true` writes `percent` to the config) (7.5) |
+| `GET` / `POST` | `/admin/offline` | Offline desktop mode: state, probe, local / remote servers; `POST { mode }` switches auto / online / offline (7.6) |
+| `POST` | `/admin/offline/import` | Convert a desktop-client MCP config (Claude Desktop, Cursor, VS Code) to gateway `servers` (7.6) |
 
 ## Bridges
 
