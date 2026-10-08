@@ -187,6 +187,8 @@ export { CostAdvisorSchema, analyse as analyseCosts } from './features/cost-advi
 export type { CostAdvisorConfig, Recommendation as CostRecommendation } from './features/cost-advisor.js';
 export { BlueGreenSchema } from './features/blue-green.js';
 export type { BlueGreenConfig } from './features/blue-green.js';
+export { DataLineageSchema } from './features/data-lineage.js';
+export type { DataLineageConfig, LineageNode, LineageEdge } from './features/data-lineage.js';
 export type {
   GatewayConfig,
   McpServerConfig,

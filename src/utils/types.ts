@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Data lineage (8.6). */
+  dataLineage?: import('../features/data-lineage.js').DataLineageConfig;
   /** Zero-downtime blue/green upgrades (8.5). */
   blueGreen?: import('../features/blue-green.js').BlueGreenConfig;
   /** Cost optimization advisor (8.4). */

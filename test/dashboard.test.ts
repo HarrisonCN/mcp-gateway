@@ -439,6 +439,13 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const d = (await (await f('/api/v1/admin/blue-green')).json()) as any;
     expect(d.deployments[0]).toMatchObject({ active: 'green', verifying: { color: 'green' } });
   });
+  it('shows data lineage (8.6)', async () => {
+    const f = demoFetch();
+    const l = (await (await f('/api/v1/admin/data-lineage')).json()) as any;
+    expect(l.recent.map((n: any) => n.tool)).toEqual(['mail/send', 'billing/invoices', 'crm/find']);
+    const g = (await (await f('/api/v1/admin/data-lineage/nodes/n3')).json()) as any;
+    expect(g.upstream.edges[0].path).toBe('body');
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

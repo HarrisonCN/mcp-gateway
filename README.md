@@ -586,6 +586,12 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v8.6
+
+| Feature | |
+|---------|---|
+| **Data lineage** | Which tool output fed which tool input — graph per call, trace by value, OpenLineage export — [guide](docs/guides/data-lineage.md) |
+
 ## What's New in v8.5
 
 | Feature | |
