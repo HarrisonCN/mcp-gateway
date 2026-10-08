@@ -436,6 +436,8 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `GET` | `/admin/billing/usage` | Metered usage by account and `server/tool` (`?account=`, `?period=YYYY-MM`) (6.7) |
 | `GET` | `/admin/billing/invoices` | Invoice totals for every account in a period (6.7) |
 | `GET` | `/admin/billing/invoices/:account` | One invoice with line items, discount, minimum, tax (`?format=csv`) (6.7) |
+| `GET` | `/admin/k8s/manifests` | Kubernetes manifests for this gateway (`?name=&namespace=&replicas=&image=&secret=&format=yaml`; API keys are never rendered) (6.8) |
+| `GET` | `/admin/k8s/crd` | The `McpGateway` CustomResourceDefinition (6.8) |
 
 ## Bridges
 

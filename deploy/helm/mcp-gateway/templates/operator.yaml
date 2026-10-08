@@ -1,0 +1,85 @@
+{{- if .Values.operator.enabled }}
+{{- $name := printf "%s-operator" (include "mcp-gateway.fullname" .) }}
+{{- $cluster := not .Values.operator.watchNamespace }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  labels: {{- include "mcp-gateway.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: {{ if $cluster }}ClusterRole{{ else }}Role{{ end }}
+metadata:
+  name: {{ $name }}
+  {{- if not $cluster }}
+  namespace: {{ .Values.operator.watchNamespace }}
+  {{- end }}
+  labels: {{- include "mcp-gateway.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["mcp-gateway.dev"]
+    resources: ["mcpgateways", "mcpgateways/status"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["configmaps", "services"]
+    verbs: ["get", "list", "create", "patch", "update"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "create", "patch", "update"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "create", "patch", "update"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "create", "patch", "update"]
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: ["servicemonitors"]
+    verbs: ["get", "list", "create", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: {{ if $cluster }}ClusterRoleBinding{{ else }}RoleBinding{{ end }}
+metadata:
+  name: {{ $name }}
+  {{- if not $cluster }}
+  namespace: {{ .Values.operator.watchNamespace }}
+  {{- end }}
+  labels: {{- include "mcp-gateway.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: {{ if $cluster }}ClusterRole{{ else }}Role{{ end }}
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "mcp-gateway.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: {{ $name }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: {{ $name }} }
+    spec:
+      serviceAccountName: {{ $name }}
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: operator
+          image: {{ include "mcp-gateway.image" . }}
+          args:
+            - operator
+            - --interval
+            - {{ .Values.operator.intervalSeconds | quote }}
+            {{- if .Values.operator.watchNamespace }}
+            - --namespace
+            - {{ .Values.operator.watchNamespace }}
+            {{- end }}
+          env:
+            - { name: NODE_EXTRA_CA_CERTS, value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt }
+          resources: { requests: { cpu: 20m, memory: 64Mi }, limits: { memory: 128Mi } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }
+{{- end }}

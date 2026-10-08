@@ -325,6 +325,39 @@ program
     console.log('\nGive the key to the client; put the hash in auth.apiKeys. The key is not shown again.');
   });
 
+// ─── operator (6.8) ───────────────────────────────────────────────────────────
+
+program
+  .command('operator')
+  .description('Run the Kubernetes operator: reconcile McpGateway resources (in-cluster service account)')
+  .option('-n, --namespace <ns>', 'Only watch this namespace (default: all)')
+  .option('--interval <seconds>', 'Reconcile interval in seconds', '15')
+  .option('--once', 'Reconcile once and exit (prints the result)')
+  .action(async (options) => {
+    const { K8sOperator, inClusterApi } = await import('./features/k8s.js');
+    let api;
+    try {
+      api = inClusterApi();
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+    const op = new K8sOperator(api, { namespace: options.namespace, intervalMs: Math.max(1, Number(options.interval) || 15) * 1000 });
+    if (options.once) {
+      const r = await op.reconcileAll();
+      console.log(JSON.stringify(r, null, 2));
+      process.exit(r.some((x) => x.error) ? 1 : 0);
+    }
+    logger.info(`McpGateway operator started (${options.namespace ? `namespace ${options.namespace}` : 'all namespaces'})`);
+    op.start();
+    const stop = () => {
+      op.stop();
+      process.exit(0);
+    };
+    process.on('SIGTERM', stop);
+    process.on('SIGINT', stop);
+  });
+
 // ─── migrate (3.9) ────────────────────────────────────────────────────────────
 
 program

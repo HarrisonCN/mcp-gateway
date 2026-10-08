@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '6.7.0';
+  const VERSION = '6.8.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -53,6 +53,7 @@
     { id: "policy-sim", since: "6.5.0", summary: "Policy simulation and dry-run: replay history against a candidate policy, shadow policies on live traffic" },
     { id: "anomaly", since: "6.6.0", summary: "Anomaly detection: traffic bursts, error spikes, tool enumeration and prompt-injection scoring with alert / quarantine" },
     { id: "billing", since: "6.7.0", summary: "Usage billing: per-tenant metering against a price book, monthly invoices (JSON / CSV)" },
+    { id: "k8s", since: "6.8.0", summary: "Kubernetes: render manifests for this gateway; McpGateway operator (server-side apply) and Helm chart" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -616,6 +617,13 @@
       { target: 'llm/complete', calls: 4120, inputTokens: 3.1e6, outputTokens: 0.7e6, seconds: 5120.4, rate: '0.000002/in-token + 0.00001/out-token', amount: 13.2 },
       { target: 'search/web', calls: 29120, inputTokens: 0, outputTokens: 0, seconds: 8220.1, rate: '0.004/call', amount: 116.48 },
     ], subtotal: 1180.4, discount: 118.04, minimumTopUp: 0, tax: 87.65, total: 1150.01 });
+    // 6.8: Kubernetes manifests.
+    if (p === '/admin/k8s/manifests') return json({ items: [
+      { apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'mcp-gateway', namespace: 'default' } },
+      { apiVersion: 'apps/v1', kind: 'Deployment', metadata: { name: 'mcp-gateway', namespace: 'default' }, spec: { replicas: 2 } },
+      { apiVersion: 'v1', kind: 'Service', metadata: { name: 'mcp-gateway', namespace: 'default' } },
+      { apiVersion: 'policy/v1', kind: 'PodDisruptionBudget', metadata: { name: 'mcp-gateway', namespace: 'default' } },
+    ], notes: ['auth.apiKeys are not rendered: put them in a Secret (MCP_GATEWAY_API_KEYS) and pass ?secret=<name>'] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 6.0: the 5.x deprecations were removed; nothing is deprecated yet.
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });

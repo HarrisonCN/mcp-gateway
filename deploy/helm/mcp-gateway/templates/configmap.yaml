@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mcp-gateway.fullname" . }}
+  labels: {{- include "mcp-gateway.labels" . | nindent 4 }}
+data:
+  mcp-gateway.yml: |
+{{ toYaml (merge (dict "port" (int .Values.port) "host" "0.0.0.0") .Values.config) | indent 4 }}
