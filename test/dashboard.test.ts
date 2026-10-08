@@ -223,6 +223,29 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(r.identity.spiffeId).toMatch(/^spiffe:\/\//);
     expect(r.servers.find((s: any) => s.id === 'search').mtls).toBe(true);
   });
+
+  it('backs the config editor: get, validate, diff, dry run and apply (4.6)', async () => {
+    const f = demoFetch();
+    const { config } = (await (await f('/api/v1/admin/config')).json()) as any;
+    expect(config.version).toBe(4);
+    const bad = { ...config, servers: [...config.servers, { id: 'x y', transport: 'sse', url: 'nope' }] };
+    const v = (await (await f('/api/v1/admin/config/validate', { method: 'POST', body: JSON.stringify(bad) })).json()) as any;
+    expect(v.valid).toBe(false);
+    expect(v.errors).toHaveLength(2);
+    const next = { ...config, logLevel: 'debug' };
+    expect(((await (await f('/api/v1/admin/config/diff', { method: 'POST', body: JSON.stringify(next) })).json()) as any).changes).toEqual([{ path: 'logLevel', change: 'changed' }]);
+    expect(((await (await f('/api/v1/admin/config?dryRun=true', { method: 'PUT', body: JSON.stringify(next) })).json()) as any).applied).toBe(false);
+    expect(((await (await f('/api/v1/admin/config', { method: 'PUT', body: JSON.stringify(next) })).json()) as any).applied).toBe(true);
+    expect(((await (await f('/api/v1/admin/config')).json()) as any).config.logLevel).toBe('debug');
+  });
+
+  it('has the config editor view with i18n (4.6)', () => {
+    expect(html).toContain('id="view-config"');
+    expect(html).toContain("const VIEWS = ['overview', 'servers', 'playground', 'history', 'config', 'connect'];");
+    for (const id of ['cfValidate', 'cfDiff', 'cfApply', 'cfServers', 'cfJson', 'cfUseJson', 'cfAdd']) expect(html).toContain(`id="${id}"`);
+    expect(html).toContain("tabConfig: '配置'");
+    expect(html).not.toMatch(/onclick=|onchange=/);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

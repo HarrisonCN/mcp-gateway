@@ -583,6 +583,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v4.6
+
+| Feature | Description |
+|---------|-------------|
+| **Config editor** | New dashboard tab: forms + raw JSON for the running config |
+| **Validate · diff · apply** | Schema-checked, previewed, hot-reloaded — no restart, no YAML editing |
+| **Safe by default** | Read-only unless `admin.configApi: true`; secrets stay redacted |
+
 ## What's New in v4.5
 
 | Feature | Description |
