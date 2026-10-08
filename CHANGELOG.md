@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.0] - 2026-10-08
+
+### Added
+- **Tool chains & multi-agent orchestration** (`chains:`): declarative pipelines of tool calls across servers —
+  sequential steps, `forEach` fan-out with `concurrency` (one call per item, e.g. one sub-agent per document),
+  `parallel` groups, `when` conditions, `continueOnError`, `{{input.*}}` / `{{steps.<id>.*}}` / `{{item}}` templates,
+  an `output` template and a run `timeoutMs`.
+- Every step runs through the normal invoker as the caller (scopes, policy, plugins, quotas, audit, tracing); a chain
+  that touches a tool outside the caller's scope is refused before anything runs.
+- Chains are MCP tools (`chain_<name>`, prefix configurable) on `/mcp`, and REST: `GET /api/v1/chains`,
+  `POST /api/v1/chains/:name/run`. The GitHub Pages demo lists two sample chains.
+
 ## [4.1.0] - 2026-10-08
 
 ### Added

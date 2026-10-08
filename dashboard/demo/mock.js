@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '4.1.0';
+  const VERSION = '4.2.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -388,6 +388,14 @@
       const intro = { annotations: '2025-03-26', structuredContent: '2025-06-18', outputSchema: '2025-06-18', resourceLink: '2025-06-18', toolTitle: '2025-06-18', elicitation: '2025-06-18' };
       return json({ latest: vs[0], supported: vs, features: Object.fromEntries(vs.map((v) => [v, Object.fromEntries(Object.entries(intro).map(([f, d]) => [f, v >= d]))])),
         upstream: [{ server: 'github', protocolVersion: '2025-11-25' }, { server: 'filesystem', protocolVersion: '2025-06-18' }, { server: 'search', protocolVersion: '2025-03-26' }] });
+    }
+    if (p === '/chains') return json({ toolPrefix: 'chain_', chains: [
+      { name: 'triage', tool: 'chain_triage', description: 'Search issues, summarise each with the agent, file a report', inputSchema: { type: 'object', properties: { query: { type: 'string' } } }, steps: 3, targets: ['github/search_issues', 'agent/summarise', 'github/create_issue'], allowed: true },
+      { name: 'research', tool: 'chain_research', description: 'Web + docs search in parallel, merged', inputSchema: { type: 'object' }, steps: 2, targets: ['search/web', 'docs/search', 'agent/merge'], allowed: true },
+    ], recent: [{ chain: 'triage', success: true, durationMs: 1840, steps: [{ id: 'hits', tool: 'github/search_issues', status: 'ok', durationMs: 310, calls: 1 }, { id: 'summaries', tool: 'agent/summarise', status: 'ok', durationMs: 1420, calls: 6 }, { id: 'report', tool: 'github/create_issue', status: 'skipped', durationMs: 0, calls: 0 }] }] });
+    if ((m = p.match(/^\/chains\/([^/]+)\/run$/)) && method === 'POST') {
+      await sleep(150);
+      return json({ chain: decodeURIComponent(m[1]), success: true, output: { text: 'Demo chain output' }, durationMs: 150, steps: [{ id: 'step0', status: 'ok', durationMs: 150, calls: 1 }] });
     }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).

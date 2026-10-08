@@ -14,6 +14,7 @@ import { z } from 'zod';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
+import { validateChains, type ChainsConfig } from '../orchestration/chains.js';
 import { configDeprecations, normalizeApiKeyScopes, removedConfigKeys } from '../utils/deprecations.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
@@ -362,6 +363,23 @@ export const PolicyFileSchema = z
     tests: z.array(PolicyTestSchema).optional(),
   })
   .strict();
+
+// 4.2: tool chains.
+type ChainStepInput = { id?: string; tool?: string; args?: Record<string, unknown>; when?: string; forEach?: string; concurrency?: number; parallel?: ChainStepInput[]; continueOnError?: boolean };
+const ChainStepSchema: z.ZodType<ChainStepInput> = z.lazy(() =>
+  z
+    .object({
+      id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
+      tool: z.string().min(3).optional(),
+      args: z.record(z.unknown()).optional(),
+      when: z.string().min(1).optional(),
+      forEach: z.string().min(1).optional(),
+      concurrency: z.number().int().min(1).max(64).optional(),
+      parallel: z.array(ChainStepSchema).min(1).optional(),
+      continueOnError: z.boolean().optional(),
+    })
+    .strict(),
+);
 
 const GatewayConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(4000),
@@ -784,6 +802,29 @@ const GatewayConfigSchema = z.object({
       taskRetentionSeconds: z.number().int().positive().optional(),
     })
     .strict()
+    .optional(),
+  chains: z
+    .object({
+      toolPrefix: z.string().regex(/^[A-Za-z0-9_.-]{1,32}$/).optional(),
+      chains: z
+        .array(
+          z
+            .object({
+              name: z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/),
+              description: z.string().optional(),
+              inputSchema: z.record(z.unknown()).optional(),
+              steps: z.array(ChainStepSchema).min(1),
+              output: z.unknown().optional(),
+              timeoutMs: z.number().int().positive().max(3_600_000).optional(),
+            })
+            .strict(),
+        )
+        .optional(),
+    })
+    .strict()
+    .superRefine((c, ctx) => {
+      for (const m of validateChains(c as ChainsConfig)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: m.replace(/^chains\./, '') });
+    })
     .optional(),
   plugins: z
     .array(

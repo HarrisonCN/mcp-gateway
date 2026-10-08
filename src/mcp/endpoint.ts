@@ -187,6 +187,11 @@ export interface McpSessionSummary {
 }
 
 export interface McpEndpointDeps {
+  /** 4.2: chain tools (`chain_<name>`). */
+  chains?: {
+    tools(scope: AccessScope | undefined): Record<string, unknown>[];
+    callTool(name: string, args: Record<string, unknown>, clientId: string | undefined, scope: AccessScope | undefined): Promise<Record<string, unknown> | { forbidden: string[] } | undefined>;
+  };
   registry: ServerRegistry;
   proxy: McpProxy;
   metrics: MetricsCollector;
@@ -1014,6 +1019,7 @@ export class McpEndpoint {
     const result: Record<string, unknown> = { tools: page.map((t) => adaptTool(toMcpTool(t), session.protocolVersion)) };
     const next = offset + page.length;
     if (next < index.list.length) result.nextCursor = encodeCursor(next);
+    else if (this.deps.chains) (result.tools as unknown[]).push(...this.deps.chains.tools(session.auth.scope));
     return { jsonrpc: '2.0', id: msg.id as JsonRpcId, result };
   }
 
@@ -1047,6 +1053,11 @@ export class McpEndpoint {
         : undefined;
 
     const tool = this.toolIndex(session.auth).byName.get(name);
+    if (!tool && this.deps.chains) {
+      const chained = await this.deps.chains.callTool(name, args, (req as AuthedRequest).clientId, session.auth.scope);
+      if (chained && 'forbidden' in chained) return rpcError(id, { code: ERR_FORBIDDEN, message: `Forbidden: chain "${name}" calls tools outside your scope (${(chained.forbidden as string[]).join(', ')})` });
+      if (chained) return { jsonrpc: '2.0', id, result: adaptToolResult(chained, session.protocolVersion) };
+    }
     if (!tool) {
       // A tool that exists but is outside the client's scope is refused with
       // ERR_FORBIDDEN (the REST API's 403); it never appears in tools/list.

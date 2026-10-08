@@ -583,6 +583,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v4.2
+
+| Feature | Description |
+|---------|-------------|
+| **Tool chains** | Declarative multi-step pipelines across servers, exposed as one MCP tool |
+| **Multi-agent fan-out** | `forEach` + `concurrency`, `parallel` groups, `when`, templates |
+| **Same guard rails** | Each step runs as the caller through scopes, policy, plugins and audit |
+
 ## What's New in v4.1
 
 | Feature | Description |
