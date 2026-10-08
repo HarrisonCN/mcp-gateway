@@ -47,6 +47,7 @@ import { ReplayRecorder } from './replay.js';
 import { UsageMeter } from './usage.js';
 import { membershipsOf } from '../auth/tenants.js';
 import { Catalog, InstalledServers, buildServerConfig, type InstallRequest } from '../catalog/index.js';
+import { ChainService } from '../orchestration/service.js';
 import { PluginHost, type PluginSource } from '../plugins/index.js';
 import { PROTECTED_RESOURCE_METADATA_PATH, protectedResourceMetadata } from '../auth/oauth.js';
 
@@ -93,6 +94,12 @@ export class Gateway {
   private stateStore?: StateStore;
   private tracer: Tracer = NOOP_TRACER;
   private invoker?: ToolInvoker;
+  /** 4.2: tool chains. */
+  readonly chains = new ChainService({
+    config: () => this.config.chains,
+    invoke: (serverId, name, params, clientId, via) =>
+      this.invoker!.invoke({ serverId, name, kind: 'tool', method: 'tools/call', params, clientId, via, timeoutMs: this.registry.getServer(serverId)?.timeout }),
+  });
   private readonly plugins = new PluginHost({
     resolveSecret: (ref, plugin) => this.secrets.get(ref, { user: `plugin:${plugin}` }),
     tenantOf: (clientId) => {
@@ -286,6 +293,7 @@ export class Gateway {
         maxArgumentsBytes: () => this.config.security?.maxToolArgumentsBytes ?? 0,
         sessionStore: shared?.store,
         invoker: this.invoker,
+        chains: this.chains,
       });
       this.app.use(this.mcp.router());
     }
@@ -306,6 +314,7 @@ export class Gateway {
       }),
     );
     this.app.use('/api/v1', this.router);
+    this.app.use('/api/v1', this.chains.router(this.router.authenticate));
 
     // Bridges: OpenAI-compatible tools proxy and A2A agent card / JSON-RPC (after the JSON parser).
     const bridgeBase = {

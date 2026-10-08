@@ -776,3 +776,39 @@ local gateway without auth or DNS-rebinding protection (`dns-rebinding`), `/mcp`
 (`cors-wildcard`), `security.headers: false` (`headers-disabled`), `exposeErrorDetails: true` (`error-details`).
 Hints: plain-text or short API keys (`plaintext-api-keys`, `short-api-keys`), JWT without issuer / audience or
 `requireExp` (`jwt-no-issuer-audience`, `jwt-no-exp`), no `authLockout` (`no-auth-lockout`).
+
+## Tool chains (4.2)
+
+Declarative pipelines of tool calls that run inside the gateway — orchestrate several MCP servers and agents behind
+one tool. Each step runs through the normal pipeline (scopes, policy, plugins, quotas, audit) as the calling client.
+
+```yaml
+chains:
+  toolPrefix: chain_            # chains appear on /mcp as chain_<name>
+  chains:
+    - name: triage
+      description: Search issues, summarise each with the agent, file a report
+      inputSchema: { type: object, properties: { query: { type: string }, file: { type: boolean } } }
+      timeoutMs: 60000
+      steps:
+        - id: hits
+          tool: github/search_issues
+          args: { q: "{{input.query}}" }
+        - id: summaries              # fan-out: one call per item, 4 at a time
+          forEach: steps.hits.structuredContent.items
+          concurrency: 4
+          tool: agent/summarise
+          args: { text: "{{item.body}}" }
+        - parallel:                  # independent steps at once
+            - { id: web, tool: search/web, args: { q: "{{input.query}}" } }
+            - { id: docs, tool: docs/search, args: { q: "{{input.query}}" }, continueOnError: true }
+        - id: report
+          when: input.file           # "!path" negates
+          tool: github/create_issue
+          args: { title: "Triage: {{input.query}}", body: "{{steps.summaries}}" }
+      output: { summaries: "{{steps.summaries}}", web: "{{steps.web.text}}" }
+```
+
+Templates read `input.*`, `steps.<id>.*` (the step's MCP result plus `text` — the joined text blocks; `forEach` steps
+hold an array) and `item` / `index`. A value that is exactly one `{{path}}` keeps its type.
+

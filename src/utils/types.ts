@@ -147,6 +147,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Tool chains / multi-agent orchestration (4.2). */
+  chains?: import('../orchestration/chains.js').ChainsConfig;
   /** Gateway HTTP port */
   port: number;
   /** Host to bind to */

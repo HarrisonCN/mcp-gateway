@@ -191,6 +191,14 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(r.features['2025-06-18'].resourceLink).toBe(true);
     expect(r.upstream.length).toBeGreaterThan(0);
   });
+
+  it('lists and runs tool chains (4.2)', async () => {
+    const f = demoFetch();
+    const r = (await (await f('/api/v1/chains')).json()) as any;
+    expect(r.chains.map((c: any) => c.tool)).toEqual(['chain_triage', 'chain_research']);
+    const run = (await (await f('/api/v1/chains/triage/run', { method: 'POST', body: '{}' })).json()) as any;
+    expect(run).toMatchObject({ chain: 'triage', success: true });
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

@@ -182,6 +182,13 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
 ```
 `kind` is present for resources and prompts. Invalid parameters → `400`.
 
+### Tool chains (4.2)
+
+`GET /chains` → `{ toolPrefix, chains: [{ name, tool, description, inputSchema, steps, targets, allowed }], recent: [run summaries] }`.
+`POST /chains/:name/run` with `{ input }` → `{ chain, success, output, steps: [{ id, tool, status, durationMs, calls, error? }], durationMs }`
+(`404` unknown chain, `403` a step is outside the caller's scope, `502` a step failed). Chains are also MCP tools named
+`chain_<name>` on `/mcp`. See [configuration](configuration.md#tool-chains-42).
+
 ### MCP revisions (4.1)
 
 `GET /mcp/protocol` → `{ latest, supported: string[], features: { "<revision>": { annotations, structuredContent, outputSchema, resourceLink, toolTitle, elicitation } }, upstream: [{ server, protocolVersion }] }`.
