@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '5.2.0';
+  const VERSION = '5.3.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -41,6 +41,7 @@
   const DEMO_FEATURES = [
     { id: 'conformance', since: '5.1.0', summary: "MCP conformance self-test of this gateway's /mcp endpoint" },
     { id: "regions", since: "5.2.0", summary: "Multi-region active-active: replicated state, peer health, cross-region failover routing" },
+    { id: "edge-fleet", since: "5.3.0", summary: "Managed edge nodes: fleet view with config drift, push config to edges" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -490,6 +491,16 @@
     if (p.startsWith('/admin/regions/route/')) {
       const id = decodeURIComponent(p.slice('/admin/regions/route/'.length));
       return json(id === 'slack' ? { serverId: id, target: 'peer', peer: 'us-east', url: 'https://us.gw.example.com' } : { serverId: id, target: 'local' });
+    }
+    // 5.3: managed edge fleet (drift view + push).
+    if (p === '/admin/edge-fleet') return json({ etag: 'demo-edge-2', counts: { 'in-sync': 1, stale: 1, unmanaged: 1 }, nodes: [
+      { id: 'cf-hkg', url: 'https://edge-hkg.example.workers.dev', labels: { ring: 'canary' }, managed: true, drift: 'in-sync', appliedEtag: 'demo-edge-2', lastSeen: iso(Date.now() - 20000), lastSync: iso(Date.now() - 20000), queuedCalls: 0, errors: 12 },
+      { id: 'deno-fra', url: 'https://fra.example.deno.dev', labels: { ring: 'stable' }, managed: true, drift: 'stale', appliedEtag: 'demo-edge-1', lastSeen: iso(Date.now() - 900000), lastSync: iso(Date.now() - 900000), queuedCalls: 4, errors: 3 },
+      { id: 'laptop-dev', labels: {}, managed: false, drift: 'unmanaged', appliedEtag: 'demo-edge-2', lastSeen: iso(Date.now() - 60000), queuedCalls: 0, errors: 0 },
+    ] });
+    if (p === '/admin/edge-fleet/push' && method === 'POST') {
+      await sleep(120);
+      return json({ pushed: 1, failed: 0, results: [{ id: 'deno-fra', ok: true, status: 200, config: 'updated', durationMs: 118 }] });
     }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).

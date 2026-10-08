@@ -129,6 +129,8 @@ export { runConformance, formatReport as formatConformanceReport, CHECKS as CONF
 export type { ConformanceReport, CheckResult as ConformanceCheck } from './features/conformance.js';
 export { RegionMesh, RegionsSchema, resolveRegions } from './features/regions.js';
 export type { RegionsConfig, ReplicatedEntry, PeerState as RegionPeerState } from './features/regions.js';
+export { EdgeFleetSchema, fleetView, selectNodes, pushToNodes } from './features/edge-fleet.js';
+export type { EdgeFleetConfig, FleetNode, Drift as EdgeDrift, PushResult as EdgePushResult } from './features/edge-fleet.js';
 export type {
   GatewayConfig,
   McpServerConfig,

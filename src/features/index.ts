@@ -6,5 +6,6 @@
  */
 import './conformance.js';
 import './regions.js';
+import './edge-fleet.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

@@ -271,6 +271,14 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const feats = (await (await f('/api/v1/admin/features')).json()) as any;
     expect(feats.features.map((x: any) => x.id)).toContain('regions');
   });
+  it('simulates the managed edge fleet and the dashboard card (5.3)', async () => {
+    const f = demoFetch();
+    const v = (await (await f('/api/v1/admin/edge-fleet')).json()) as any;
+    expect(v.nodes.map((n: any) => n.drift)).toEqual(['in-sync', 'stale', 'unmanaged']);
+    expect(((await (await f('/api/v1/admin/edge-fleet/push', { method: 'POST', body: '{}' })).json()) as any).pushed).toBe(1);
+    expect(html).toContain('id="edgeCard"');
+    expect(i18n().zh!.pushConfig).toBe('推送配置');
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

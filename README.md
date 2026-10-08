@@ -586,6 +586,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v5.3
+
+| Feature | Description |
+|---------|-------------|
+| **Edge fleet view** | Configured + seen edges with config drift (`in-sync` / `stale` / `offline` / …) |
+| **Config push** | `POST /api/v1/admin/edge-fleet/push` — by node, label ring, or only drifted edges |
+| **Dashboard card** | Edge nodes with drift badges and a *Push config* button |
+
 ## What's New in v5.2
 
 | Feature | Description |

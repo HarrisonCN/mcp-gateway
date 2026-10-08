@@ -329,16 +329,14 @@ export class Gateway {
         isOperator: (req) => this.router!.isOperator(req),
       }),
     );
-    this.app.use(
-      '/api/v1',
-      createEdgeControlRouter({
-        config: () => this.config,
-        tools: () => this.registry.getAllTools(),
-        record: (m) => void this.metrics.record(m),
-        authenticate: this.router.authenticate,
-        isOperator: (req) => this.router!.isOperator(req),
-      }),
-    );
+    const edgeControl = createEdgeControlRouter({
+      config: () => this.config,
+      tools: () => this.registry.getAllTools(),
+      record: (m) => void this.metrics.record(m),
+      authenticate: this.router.authenticate,
+      isOperator: (req) => this.router!.isOperator(req),
+    });
+    this.app.use('/api/v1', edgeControl);
     // 5.1: feature modules under /api/v1/admin/<id> (src/features).
     this.app.use(
       '/api/v1',
@@ -353,6 +351,7 @@ export class Gateway {
           recent: (limit) => this.metrics.getRecent(limit),
           onlineServers: () => this.registry.getAllServers().filter((s) => this.registry.getHealth(s.id)?.status === 'online').map((s) => s.id),
           onStop: (fn) => void this.featureStops.push(fn),
+          edgeNodes: () => [...edgeControl.nodes.values()],
           baseUrl: () => {
             const a = this.address();
             if (!a) return undefined;

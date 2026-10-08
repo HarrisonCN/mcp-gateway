@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Managed edge nodes (5.3). */
+  edgeFleet?: import('../features/edge-fleet.js').EdgeFleetConfig;
   /** Multi-region active-active (5.2). */
   regions?: import('../features/regions.js').RegionsConfig;
   /** Zero-trust upstream mTLS (SPIFFE, certificate rotation) (4.5). */
