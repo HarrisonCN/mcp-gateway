@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.6.0] - 2026-10-08
+
+### Added
+- **Anomaly detection** — `anomaly` watches each client for traffic bursts against its EWMA baseline, error spikes
+  and tool enumeration, and scores arguments / results for prompt injection (weighted signals: instruction override,
+  role override, tool hijacking, exfiltration URLs, hidden Unicode, base64 blobs …). `action: quarantine` refuses an
+  abusive client's calls (`-32015`) for `quarantineSeconds` and blocks injected arguments. `GET /admin/anomaly`,
+  `POST /admin/anomaly/score`, `POST /admin/anomaly/release`. See [docs/guides/anomaly.md](docs/guides/anomaly.md).
+- Library: `AnomalySchema`, `AnomalyDetector`, `injectionScore`, `ERR_ANOMALY_QUARANTINED`.
+- Pages demo: anomaly alerts.
+
 ## [6.5.0] - 2026-10-08
 
 ### Added
@@ -312,7 +323,7 @@ without deprecation warnings runs on 5.0 unchanged; `mcp-gateway migrate` rewrit
   coalesced (latest kept, flushed on drain), control events are never dropped, and consumers more than
   `streaming.maxBufferedBytes` behind are disconnected.
 - **Load shedding**: `servers[].maxQueue` bounds the calls waiting for a `maxConcurrency` slot; beyond it calls fail
-  fast with `-32014` (REST `503` + `Retry-After: 1`) instead of queueing until they time out.
+  fast with `-32015` (REST `503` + `Retry-After: 1`) instead of queueing until they time out.
 - `SseWriter` exported for embedders; the GitHub Pages demo streams a sample call.
 
 ## [4.3.0] - 2026-10-08

@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v6.6
+
+| Feature | Description |
+|---------|-------------|
+| **Abuse detection** | Bursts vs baseline, error spikes, tool enumeration; optional quarantine |
+| **Injection scoring** | Weighted prompt-injection signals on arguments and results |
+
 ## What's New in v6.5
 
 | Feature | Description |

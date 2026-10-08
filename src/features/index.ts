@@ -16,5 +16,6 @@ import './workflows.js';
 import './genai-otel.js';
 import './identity.js';
 import './policy-sim.js';
+import './anomaly.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

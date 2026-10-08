@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '6.5.0';
+  const VERSION = '6.6.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -51,6 +51,7 @@
     { id: "genai-otel", since: "6.3.0", summary: "OpenTelemetry GenAI semantic conventions: execute_tool spans, operation duration and token usage metrics, OTLP export" },
     { id: "identity", since: "6.4.0", summary: "Enterprise SSO (OIDC ID tokens) and SCIM 2.0 user / group provisioning mapped to tenant roles" },
     { id: "policy-sim", since: "6.5.0", summary: "Policy simulation and dry-run: replay history against a candidate policy, shadow policies on live traffic" },
+    { id: "anomaly", since: "6.6.0", summary: "Anomaly detection: traffic bursts, error spikes, tool enumeration and prompt-injection scoring with alert / quarantine" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -597,6 +598,13 @@
       byClient: { 'key:ci-bot': { changed: 41, newlyDenied: 41 }, 'key:aura': { changed: 28, newlyDenied: 11 } }, byTool: { 'github/create_issue': { changed: 39, newlyDenied: 22 }, 'fs/write_file': { changed: 30, newlyDenied: 30 } }, examples: [] }); }
     if (p === '/admin/policy-sim/shadow') return json({ enabled: true, evaluated: 5120, agree: 5004, diverged: 116, transitions: { 'allow→deny': 104, 'allow→approve': 12 }, divergences: [{ timestamp: iso(Date.now() - 4e3), clientId: 'key:ci-bot', serverId: 'github', tool: 'create_issue', enforced: { effect: 'allow' }, shadow: { effect: 'deny' } }] });
     if (p === '/admin/policy-sim/dry-run' && method === 'POST') return json({ call: { serverId: 'fs', tool: 'write_file', args: { path: '/etc/hosts' } }, enforced: { effect: 'approve', rule: 'etc-writes' }, shadow: { effect: 'deny' } });
+    // 6.6: anomaly detection.
+    if (p === '/admin/anomaly') return json({ enabled: true, action: 'quarantine', alerts: [
+      { timestamp: iso(Date.now() - 9e3), client: 'key:trial-42', kind: 'enumeration', detail: '31 distinct tools in 5 min' },
+      { timestamp: iso(Date.now() - 64e3), client: 'key:aura', kind: 'prompt-injection', detail: 'results: ignore-instructions, exfil-url', serverId: 'web', tool: 'fetch', score: 1 },
+      { timestamp: iso(Date.now() - 300e3), client: 'key:ci-bot', kind: 'burst', detail: '412 calls this minute (baseline 38.2/min)' },
+    ], quarantined: [{ client: 'key:trial-42', until: iso(Date.now() + 240e3) }], clients: [{ client: 'key:aura', baselinePerMinute: 12.4, windowCalls: 61, windowErrors: 1 }, { client: 'key:ci-bot', baselinePerMinute: 38.2, windowCalls: 190, windowErrors: 4 }] });
+    if (p === '/admin/anomaly/score' && method === 'POST') return json({ score: 1, signals: ['ignore-instructions', 'prompt-exfiltration'], threshold: 0.6 });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 6.0: the 5.x deprecations were removed; nothing is deprecated yet.
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });
