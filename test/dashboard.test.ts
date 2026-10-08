@@ -141,6 +141,15 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(r.secrets.every((s: { ref: string }) => s.ref.startsWith('secret://'))).toBe(true);
     expect(((await (await f('/api/v1/secrets/rotate', { method: 'POST' })).json()) as any).rotated).toEqual(['github']);
   });
+
+  it('serves federation peers (3.6)', async () => {
+    const f = demoFetch();
+    const r = (await (await f('/api/v1/federation')).json()) as any;
+    expect(r.enabled).toBe(true);
+    expect(r.peers.length).toBe(2);
+    expect(r.peers[0].servers.length).toBeGreaterThan(0);
+    expect((await f('/api/v1/federation/sync', { method: 'POST' })).status).toBe(200);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

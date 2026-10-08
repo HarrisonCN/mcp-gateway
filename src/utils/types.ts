@@ -195,6 +195,8 @@ export interface GatewayConfig {
   cache?: CacheConfig;
   /** Request capture + replay / debugger (3.2). Off by default. */
   replay?: ReplayConfig;
+  /** Peering with gateways in other regions: catalog sync and failover (3.6). */
+  federation?: FederationConfig;
   /** Secret providers (Vault / KMS / env / file) and rotation (3.5). */
   secrets?: SecretsConfig;
   /** Traffic splits: canary / A-B across servers (3.4). */
@@ -465,6 +467,24 @@ export interface McpEndpointConfig {
 }
 
 /** Which upstream→client requests are relayed to the downstream client that made the call (3.1). */
+/** Federated gateways (3.6). */
+export interface FederationConfig {
+  enabled?: boolean;
+  /** This gateway's id, as peers know it. */
+  gatewayId: string;
+  region?: string;
+  /** HMAC-SHA256 secret shared by every peer (≥ 32 characters). */
+  sharedSecret: string;
+  peers?: Array<{ id: string; url: string; region?: string; /** Lower is preferred (default 100). */ priority?: number }>;
+  /** Server id globs exported to peers (default all). */
+  export?: string[];
+  /** Server id globs accepted from peers (default all). */
+  import?: string[];
+  sync?: { intervalSeconds?: number };
+  /** Forward calls to a peer when a local server is down. */
+  failover?: { enabled?: boolean; servers?: string[] };
+}
+
 /** Secrets management (3.5). */
 export interface SecretsConfig {
   providers?: SecretProviderConfig[];

@@ -32,6 +32,7 @@ import { ERR_NOT_CONNECTED, ERR_TIMEOUT } from '../proxy/index.js';
 import type { FailureKind, LoadBalancer } from './balancer.js';
 import type { RouteDecision, SmartRouter } from './routing.js';
 import type { SecretManager } from '../secrets/index.js';
+import type { Federation } from './federation.js';
 import type { ToolCache } from './cache.js';
 import { ERR_QUOTA_EXCEEDED, type UsageMeter } from './usage.js';
 export { ERR_QUOTA_EXCEEDED };
@@ -65,6 +66,8 @@ export interface InvokeContext {
   traceparent?: string;
   /** Extra `_meta` for the upstream request (3.5: injected credentials; never logged). */
   meta?: Record<string, unknown>;
+  /** Set on calls that arrived from a peer gateway: never forwarded again (3.6). */
+  fromPeer?: string;
 }
 
 export interface InvokeResult extends ProxyResponse {
@@ -93,6 +96,8 @@ export interface InvokerDeps {
   serverConfig?: (id: string) => McpServerConfig | undefined;
   /** Traffic splits (canary / A-B) across servers (3.4). */
   router?: SmartRouter;
+  /** Cross-region failover to peer gateways (3.6). */
+  federation?: Federation;
   /** Routes calls on servers with `replicas:` (load balancing + failover). */
   balancer?: LoadBalancer;
   /** Tool result cache + in-flight de-duplication (`cache:` config). */
@@ -286,6 +291,29 @@ export class ToolInvoker {
   }
 
   private async callUpstream(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>): Promise<ProxyResponse> {
+    const fed = this.deps.federation;
+    const canFailover = ctx.kind === 'tool' && !ctx.fromPeer && !!fed?.failsOver(ctx.serverId);
+    const local = await this.callLocal(ctx, span);
+    if (!canFailover || classifyFailure(local) !== 'not-connected') return local;
+    const peers = fed!.candidates(ctx.serverId, ctx.name);
+    for (const peer of peers) {
+      logger.warn(`${ctx.serverId}/${ctx.name}: local server unavailable; failing over to peer gateway "${peer.id}"`);
+      const r = await fed!.forward(peer, { server: ctx.serverId, tool: ctx.name, arguments: ctx.params, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0] }, ctx.timeoutMs);
+      span.setAttribute('mcp.federation.peer', peer.id);
+      if (r.success || classifyFailure(r) !== 'not-connected') {
+        const { peer: _p, ...rest } = r;
+        void _p;
+        return rest;
+      }
+    }
+    return local;
+  }
+
+  get federation(): Federation | undefined {
+    return this.deps.federation;
+  }
+
+  private async callLocal(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>): Promise<ProxyResponse> {
     try {
       ctx = await this.injectSecrets(ctx);
     } catch (err) {

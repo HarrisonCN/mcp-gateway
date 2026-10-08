@@ -291,6 +291,34 @@ Health checks: the periodic ping (`health.intervalMs`) runs on every member; mem
 reconnects on its own with the `reconnect` policy. Tools come from the primary, or from a replica while the primary
 has none. `GET /api/v1/load-balancing` shows members, health, latency (EWMA) and ejections. Hot reloadable.
 
+## Federation (3.6)
+
+```yaml
+federation:
+  gatewayId: us-east                  # this gateway, as its peers know it
+  region: us-east-1
+  sharedSecret: "${FEDERATION_SECRET}" # ≥ 32 chars, same on every peer (HMAC-SHA256 request signing)
+  peers:
+    - { id: eu-west, url: https://eu.gateway.example, region: eu-west-1, priority: 1 }
+    - { id: ap-south, url: https://ap.gateway.example, priority: 2 }
+  export: ["*"]                       # local servers visible to peers (default all)
+  import: ["*"]                       # peer servers accepted (default all)
+  sync: { intervalSeconds: 30 }       # catalog pull
+  failover: { servers: ["github", "search*"] }   # forward calls when the local server is down
+```
+
+- **Peering:** peers call `GET /api/v1/federation/catalog` and `POST /api/v1/federation/call` with an
+  `x-mcp-federation: <gatewayId>:<ms>:<hmac>` header (±5 min skew). Only configured peer ids are accepted; client
+  credentials are not used on these two endpoints.
+- **Catalog sync:** every peer's exported servers (status, tool names) are pulled every `sync.intervalSeconds`;
+  `GET /api/v1/federation` shows peers, health, latency, last sync and forwarded calls.
+- **Cross-region failover:** a call to a local server matching `failover.servers` that is not connected (all
+  replicas down) is forwarded to the best healthy peer exporting it online (lowest `priority`, then latency). The
+  peer runs it under client id `peer:<gatewayId>` through its own policy, quotas and audit. Forwarded calls are never
+  forwarded again.
+- **Remote servers:** `POST /api/v1/tools/call` with `server: "<id>@<peer>"` calls a server that only a peer has
+  (client scopes apply to the full `<id>@<peer>` id).
+
 ## Secrets (3.5)
 
 ```yaml
