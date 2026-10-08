@@ -22,5 +22,6 @@ import './k8s.js';
 import './terraform.js';
 import './console.js';
 import './sanitize.js';
+import './semantic-cache.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

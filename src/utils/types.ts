@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Semantic cache (7.4). */
+  semanticCache?: import('../features/semantic-cache.js').SemanticCacheConfig;
   /** Prompt-injection defence and output sanitisation (7.3). */
   sanitize?: import('../features/sanitize.js').SanitizeConfig;
   /** SaaS console (7.2). */

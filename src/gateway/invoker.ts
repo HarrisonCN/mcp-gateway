@@ -236,12 +236,18 @@ export class ToolInvoker {
     // 5.6: feature call hooks (before).
     const hookCfg = this.deps.config?.();
     const hookCall = (): HookCall => ({ serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params });
+    let preset: ProxyResponse | undefined;
     if (hookCfg && ctx.kind === 'tool') {
       for (const h of callHooks()) {
         if (!h.before) continue;
         const out = await h.before(hookCall(), hookCfg);
         if (out?.refuse) return this.refuse(ctx, out.refuse.code, out.refuse.message, { decision: h.id, ...(out.refuse.data ?? {}) }, span);
         if (out?.args) ctx = { ...ctx, params: out.args };
+        if (out?.respond) {
+          preset = out.respond;
+          span.setAttribute('mcp.hook_response', h.id);
+          break;
+        }
       }
     }
     const usage = this.deps.usage;
@@ -263,7 +269,9 @@ export class ToolInvoker {
     let result: ProxyResponse;
     try {
       const cache = ctx.kind === 'tool' ? this.deps.cache : undefined;
-      if (cache) {
+      if (preset) {
+        result = preset;
+      } else if (cache) {
         const out = await cache.run({ serverId: ctx.serverId, tool: ctx.name, args: ctx.params, clientId: ctx.clientId }, () => this.callUpstream(ctx, span));
         if (out.status !== 'bypass') span.setAttribute('mcp.cache', out.status);
         result = out.status === 'hit' || out.status === 'shared' ? { ...out.result, durationMs: out.status === 'hit' ? 0 : out.result.durationMs } : out.result;

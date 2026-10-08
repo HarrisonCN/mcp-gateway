@@ -19,7 +19,8 @@ export interface HookCall {
   args: Record<string, unknown>;
 }
 
-export type BeforeOutcome = void | { args?: Record<string, unknown>; refuse?: { code: number; message: string; data?: Record<string, unknown> } };
+/** `respond` (7.4) answers the call without the upstream (e.g. a cache hit); later `before` hooks are skipped, `after` hooks still run. */
+export type BeforeOutcome = void | { args?: Record<string, unknown>; refuse?: { code: number; message: string; data?: Record<string, unknown> }; respond?: ProxyResponse };
 
 export interface CallHook {
   id: string;

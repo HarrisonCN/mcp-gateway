@@ -381,6 +381,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(s.settings.injection.action).toBe('mark');
     expect(s.stats.flagged).toBe(3);
   });
+  it('reports semantic cache counters (7.4)', async () => {
+    const f = demoFetch();
+    const s = (await (await f('/api/v1/admin/semantic-cache')).json()) as any;
+    expect(s.settings.threshold).toBe(0.9);
+    expect(s.stats.hits).toBe(388);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {
