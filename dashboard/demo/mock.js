@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '8.4.0';
+  const VERSION = '8.5.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -66,6 +66,7 @@
     { id: "a2a-federation", since: "8.2.0", summary: "Cross-gateway A2A federation: remote agent discovery (agent cards), skill catalog, task forwarding with shared audit" },
     { id: "debug-sessions", since: "8.3.0", summary: "Live collaborative debugging: shared sessions, live call stream (SSE), breakpoints, edit/resume/abort, notes, replay" },
     { id: "cost-advisor", since: "8.4.0", summary: "Cost optimization advisor: quantified caching, failure, cheaper-upstream and budget recommendations from live traffic" },
+    { id: "blue-green", since: "8.5.0", summary: "Zero-downtime blue/green upgrades: probed atomic switch, in-flight drain, verification window with auto-rollback" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -695,6 +696,11 @@
       { id: 'cache:search/query', kind: 'cache', tool: 'search/query', savings: 88.4, detail: '8840 of 12100 calls repeated identical arguments (73%)', suggestion: { cache: { enabled: true, rules: [{ servers: ['search'], tools: ['query'], ttlSeconds: 300 }] } } },
       { id: 'cheaper-upstream:search/query', kind: 'cheaper-upstream', tool: 'search/query', savings: 36.3, detail: '"query" is also served by "search-lite" at 0.007 per call (vs 0.01)' },
       { id: 'failures:github/create_issue', kind: 'failures', tool: 'github/create_issue', savings: 7.2, detail: '144 of 610 calls failed (24%) — failed calls are still billed' },
+    ] });
+    // 8.5: zero-downtime blue/green upgrades.
+    if (p === '/admin/blue-green') return json({ deployments: [
+      { id: 'search', blue: 'search-v1', green: 'search-v2', active: 'green', activeServer: 'search-v2', tools: ['*'], inFlight: { blue: 2, green: 14 }, calls: { blue: 48210, green: 1290 }, errors: { blue: 96, green: 3 }, verifying: { color: 'green', remainingSeconds: 74, calls: 1290, errors: 3 },
+        history: [{ at: new Date(Date.now() - 46000).toISOString(), from: 'blue', to: 'green', reason: 'manual switch' }] },
     ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 8.0: nothing is deprecated (schema v7, `plugins[].wasm` and plugin API v4 were removed).

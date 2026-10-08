@@ -37,6 +37,7 @@ import { AgentIdentitySchema } from '../features/agent-identity.js';
 import { A2aFederationSchema } from '../features/a2a-federation.js';
 import { DebugSessionsSchema } from '../features/debug-sessions.js';
 import { CostAdvisorSchema } from '../features/cost-advisor.js';
+import { BlueGreenSchema } from '../features/blue-green.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
@@ -498,6 +499,7 @@ const GatewayConfigSchema = z.object({
   a2aFederation: A2aFederationSchema.optional(),
   debugSessions: DebugSessionsSchema.optional(),
   costAdvisor: CostAdvisorSchema.optional(),
+  blueGreen: BlueGreenSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   audit: z
