@@ -586,6 +586,12 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v8.7
+
+| Feature | |
+|---------|---|
+| **Config assistant** | Plain-words config changes → validated patch and diff, applied on confirm; optional LLM — [guide](docs/guides/config-assistant.md) |
+
 ## What's New in v8.6
 
 | Feature | |

@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.7.0] - 2026-10-08
+
+### Added
+- **Natural-language config assistant** (`configAssistant`): `POST /api/v1/admin/config-assistant/plan` `{ text }`
+  turns plain-words instructions into a validated config patch with its diff (dry run) using a built-in phrasebook
+  (rate limits, allow / block / require-approval rules, caching, add / remove servers, audit, log level) and, when
+  `llm` is configured, any OpenAI-compatible model for the rest (secrets redacted). `POST …/apply` `{ planId }`
+  applies it (409 when the config changed since planning). [Guide](docs/guides/config-assistant.md).
+- Pages demo: a planned config change.
+
+### Fixed
+- Pages demo: the config-editor mock matched every path starting with `/admin/config` (e.g. `/admin/config-assistant/…`)
+  and swallowed it; it now matches `/admin/config` and `/admin/config/…` only.
+
 ## [8.6.0] - 2026-10-08
 
 ### Added

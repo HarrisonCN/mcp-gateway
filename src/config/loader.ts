@@ -39,6 +39,7 @@ import { DebugSessionsSchema } from '../features/debug-sessions.js';
 import { CostAdvisorSchema } from '../features/cost-advisor.js';
 import { BlueGreenSchema } from '../features/blue-green.js';
 import { DataLineageSchema } from '../features/data-lineage.js';
+import { ConfigAssistantSchema } from '../features/config-assistant.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
@@ -502,6 +503,7 @@ const GatewayConfigSchema = z.object({
   costAdvisor: CostAdvisorSchema.optional(),
   blueGreen: BlueGreenSchema.optional(),
   dataLineage: DataLineageSchema.optional(),
+  configAssistant: ConfigAssistantSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   audit: z

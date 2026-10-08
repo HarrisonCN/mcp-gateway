@@ -189,6 +189,8 @@ export { BlueGreenSchema } from './features/blue-green.js';
 export type { BlueGreenConfig } from './features/blue-green.js';
 export { DataLineageSchema } from './features/data-lineage.js';
 export type { DataLineageConfig, LineageNode, LineageEdge } from './features/data-lineage.js';
+export { ConfigAssistantSchema, parseInstruction } from './features/config-assistant.js';
+export type { ConfigAssistantConfig } from './features/config-assistant.js';
 export type {
   GatewayConfig,
   McpServerConfig,
