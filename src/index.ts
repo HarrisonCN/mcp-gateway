@@ -175,6 +175,8 @@ export { OfflineSchema, importDesktopServers, desktopConfig, ERR_OFFLINE } from 
 export type { OfflineConfig } from './features/offline.js';
 export { ApprovalFlowsSchema, FlowQueue, matchFlow } from './features/approval-flows.js';
 export type { ApprovalFlowsConfig, FlowRequest } from './features/approval-flows.js';
+export { ComplianceReportsSchema, writeBundle, verifyBundle, renderFramework, iso27001Controls } from './features/compliance-reports.js';
+export type { ComplianceReportsConfig, Manifest as ComplianceManifest } from './features/compliance-reports.js';
 export type {
   GatewayConfig,
   McpServerConfig,

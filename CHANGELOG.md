@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.8.0] - 2026-10-08
+
+### Added
+- **Automated compliance reports** (`complianceReports`): scheduled (daily / weekly / monthly) evidence bundles for
+  **SOC 2, ISO/IEC 27001:2022 and GDPR** — Markdown + JSON per framework, the redacted running config and a SHA-256
+  `manifest.json` (tamper detection, `verifyBundle()`); oldest bundles pruned (`keep`). New ISO 27001 Annex A control
+  mapping covering the 6.x / 7.x features. `GET /api/v1/admin/compliance-reports`, `POST …/run`, bundle download,
+  `GET …/preview`. [Guide](docs/guides/compliance-reports.md).
+
 ## [7.7.0] - 2026-10-08
 
 ### Added

@@ -403,6 +403,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(a.flows[0].steps.map((s: any) => s.name)).toEqual(['lead', 'finance']);
     expect(a.pending[0]).toMatchObject({ flow: 'payments', current: 1 });
   });
+  it('lists compliance evidence bundles (7.8)', async () => {
+    const f = demoFetch();
+    const c = (await (await f('/api/v1/admin/compliance-reports')).json()) as any;
+    expect(c.bundles[0].frameworks.map((x: any) => x.framework)).toEqual(['soc2', 'iso27001', 'gdpr']);
+    expect(c.bundles[0].verified).toBe(true);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

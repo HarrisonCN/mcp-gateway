@@ -464,6 +464,10 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `POST` | `/admin/approval-flows/evaluate` | Which flow / steps would hold `{ server, tool, client?, arguments? }` (7.7) |
 | `GET` | `/features/approval-flows/inbox\|mine` | Any client: requests it may approve / its own requests (7.7) |
 | `POST` | `/features/approval-flows/:id/approve\|deny` | Any client: approve or deny the current step it is an approver of (7.7) |
+| `GET` | `/admin/compliance-reports` | Automated compliance reports: schedules, bundles (verified against their manifests) (7.8) |
+| `POST` | `/admin/compliance-reports/run` | Write an evidence bundle now `{ schedule?, frameworks?, periodDays? }` (7.8) |
+| `GET` | `/admin/compliance-reports/bundles/:bundle/:file` | Download a bundle file (7.8) |
+| `GET` | `/admin/compliance-reports/preview?framework=soc2\|iso27001\|gdpr&format=md` | Evaluate a framework without writing (7.8) |
 
 ## Bridges
 
