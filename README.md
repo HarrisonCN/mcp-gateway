@@ -583,6 +583,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v4.4
+
+| Feature | Description |
+|---------|-------------|
+| **`POST /api/v1/tools/stream`** | Progress, partial chunks and the result as Server-Sent Events |
+| **Backpressure** | Coalesced progress for slow readers, slow-consumer cut-off |
+| **`maxQueue`** | Per-server load shedding: fail fast with 503 instead of piling up |
+
 ## What's New in v4.3
 
 | Feature | Description |

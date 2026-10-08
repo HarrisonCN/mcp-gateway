@@ -71,6 +71,8 @@ export interface McpServerConfig {
   timeout?: number;
   /** Maximum concurrent requests */
   maxConcurrency?: number;
+  /** 4.4: calls allowed to wait for a `maxConcurrency` slot; beyond it calls fail fast with `-32014` (default unbounded). */
+  maxQueue?: number;
   /**
    * Forward this server's sampling / elicitation / roots requests to the downstream MCP client that made the
    * call (default true; `mcp.passthrough` sets which features). `false` keeps the server isolated.
@@ -147,6 +149,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Streaming tool results: SSE backpressure limits (4.4). */
+  streaming?: import('../gateway/stream.js').StreamLimits;
   /** Cost accounting per LLM call and budget alerts (4.3). */
   costs?: import('../costs/index.js').CostsConfig;
   /** Tool chains / multi-agent orchestration (4.2). */

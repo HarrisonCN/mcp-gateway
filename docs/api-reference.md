@@ -182,6 +182,12 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
 ```
 `kind` is present for resources and prompts. Invalid parameters → `400`.
 
+### Streaming tool calls (4.4)
+
+`POST /tools/stream` — body as `/tools/call`; `text/event-stream` with `progress`, `partial`, `result` | `error`, `end`
+events. Progress events are coalesced when the client reads slowly; a client more than `streaming.maxBufferedBytes`
+behind is disconnected. A server whose `maxQueue` is full answers `503` with `Retry-After: 1` (`code: -32014`).
+
 ### Costs and budgets (4.3)
 
 `GET /costs?by=client|tenant|server|model|tool&period=day|month|all` (operators) →

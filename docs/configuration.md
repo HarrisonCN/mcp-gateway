@@ -55,6 +55,7 @@ servers:
     enabled: true              # default true
     timeout: 30000             # ms per request, incl. time queued for maxConcurrency (default 30000)
     maxConcurrency: 10         # in-flight requests to this server (default 10)
+    maxQueue: 50               # 4.4: calls allowed to wait for a slot; more fail fast with 503 / -32014 (default unbounded)
     tools:                     # optional tool filter (globs * and ?; deny wins)
       allow: ["read_*", "list_*"]
       deny: ["*_secret"]
@@ -845,4 +846,21 @@ costs:
 ```
 
 Spans carry `mcp.cost` and `gen_ai.usage.input_tokens` / `output_tokens`. Report: `GET /api/v1/costs`.
+
+## Streaming and backpressure (4.4)
+
+`POST /api/v1/tools/stream` takes the same body as `/tools/call` and answers with Server-Sent Events: `progress`
+(`{ progress, total?, message? }`), `partial` (`{ text }` — the progress message as a result chunk), then `result`
+(the `/tools/call` response body plus `status`) or `error`, and `end` (`{ coalesced }`). Closing the connection cancels
+the upstream call.
+
+```yaml
+streaming:
+  highWaterBytes: 65536        # above this many queued bytes, progress/partial events are coalesced (latest kept)
+  maxBufferedBytes: 8388608    # a consumer that falls further behind is disconnected
+servers:
+  - id: search
+    maxConcurrency: 10
+    maxQueue: 50               # load shedding: the 51st waiting call gets 503 + Retry-After (-32014 on /mcp)
+```
 

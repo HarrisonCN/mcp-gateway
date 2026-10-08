@@ -62,6 +62,8 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 // JSON-RPC error codes used by the gateway
 export const ERR_NOT_CONNECTED = -32000;
 export const ERR_TIMEOUT = -32001;
+/** 4.4: the server's queue (`maxQueue`) is full. */
+export const ERR_SERVER_BUSY = -32014;
 /** The caller cancelled the request (e.g. a downstream `notifications/cancelled`). */
 export const ERR_CANCELLED = -32800;
 
@@ -704,6 +706,10 @@ export class McpProxy extends EventEmitter {
 
     // Enforce maxConcurrency; the timeout covers time spent queued.
     let release: (() => void) | undefined;
+    if (limited && session.config.maxQueue !== undefined && session.limiter.inFlight >= (session.config.maxConcurrency ?? Infinity) && session.limiter.pending >= session.config.maxQueue) {
+      // 4.4 backpressure: shed load instead of queueing without bound.
+      return { success: false, error: { code: ERR_SERVER_BUSY, message: `Server "${serverId}" is busy (${session.limiter.pending} calls queued)`, data: { queued: session.limiter.pending } }, durationMs: Date.now() - startTime };
+    }
     if (limited) {
       let queueTimer: NodeJS.Timeout | undefined;
       let onAbort: (() => void) | undefined;

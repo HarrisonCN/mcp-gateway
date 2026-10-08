@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.4.0] - 2026-10-08
+
+### Added
+- **Streaming tool results**: `POST /api/v1/tools/stream` answers with SSE — `progress`, `partial` (progress messages
+  as result chunks), `result` / `error` and `end`; a client disconnect cancels the upstream call.
+- **Backpressure**: SSE writes respect the socket buffer — above `streaming.highWaterBytes` droppable events are
+  coalesced (latest kept, flushed on drain), control events are never dropped, and consumers more than
+  `streaming.maxBufferedBytes` behind are disconnected.
+- **Load shedding**: `servers[].maxQueue` bounds the calls waiting for a `maxConcurrency` slot; beyond it calls fail
+  fast with `-32014` (REST `503` + `Retry-After: 1`) instead of queueing until they time out.
+- `SseWriter` exported for embedders; the GitHub Pages demo streams a sample call.
+
 ## [4.3.0] - 2026-10-08
 
 ### Added
