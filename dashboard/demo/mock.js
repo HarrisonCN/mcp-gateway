@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '4.4.0';
+  const VERSION = '4.5.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -413,6 +413,10 @@
       body += ev('result', { status: 200, success: true, result: { content: [{ type: 'text', text: 'Demo streamed result' }] } }) + ev('end', { coalesced: 0 });
       return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } });
     }
+    if (p === '/mtls') return json({ enabled: true,
+      identity: { spiffeId: 'spiffe://example.org/ns/gateway/sa/mcp-gateway', subject: 'O=SPIRE', notAfter: iso(Date.now() + 40 * 60000), fingerprint: '4B:1F:…:9C', expiresInHours: 1, loadedAt: iso(Date.now() - 20 * 60000), rotations: 17 },
+      peers: [{ server: 'search', spiffeIds: ['spiffe://example.org/ns/tools/sa/search'], at: iso(Date.now() - 30000) }],
+      servers: [{ id: 'github', mtls: false, spiffeId: null }, { id: 'search', mtls: true, spiffeId: 'spiffe://example.org/ns/tools/*' }] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).
     if (p === '/admin/deprecations') return json({ runtime: [

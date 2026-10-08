@@ -71,6 +71,8 @@ export interface McpServerConfig {
   timeout?: number;
   /** Maximum concurrent requests */
   maxConcurrency?: number;
+  /** 4.5: mTLS / SPIFFE settings for an HTTPS upstream. */
+  tls?: import('../security/mtls.js').ServerTlsConfig;
   /** 4.4: calls allowed to wait for a `maxConcurrency` slot; beyond it calls fail fast with `-32014` (default unbounded). */
   maxQueue?: number;
   /**
@@ -149,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Zero-trust upstream mTLS (SPIFFE, certificate rotation) (4.5). */
+  mtls?: import('../security/mtls.js').MtlsConfig;
   /** Streaming tool results: SSE backpressure limits (4.4). */
   streaming?: import('../gateway/stream.js').StreamLimits;
   /** Cost accounting per LLM call and budget alerts (4.3). */

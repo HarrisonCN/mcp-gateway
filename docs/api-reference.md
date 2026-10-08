@@ -182,6 +182,10 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
 ```
 `kind` is present for resources and prompts. Invalid parameters → `400`.
 
+### mTLS (4.5)
+
+`GET /mtls` (operators) → `{ enabled, identity?: { spiffeId, subject, notAfter, fingerprint, expiresInHours, loadedAt, rotations, error? }, peers: [{ server, spiffeIds, at }], servers: [{ id, mtls, spiffeId }] }`.
+
 ### Streaming tool calls (4.4)
 
 `POST /tools/stream` — body as `/tools/call`; `text/event-stream` with `progress`, `partial`, `result` | `error`, `end`
