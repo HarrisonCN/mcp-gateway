@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.7.0] - 2026-10-08
+
+### Added
+- **Python SDK** (`clients/python`, package `mcp-gateway-client`): stdlib-only (`urllib`), Python ≥ 3.9, typed
+  `health` / `ready` / `metrics`, `servers`, `list_tools`, `tool_schemas` + `call_llm_tool`, `call_tool`, resources,
+  prompts, approvals; `GatewayError` with `status`, `code`, `retry_after`, `is_policy_error`. `py.typed`.
+- **Go SDK** (`clients/go`, module `github.com/HarrisonCN/mcp-gateway/clients/go`): `net/http` only, Go ≥ 1.21,
+  context-aware `Health`, `Ready`, `Servers`, `ListTools`, `ToolSchemas` + `CallLLMTool`, `CallTool`, `Approve` / `Deny`;
+  `*mcpgateway.Error` with `Code()`, `IsPolicyError()`, `RetryAfter`.
+- **Swift SDK** (`clients/swift`, SwiftPM `MCPGateway`): async/await, `URLSession` by default with a pluggable
+  transport, macOS 12 / iOS 15 / Linux; `GatewayError.isPolicyError`.
+- New **SDKs** CI workflow (`.github/workflows/sdks.yml`): Python 3.9 / 3.12 / 3.13 tests + sdist/wheel build,
+  Go 1.21 / stable `vet` + `test -race`, Swift 6.0 `build` + `test` on Linux. Package-registry publishing (PyPI, Go
+  module tags, Swift Package Index) is not automated yet.
+
 ## [4.6.0] - 2026-10-08
 
 ### Added

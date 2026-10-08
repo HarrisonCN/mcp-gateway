@@ -1,0 +1,75 @@
+name: SDKs
+
+on:
+  push:
+    branches: [main]
+    paths: ['clients/python/**', 'clients/go/**', 'clients/swift/**', '.github/workflows/sdks.yml']
+  pull_request:
+    paths: ['clients/python/**', 'clients/go/**', 'clients/swift/**', '.github/workflows/sdks.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.9', '3.12', '3.13']
+    defaults:
+      run:
+        working-directory: clients/python
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Test
+        run: PYTHONPATH=src python -m unittest discover -s tests -v
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install --quiet build
+          python -m build
+          ls -l dist
+
+  go:
+    name: Go ${{ matrix.go }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.21', 'stable']
+    defaults:
+      run:
+        working-directory: clients/go
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+      - run: go vet ./...
+      - run: go test -race -v ./...
+      - run: go build ./...
+
+  swift:
+    name: Swift (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: swift:6.0
+    defaults:
+      run:
+        working-directory: clients/swift
+    steps:
+      - uses: actions/checkout@v7
+      - run: swift build
+      - run: swift test
