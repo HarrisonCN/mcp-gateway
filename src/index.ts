@@ -179,6 +179,8 @@ export { ComplianceReportsSchema, writeBundle, verifyBundle, renderFramework, is
 export type { ComplianceReportsConfig, Manifest as ComplianceManifest } from './features/compliance-reports.js';
 export { AgentIdentitySchema, signAgentToken, verifyAgentToken, issueAgentToken, ERR_AGENT_REQUIRED } from './features/agent-identity.js';
 export type { AgentIdentityConfig, AgentTokenClaims } from './features/agent-identity.js';
+export { A2aFederationSchema, refreshRemote, sendToRemote } from './features/a2a-federation.js';
+export type { A2aFederationConfig, RemoteState as A2aRemoteState } from './features/a2a-federation.js';
 export type {
   GatewayConfig,
   McpServerConfig,

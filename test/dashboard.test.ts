@@ -416,6 +416,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(a.agents.map((x: any) => x.id)).toEqual(['travel-bot', 'booker']);
     expect(a.recent[0].chain).toEqual(['agent:booker', 'agent:travel-bot']);
   });
+  it('lists federated A2A remotes (8.2)', async () => {
+    const f = demoFetch();
+    const a = (await (await f('/api/v1/admin/a2a-federation')).json()) as any;
+    expect(a.remotes.map((r: any) => `${r.id}:${r.status}`)).toEqual(['eu:online', 'partner:error']);
+    expect(a.recent[0].state).toBe('completed');
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {
