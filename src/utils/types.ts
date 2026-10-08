@@ -214,7 +214,7 @@ export interface GatewayConfig {
   /** Registered MCP servers */
   servers: McpServerConfig[];
   /** Config schema version (`7`; optional). */
-  version?: 7;
+  version?: 7 | 8;
   /** CORS: allowed browser origins (default `["*"]`). */
   cors?: { origins?: string[] };
   /** Health checks: ping interval (ms, default 30000). Restart required. */
@@ -310,9 +310,11 @@ export interface A2ABridgeConfig {
 export interface PluginConfig {
   /** Path (relative to the config file) or package name of an ES module. Exactly one of `module` / `wasm`. */
   module?: string;
-  /** Path (relative to the config file) of a WebAssembly plugin, run sandboxed (3.3). */
+  /** Path (relative to the config file) of a WebAssembly plugin, run sandboxed (3.3). Deprecated in 7.9: use `component`. */
   wasm?: string;
-  /** WASM only: one sandbox per tenant (default), per client, or one shared. */
+  /** Path of a plugin API v5 WASM plugin (7.9): the core module of a `mcp-gateway:plugin@5.0.0` component (canonical ABI). */
+  component?: string;
+  /** WASM / component only: one sandbox per tenant (default), per client, or one shared. */
   isolation?: 'tenant' | 'client' | 'shared';
   /** WASM only: per-sandbox limits. */
   limits?: WasmPluginLimits;

@@ -464,7 +464,7 @@ const GatewayConfigSchema = z.object({
     })
     .optional(),
   servers: z.array(McpServerSchema).default([]),
-  version: z.literal(7).optional(),
+  version: z.union([z.literal(7), z.literal(8)]).optional(),
   cors: z.object({ origins: z.array(z.string()).optional() }).strict().optional(),
   health: z.object({ intervalMs: z.number().int().min(1000).optional() }).strict().optional(),
   // 7.0: role (all / control / data), config API, dashboard and data-plane sync.
@@ -887,6 +887,7 @@ const GatewayConfigSchema = z.object({
         .object({
           module: z.string().min(1).optional(),
           wasm: z.string().min(1).optional(),
+          component: z.string().min(1).optional(),
           signature: z.string().min(1).optional(),
           name: z.string().min(1).optional(),
           enabled: z.boolean().optional(),
@@ -903,8 +904,8 @@ const GatewayConfigSchema = z.object({
             .optional(),
         })
         .strict()
-        .refine((p) => (p.module ? 1 : 0) + (p.wasm ? 1 : 0) === 1, 'a plugin needs exactly one of "module" or "wasm"')
-        .refine((p) => p.wasm || (p.isolation === undefined && p.limits === undefined), '"isolation" / "limits" apply to wasm plugins only'),
+        .refine((p) => (p.module ? 1 : 0) + (p.wasm ? 1 : 0) + (p.component ? 1 : 0) === 1, 'a plugin needs exactly one of "module", "component" or "wasm"')
+        .refine((p) => p.wasm || p.component || (p.isolation === undefined && p.limits === undefined), '"isolation" / "limits" apply to WASM plugins only'),
     )
     .optional(),
   observability: z
