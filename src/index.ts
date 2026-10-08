@@ -155,6 +155,8 @@ export { PolicyShadowSchema, CandidatePolicySchema, simulatePolicy, ShadowRecord
 export type { PolicyShadowConfig, SimulationReport, SimCall } from './features/policy-sim.js';
 export { AnomalySchema, AnomalyDetector, anomalyDetector, injectionScore, ERR_ANOMALY_QUARANTINED } from './features/anomaly.js';
 export type { AnomalyConfig, AnomalyAlert } from './features/anomaly.js';
+export { BillingSchema, UsageMeter as BillingUsageMeter, usageMeter, priceFor, buildInvoice, invoiceCsv } from './features/billing.js';
+export type { BillingConfig, Invoice, InvoiceLine } from './features/billing.js';
 export type {
   GatewayConfig,
   McpServerConfig,

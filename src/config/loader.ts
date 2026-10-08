@@ -25,6 +25,7 @@ import { IdentitySchema } from '../features/identity.js';
 import { PolicyRuleSchema } from '../policy/rule-schema.js';
 import { PolicyShadowSchema } from '../features/policy-sim.js';
 import { AnomalySchema } from '../features/anomaly.js';
+import { BillingSchema } from '../features/billing.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
@@ -472,6 +473,7 @@ const GatewayConfigSchema = z.object({
   identity: IdentitySchema.optional(),
   policyShadow: PolicyShadowSchema.optional(),
   anomaly: AnomalySchema.optional(),
+  billing: BillingSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   dashboard: z.object({ enabled: z.boolean().default(true) }).optional(),

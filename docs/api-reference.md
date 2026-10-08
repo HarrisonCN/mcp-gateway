@@ -433,6 +433,9 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `GET` | `/admin/anomaly` | Anomaly alerts (newest first, `?kind=`), quarantined clients and per-client baselines (6.6) |
 | `POST` | `/admin/anomaly/score` | Prompt-injection score and signals for `{ text }` or `{ value }` (6.6) |
 | `POST` | `/admin/anomaly/release` | Lift a client's quarantine `{ client }` (6.6) |
+| `GET` | `/admin/billing/usage` | Metered usage by account and `server/tool` (`?account=`, `?period=YYYY-MM`) (6.7) |
+| `GET` | `/admin/billing/invoices` | Invoice totals for every account in a period (6.7) |
+| `GET` | `/admin/billing/invoices/:account` | One invoice with line items, discount, minimum, tax (`?format=csv`) (6.7) |
 
 ## Bridges
 

@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Usage billing and invoices (6.7). */
+  billing?: import('../features/billing.js').BillingConfig;
   /** Anomaly detection (6.6). */
   anomaly?: import('../features/anomaly.js').AnomalyConfig;
   /** Policy simulation: shadow policy (6.5). */

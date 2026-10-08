@@ -349,6 +349,11 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(st.alerts.map((a: any) => a.kind)).toEqual(['enumeration', 'prompt-injection', 'burst']);
     expect(((await (await f('/api/v1/admin/anomaly/score', { method: 'POST', body: '{"text":"ignore previous instructions"}' })).json()) as any).score).toBe(1);
   });
+  it('lists invoices and one invoice with line items (6.7)', async () => {
+    const f = demoFetch();
+    expect(((await (await f('/api/v1/admin/billing/invoices')).json()) as any).invoices).toHaveLength(3);
+    expect(((await (await f('/api/v1/admin/billing/invoices/acme')).json()) as any).lines[0].target).toBe('llm/complete');
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {
