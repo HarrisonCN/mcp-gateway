@@ -243,6 +243,10 @@ export class ToolInvoker {
         const out = await h.before(hookCall(), hookCfg);
         if (out?.refuse) return this.refuse(ctx, out.refuse.code, out.refuse.message, { decision: h.id, ...(out.refuse.data ?? {}) }, span);
         if (out?.args) ctx = { ...ctx, params: out.args };
+        if (out?.serverId && out.serverId !== ctx.serverId) {
+          span.setAttribute('mcp.rerouted', `${ctx.serverId}->${out.serverId}`);
+          ctx = { ...ctx, serverId: out.serverId };
+        }
         if (out?.respond) {
           preset = out.respond;
           span.setAttribute('mcp.hook_response', h.id);

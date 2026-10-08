@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.5.0] - 2026-10-08
+
+### Added
+- **Tool versioning & gradual rollout** (`rollouts`): route a sticky percentage of clients (plus `clients` /
+  `exclude` globs) from a stable server to a canary server with the same tools; per-version calls and error rates,
+  automatic rollback on a canary error-rate threshold, and runtime `percent` / `promote` / `rollback` / `reset`
+  (`?persist=true` writes the config). Canary results carry `_meta["mcp-gateway/rollout"]`.
+  [Guide](docs/guides/rollouts.md).
+- Call hooks: `before` may return `{ serverId }` to route a call to another upstream.
+
 ## [7.4.0] - 2026-10-08
 
 ### Added

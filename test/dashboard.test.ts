@@ -387,6 +387,11 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(s.settings.threshold).toBe(0.9);
     expect(s.stats.hits).toBe(388);
   });
+  it('lists gradual rollouts (7.5)', async () => {
+    const f = demoFetch();
+    const r = (await (await f('/api/v1/admin/rollouts')).json()) as any;
+    expect(r.rollouts[0]).toMatchObject({ id: 'search-v2', percent: 25, state: 'active' });
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

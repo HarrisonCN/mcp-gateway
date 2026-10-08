@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Tool versioning and gradual rollout (7.5). */
+  rollouts?: import('../features/rollouts.js').RolloutsConfig;
   /** Semantic cache (7.4). */
   semanticCache?: import('../features/semantic-cache.js').SemanticCacheConfig;
   /** Prompt-injection defence and output sanitisation (7.3). */

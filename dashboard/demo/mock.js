@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '7.4.0';
+  const VERSION = '7.5.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -58,6 +58,7 @@
     { id: "console", since: "7.2.0", summary: "SaaS console: organisations with plans (servers, daily call limits), onboarding, suspension" },
     { id: "sanitize", since: "7.3.0", summary: "Prompt-injection defence: tool-output sanitisation (hidden Unicode, ANSI, HTML, exfil images), spotlighting, inbound / outbound blocking" },
     { id: "semantic-cache", since: "7.4.0", summary: "Semantic cache: answer paraphrased tool calls from earlier results by embedding similarity (tenant-isolated)" },
+    { id: "rollouts", since: "7.5.0", summary: "Tool versioning and gradual rollout: sticky percentage canaries per server with automatic rollback" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -648,6 +649,10 @@
     if (p === '/admin/sanitize') return json({ enabled: true, settings: { servers: ['*'], exempt: [], invisible: true, ansi: true, html: true, images: 'strip', allowedImageHosts: ['*.githubusercontent.com'], injection: { action: 'mark', threshold: 0.6 }, inbound: 'off', spotlight: true }, stats: { results: 1840, cleaned: 37, invisible: 112, ansi: 9, html: 4, images: 6, truncated: 0, flagged: 3, blocked: 0, inboundBlocked: 0 } });
     // 7.4: semantic cache.
     if (p === '/admin/semantic-cache' && method === 'GET') return json({ enabled: true, settings: { tools: ['search/*'], threshold: 0.9, ttlSeconds: 3600, maxEntries: 5000, scope: 'tenant', embedding: { provider: 'local', model: 'text-embedding-3-small', dimensions: 512 } }, entries: 214, stats: { hits: 388, misses: 902, stores: 902, evictions: 0, errors: 0 } });
+    // 7.5: gradual rollouts.
+    if (p === '/admin/rollouts') return json({ rollouts: [
+      { id: 'search-v2', stable: 'search', canary: 'search-v2', tools: ['*'], configuredPercent: 10, percent: 25, clients: ['key:beta-*'], exclude: [], state: 'active', reason: 'set over the admin API', versions: { stable: { calls: 2210, errors: 11, errorRate: 0.005, windowErrorRate: 0.01 }, canary: { calls: 731, errors: 4, errorRate: 0.005, windowErrorRate: 0.005 } } },
+    ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 7.0: nothing is deprecated (schema v6, `admin` and `dashboard` were removed).
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });
