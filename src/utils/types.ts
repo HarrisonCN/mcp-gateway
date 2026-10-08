@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Automated compliance reports (7.8). */
+  complianceReports?: import('../features/compliance-reports.js').ComplianceReportsConfig;
   /** Approvals 2.0 (7.7). */
   approvalFlows?: import('../features/approval-flows.js').ApprovalFlowsConfig;
   /** Offline desktop gateway (7.6). */

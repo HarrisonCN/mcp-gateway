@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '7.7.0';
+  const VERSION = '7.8.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -61,6 +61,7 @@
     { id: "rollouts", since: "7.5.0", summary: "Tool versioning and gradual rollout: sticky percentage canaries per server with automatic rollback" },
     { id: "offline", since: "7.6.0", summary: "Offline desktop gateway: connectivity probe, fail-fast for remote upstreams when offline, desktop-client config import" },
     { id: "approval-flows", since: "7.7.0", summary: "Approvals 2.0: multi-step, conditional approval flows with named approvers and escalation" },
+    { id: "compliance-reports", since: "7.8.0", summary: "Automated compliance reports: scheduled SOC 2 / ISO 27001 / GDPR evidence bundles with SHA-256 manifests" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -661,6 +662,10 @@
     if (p === '/admin/approval-flows') return json({ enabled: true, flows: [{ id: 'payments', tools: ['payments/transfer'], when: [{ path: 'amount', op: 'gte', value: 1000 }], timeoutSeconds: 900, steps: [{ name: 'lead', approvers: ['key:lead-*'], required: 1, when: [], escalateTo: [] }, { name: 'finance', approvers: ['key:fin-*'], required: 2, when: [{ path: 'amount', op: 'gte', value: 10000 }], escalateAfterSeconds: 300, escalateTo: ['key:cfo'] }] }], pending: [
       { id: 'f1c0ffee-0000-4000-8000-000000000001', flow: 'payments', status: 'pending', clientId: 'key:agent-billing', serverId: 'payments', tool: 'transfer', arguments: { amount: 25000, currency: 'EUR', to: '***' }, current: 1, steps: [{ name: 'lead', approvers: ['key:lead-*'], required: 1, escalateTo: [], escalated: false, status: 'approved', approvals: [{ by: 'key:lead-ana', at: new Date(Date.now() - 120000).toISOString() }] }, { name: 'finance', approvers: ['key:fin-*'], required: 2, escalateTo: ['key:cfo'], escalated: false, status: 'pending', approvals: [{ by: 'key:fin-li', at: new Date(Date.now() - 30000).toISOString() }] }], createdAt: new Date(Date.now() - 180000).toISOString(), expiresAt: new Date(Date.now() + 720000).toISOString() },
     ], recent: [] });
+    // 7.8: automated compliance reports.
+    if (p === '/admin/compliance-reports') return json({ outputDir: '/var/lib/mcp-gateway/compliance', keep: 12, schedules: [{ id: 'monthly', frameworks: ['soc2', 'iso27001', 'gdpr'], every: 'monthly', periodDays: 30, lastRunAt: '2026-10-01T00:00:00.000Z', nextRunAt: '2026-10-31T00:00:00.000Z' }], bundles: [
+      { name: 'monthly-2026-10-01T00-00-00-000Z', schedule: 'monthly', generatedAt: '2026-10-01T00:00:00.000Z', frameworks: [{ framework: 'soc2', pass: 8, warn: 1, fail: 0 }, { framework: 'iso27001', pass: 11, warn: 1, fail: 0 }, { framework: 'gdpr', pass: 5, warn: 1, fail: 0 }], verified: true },
+    ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 7.0: nothing is deprecated (schema v6, `admin` and `dashboard` were removed).
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });

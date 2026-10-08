@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v7.8
+
+| Feature | |
+|---------|---|
+| **Scheduled evidence bundles** | SOC 2, ISO/IEC 27001 and GDPR reports written on a schedule with a SHA-256 manifest |
+| **ISO 27001 mapping** | Annex A controls backed by DLP, sanitisation, approval flows, rollouts — [guide](docs/guides/compliance-reports.md) |
+
 ## What's New in v7.7
 
 | Feature | |
