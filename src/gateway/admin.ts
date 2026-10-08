@@ -44,6 +44,14 @@ export function portableConfig(cfg: GatewayConfig): Record<string, unknown> {
       return Object.keys(scope).length ? { ...key, scope } : key;
     });
   }
+  // Schema v5 (4.9 preview): servers use `timeoutMs` (internally `timeout`).
+  if (out.version === 5 && Array.isArray(out.servers)) {
+    out.servers = (out.servers as Array<Record<string, unknown>>).map((s) => {
+      if (!s || typeof s !== 'object' || !('timeout' in s)) return s;
+      const { timeout, ...rest } = s;
+      return { ...rest, timeoutMs: timeout };
+    });
+  }
   return out;
 }
 

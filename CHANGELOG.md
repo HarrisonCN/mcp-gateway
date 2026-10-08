@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.9.0] - 2026-10-08
+
+### Added
+- **Schema v5 preview**: 4.9 reads `version: 5` configs, where servers use `timeoutMs` (instead of `timeout`).
+  The admin API returns v5 field names for v5 configs, so GET → edit → PUT round trips keep working.
+- **`mcp-gateway migrate --to 5`** (now the default target): `version` → 5 and `servers[].timeout` → `timeoutMs`
+  (renamed in place, comments kept), plus the 4.0 steps, so 3.x files go straight to v5; `--to 4` still works.
+- **Plugin API v4**: v3 plus `ctx.state`, a per-plugin key-value store with TTLs (`get` / `set(key, value, ttlMs)` /
+  `has` / `delete` / `size` / `clear`, ≤ 10 000 keys). `PLUGIN_API_VERSION` is 4; v3 plugins load unchanged.
+- Migration guide `docs/guides/migrating-to-v5.md`.
+
+### Deprecated (removed in 5.0)
+- `version: 4` (`config-version-4`) and `servers[].timeout` (`config-server-timeout`) — listed by `mcp-gateway validate`,
+  `GET /api/v1/admin/deprecations` and logged once at start-up.
+- Plugin API v2 (refused by 5.0; the warning now points to `apiVersion: 4`).
+- `normalizeV4Preview()` (library) — use `normalizeApiKeyScopes()`.
+
 ## [4.8.0] - 2026-10-08
 
 ### Added

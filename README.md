@@ -586,6 +586,15 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v4.9
+
+| Feature | Description |
+|---------|-------------|
+| **Schema v5 preview** | 4.9 reads `version: 5` (`servers[].timeoutMs`) — migrate before upgrading |
+| **`migrate --to 5`** | Rewrites v3 / v4 files to v5 in place, comments kept |
+| **Plugin API v4** | `ctx.state`: per-plugin key-value store with TTLs |
+| **5.0 deprecations** | `version: 4`, `servers[].timeout`, plugin API v2 — warned now, removed in 5.0 |
+
 ## What's New in v4.8
 
 | Feature | Description |

@@ -171,8 +171,8 @@ export interface GatewayConfig {
   monitor?: MonitorConfig;
   /** Registered MCP servers */
   servers: McpServerConfig[];
-  /** Config schema version (`3`; optional). */
-  version?: 3;
+  /** Config schema version (`4` or `5`; optional — 4.9 reads both, 5.0 only `5`). */
+  version?: 4 | 5;
   /** CORS: allowed browser origins (default `["*"]`). */
   cors?: { origins?: string[] };
   /** Health checks: ping interval (ms, default 30000). Restart required. */

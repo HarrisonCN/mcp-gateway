@@ -46,17 +46,17 @@ describe('4.0 removals (were 3.9 deprecations)', () => {
   it('reads schema v4 (version 4 or omitted, nested key scope)', () => {
     const cfg = validateConfig({ version: 4, servers: [], auth: { strategy: 'api-key', apiKeys: [{ name: 'ci', key: 'k', scope: { servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } } }] } });
     expect(cfg.auth!.apiKeys![0]).toMatchObject({ name: 'ci', servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } });
-    expect(cfg.deprecations).toBeUndefined();
+    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['config-version-4']); // 4.9
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', servers: ['a'], scope: { servers: ['b'] } }] } })).toThrow(/removed in 4.0/);
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', scope: { nope: 1 } }] } })).toThrow(/unknown key/);
-    expect(() => validateConfig({ version: 5, servers: [] })).toThrow(/not supported/);
+    expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/not supported/);
     expect(validateConfig({ servers: [] }).deprecations).toBeUndefined();
   });
 });
 
 describe('mcp-gateway migrate', () => {
   it('rewrites YAML to v4, keeping comments', () => {
-    const r = migrateConfigText(V3);
+    const r = migrateConfigText(V3, undefined, 4);
     expect(r.changed).toBe(true);
     expect(r.changes).toEqual([
       'version: 3 → 4',
@@ -70,20 +70,21 @@ describe('mcp-gateway migrate', () => {
     expect(r.text).toContain('${CI_KEY}');
     process.env.CI_KEY = 'ci-key-value';
     const cfg = validateConfig(JSON.parse(JSON.stringify((await_yaml(r.text)))));
-    expect(cfg.deprecations).toBeUndefined();
+    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['config-version-4']);
     expect(cfg.auth!.apiKeys![0]).toMatchObject({ servers: ['github'], rateLimit: { limit: 10, windowSeconds: 60 } });
     expect(cfg.servers[0]!.loadBalancing).toMatchObject({ strategy: 'smart', score: { latency: 1, errorRate: 0, cost: 0 } });
     // Idempotent.
-    expect(migrateConfigText(r.text).changed).toBe(false);
+    expect(migrateConfigText(r.text, undefined, 4).changed).toBe(false);
   });
 
   it('handles JSON and files without a version', () => {
     const { config, changes } = migrateConfigObject({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', tools: ['a*'] }] } });
-    expect(changes[0]).toBe('version: (none) → 4');
+    expect(changes[0]).toBe('version: (none) → 5');
     expect(Object.keys(config)[0]).toBe('version');
     expect((config.auth as { apiKeys: Array<Record<string, unknown>> }).apiKeys[0]).toEqual({ key: 'k', scope: { tools: ['a*'] } });
     expect(() => migrateConfigText('a: [', 'yaml')).toThrow(/Cannot parse/);
-    expect(() => migrateConfigText('version: 3', 'yaml', 5)).toThrow(/v4/);
+    expect(() => migrateConfigText('version: 3', 'yaml', 6)).toThrow(/v4 or v5/);
+    expect(() => migrateConfigText('version: 5', 'yaml', 4)).toThrow(/downgrading/);
   });
 });
 

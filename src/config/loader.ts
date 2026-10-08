@@ -15,7 +15,7 @@ import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types
 import { expandEnv } from '../transport/channel.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
 import { validateChains, type ChainsConfig } from '../orchestration/chains.js';
-import { configDeprecations, normalizeApiKeyScopes, removedConfigKeys } from '../utils/deprecations.js';
+import { configDeprecations, normalizeApiKeyScopes, normalizeSchemaV5, removedConfigKeys } from '../utils/deprecations.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
 import { ASYMMETRIC_ALGORITHMS, HMAC_ALGORITHMS } from '../auth/middleware.js';
@@ -468,7 +468,7 @@ const GatewayConfigSchema = z.object({
     })
     .optional(),
   servers: z.array(McpServerSchema).default([]),
-  version: z.literal(4).optional(),
+  version: z.union([z.literal(4), z.literal(5)]).optional(),
   cors: z.object({ origins: z.array(z.string()).optional() }).strict().optional(),
   health: z.object({ intervalMs: z.number().int().min(1000).optional() }).strict().optional(),
   admin: z.object({ configApi: z.boolean().optional() }).strict().optional(),
@@ -991,7 +991,7 @@ export function resolveConfigPath(configPath?: string): string | undefined {
 /** Validate (and apply defaults to) a raw config object; throws a readable error listing every issue. */
 export function validateConfig(raw: unknown): GatewayConfig {
   const removed = removedConfigKeys(raw);
-  const v4 = normalizeApiKeyScopes(raw);
+  const v4 = normalizeApiKeyScopes(normalizeSchemaV5(raw));
   removed.push(...v4.errors);
   if (removed.length > 0) throw new Error(`Invalid configuration:\n${removed.map((m) => `  - ${m}`).join('\n')}`);
   const result = GatewayConfigSchema.safeParse(v4.raw);
