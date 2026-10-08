@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** SaaS console (7.2). */
+  console?: import('../features/console.js').ConsoleConfig;
   /** Usage billing and invoices (6.7). */
   billing?: import('../features/billing.js').BillingConfig;
   /** Anomaly detection (6.6). */

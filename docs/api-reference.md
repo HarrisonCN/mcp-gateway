@@ -446,6 +446,10 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` / `POST` | `/admin/terraform/:kind[?dryRun=]` | List / create `servers`, `tenants`, `apiKeys` (restapi provider; writes need `controlPlane.configApi`) (7.1) |
 | `GET` / `PUT` / `DELETE` | `/admin/terraform/:kind/:id[?dryRun=]` | Read (`ETag`) / replace (`If-Match` → 412) / delete one object (7.1) |
 | `GET` | `/admin/terraform/export?format=hcl\|json&url=` | `main.tf` for the running config with `import` blocks; secrets as sensitive variables (7.1) |
+| `GET` | `/admin/console` | SaaS console: plans, organisations (plan, members, usage today / remaining), totals (7.2) |
+| `POST` | `/admin/console/orgs` | Onboard an organisation `{ id, name?, plan?, owner? }` (tenant + plan; `controlPlane.configApi`) (7.2) |
+| `GET` / `PATCH` / `DELETE` | `/admin/console/orgs/:id` | One organisation / change `{ plan?, name?, suspended? }` / offboard (7.2) |
+| `POST` | `/admin/console/orgs/:id/reset-usage` | Clear today's call counter (7.2) |
 
 ## Bridges
 
