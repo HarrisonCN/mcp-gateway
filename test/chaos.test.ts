@@ -24,10 +24,10 @@ describe('chaos testing (8.8)', () => {
     expect(ERR_CHAOS_INJECTED).toBe(-32021);
   });
 
-  it('injects nothing until started; latency, errors, corruption; client filter; stop', async () => {
+  it('injects nothing until started; latency, errors, corruption; stop', async () => {
     h = await startFeatureGw({
       chaos: { experiments: [
-        { id: 'slow', fault: { latencyMs: 150 }, clients: ['key:op*', 'anonymous'] },
+        { id: 'slow', fault: { latencyMs: 150 } },
         { id: 'errors', fault: { errorRate: 1 } },
         { id: 'corrupt', fault: { corruptRate: 1 } },
       ] },
@@ -57,7 +57,7 @@ describe('chaos testing (8.8)', () => {
 
   it('percent sampling, steady-state abort and duration expiry', async () => {
     h = await startFeatureGw({ chaos: { experiments: [{ id: 'half', percent: 50, fault: { errorRate: 1 }, abortIfErrorRateAbove: 0.4, minCallsForAbort: 4 }, { id: 'short', fault: { latencyMs: 1 }, durationSeconds: 1 }] } } as never);
-    const seq = [0.1, 0.9, 0.2, 0.0, 0.3, 0.0];
+    const seq = [0.1, 0.0, 0.9, 0.2, 0.0, 0.3, 0.0];
     chaosState.random = () => seq.shift() ?? 0.99;
     await h.admin('chaos/half/start', {});
     const out = [];

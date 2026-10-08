@@ -136,6 +136,16 @@ function active(e: Exp, now = Date.now()): boolean {
   return true;
 }
 
+/** Steady-state guard: abort experiments whose observed error rate is too high. */
+function guard(cfg: GatewayConfig): void {
+  for (const e of experiments(cfg)) {
+    const r = chaosState.runs.get(e.id);
+    if (r?.state === 'running' && e.abortIfErrorRateAbove !== undefined && r.calls >= e.minCallsForAbort && r.errors / r.calls > e.abortIfErrorRateAbove) {
+      stopExperiment(e.id, `steady-state guard: error rate ${(r.errors / r.calls).toFixed(2)} > ${e.abortIfErrorRateAbove}`, 'aborted');
+    }
+  }
+}
+
 registerCallHook({
   id: 'chaos',
   async before(call, cfg) {
@@ -158,11 +168,13 @@ registerCallHook({
       if (f.errorRate && chaosState.random() < f.errorRate) {
         r.injected.error++;
         r.errors++;
+        guard(cfg);
         return { refuse: { code: f.errorCode ?? ERR_CHAOS_INJECTED, message: `chaos: injected error (experiment "${e.id}")`, data: { experiment: e.id } } };
       }
       if (f.timeoutRate && chaosState.random() < f.timeoutRate) {
         r.injected.timeout++;
         r.errors++;
+        guard(cfg);
         await sleep(f.timeoutMs);
         return { refuse: { code: ERR_CHAOS_INJECTED, message: `chaos: injected timeout after ${f.timeoutMs}ms (experiment "${e.id}")`, data: { experiment: e.id, timeout: true } } };
       }
@@ -184,13 +196,7 @@ registerCallHook({
       if (!out.success && !m.corrupt) r.errors++;
       if (m.corrupt) r.errors++;
     }
-    // Steady-state guard.
-    for (const e of experiments(cfg)) {
-      const r = chaosState.runs.get(e.id);
-      if (r?.state === 'running' && e.abortIfErrorRateAbove !== undefined && r.calls >= e.minCallsForAbort && r.errors / r.calls > e.abortIfErrorRateAbove) {
-        stopExperiment(e.id, `steady-state guard: error rate ${(r.errors / r.calls).toFixed(2)} > ${e.abortIfErrorRateAbove}`, 'aborted');
-      }
-    }
+    guard(cfg);
     return out === result ? undefined : out;
   },
 });
