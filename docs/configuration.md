@@ -319,6 +319,21 @@ cache:
 - `GET /api/v1/cache` (stats: entries, hits, misses, deduped, evictions), `DELETE /api/v1/cache[?server=id]` (purge).
   Changing `cache:` purges the cache (hot reload). The cache is in memory per instance.
 
+## Replay debugger
+
+```yaml
+replay:
+  enabled: true        # default false: keep redacted arguments / results of recent calls in memory
+  maxEntries: 500      # calls kept
+  maxBytes: 65536      # per captured arguments / result; larger payloads are not kept
+  results: true        # also capture results (for diffs)
+```
+
+The audit log stores metadata only. With `replay.enabled` the History view of the dashboard opens any captured call
+(arguments, result) and replays it — with the same or edited arguments — through the normal pipeline (auth,
+scopes, policy, quotas), then diffs the two results. Captured payloads are redacted with the secret patterns
+(`security.redactPatterns` included), so a replay sends `***` where a secret was. Restart not required.
+
 ## Admin API
 
 ```yaml

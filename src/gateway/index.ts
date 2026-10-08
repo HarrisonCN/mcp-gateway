@@ -38,6 +38,7 @@ import { createTracer, NOOP_TRACER, type Tracer } from '../observability/tracing
 import { ToolInvoker } from './invoker.js';
 import { LoadBalancer, expandReplicas } from './balancer.js';
 import { ToolCache } from './cache.js';
+import { ReplayRecorder } from './replay.js';
 import { UsageMeter } from './usage.js';
 import { membershipsOf } from '../auth/tenants.js';
 import { Catalog, InstalledServers, buildServerConfig, type InstallRequest } from '../catalog/index.js';
@@ -160,6 +161,7 @@ export class Gateway {
       policy: () => this.config.policy,
       plugins: this.plugins,
       cache: new ToolCache(() => this.config.cache),
+      recorder: new ReplayRecorder(() => this.config.replay),
       usage: new UsageMeter(() => this.config.quotas),
       tenantsOf: (clientId) => (this.config.tenants?.length ? membershipsOf(this.config.tenants, clientId).map((m) => m.tenant) : []),
       balancer: new LoadBalancer({

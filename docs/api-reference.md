@@ -182,6 +182,18 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
 ```
 `kind` is present for resources and prompts. Invalid parameters → `400`.
 
+### Request details and replay (3.2)
+
+Needs `replay.enabled: true` (otherwise 404). Restricted clients see and replay only their own calls.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/requests/:id` | The captured call: metadata, redacted `arguments`, `result` / `error`, `replayOf`, `truncated` |
+| POST | `/requests/:id/replay` | Run the tool call again with the caller's credentials. Body (optional): `{ "arguments": {…}, "server": "…" }`. Returns `{ original, replay: { status, requestId, body, … }, diff, identical }` |
+
+`diff` is a structural diff of the two results (`[{ path, change: added \| removed \| changed, before, after }]`).
+`POST /tools/call` responses now carry `requestId`, the id of the history record.
+
 ### Usage and quotas
 
 | | |

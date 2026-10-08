@@ -104,4 +104,25 @@ describe('GitHub Pages demo backend', () => {
     expect(((await r.json()) as { status: string }).status).toBe('approved');
     expect(((await (await f('/api/v1/approvals')).json()) as { pending: unknown[] }).pending).toHaveLength(0);
   });
+
+  it('serves request details and replays them (3.2)', async () => {
+    const f = demoFetch();
+    const list = (await (await f('/api/v1/requests?limit=5&success=true')).json()) as { requests: Array<{ id: string }> };
+    const id = list.requests[0]!.id;
+    const c = (await (await f(`/api/v1/requests/${id}`)).json()) as any;
+    expect(c.id).toBe(id);
+    expect(c.arguments).toBeTypeOf('object');
+    const r = (await (await f(`/api/v1/requests/${id}/replay`, { method: 'POST', body: JSON.stringify({}) })).json()) as any;
+    expect(r.original.id).toBe(id);
+    expect([200, 503]).toContain(r.replay.status);
+    expect((await f('/api/v1/requests/nope')).status).toBe(404);
+  });
+});
+
+describe('dashboard replay dialog (3.2)', () => {
+  it('has the dialog and clickable history rows', () => {
+    expect(html).toContain('id="rp"');
+    expect(html).toContain('<tr data-req="${esc(x.id)}"');
+    expect(html).toContain("api(`/requests/${encodeURIComponent(rp.call.id)}/replay`");
+  });
 });

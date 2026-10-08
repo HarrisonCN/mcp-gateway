@@ -185,6 +185,8 @@ export interface GatewayConfig {
   tenants?: TenantConfig[];
   /** Tool result caching (per-tool opt-in) and in-flight de-duplication. */
   cache?: CacheConfig;
+  /** Request capture + replay / debugger (3.2). Off by default. */
+  replay?: ReplayConfig;
   /** Plugins (hooks: onRequest, onToolCall before policy, onResponse after the output filter). */
   plugins?: PluginConfig[];
   /** OpenAI-compatible tools proxy (`/openai/v1/tools`, `/tool_calls`, `/chat/completions`). */
@@ -435,6 +437,18 @@ export interface McpEndpointConfig {
 }
 
 /** Which upstream→client requests are relayed to the downstream client that made the call (3.1). */
+/** Request capture for the replay debugger (3.2). */
+export interface ReplayConfig {
+  /** Keep redacted arguments / results of recent calls in memory and allow replays (default false). */
+  enabled?: boolean;
+  /** Calls kept (default 500). */
+  maxEntries?: number;
+  /** Max bytes per captured arguments / result; larger payloads are dropped (default 65536). */
+  maxBytes?: number;
+  /** Also capture results (default true). */
+  results?: boolean;
+}
+
 export interface McpPassthroughConfig {
   /** `sampling/createMessage` (default true). */
   sampling?: boolean;

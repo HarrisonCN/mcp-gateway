@@ -581,6 +581,16 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v3.2
+
+| Feature | Description |
+|---------|-------------|
+| **Request debugger** | Click a History row: arguments, result, metadata |
+| **Replay** | Re-run a call with the same or edited arguments; structural diff of the results |
+| **API** | `GET /api/v1/requests/:id`, `POST /api/v1/requests/:id/replay` (`replay.enabled`) |
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v3.1
 
 | Feature | Description |
