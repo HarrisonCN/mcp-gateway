@@ -581,6 +581,16 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v3.9
+
+| Feature | Description |
+|---------|-------------|
+| **`mcp-gateway migrate`** | Rewrites your config to schema v4, comments kept; `--check` for CI |
+| **v4 deprecation warnings** | `version: 3`, flat API-key scope, `least-latency` — removed in 4.0 |
+| **`mcp-gateway bench`** | Built-in load test with latency percentiles; see [benchmarks](docs/benchmarks.md) |
+
+Details: [CHANGELOG](CHANGELOG.md) · [Migrating to 4.0](docs/guides/migrating-to-v4.md).
+
 ## What's New in v3.8
 
 | Feature | Description |

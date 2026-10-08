@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '3.8.0';
+  const VERSION = '3.9.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -382,8 +382,13 @@
       if (p === '/portal/keys') return json({ keys: [demoKey, { ...demoKey, id: 'pend0001', name: 'Data team notebook', email: 'data@example.com', status: 'pending', prefix: 'mgw_pend00', clientId: 'key:portal-pend0001' }] });
       if ((m = p.match(/^\/portal\/keys\/([^/]+)\/(approve|deny|revoke)$/)) && method === 'POST') return json({ ...demoKey, id: decodeURIComponent(m[1]), status: m[2] === 'approve' ? 'active' : m[2] === 'deny' ? 'denied' : 'revoked' });
     }
+
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
-    if (p === '/admin/deprecations') return json({ version: VERSION, deprecations: [] });
+    // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).
+    if (p === '/admin/deprecations') return json({ runtime: [], config: [
+      { id: 'config-version-3', removedIn: '4.0.0', replacement: 'version: 4', message: 'config schema v3 (`version: 3`) is deprecated; 4.0 reads `version: 4` — run `mcp-gateway migrate`', source: 'config' },
+      { id: 'api-key-flat-scope', removedIn: '4.0.0', replacement: 'auth.apiKeys[].scope: { servers, tools, rateLimit }', message: '`servers` / `tools` / `rateLimit` directly on an API key are deprecated; nest them under `scope:` — run `mcp-gateway migrate`', detail: 'keys: ci', source: 'config' },
+    ] });
     if (p === '/tenants') return json({ clientId: 'key:demo', operator: true, tenants: demoTenants });
     if ((m = p.match(/^\/tenants\/([^/]+)\/members$/)) && method === 'PUT') {
       const tn = demoTenants.find((x) => x.id === decodeURIComponent(m[1]));

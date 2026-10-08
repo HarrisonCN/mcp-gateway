@@ -13,7 +13,7 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
-import { configDeprecations, removedConfigKeys } from '../utils/deprecations.js';
+import { configDeprecations, normalizeV4Preview, removedConfigKeys } from '../utils/deprecations.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
 import { ASYMMETRIC_ALGORITHMS, HMAC_ALGORITHMS } from '../auth/middleware.js';
@@ -439,7 +439,7 @@ const GatewayConfigSchema = z.object({
     })
     .optional(),
   servers: z.array(McpServerSchema).default([]),
-  version: z.literal(3).optional(),
+  version: z.union([z.literal(3), z.literal(4)]).optional(),
   cors: z.object({ origins: z.array(z.string()).optional() }).strict().optional(),
   health: z.object({ intervalMs: z.number().int().min(1000).optional() }).strict().optional(),
   admin: z.object({ configApi: z.boolean().optional() }).strict().optional(),
@@ -895,8 +895,10 @@ export function resolveConfigPath(configPath?: string): string | undefined {
 /** Validate (and apply defaults to) a raw config object; throws a readable error listing every issue. */
 export function validateConfig(raw: unknown): GatewayConfig {
   const removed = removedConfigKeys(raw);
+  const v4 = normalizeV4Preview(raw);
+  removed.push(...v4.errors);
   if (removed.length > 0) throw new Error(`Invalid configuration:\n${removed.map((m) => `  - ${m}`).join('\n')}`);
-  const result = GatewayConfigSchema.safeParse(raw);
+  const result = GatewayConfigSchema.safeParse(v4.raw);
   if (!result.success) {
     throw new Error(
       `Invalid configuration:\n${result.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n')}`

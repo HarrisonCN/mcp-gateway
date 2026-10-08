@@ -91,6 +91,10 @@ export {
   buildPromptIndex,
 } from './mcp/catalog.js';
 export { loadConfig, generateDefaultConfig } from './config/loader.js';
+export { migrateConfigText, migrateConfigObject } from './config/migrate.js';
+export type { MigrationResult } from './config/migrate.js';
+export { runBenchmark, benchMarkdown, BENCH_SCENARIOS } from './bench/index.js';
+export type { BenchReport, BenchResult, BenchScenario, BenchOptions } from './bench/index.js';
 export { ConfigWatcher } from './config/watcher.js';
 export { logger } from './utils/logger.js';
 export { isToolAllowed, filterTools } from './utils/tool-filter.js';
