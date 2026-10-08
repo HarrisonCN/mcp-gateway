@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '7.5.0';
+  const VERSION = '7.6.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -59,6 +59,7 @@
     { id: "sanitize", since: "7.3.0", summary: "Prompt-injection defence: tool-output sanitisation (hidden Unicode, ANSI, HTML, exfil images), spotlighting, inbound / outbound blocking" },
     { id: "semantic-cache", since: "7.4.0", summary: "Semantic cache: answer paraphrased tool calls from earlier results by embedding similarity (tenant-isolated)" },
     { id: "rollouts", since: "7.5.0", summary: "Tool versioning and gradual rollout: sticky percentage canaries per server with automatic rollback" },
+    { id: "offline", since: "7.6.0", summary: "Offline desktop gateway: connectivity probe, fail-fast for remote upstreams when offline, desktop-client config import" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -653,6 +654,8 @@
     if (p === '/admin/rollouts') return json({ rollouts: [
       { id: 'search-v2', stable: 'search', canary: 'search-v2', tools: ['*'], configuredPercent: 10, percent: 25, clients: ['key:beta-*'], exclude: [], state: 'active', reason: 'set over the admin API', versions: { stable: { calls: 2210, errors: 11, errorRate: 0.005, windowErrorRate: 0.01 }, canary: { calls: 731, errors: 4, errorRate: 0.005, windowErrorRate: 0.005 } } },
     ] });
+    // 7.6: offline desktop mode.
+    if (p === '/admin/offline' && method === 'GET') return json({ enabled: true, mode: 'auto', configuredMode: 'auto', offline: false, lastProbeAt: new Date(Date.now() - 6000).toISOString(), reachable: true, refused: 0, servers: { local: ['filesystem'], remote: ['github', 'search'], allowRemote: [] } });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 7.0: nothing is deprecated (schema v6, `admin` and `dashboard` were removed).
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });

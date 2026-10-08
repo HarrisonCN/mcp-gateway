@@ -30,6 +30,7 @@ import { ConsoleSchema } from '../features/console.js';
 import { SanitizeSchema } from '../features/sanitize.js';
 import { SemanticCacheSchema } from '../features/semantic-cache.js';
 import { RolloutsSchema } from '../features/rollouts.js';
+import { OfflineSchema } from '../features/offline.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
@@ -484,6 +485,7 @@ const GatewayConfigSchema = z.object({
   sanitize: SanitizeSchema.optional(),
   semanticCache: SemanticCacheSchema.optional(),
   rollouts: RolloutsSchema.optional(),
+  offline: OfflineSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   audit: z

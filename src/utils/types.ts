@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Offline desktop gateway (7.6). */
+  offline?: import('../features/offline.js').OfflineConfig;
   /** Tool versioning and gradual rollout (7.5). */
   rollouts?: import('../features/rollouts.js').RolloutsConfig;
   /** Semantic cache (7.4). */

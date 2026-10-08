@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.6.0] - 2026-10-08
+
+### Added
+- **Offline desktop gateway**: `mcp-gateway desktop --from claude|cursor|windsurf|vscode` (or `--import <file>`)
+  writes a loopback profile with a generated key and the client's MCP servers, and prints the snippet that points the
+  client at the gateway. `offline` mode probes connectivity (or is switched by hand) and refuses calls to remote
+  upstreams with JSON-RPC error **-32018** while offline; local `stdio` servers and all local policies keep working.
+  `GET/POST /api/v1/admin/offline`, `POST /api/v1/admin/offline/import`. [Guide](docs/guides/offline.md).
+
 ## [7.5.0] - 2026-10-08
 
 ### Added

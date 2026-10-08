@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v7.6
+
+| Feature | |
+|---------|---|
+| **`mcp-gateway desktop`** | Import Claude Desktop / Cursor / Windsurf / VS Code servers into a loopback profile |
+| **Offline mode** | Remote upstreams fail fast (-32018) offline, local tools and policies keep working — [guide](docs/guides/offline.md) |
+
 ## What's New in v7.5
 
 | Feature | |

@@ -34,7 +34,7 @@ rollouts:
 | `GET /api/v1/admin/rollouts[/:id]` | effective and configured percent, state (`active` / `promoted` / `rolled-back`, with reason), calls / error rates per version |
 | `POST /api/v1/admin/rollouts/:id/percent` | `{ percent }` |
 | `POST /api/v1/admin/rollouts/:id/promote` | 100 % |
-| `POST /api/v1/admin/rollouts/:id/rollback` | 0 % (also clears `clients`) |
+| `POST /api/v1/admin/rollouts/:id/rollback` | 0 % for everyone, `clients` included, until `reset` |
 | `POST /api/v1/admin/rollouts/:id/reset` | back to the configured percent |
 
 These are runtime overrides; add `?persist=true` to write `percent` into the running config
