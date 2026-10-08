@@ -586,6 +586,16 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v7.0
+
+⚠ Breaking release — read [Migrating to 7.0](docs/guides/migrating-to-v7.md). On 6.9: `npx @winstonsayno/mcp-gateway@6.9 migrate --write`.
+
+| Change | What to do |
+|--------|------------|
+| **Config schema v7** | `version: 7` only — `mcp-gateway migrate --to 7` (6.9) rewrites your file |
+| **`admin` / `dashboard` → `controlPlane`** | Moved by `migrate --to 7` |
+| **Control plane / data plane** | `controlPlane.role: control` on one gateway, `role: data` + `url` + `token` on the rest — [guide](docs/guides/control-plane.md) |
+
 ## What's New in v6.9
 
 | Feature | Description |
