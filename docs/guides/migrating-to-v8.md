@@ -23,9 +23,15 @@ plugins that load without warnings, runs on 8.0 unchanged.
 | plugin `apiVersion: 4` | `apiVersion: 5` | note |
 
 7.9 reads both schema versions, loads both WASM ABIs and both plugin API versions, so you can migrate plugin by
-plugin before upgrading.
+plugin before upgrading. 8.0 reads only `version: 8`, loads only `component:` WASM entries and only `apiVersion: 5`
+plugins; each refused form fails validation (or plugin load) with a message naming its replacement.
 
-## Deprecations in 7.9
+**Embedders:** `new WasmPlugin({ bytes })` / `loadWasmPlugin()` still accept a core-ABI module in code (`abi: 'core'`, the
+default) for in-process use; every WASM plugin reports `apiVersion: 5`. `PluginConfig.wasm` is gone.
+
+## Deprecations
+
+Nothing is deprecated in 8.0 (`GET /api/v1/admin/deprecations` returns empty lists). The 7.9 deprecations, all removed in 8.0:
 
 | id | Removed in | Replacement |
 |----|-----------|-------------|

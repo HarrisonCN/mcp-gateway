@@ -649,11 +649,11 @@ Hooks: `onRequest` (Express middleware after the network guards), `onToolCall` (
 `deny`, or `respond`), `onResponse` (after the output filter). Hook failures refuse the call (`-32006`). Hot
 reloadable (file change or `SIGHUP`). See [Plugins](guides/plugins.md).
 
-### WASM plugins (3.3)
+### WASM plugins (3.3; 8.0: plugin API v5 components)
 
 ```yaml
 plugins:
-  - wasm: ./plugins/pii-guard.wasm    # instead of module: — any language that compiles to WebAssembly
+  - component: ./plugins/pii-guard.wasm  # instead of module: — core module of a mcp-gateway:plugin@5.0.0 component (8.0; `wasm:` was removed)
     isolation: tenant                 # tenant (default) | client | shared — one sandbox per key
     limits:
       timeoutMs: 100                  # per hook call (default 100)

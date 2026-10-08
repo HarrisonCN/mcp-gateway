@@ -15,7 +15,7 @@ plugins:
 // plugins/tenant-header.mjs
 export default (ctx) => ({
   name: 'tenant-header',
-  apiVersion: 4,
+  apiVersion: 5,
   onRequest(req, res, next, hook) {                 // Express middleware; hook = { plugin, logger, … }
     if (!req.headers[ctx.options.header]) return res.status(400).json({ error: 'missing tenant' });
     next();
@@ -60,17 +60,17 @@ upstream call ─▶ onToolCall ▶ policy rules / approval ▶ upstream server 
 | `ctx.options` | the entry's `options` |
 | `ctx.logger` | the gateway logger |
 | `ctx.gatewayVersion` | e.g. `3.0.0` |
-| `ctx.apiVersion` | plugin API implemented by the gateway (`4` since 4.9) |
+| `ctx.apiVersion` | plugin API implemented by the gateway (`5` since 7.9) |
 
 ## Plugin API v4 (4.9)
 
-- Declare `apiVersion: 4`. Everything in v3, plus `ctx.state`: a per-plugin key-value store that lives as long as the
+- (Plugin API v4 was removed in 8.0 — declare `apiVersion: 5`; see [plugin API v5](plugins-v5.md).) v4 added everything in v3, plus `ctx.state`: a per-plugin key-value store that lives as long as the
   plugin instance (cleared when a reload unloads it), so counters, small caches and rate windows need no module globals.
 
 ```js
 export default {
   name: 'per-client-budget',
-  apiVersion: 4,
+  apiVersion: 5,
   onToolCall(call, ctx) {
     const key = `calls:${call.clientId}`;
     const n = (ctx.state.get(key) ?? 0) + 1;
@@ -117,11 +117,12 @@ TypeScript types: `import type { GatewayPlugin, PluginFactory } from '@winstonsa
 ## WASM plugins (3.3)
 
 Write the plugin in Rust, Go (TinyGo), AssemblyScript, C or Zig, compile it to a `.wasm` module, and list it with
-`wasm:` instead of `module:`. The gateway runs it sandboxed and isolated per tenant.
+`component:` instead of `module:` (8.0: plugin API v5 components only — see [plugin API v5](plugins-v5.md); the
+3.3 core ABI below remains available to embedders in code). The gateway runs it sandboxed and isolated per tenant.
 
 ```yaml
 plugins:
-  - wasm: ./pii-guard.wasm
+  - component: ./pii-guard.wasm
     isolation: tenant          # tenant (default) | client | shared
     limits: { timeoutMs: 100, memoryMb: 16, maxInstances: 64 }
 ```
