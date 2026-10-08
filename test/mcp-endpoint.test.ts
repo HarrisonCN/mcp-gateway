@@ -187,7 +187,15 @@ describe('/mcp protocol details (raw HTTP)', () => {
   it('negotiates the protocol version', async () => {
     const url = await start({ ...base });
     expect((await openSession(url, {}, '2025-03-26')).init.result.protocolVersion).toBe('2025-03-26');
-    expect((await openSession(url, {}, '2099-01-01')).init.result.protocolVersion).toBe('2025-06-18');
+    expect((await openSession(url, {}, '2099-01-01')).init.result.protocolVersion).toBe('2025-11-25');
+    expect((await openSession(url, {}, '2024-11-05')).init.result.protocolVersion).toBe('2024-11-05');
+  });
+
+  it('honours mcp.protocolVersions (4.1)', async () => {
+    const url = await start({ ...base, mcp: { protocolVersions: ['2025-06-18'] } } as never);
+    expect((await openSession(url, {}, '2025-03-26')).init.result.protocolVersion).toBe('2025-06-18');
+    const { sid } = await openSession(url, {}, '2025-06-18');
+    expect((await post(url, rpc(1, 'ping'), { 'mcp-session-id': sid, 'mcp-protocol-version': '2025-11-25' })).status).toBe(400);
   });
 
   it('validates session and protocol headers', async () => {

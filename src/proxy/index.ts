@@ -54,7 +54,7 @@ import { StreamableHttpChannel } from '../transport/streamable-http.js';
 /** Protocol version the gateway asks for in `initialize`. */
 export const MCP_PROTOCOL_VERSION = '2025-06-18';
 /** Versions the gateway understands; servers may answer with any of them. */
-export const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
+export const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 
 const MAX_TOOL_PAGES = 100;
 const DEFAULT_TIMEOUT_MS = 30_000;

@@ -107,6 +107,7 @@ export {
   JWT_TOOLS_CLAIM,
 } from './auth/scopes.js';
 export type { AccessScope } from './auth/scopes.js';
+export { PROTOCOL_VERSIONS, supports as protocolSupports, negotiateVersion, adaptTool, adaptToolResult } from './mcp/compat.js';
 export { McpEndpoint, DOWNSTREAM_PROTOCOL_VERSIONS, ERR_RATE_LIMITED, LOG_LEVELS } from './mcp/endpoint.js';
 export type { McpLogLevel } from './mcp/endpoint.js';
 export { hashApiKey, isHashedKey, buildJwtVerifier, HMAC_ALGORITHMS, ASYMMETRIC_ALGORITHMS } from './auth/middleware.js';

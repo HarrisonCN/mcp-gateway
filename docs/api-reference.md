@@ -182,6 +182,15 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
 ```
 `kind` is present for resources and prompts. Invalid parameters → `400`.
 
+### MCP revisions (4.1)
+
+`GET /mcp/protocol` → `{ latest, supported: string[], features: { "<revision>": { annotations, structuredContent, outputSchema, resourceLink, toolTitle, elicitation } }, upstream: [{ server, protocolVersion }] }`.
+
+Each `/mcp` session negotiates its own revision (`mcp.protocolVersions` restricts the list). Results are shaped per
+session: structured tool output (`outputSchema` / `structuredContent`) and resource links pass through to 2025-06-18+
+clients and are turned into text blocks for older ones; tool `title` / `annotations` are stripped for revisions that
+predate them. When an upstream returns only `structuredContent`, a serialized text block is added (spec "SHOULD").
+
 ### Plugins (3.3)
 
 `GET /plugins` (operators): `{ plugins: [{ name, apiVersion, kind: "module" | "wasm", hooks, isolation?, sandboxes?: [{ key, calls, alive }] }] }`.
