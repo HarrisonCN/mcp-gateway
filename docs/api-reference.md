@@ -414,6 +414,10 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `POST` | `/admin/adaptive/feedback` | Report quality `{ pool, candidate, quality: 0..1 }` (5.8) |
 | `GET` | `/admin/api-upstreams` | GraphQL / gRPC upstreams and the tools they expose, with input schemas (6.1) |
 | `POST` | `/admin/api-upstreams/call` | Call `{ tool: "<upstream>.<operation>", arguments }` (6.1) |
+| `GET` | `/admin/workflows` | Workflows (DAGs) with nodes and execution layers (6.2) |
+| `POST` | `/admin/workflows/run` | Start a run `{ workflow, input?, wait? }` → `202 { runId }` or the finished run (6.2) |
+| `GET` | `/admin/workflows/runs` | Run history, newest first (`?workflow=`) (6.2) |
+| `GET` | `/admin/workflows/runs/:id` | One run with per-node status, attempts, errors and output (6.2) |
 
 ## Bridges
 

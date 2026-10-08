@@ -145,6 +145,8 @@ export { AdaptiveSchema, AdaptiveRouter, adaptiveRouter, sampleBeta } from './fe
 export type { AdaptiveConfig, CandidateStats } from './features/adaptive.js';
 export { ApiUpstreamsSchema, apiUpstreamTools, callApiUpstream, graphqlVariables } from './features/api-upstreams.js';
 export type { ApiUpstreamsConfig, ApiUpstreamTool } from './features/api-upstreams.js';
+export { WorkflowsSchema, runWorkflow, topoLayers, WorkflowRuns } from './features/workflows.js';
+export type { WorkflowsConfig, WorkflowRun, NodeRun } from './features/workflows.js';
 export type {
   GatewayConfig,
   McpServerConfig,

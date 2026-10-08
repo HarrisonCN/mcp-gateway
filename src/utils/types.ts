@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Workflow engine (multi-tool DAG) (6.2). */
+  workflows?: import('../features/workflows.js').WorkflowsConfig;
   /** GraphQL / gRPC upstreams (6.1). */
   apiUpstreams?: import('../features/api-upstreams.js').ApiUpstreamsConfig;
   /** Adaptive routing 2.0 (5.8). */

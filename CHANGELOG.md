@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.2.0] - 2026-10-08
+
+### Added
+- **Workflow engine** — `workflows[]` defines multi-tool DAGs: nodes with `needs`, maximal parallelism bounded by
+  `concurrency`, `if` conditions, retries with exponential backoff and `onError: fail | continue`. Async runs with
+  per-node status: `GET /admin/workflows`, `POST /admin/workflows/run`, `GET /admin/workflows/runs[/:id]`. Config
+  validation rejects cycles and unknown dependencies. See [docs/guides/workflows.md](docs/guides/workflows.md).
+- Library: `WorkflowsSchema`, `runWorkflow`, `topoLayers`, `WorkflowRuns`.
+- Pages demo: workflow DAG and run.
+
 ## [6.1.0] - 2026-10-08
 
 ### Added

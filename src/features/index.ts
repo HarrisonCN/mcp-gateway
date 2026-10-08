@@ -12,5 +12,6 @@ import './sessions.js';
 import './dlp.js';
 import './adaptive.js';
 import './api-upstreams.js';
+import './workflows.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';
