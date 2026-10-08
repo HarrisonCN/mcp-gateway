@@ -5,5 +5,6 @@
  * @module features
  */
 import './conformance.js';
+import './regions.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

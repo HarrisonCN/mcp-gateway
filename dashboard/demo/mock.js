@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '5.1.0';
+  const VERSION = '5.2.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -40,6 +40,7 @@
   // 5.1+: feature modules mounted under /api/v1/admin/<id> (one entry per release that adds one).
   const DEMO_FEATURES = [
     { id: 'conformance', since: '5.1.0', summary: "MCP conformance self-test of this gateway's /mcp endpoint" },
+    { id: "regions", since: "5.2.0", summary: "Multi-region active-active: replicated state, peer health, cross-region failover routing" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -480,6 +481,15 @@
       await sleep(150);
       const ids = ['initialize', 'version-negotiation', 'parse-error', 'invalid-request', 'ping', 'method-not-found', 'notification-202', 'tools-list', 'unknown-tool', 'bad-protocol-header', 'unknown-session'];
       return json({ url: location.origin + '/mcp', startedAt: iso(Date.now()), durationMs: 148, passed: ids.length, failed: 0, skipped: 0, checks: ids.map((id) => ({ id, title: id, status: 'pass' })) });
+    }
+    // 5.2: multi-region active-active.
+    if (p === '/admin/regions') return json({ self: 'eu-west', syncIntervalMs: 5000, keys: 3, peers: [
+      { id: 'us-east', url: 'https://us.gw.example.com', priority: 1, status: 'up', failures: 0, lastSync: iso(Date.now() - 3000), cursor: Date.now() - 3000, servers: ['github', 'filesystem'] },
+      { id: 'ap-south', url: 'https://ap.gw.example.com', priority: 2, status: 'down', failures: 4, lastSync: iso(Date.now() - 600000), lastError: 'HTTP 503', cursor: Date.now() - 600000, servers: [] },
+    ] });
+    if (p.startsWith('/admin/regions/route/')) {
+      const id = decodeURIComponent(p.slice('/admin/regions/route/'.length));
+      return json(id === 'slack' ? { serverId: id, target: 'peer', peer: 'us-east', url: 'https://us.gw.example.com' } : { serverId: id, target: 'local' });
     }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).

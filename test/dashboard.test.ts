@@ -263,6 +263,14 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(run.failed).toBe(0);
     expect(run.passed).toBe(run.checks.length);
   });
+  it('simulates multi-region status and routing (5.2)', async () => {
+    const f = demoFetch();
+    const st = (await (await f('/api/v1/admin/regions')).json()) as any;
+    expect(st.peers.map((x: any) => x.status)).toEqual(['up', 'down']);
+    expect(((await (await f('/api/v1/admin/regions/route/slack')).json()) as any).target).toBe('peer');
+    const feats = (await (await f('/api/v1/admin/features')).json()) as any;
+    expect(feats.features.map((x: any) => x.id)).toContain('regions');
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {
