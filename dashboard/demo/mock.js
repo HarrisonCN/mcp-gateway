@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '8.6.0';
+  const VERSION = '8.7.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -68,6 +68,7 @@
     { id: "cost-advisor", since: "8.4.0", summary: "Cost optimization advisor: quantified caching, failure, cheaper-upstream and budget recommendations from live traffic" },
     { id: "blue-green", since: "8.5.0", summary: "Zero-downtime blue/green upgrades: probed atomic switch, in-flight drain, verification window with auto-rollback" },
     { id: "data-lineage", since: "8.6.0", summary: "Data lineage: value fingerprints link tool outputs to later tool inputs (graph, trace by value, OpenLineage export)" },
+    { id: "config-assistant", since: "8.7.0", summary: "Natural-language config assistant: plain-words changes \u2192 validated config patch, diff (dry run), apply" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -462,7 +463,7 @@
       peers: [{ server: 'search', spiffeIds: ['spiffe://example.org/ns/tools/sa/search'], at: iso(Date.now() - 30000) }],
       servers: [{ id: 'github', mtls: false, spiffeId: null }, { id: 'search', mtls: true, spiffeId: 'spiffe://example.org/ns/tools/*' }] });
     if (p === '/admin/config' && method === 'GET') return json({ version: VERSION, config: demoConfig });
-    if (p.startsWith('/admin/config')) {
+    if (p === '/admin/config' || p.startsWith('/admin/config/')) {
       let body = {};
       try { body = JSON.parse(init?.body || '{}'); } catch { return json({ error: 'Bad Request', message: 'Invalid JSON' }, 400); }
       const errors = [];
@@ -710,6 +711,11 @@
       { id: 'n1', at: new Date(Date.now() - 9000).toISOString(), tool: 'crm/find', client: 'agent:travel-bot', success: true, inputs: 0, outputs: 1 },
     ] });
     if (p.startsWith('/admin/data-lineage/nodes/')) return json({ node: { id: 'n3', tool: 'mail/send', inputs: 1, outputs: 0 }, upstream: { nodes: [{ id: 'n2', tool: 'billing/invoices' }, { id: 'n1', tool: 'crm/find' }], edges: [{ from: 'n2', to: 'n3', path: 'body' }, { from: 'n1', to: 'n2', path: 'customer' }] }, downstream: { nodes: [], edges: [] } });
+    // 8.7: natural-language config assistant (demo: the phrasebook only, nothing is applied).
+    if (p === '/admin/config-assistant/plan') return json({ valid: true, planId: 'demo-plan', steps: [
+      { text: 'rate limit to 60 per minute', summary: 'rate limit 60 per 60s per key', source: 'phrasebook' },
+      { text: 'require approval for payments/*', summary: 'policy rule: approve payments/* (first in order)', source: 'phrasebook' },
+    ], changes: [{ path: 'rateLimit.limit', from: 120, to: 60 }, { path: 'policy.rules[0]', to: { effect: 'approve', servers: ['payments'], tools: ['*'] } }], unparsed: [] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 8.0: nothing is deprecated (schema v7, `plugins[].wasm` and plugin API v4 were removed).
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });

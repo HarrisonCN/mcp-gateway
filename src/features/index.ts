@@ -33,5 +33,6 @@ import './debug-sessions.js';
 import './cost-advisor.js';
 import './blue-green.js';
 import './data-lineage.js';
+import './config-assistant.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

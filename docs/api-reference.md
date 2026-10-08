@@ -493,6 +493,8 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/data-lineage/nodes/:id?depth=` | Upstream and downstream lineage graph of a call (8.6) |
 | `POST` | `/admin/data-lineage/trace` | Every call that produced or consumed a value `{ value }` (8.6) |
 | `GET` | `/admin/data-lineage/export` | OpenLineage-style run events (8.6) |
+| `POST` | `/admin/config-assistant/plan` | Config assistant: plain-words change `{ text }` → steps, diff, validity, `planId` (dry run) (8.7) |
+| `POST` | `/admin/config-assistant/apply` | Apply a plan `{ planId }` (409 when the config changed since) (8.7) |
 
 ## Bridges
 

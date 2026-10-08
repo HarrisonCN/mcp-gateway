@@ -446,6 +446,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const g = (await (await f('/api/v1/admin/data-lineage/nodes/n3')).json()) as any;
     expect(g.upstream.edges[0].path).toBe('body');
   });
+  it('plans a natural-language config change (8.7)', async () => {
+    const f = demoFetch();
+    const r = (await (await f('/api/v1/admin/config-assistant/plan', { method: 'POST', body: JSON.stringify({ text: 'rate limit to 60 per minute' }) })).json()) as any;
+    expect(r.valid).toBe(true);
+    expect(r.steps[0].source).toBe('phrasebook');
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {
