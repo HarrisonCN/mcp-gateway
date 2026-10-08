@@ -30,6 +30,7 @@ export { ERR_PLUGIN_REJECTED };
 import { logger } from '../utils/logger.js';
 import { ERR_NOT_CONNECTED, ERR_TIMEOUT } from '../proxy/index.js';
 import type { FailureKind, LoadBalancer } from './balancer.js';
+import type { RouteDecision, SmartRouter } from './routing.js';
 import type { ToolCache } from './cache.js';
 import { ERR_QUOTA_EXCEEDED, type UsageMeter } from './usage.js';
 export { ERR_QUOTA_EXCEEDED };
@@ -80,6 +81,8 @@ export interface InvokerDeps {
   approvals?: ApprovalQueue;
   /** Plugin hooks (`onToolCall` before policy, `onResponse` after the output filter). */
   plugins?: PluginHost;
+  /** Traffic splits (canary / A-B) across servers (3.4). */
+  router?: SmartRouter;
   /** Routes calls on servers with `replicas:` (load balancing + failover). */
   balancer?: LoadBalancer;
   /** Tool result cache + in-flight de-duplication (`cache:` config). */
@@ -258,6 +261,28 @@ export class ToolInvoker {
 
   /** One upstream call, spread over replicas and failed over when the server has `replicas:`. */
   private async callUpstream(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>): Promise<ProxyResponse> {
+    const route: RouteDecision | undefined = ctx.kind === 'tool' ? this.deps.router?.route(ctx.serverId, ctx.name, ctx.clientId) : undefined;
+    if (route) {
+      span.setAttribute('mcp.route.split', route.split);
+      span.setAttribute('mcp.route.variant', route.variant);
+      const routed = { ...ctx, serverId: route.server };
+      try {
+        const r = await this.balancedCall(routed, span);
+        this.deps.router!.report(route, r.success, r.durationMs);
+        return r;
+      } catch (err) {
+        this.deps.router!.report(route, false, 0);
+        throw err;
+      }
+    }
+    return this.balancedCall(ctx, span);
+  }
+
+  get router(): SmartRouter | undefined {
+    return this.deps.router;
+  }
+
+  private async balancedCall(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>): Promise<ProxyResponse> {
     const lb = this.deps.balancer;
     const targets = lb ? lb.order(ctx.serverId) : [ctx.serverId];
     if (!lb || targets.length === 1) return this.send(ctx, ctx.serverId);

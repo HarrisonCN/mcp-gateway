@@ -125,6 +125,14 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const r = (await (await f('/api/v1/plugins')).json()) as any;
     expect(r.plugins.find((p: { kind: string }) => p.kind === 'wasm').sandboxes.length).toBe(2);
   });
+
+  it('serves traffic splits and smart groups (3.4)', async () => {
+    const f = demoFetch();
+    const r = (await (await f('/api/v1/routing')).json()) as any;
+    expect(r.splits[0].variants.map((v: { label: string }) => v.label)).toEqual(['stable', 'canary']);
+    expect(r.groups[0].strategy).toBe('smart');
+    expect((await f('/api/v1/routing/splits/search-canary/reset', { method: 'POST' })).status).toBe(200);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

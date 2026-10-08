@@ -242,6 +242,11 @@ Viewers get `403` (REST) / `-32003` (`/mcp`) on tool calls.
                  "ejectedUntil": "2026-10-07T18:00:30.000Z" } ] } ] }
 ```
 
+### Smart routing (3.4)
+
+`GET /routing` (operators): `{ splits: [{ name, server, tools?, sticky, variants: [{ server, label, weight, effectiveWeight, calls, errors, errorRate, latencyMs?, rolledBack? }] }], groups: [<load-balancing group with member score>] }`.
+`POST /routing/splits/:name/reset` clears the split's stats and rollbacks.
+
 ### Security posture
 
 #### `GET /security`

@@ -291,6 +291,39 @@ Health checks: the periodic ping (`health.intervalMs`) runs on every member; mem
 reconnects on its own with the `reconnect` policy. Tools come from the primary, or from a replica while the primary
 has none. `GET /api/v1/load-balancing` shows members, health, latency (EWMA) and ejections. Hot reloadable.
 
+## Smart routing (3.4)
+
+```yaml
+routing:
+  splits:
+    - name: search-canary
+      server: search            # the id clients call
+      tools: ["brave_*"]        # optional tool globs (default: all tools)
+      sticky: client            # client (default): one client always sees one variant | none: per call
+      variants:
+        - { server: search, weight: 90, label: stable }
+        - server: search-v2     # another server exposing the same tools
+          weight: 10
+          label: canary
+          guard: { maxErrorRate: 0.2, maxLatencyMs: 2000, minCalls: 20 }   # automatic rollback
+
+servers:
+  - id: postgres
+    cost: 3                     # relative cost per call (smart strategy)
+    replicas: [{ url: https://replica.example/mcp, cost: 1 }]
+    loadBalancing:
+      strategy: smart           # score = latency·w + errorRate·w + cost·w, lowest first
+      score: { latency: 1, errorRate: 2, cost: 0.5 }
+```
+
+- **Splits** are A/B or canary traffic shares between servers. Variant selection is a stable hash of client id +
+  split name (`sticky: client`) or random per call. A variant whose `guard` trips (error rate or EWMA latency over
+  `minCalls` calls) is rolled back to weight 0 until `POST /api/v1/routing/splits/:name/reset`; a disconnected
+  variant gets no traffic.
+- **`strategy: smart`** orders replicas by a score of EWMA latency, EWMA error rate and `cost`, each normalised to
+  the group maximum. Defaults: `latency: 1, errorRate: 1, cost: 0`.
+- `GET /api/v1/routing` shows split stats and smart scores. Hot reloadable.
+
 ## Tool result caching
 
 Caching is opt-in per tool. Calls that match no rule are never cached.

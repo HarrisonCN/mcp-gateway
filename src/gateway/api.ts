@@ -1102,6 +1102,26 @@ export function createApiRouter(
     res.json({ groups: invoker.balancer?.snapshot() ?? [] });
   });
 
+  // ─── Smart routing (3.4) ────────────────────────────────────────────────────
+  router.get('/routing', auth, (req, res) => {
+    if (!operatorOnly(req, res)) return;
+    res.json({
+      splits: invoker.router?.snapshot() ?? [],
+      groups: (invoker.balancer?.snapshot() ?? []).filter((g) => g.strategy === 'smart'),
+    });
+  });
+
+  router.post('/routing/splits/:name/reset', auth, (req, res) => {
+    if (!operatorOnly(req, res)) return;
+    const name = req.params.name!;
+    if (!(invoker.router?.snapshot() ?? []).some((s) => s.name === name)) {
+      return void res.status(404).json({ error: 'Not Found', message: `No traffic split "${name}"` });
+    }
+    invoker.router!.reset(name);
+    logger.info(`Traffic split "${name}" reset (stats and rollbacks cleared)`);
+    res.json({ ok: true, split: invoker.router!.snapshot().find((s) => s.name === name) });
+  });
+
   // Output-filter findings since start (operator view).
   router.get('/policy', auth, (req, res) => {
     if (!operatorOnly(req, res)) return;

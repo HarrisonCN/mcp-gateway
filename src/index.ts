@@ -36,6 +36,8 @@ export { ReplayRecorder, jsonDiff } from './gateway/replay.js';
 export type { CapturedCall, JsonChange } from './gateway/replay.js';
 export type { CacheStats } from './gateway/cache.js';
 export { LoadBalancer, expandReplicas } from './gateway/balancer.js';
+export { SmartRouter, stableFraction } from './gateway/routing.js';
+export type { RouteDecision, SplitSnapshot, SplitVariantStats } from './gateway/routing.js';
 export { PluginHost, PluginError, loadPlugin, PLUGIN_API_VERSION } from './plugins/index.js';
 export { WasmPlugin, WasmSandbox, loadWasmPlugin, DEFAULT_WASM_LIMITS } from './plugins/wasm.js';
 export type { WasmIsolation, WasmPluginOptions } from './plugins/wasm.js';
@@ -131,4 +133,7 @@ export type {
   PromptInfo,
   PromptArgumentInfo,
   ServerCatalog,
+  RoutingConfig,
+  TrafficSplitConfig,
+  LoadBalancingConfig,
 } from './utils/types.js';

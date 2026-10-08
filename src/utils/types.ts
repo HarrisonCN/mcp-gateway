@@ -84,6 +84,8 @@ export interface McpServerConfig {
   loadBalancing?: LoadBalancingConfig;
   /** Relative weight for `strategy: weighted` (default 1). */
   weight?: number;
+  /** Relative cost per call, for `strategy: smart` (3.4). */
+  cost?: number;
   /** Set on the internal replica servers (`<id>~<n>`): id of the logical server. */
   replicaOf?: string;
 }
@@ -98,12 +100,16 @@ export interface ReplicaConfig {
   env?: Record<string, string>;
   headers?: Record<string, string>;
   weight?: number;
+  /** Relative cost per call, for `strategy: smart` (3.4). */
+  cost?: number;
   enabled?: boolean;
 }
 
 export interface LoadBalancingConfig {
-  /** `round-robin` (default), `random`, `weighted`, `least-latency` or `failover` (primary first). */
-  strategy?: 'round-robin' | 'random' | 'weighted' | 'least-latency' | 'failover';
+  /** `round-robin` (default), `random`, `weighted`, `least-latency`, `failover` (primary first) or `smart` (3.4). */
+  strategy?: 'round-robin' | 'random' | 'weighted' | 'least-latency' | 'failover' | 'smart';
+  /** `smart` only: weights of the score terms (defaults latency 1, errorRate 1, cost 0). */
+  score?: { latency?: number; errorRate?: number; cost?: number };
   /** Failure kinds retried on the next member (default `[not-connected]`; `timeout` / `error` may re-run a tool). */
   failoverOn?: Array<'not-connected' | 'timeout' | 'error'>;
   /** Extra attempts per call (default: members - 1). */
@@ -187,6 +193,8 @@ export interface GatewayConfig {
   cache?: CacheConfig;
   /** Request capture + replay / debugger (3.2). Off by default. */
   replay?: ReplayConfig;
+  /** Traffic splits: canary / A-B across servers (3.4). */
+  routing?: RoutingConfig;
   /** Plugins (hooks: onRequest, onToolCall before policy, onResponse after the output filter). */
   plugins?: PluginConfig[];
   /** OpenAI-compatible tools proxy (`/openai/v1/tools`, `/tool_calls`, `/chat/completions`). */
@@ -453,6 +461,31 @@ export interface McpEndpointConfig {
 }
 
 /** Which upstream→client requests are relayed to the downstream client that made the call (3.1). */
+/** Smart routing (3.4). */
+export interface RoutingConfig {
+  splits?: TrafficSplitConfig[];
+}
+
+/** One traffic split: calls for `server` (optionally only `tools`) spread over `variants` by weight. */
+export interface TrafficSplitConfig {
+  name: string;
+  /** Server id the clients call. */
+  server: string;
+  /** Tool globs the split applies to (default: every tool). */
+  tools?: string[];
+  /** `client` (default): a client always gets the same variant; `none`: per call. */
+  sticky?: 'client' | 'none';
+  enabled?: boolean;
+  variants: Array<{
+    /** Server id that serves this share (the baseline is usually `server` itself). */
+    server: string;
+    weight: number;
+    label?: string;
+    /** Automatic rollback of this variant (weight 0) when a limit is crossed after `minCalls` (default 20). */
+    guard?: { maxErrorRate?: number; maxLatencyMs?: number; minCalls?: number };
+  }>;
+}
+
 /** Request capture for the replay debugger (3.2). */
 export interface ReplayConfig {
   /** Keep redacted arguments / results of recent calls in memory and allow replays (default false). */
