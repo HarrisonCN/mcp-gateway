@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.0] - 2026-10-08
+
+### Added
+- **`mcp-gateway migrate`** rewrites a config file to schema v4 — `version: 4`, API-key scope nested under `scope:`,
+  `least-latency` → `smart` with a latency-only score — keeping YAML comments and layout. `--write` (keeps a `.bak`),
+  `-o <file>`, `--check` (exit 3 when a migration is needed, for CI).
+- **v4 preview:** 3.9 already reads `version: 4` and `auth.apiKeys[].scope`, so a migrated file runs on 3.9 before
+  the 4.0 upgrade.
+- **`mcp-gateway bench`**: in-process benchmark (REST, REST with auth, cache hit, `/mcp`) with req/s and p50 / p95 / p99;
+  `runBenchmark()` exported. Reference numbers in [docs/benchmarks.md](docs/benchmarks.md).
+- [Migrating to 4.0](docs/guides/migrating-to-v4.md) (preview). The GitHub Pages demo lists the new deprecations.
+
+### Deprecated (removed in 4.0)
+- `version: 3` → `version: 4`.
+- `servers` / `tools` / `rateLimit` directly on an API key → `scope: { servers, tools, rateLimit }`.
+- `loadBalancing.strategy: least-latency` → `smart` with `score: { latency: 1, errorRate: 0, cost: 0 }`.
+- (Already scheduled) plugin API v1.
+
+`mcp-gateway validate` and `GET /api/v1/admin/deprecations` list each with the affected keys / servers.
+
 ## [3.8.0] - 2026-10-08
 
 ### Added
