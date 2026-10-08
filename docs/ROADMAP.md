@@ -12,5 +12,5 @@ release.
 - ✅ v4.6：仪表盘图形化配置编辑器
 - ✅ v4.7：Python/Go/Swift SDK
 - ✅ v4.8：离线/边缘同步
-- v4.9：v5 弃用警告与 `migrate --to 5`
+- ✅ v4.9：v5 弃用警告与 `migrate --to 5`
 - v5.0：（破坏性）schema v5、插件 API v4、移除 v4 弃用项、迁移指南

@@ -176,11 +176,11 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(((await (await f('/api/v1/portal/keys/pend0001/approve', { method: 'POST' })).json()) as any).status).toBe('active');
   });
 
-  it('lists the 5.0 deprecations (4.0: plugin API v2)', async () => {
+  it('lists the 5.0 deprecations (4.0: plugin API v2; 4.9: schema v4 forms)', async () => {
     const f = demoFetch();
     const r = (await (await f('/api/v1/admin/deprecations')).json()) as any;
     expect(r.runtime.map((d: { id: string; removedIn: string }) => `${d.id}@${d.removedIn}`)).toEqual(['plugin-api-v2@5.0.0']);
-    expect(r.config).toEqual([]);
+    expect(r.config.map((d: { id: string }) => d.id)).toEqual(['config-version-4', 'config-server-timeout']);
   });
 
   it('reports MCP revisions and features (4.1)', async () => {

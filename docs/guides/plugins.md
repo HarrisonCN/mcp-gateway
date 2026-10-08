@@ -15,7 +15,7 @@ plugins:
 // plugins/tenant-header.mjs
 export default (ctx) => ({
   name: 'tenant-header',
-  apiVersion: 3,
+  apiVersion: 4,
   onRequest(req, res, next, hook) {                 // Express middleware; hook = { plugin, logger, … }
     if (!req.headers[ctx.options.header]) return res.status(400).json({ error: 'missing tenant' });
     next();
@@ -60,7 +60,28 @@ upstream call ─▶ onToolCall ▶ policy rules / approval ▶ upstream server 
 | `ctx.options` | the entry's `options` |
 | `ctx.logger` | the gateway logger |
 | `ctx.gatewayVersion` | e.g. `3.0.0` |
-| `ctx.apiVersion` | plugin API implemented by the gateway (`3`) |
+| `ctx.apiVersion` | plugin API implemented by the gateway (`4` since 4.9) |
+
+## Plugin API v4 (4.9)
+
+- Declare `apiVersion: 4`. Everything in v3, plus `ctx.state`: a per-plugin key-value store that lives as long as the
+  plugin instance (cleared when a reload unloads it), so counters, small caches and rate windows need no module globals.
+
+```js
+export default {
+  name: 'per-client-budget',
+  apiVersion: 4,
+  onToolCall(call, ctx) {
+    const key = `calls:${call.clientId}`;
+    const n = (ctx.state.get(key) ?? 0) + 1;
+    ctx.state.set(key, n, 60_000);          // ttlMs: forget after a minute
+    if (n > 100) return { deny: 'more than 100 calls a minute' };
+  },
+};
+```
+
+`ctx.state`: `get(key)`, `set(key, value, ttlMs?)`, `has`, `delete`, `size()`, `clear()`; at most 10 000 keys (oldest
+evicted). v3 plugins load unchanged in 4.x; 5.0 deprecates v3 (removed in 6.0) and refuses v2.
 
 ## Plugin API v3 (4.0)
 

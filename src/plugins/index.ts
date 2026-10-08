@@ -24,6 +24,10 @@
  * optional `onConfigChange(change, ctx)` hook runs after every applied hot reload. v2 plugins still load, with a
  * deprecation warning; v2 is removed in 5.0.
  *
+ * Plugin API v4 (4.9; the contract 5.0 is built around): v3 plus `ctx.state`, a per-plugin key-value store with
+ * optional TTLs that lives as long as the plugin instance (counters, caches, rate windows) — no more module-level
+ * globals. v3 plugins keep loading unchanged in 4.x; 5.0 deprecates v3 (removed in 6.0) and refuses v2.
+ *
  * Hooks run in configuration order; the first refusal / short-circuit wins.
  * A hook that throws fails the call (`-32006`) — plugins fail closed.
  *
@@ -39,7 +43,7 @@ import { logger, type Logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
 
 /** Version of the plugin contract implemented by this gateway. */
-export const PLUGIN_API_VERSION = 3;
+export const PLUGIN_API_VERSION = 4;
 
 /** Oldest plugin contract still loaded (v2: with a deprecation warning until 5.0). */
 export const PLUGIN_API_MIN_VERSION = 2;
@@ -81,6 +85,51 @@ export interface PluginHookContext {
   secrets?: PluginSecrets;
   /** API v3: the caller's tenant, for call hooks when tenants are configured. */
   tenant?: PluginTenant;
+  /** API v4: per-plugin key-value state (in memory, survives across calls, cleared when the plugin is unloaded). */
+  state?: PluginState;
+}
+
+/** API v4: per-plugin key-value store. Values are kept by reference; at most 10 000 keys (oldest evicted). */
+export interface PluginState {
+  get<T = unknown>(key: string): T | undefined;
+  /** Store a value; `ttlMs` expires it. */
+  set(key: string, value: unknown, ttlMs?: number): void;
+  has(key: string): boolean;
+  delete(key: string): boolean;
+  /** Live (non-expired) key count. */
+  size(): number;
+  clear(): void;
+}
+
+const STATE_MAX_KEYS = 10_000;
+
+/** In-memory {@link PluginState}. */
+export function createPluginState(now: () => number = Date.now): PluginState {
+  const m = new Map<string, { v: unknown; exp?: number }>();
+  const live = (k: string) => {
+    const e = m.get(k);
+    if (!e) return undefined;
+    if (e.exp !== undefined && e.exp <= now()) {
+      m.delete(k);
+      return undefined;
+    }
+    return e;
+  };
+  return {
+    get: <T>(k: string) => live(k)?.v as T | undefined,
+    set(k, v, ttlMs) {
+      m.delete(k);
+      m.set(k, { v, ...(ttlMs !== undefined && ttlMs > 0 ? { exp: now() + ttlMs } : {}) });
+      while (m.size > STATE_MAX_KEYS) m.delete(m.keys().next().value as string);
+    },
+    has: (k) => live(k) !== undefined,
+    delete: (k) => m.delete(k),
+    size() {
+      for (const k of [...m.keys()]) live(k);
+      return m.size;
+    },
+    clear: () => m.clear(),
+  };
 }
 
 /** API v3: access to the secret references a plugin was granted in config (`plugins[].secrets: { NAME: secret://… }`). */
@@ -120,7 +169,7 @@ export interface PluginCallError {
 
 export interface GatewayPlugin {
   name: string;
-  /** Plugin contract version the plugin was written for: 3 (current) or 2 (deprecated, removed in 5.0). Required since 4.0. */
+  /** Plugin contract version the plugin was written for: 4 (current, 4.9), 3, or 2 (deprecated, removed in 5.0). Required since 4.0. */
   apiVersion?: number;
   onRequest?: (req: Request, res: Response, next: NextFunction, ctx: PluginHookContext) => void | Promise<void>;
   onToolCall?: (call: PluginCall, ctx: PluginHookContext) => ToolCallOutcome | Promise<ToolCallOutcome>;
@@ -156,7 +205,7 @@ async function instantiate(src: unknown, ctx: PluginContext, label: string): Pro
     throw new Error(`Plugin "${value.name}" needs plugin API v${v}; this gateway implements v${PLUGIN_API_VERSION}`);
   }
   if (v === 1) {
-    throw new Error(`Plugin "${value.name}" uses plugin API v1, which was removed in 4.0 — declare \`apiVersion: 3\` (hooks receive a context argument; see docs/guides/migrating-to-v4.md)`);
+    throw new Error(`Plugin "${value.name}" uses plugin API v1, which was removed in 4.0 — declare \`apiVersion: 4\` (hooks receive a context argument; see docs/guides/migrating-to-v4.md)`);
   }
   if (v < PLUGIN_API_MIN_VERSION) throw new Error(`Plugin "${value.name}" declares unsupported plugin API v${v}`);
   if (v === 2) deprecate(DEPRECATIONS.pluginApiV2, `plugin "${value.name}"`);
@@ -228,6 +277,7 @@ export class PluginHost {
           },
         };
       }
+      if ((p.apiVersion ?? 1) >= 4) c.state = createPluginState();
       this.hookCtx.set(p, c);
     }
     if (!call || (p.apiVersion ?? 1) < 3) return c;

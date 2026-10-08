@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '4.8.0';
+  const VERSION = '4.9.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -472,8 +472,12 @@
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).
     if (p === '/admin/deprecations') return json({ runtime: [
-      { id: 'plugin-api-v2', removedIn: '5.0.0', replacement: 'apiVersion: 3', message: 'plugin API v2 is deprecated; declare `apiVersion: 3` (adds ctx.secrets, ctx.tenant and onConfigChange)', detail: 'plugin "audit-tags"', source: 'runtime' },
-    ], config: [] });
+      { id: 'plugin-api-v2', removedIn: '5.0.0', replacement: 'apiVersion: 4', message: 'plugin API v2 is deprecated and refused by 5.0; declare `apiVersion: 4` (adds ctx.secrets, ctx.tenant, onConfigChange and ctx.state)', detail: 'plugin "audit-tags"', source: 'runtime' },
+    ], config: [
+      // 4.9: the demo config is still on schema v4 (`mcp-gateway migrate --to 5`).
+      { id: 'config-version-4', removedIn: '5.0.0', replacement: 'version: 5', message: 'config schema v4 is deprecated; 5.0 reads `version: 5` — run `mcp-gateway migrate --to 5`' },
+      { id: 'config-server-timeout', removedIn: '5.0.0', replacement: 'servers[].timeoutMs', message: '`servers[].timeout` is renamed to `timeoutMs` in schema v5 — run `mcp-gateway migrate --to 5`', detail: 'servers: github, search' },
+    ] });
     if (p === '/tenants') return json({ clientId: 'key:demo', operator: true, tenants: demoTenants });
     if ((m = p.match(/^\/tenants\/([^/]+)\/members$/)) && method === 'PUT') {
       const tn = demoTenants.find((x) => x.id === decodeURIComponent(m[1]));

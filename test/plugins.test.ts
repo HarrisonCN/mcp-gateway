@@ -68,7 +68,7 @@ describe('PluginHost', () => {
     const failed = await host.afterCall(call, { success: false, durationMs: 1, error: { code: -32000, message: 'upstream down' } });
     expect(failed.success).toBe(false);
     await host.afterCall(call, { success: true, durationMs: 1, result: 1 });
-    expect(seen).toEqual(['call:v2:3', 'err:v2:upstream down']);
+    expect(seen).toEqual([`call:v2:${PLUGIN_API_VERSION}`, 'err:v2:upstream down']);
     await expect(PluginHost.build(undefined, [{ name: 'zero', apiVersion: 0 }])).rejects.toThrow(/unsupported plugin API v0/);
     await host.close();
   });
@@ -122,7 +122,7 @@ describe('PluginHost', () => {
     const p = await loadPlugin({ module: './tagger.mjs', options: { tag: 'x' } }, dir);
     expect(p.name).toBe('tagger');
     const out = await p.onResponse!({} as never, { success: true, durationMs: 0, result: 5 });
-    expect(out).toMatchObject({ result: { tag: 'x', v: 3, r: 5 } });
+    expect(out).toMatchObject({ result: { tag: 'x', v: PLUGIN_API_VERSION, r: 5 } });
     const renamed = await loadPlugin({ module: join(dir, 'tagger.mjs'), name: 'renamed' }, '/');
     expect(renamed.name).toBe('renamed');
   });

@@ -321,9 +321,9 @@ program
 
 program
   .command('migrate')
-  .description('Rewrite a config file to schema v4 (keeps comments); prints the changes')
+  .description('Rewrite a config file to schema v5 (or --to 4), keeping comments; prints the changes')
   .option('-c, --config <path>', 'Config file (default: the usual search paths)')
-  .option('--to <version>', 'Target schema version', '4')
+  .option('--to <version>', 'Target schema version (4 or 5)', '5')
   .option('--write', 'Write the file in place (a .bak copy is kept)')
   .option('-o, --output <path>', 'Write the migrated config to this file instead')
   .option('--check', 'Exit with code 3 when the file needs migrating (CI)')
