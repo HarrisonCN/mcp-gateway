@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.9.0] - 2026-10-08
+
+### Deprecated (removed in 6.0)
+- **Config schema v5** — `version: 5` logs a deprecation; 6.0 reads `version: 6` only.
+- **`compliance.pii`** — superseded by `dlp` (5.6).
+- Plugin API v3 (since 5.0).
+
+### Added
+- **Schema v6 preview** — 5.9 reads `version: 6` (v5 without `compliance.pii`); `mcp-gateway init` and the
+  examples write v6.
+- **`mcp-gateway migrate --to 6`** (now the default) — `version: 6` and `compliance.pii` → `dlp` (action, scope,
+  servers, categories and `enabled` mapped; comments kept); notes for plugins and the DLP error code.
+  `--to 5` / `--to 4` still available.
+- [Migrating to 6.0](docs/guides/migrating-to-v6.md) guide.
+- Pages demo: the deprecations card lists the 6.0 config deprecations.
+
 ## [5.8.0] - 2026-10-08
 
 ### Added

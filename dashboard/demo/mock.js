@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '5.8.0';
+  const VERSION = '5.9.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -558,12 +558,17 @@
       { id: 'large', quality: 0.9, normCost: 1, normLatency: 1, errorRate: 0.002, score: 0.14 },
     ] });
     if (p === '/admin/adaptive/feedback' && method === 'POST') return json({ pool: 'summarize', candidate: 'small', quality: 0.71 });
+
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).
     if (p === '/admin/deprecations') return json({ runtime: [
       // 5.0: plugin API v3 still loads until 6.0.
       { id: 'plugin-api-v3', removedIn: '6.0.0', replacement: 'apiVersion: 4', message: 'plugin API v3 is deprecated; declare `apiVersion: 4` (adds ctx.state, changes nothing else)', detail: 'plugin "audit-tags"', source: 'runtime' },
-    ], config: [] });
+    ], config: [
+      // 5.9: the demo config is still on schema v5 and uses compliance.pii (`mcp-gateway migrate --to 6`).
+      { id: 'schema-v5', removedIn: '6.0.0', replacement: 'version: 6', message: 'config schema v5 is deprecated; `mcp-gateway migrate --to 6` writes `version: 6`', detail: 'version: 5', source: 'config' },
+      { id: 'compliance-pii', removedIn: '6.0.0', replacement: 'dlp: { … }', message: '`compliance.pii` is deprecated; use `dlp` (same detectors, plus levels and per-tenant masking) — `mcp-gateway migrate --to 6` converts it', detail: 'compliance.pii', source: 'config' },
+    ] });
     if (p === '/tenants') return json({ clientId: 'key:demo', operator: true, tenants: demoTenants });
     if ((m = p.match(/^\/tenants\/([^/]+)\/members$/)) && method === 'PUT') {
       const tn = demoTenants.find((x) => x.id === decodeURIComponent(m[1]));
