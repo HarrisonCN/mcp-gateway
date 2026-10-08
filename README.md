@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v7.2
+
+| Feature | |
+|---------|---|
+| **Organisations & plans** | `console.plans` with servers and daily call limits; onboarding, suspension, offboarding over the API |
+| **-32016** | Refusal for suspended organisations or exhausted daily limits — [guide](docs/guides/console.md) |
+
 ## What's New in v7.1
 
 | Feature | |
