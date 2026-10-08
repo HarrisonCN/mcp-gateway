@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '7.6.0';
+  const VERSION = '7.7.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -60,6 +60,7 @@
     { id: "semantic-cache", since: "7.4.0", summary: "Semantic cache: answer paraphrased tool calls from earlier results by embedding similarity (tenant-isolated)" },
     { id: "rollouts", since: "7.5.0", summary: "Tool versioning and gradual rollout: sticky percentage canaries per server with automatic rollback" },
     { id: "offline", since: "7.6.0", summary: "Offline desktop gateway: connectivity probe, fail-fast for remote upstreams when offline, desktop-client config import" },
+    { id: "approval-flows", since: "7.7.0", summary: "Approvals 2.0: multi-step, conditional approval flows with named approvers and escalation" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -656,6 +657,10 @@
     ] });
     // 7.6: offline desktop mode.
     if (p === '/admin/offline' && method === 'GET') return json({ enabled: true, mode: 'auto', configuredMode: 'auto', offline: false, lastProbeAt: new Date(Date.now() - 6000).toISOString(), reachable: true, refused: 0, servers: { local: ['filesystem'], remote: ['github', 'search'], allowRemote: [] } });
+    // 7.7: approval flows.
+    if (p === '/admin/approval-flows') return json({ enabled: true, flows: [{ id: 'payments', tools: ['payments/transfer'], when: [{ path: 'amount', op: 'gte', value: 1000 }], timeoutSeconds: 900, steps: [{ name: 'lead', approvers: ['key:lead-*'], required: 1, when: [], escalateTo: [] }, { name: 'finance', approvers: ['key:fin-*'], required: 2, when: [{ path: 'amount', op: 'gte', value: 10000 }], escalateAfterSeconds: 300, escalateTo: ['key:cfo'] }] }], pending: [
+      { id: 'f1c0ffee-0000-4000-8000-000000000001', flow: 'payments', status: 'pending', clientId: 'key:agent-billing', serverId: 'payments', tool: 'transfer', arguments: { amount: 25000, currency: 'EUR', to: '***' }, current: 1, steps: [{ name: 'lead', approvers: ['key:lead-*'], required: 1, escalateTo: [], escalated: false, status: 'approved', approvals: [{ by: 'key:lead-ana', at: new Date(Date.now() - 120000).toISOString() }] }, { name: 'finance', approvers: ['key:fin-*'], required: 2, escalateTo: ['key:cfo'], escalated: false, status: 'pending', approvals: [{ by: 'key:fin-li', at: new Date(Date.now() - 30000).toISOString() }] }], createdAt: new Date(Date.now() - 180000).toISOString(), expiresAt: new Date(Date.now() + 720000).toISOString() },
+    ], recent: [] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 7.0: nothing is deprecated (schema v6, `admin` and `dashboard` were removed).
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });

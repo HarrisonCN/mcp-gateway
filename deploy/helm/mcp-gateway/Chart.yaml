@@ -2,8 +2,8 @@ apiVersion: v2
 name: mcp-gateway
 description: A gateway for Model Context Protocol servers — routing, auth, policy, observability
 type: application
-version: 7.6.0
-appVersion: "7.6.0"
+version: 7.7.0
+appVersion: "7.7.0"
 home: https://github.com/HarrisonCN/mcp-gateway
 sources:
   - https://github.com/HarrisonCN/mcp-gateway

@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.7.0] - 2026-10-08
+
+### Added
+- **Approvals 2.0** (`approvalFlows`): multi-step approval flows matched by tool, client and argument conditions;
+  steps with their own approvers (client-id globs — not only operators), quorum (`required`), conditions and
+  escalation (`escalateAfterSeconds` → `escalateTo`); denial or timeout refuses with -32004. Approvers use
+  `/api/v1/features/approval-flows/inbox|mine|:id/approve|:id/deny`; operators get `GET /api/v1/admin/approval-flows`,
+  overrides and `POST …/evaluate`. [Guide](docs/guides/approval-flows.md).
+- Feature modules can mount routes for every authenticated client under `/api/v1/features/<id>` (`mountClient`).
+
 ## [7.6.0] - 2026-10-08
 
 ### Added

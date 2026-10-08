@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Approvals 2.0 (7.7). */
+  approvalFlows?: import('../features/approval-flows.js').ApprovalFlowsConfig;
   /** Offline desktop gateway (7.6). */
   offline?: import('../features/offline.js').OfflineConfig;
   /** Tool versioning and gradual rollout (7.5). */

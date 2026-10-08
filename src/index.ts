@@ -173,6 +173,8 @@ export { RolloutsSchema, RolloutManager, bucketOf } from './features/rollouts.js
 export type { RolloutsConfig } from './features/rollouts.js';
 export { OfflineSchema, importDesktopServers, desktopConfig, ERR_OFFLINE } from './features/offline.js';
 export type { OfflineConfig } from './features/offline.js';
+export { ApprovalFlowsSchema, FlowQueue, matchFlow } from './features/approval-flows.js';
+export type { ApprovalFlowsConfig, FlowRequest } from './features/approval-flows.js';
 export type {
   GatewayConfig,
   McpServerConfig,

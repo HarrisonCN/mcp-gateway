@@ -459,6 +459,11 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `POST` | `/admin/rollouts/:id/percent\|promote\|rollback\|reset[?persist=]` | Change a rollout at runtime (`persist=true` writes `percent` to the config) (7.5) |
 | `GET` / `POST` | `/admin/offline` | Offline desktop mode: state, probe, local / remote servers; `POST { mode }` switches auto / online / offline (7.6) |
 | `POST` | `/admin/offline/import` | Convert a desktop-client MCP config (Claude Desktop, Cursor, VS Code) to gateway `servers` (7.6) |
+| `GET` | `/admin/approval-flows[/:id]` | Approvals 2.0: flows, pending / recent requests with steps and approvals (7.7) |
+| `POST` | `/admin/approval-flows/:id/approve\|deny` | Operator override of the current step (7.7) |
+| `POST` | `/admin/approval-flows/evaluate` | Which flow / steps would hold `{ server, tool, client?, arguments? }` (7.7) |
+| `GET` | `/features/approval-flows/inbox\|mine` | Any client: requests it may approve / its own requests (7.7) |
+| `POST` | `/features/approval-flows/:id/approve\|deny` | Any client: approve or deny the current step it is an approver of (7.7) |
 
 ## Bridges
 
