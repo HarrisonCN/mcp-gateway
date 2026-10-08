@@ -40,6 +40,7 @@ import { LoadBalancer, expandReplicas } from './balancer.js';
 import { SmartRouter } from './routing.js';
 import { SecretManager } from '../secrets/index.js';
 import { Federation } from './federation.js';
+import { ComplianceEngine } from '../policy/compliance.js';
 import { ToolCache } from './cache.js';
 import { ReplayRecorder } from './replay.js';
 import { UsageMeter } from './usage.js';
@@ -177,6 +178,7 @@ export class Gateway {
       tenantsOf: (clientId) => (this.config.tenants?.length ? membershipsOf(this.config.tenants, clientId).map((m) => m.tenant) : []),
       secrets: this.secrets,
       serverConfig: (id) => this.registry.getServer(id),
+      compliance: new ComplianceEngine(() => this.config.compliance),
       federation: (this.federation = new Federation({
         config: () => this.config.federation,
         version: VERSION,
@@ -595,6 +597,7 @@ export class Gateway {
         routing: next.routing,
         secrets: next.secrets,
         federation: next.federation,
+        compliance: next.compliance,
         // openai.path is fixed at start; other bridge settings hot reload
         openai: next.openai ? { ...next.openai, path: this.config.openai?.path } : next.openai,
         a2a: next.a2a,

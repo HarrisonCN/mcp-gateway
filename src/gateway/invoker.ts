@@ -26,6 +26,9 @@ export const ERR_OUTPUT_BLOCKED = -32005;
 /** Error codes produced by the gateway's own policy layer (REST maps them to 403). */
 export const POLICY_ERROR_CODES = new Set([ERR_POLICY_DENIED, ERR_APPROVAL_REJECTED, ERR_OUTPUT_BLOCKED, ERR_PLUGIN_REJECTED, ERR_QUOTA_EXCEEDED]);
 import { ERR_PLUGIN_REJECTED, PluginError, type PluginCall, type PluginHost } from '../plugins/index.js';
+import { ERR_PII_BLOCKED, ERR_RESIDENCY, type ComplianceEngine } from '../policy/compliance.js';
+POLICY_ERROR_CODES.add(ERR_RESIDENCY);
+POLICY_ERROR_CODES.add(ERR_PII_BLOCKED);
 export { ERR_PLUGIN_REJECTED };
 import { logger } from '../utils/logger.js';
 import { ERR_NOT_CONNECTED, ERR_TIMEOUT } from '../proxy/index.js';
@@ -98,6 +101,8 @@ export interface InvokerDeps {
   router?: SmartRouter;
   /** Cross-region failover to peer gateways (3.6). */
   federation?: Federation;
+  /** PII scanning + data residency (3.7). */
+  compliance?: ComplianceEngine;
   /** Routes calls on servers with `replicas:` (load balancing + failover). */
   balancer?: LoadBalancer;
   /** Tool result cache + in-flight de-duplication (`cache:` config). */
@@ -212,6 +217,24 @@ export class ToolInvoker {
     }
     const refused = await this.checkPolicy(ctx, span);
     if (refused) return refused;
+    const comp = this.deps.compliance;
+    if (comp && ctx.kind === 'tool') {
+      const tenant = this.deps.tenantsOf?.(ctx.clientId)?.[0];
+      const region = this.deps.serverConfig?.(ctx.serverId)?.region;
+      if (!ctx.fromPeer && !comp.residencyAllows(tenant, region)) {
+        comp.noteResidencyBlock();
+        const message = `Data residency: ${tenant ? `tenant "${tenant}"` : 'this client'} may not send data to region ${region ?? '(unknown)'}`;
+        return this.refuse(ctx, ERR_RESIDENCY, message, { decision: 'residency', region: region ?? null, allowed: comp.regionsFor(tenant) }, span);
+      }
+      const pii = comp.applyPii(ctx.serverId, 'arguments', ctx.params);
+      if (pii.blocked) {
+        return this.refuse(ctx, ERR_PII_BLOCKED, `Personal data in the arguments (${pii.categories.join(', ')})`, { decision: 'pii', categories: pii.categories }, span);
+      }
+      if (pii.categories.length) {
+        span.setAttribute('mcp.pii.arguments', pii.categories.join(','));
+        ctx = { ...ctx, params: pii.value };
+      }
+    }
     const usage = this.deps.usage;
     if (usage && ctx.kind === 'tool') {
       const over = usage.take({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name });
@@ -252,7 +275,19 @@ export class ToolInvoker {
           : { ...result, result: out.result };
       }
     }
+    const comp2 = this.deps.compliance;
+    if (comp2 && ctx.kind === 'tool' && result.success && comp2.piiApplies(ctx.serverId, 'results')) {
+      const pii = comp2.applyPii(ctx.serverId, 'results', result.result);
+      if (pii.categories.length) span.setAttribute('mcp.pii.results', pii.categories.join(','));
+      result = pii.blocked
+        ? { success: false, durationMs: result.durationMs, error: { code: ERR_PII_BLOCKED, message: `Personal data in the result (${pii.categories.join(', ')})`, data: { decision: 'pii', categories: pii.categories } } }
+        : { ...result, result: pii.value };
+    }
     return this.finish(ctx, call, result, span);
+  }
+
+  get compliance(): ComplianceEngine | undefined {
+    return this.deps.compliance;
   }
 
   get cache(): ToolCache | undefined {
@@ -295,7 +330,8 @@ export class ToolInvoker {
     const canFailover = ctx.kind === 'tool' && !ctx.fromPeer && !!fed?.failsOver(ctx.serverId);
     const local = await this.callLocal(ctx, span);
     if (!canFailover || classifyFailure(local) !== 'not-connected') return local;
-    const peers = fed!.candidates(ctx.serverId, ctx.name);
+    const tenant = this.deps.tenantsOf?.(ctx.clientId)?.[0];
+    const peers = fed!.candidates(ctx.serverId, ctx.name).filter((p) => this.deps.compliance?.residencyAllows(tenant, p.region) ?? true);
     for (const peer of peers) {
       logger.warn(`${ctx.serverId}/${ctx.name}: local server unavailable; failing over to peer gateway "${peer.id}"`);
       const r = await fed!.forward(peer, { server: ctx.serverId, tool: ctx.name, arguments: ctx.params, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0] }, ctx.timeoutMs);

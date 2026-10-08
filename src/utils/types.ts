@@ -86,6 +86,8 @@ export interface McpServerConfig {
   weight?: number;
   /** Relative cost per call, for `strategy: smart` (3.4). */
   cost?: number;
+  /** Where the server processes data, e.g. `eu-west-1` (3.7: data residency). */
+  region?: string;
   /** Per-call credentials from `secrets:` providers, per tenant / client (3.5). */
   inject?: SecretInjection[];
   /** Set on the internal replica servers (`<id>~<n>`): id of the logical server. */
@@ -195,6 +197,8 @@ export interface GatewayConfig {
   cache?: CacheConfig;
   /** Request capture + replay / debugger (3.2). Off by default. */
   replay?: ReplayConfig;
+  /** PII detection / redaction, data residency, compliance reports (3.7). */
+  compliance?: ComplianceConfig;
   /** Peering with gateways in other regions: catalog sync and failover (3.6). */
   federation?: FederationConfig;
   /** Secret providers (Vault / KMS / env / file) and rotation (3.5). */
@@ -467,6 +471,29 @@ export interface McpEndpointConfig {
 }
 
 /** Which upstream→client requests are relayed to the downstream client that made the call (3.1). */
+/** Compliance suite (3.7). */
+export type PiiCategory = 'email' | 'phone' | 'credit-card' | 'ssn' | 'iban' | 'ipv4' | 'cn-id';
+
+export interface ComplianceConfig {
+  pii?: {
+    enabled?: boolean;
+    /** Default: all categories. */
+    categories?: PiiCategory[];
+    /** `redact` (default) masks matches, `block` refuses the call, `tag` only counts. */
+    action?: 'redact' | 'block' | 'tag';
+    /** Scan tool `arguments` (before the upstream), `results` (before the client), or `both` (default). */
+    scope?: 'arguments' | 'results' | 'both';
+    /** Server id globs (default all). */
+    servers?: string[];
+  };
+  residency?: {
+    /** First matching rule wins. A rule without `tenants` applies to everybody. */
+    rules?: Array<{ tenants?: string[]; regions: string[] }>;
+    /** Allow servers / peers without a `region` for pinned tenants (default false). */
+    allowUnknown?: boolean;
+  };
+}
+
 /** Federated gateways (3.6). */
 export interface FederationConfig {
   enabled?: boolean;

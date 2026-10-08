@@ -48,6 +48,8 @@ export {
   sigv4,
 } from './secrets/index.js';
 export type { SecretProvider, SecretStatus, SecretRef } from './secrets/index.js';
+export { ComplianceEngine, scanPii, buildReport, reportMarkdown, evaluateControls, PII_CATEGORIES, ERR_RESIDENCY, ERR_PII_BLOCKED } from './policy/compliance.js';
+export type { PiiFinding, ControlResult } from './policy/compliance.js';
 export { Federation, signFederation, verifyFederation, FEDERATION_HEADER } from './gateway/federation.js';
 export type { PeerCatalog, PeerState, ExportedServer } from './gateway/federation.js';
 export { SmartRouter, stableFraction } from './gateway/routing.js';
@@ -150,6 +152,8 @@ export type {
   RoutingConfig,
   SecretsConfig,
   FederationConfig,
+  ComplianceConfig,
+  PiiCategory,
   SecretProviderConfig,
   SecretInjection,
   TrafficSplitConfig,

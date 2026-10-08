@@ -242,6 +242,12 @@ Viewers get `403` (REST) / `-32003` (`/mcp`) on tool calls.
                  "ejectedUntil": "2026-10-07T18:00:30.000Z" } ] } ] }
 ```
 
+### Compliance (3.7)
+
+`GET /compliance` (operators): `{ pii: { action, scope, categories, servers } | null, residency: { rules, allowUnknown, servers: [{ id, region }] }, findings: { "<direction>:<category>": n }, blocked: { pii, residency } }`.
+`GET /compliance/report?framework=soc2|gdpr&since=&until=&format=json|md` (operators): `{ framework, generatedAt, gatewayVersion, period, summary: { pass, warn, fail }, controls: [{ id, title, status, evidence }], activity, warnings }`, or Markdown.
+Refusals: JSON-RPC `-32011` (data residency), `-32012` (PII with `action: block`); REST `403`.
+
 ### Federation (3.6)
 
 `GET /federation` (operators): `{ enabled, gatewayId, region, exported, peers: [{ id, url, region, priority, healthy, lastSync, lastError?, latencyMs, servers: [{ id, status, tools }], forwarded }] }`.

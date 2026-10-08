@@ -104,6 +104,7 @@ const McpServerSchema = z.object({
     .optional(),
   weight: z.number().positive().optional(),
   cost: z.number().min(0).optional(),
+  region: z.string().min(1).optional(),
   inject: z
     .array(
       z
@@ -555,6 +556,28 @@ const GatewayConfigSchema = z.object({
       const bad = invalidTenants(ts);
       if (bad) ctx.addIssue({ code: z.ZodIssueCode.custom, message: bad });
     })
+    .optional(),
+  compliance: z
+    .object({
+      pii: z
+        .object({
+          enabled: z.boolean().optional(),
+          categories: z.array(z.enum(['email', 'phone', 'credit-card', 'ssn', 'iban', 'ipv4', 'cn-id'])).min(1).optional(),
+          action: z.enum(['redact', 'block', 'tag']).optional(),
+          scope: z.enum(['arguments', 'results', 'both']).optional(),
+          servers: z.array(z.string().min(1)).optional(),
+        })
+        .strict()
+        .optional(),
+      residency: z
+        .object({
+          rules: z.array(z.object({ tenants: z.array(z.string().min(1)).optional(), regions: z.array(z.string().min(1)).min(1) }).strict()).optional(),
+          allowUnknown: z.boolean().optional(),
+        })
+        .strict()
+        .optional(),
+    })
+    .strict()
     .optional(),
   federation: z
     .object({
