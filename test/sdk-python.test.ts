@@ -1,6 +1,7 @@
 /** 5.7: the Python SDK (clients/python) against a real gateway — MCP session + streaming. Skipped without python3. */
 import { describe, it, expect, afterEach } from 'vitest';
-import { spawnSync } from 'child_process';
+import { spawnSync, execFile } from 'child_process';
+import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { startFeatureGw, type FeatureGw } from './helpers/feature-gw.js';
 
@@ -28,9 +29,9 @@ print(json.dumps(out))
 describe.skipIf(!py)('Python SDK against a live gateway (5.7)', () => {
   it('MCP session and streaming tool call', async () => {
     h = await startFeatureGw();
-    const r = spawnSync('python3', ['-c', SCRIPT, h.base], { env: { ...process.env, PYTHONPATH: src, NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1' }, encoding: 'utf8', timeout: 30_000 });
-    expect(r.stderr + r.stdout).not.toMatch(/Traceback/);
-    if (!r.stdout) throw new Error(JSON.stringify({ status: r.status, signal: r.signal, err: String(r.error) }));
+    // async: the gateway runs in this process, so the event loop must stay free
+    const r = await promisify(execFile)('python3', ['-c', SCRIPT, h.base], { env: { ...process.env, PYTHONPATH: src, NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1' }, encoding: 'utf8', timeout: 30_000 });
+    expect(r.stderr).toBe('');
     const out = JSON.parse(r.stdout);
     expect(out.version).toBe('2025-11-25');
     expect(out.tools).toContain('echo');
