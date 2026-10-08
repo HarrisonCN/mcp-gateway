@@ -31,23 +31,23 @@ describe('schema v8 (8.0)', () => {
     const cfg = validateConfig({ version: 9, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 1234 }] });
     expect(cfg.version).toBe(9);
     expect(cfg.servers[0]!.timeout).toBe(1234);
-    expect(cfg.deprecations).toBeUndefined(); // 8.9: v9 preview
+    expect(cfg.deprecations).toBeUndefined();
     expect(validateConfig({ servers: [{ id: 'b', name: 'b', transport: 'stdio', command: 'x' }] }).servers[0]!.timeout).toBe(30000);
   });
 
   it('refuses the v4, v5, v6 and v7 forms with the migration hint', () => {
-    expect(() => validateConfig({ version: 4, servers: [] })).toThrow(/config schema v4 was removed in 5.0 — use `version: 8`/);
-    expect(() => validateConfig({ version: 5, servers: [] })).toThrow(/config schema v5 was removed in 6.0 — use `version: 8`/);
-    expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/config schema v6 was removed in 7.0 — use `version: 8`/);
+    expect(() => validateConfig({ version: 4, servers: [] })).toThrow(/config schema v4 was removed in 5.0 — use `version: 9`/);
+    expect(() => validateConfig({ version: 5, servers: [] })).toThrow(/config schema v5 was removed in 6.0 — use `version: 9`/);
+    expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/config schema v6 was removed in 7.0 — use `version: 9`/);
     expect(() => validateConfig({ servers: [{ id: 'a', transport: 'stdio', command: 'x', timeout: 5 }] })).toThrow(/servers.0.timeout: removed in 5.0 — use `timeoutMs`/);
     expect(removedConfigKeys({ version: 4, servers: [{ id: 'a', timeout: 1 }] })).toHaveLength(2);
-    expect(() => validateConfig({ version: 10, servers: [] })).toThrow(/8.9 reads `version: 8` or `version: 9`/);
-    expect(() => validateConfig({ version: 7, servers: [] })).toThrow(/config schema v7 was removed in 8.0 — use `version: 8`/);
+    expect(() => validateConfig({ version: 10, servers: [] })).toThrow(/9.0 reads `version: 9`/);
+    expect(() => validateConfig({ version: 7, servers: [] })).toThrow(/config schema v7 was removed in 8.0 — use `version: 9`/);
     expect(configDeprecations({ version: 7, servers: [] })).toEqual([]); // 8.0
   });
 
   it('admin round trip uses schema v8 field names', () => {
-    const cfg = validateConfig({ version: 8, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 99 }] });
+    const cfg = validateConfig({ version: 9, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 99 }] });
     const p = portableConfig(cfg) as { servers: Array<Record<string, unknown>> };
     expect(p.servers[0]).toMatchObject({ timeoutMs: 99 });
     expect(p.servers[0]).not.toHaveProperty('timeout');
@@ -58,7 +58,7 @@ describe('schema v8 (8.0)', () => {
     const mod = (await import('../src/utils/deprecations.js')) as Record<string, unknown>;
     expect(mod.normalizeV4Preview).toBeUndefined();
     expect(mod.normalizeControlPlane).toBeUndefined();
-    expect(Object.values(DEPRECATIONS).map((d) => d.id)).toEqual(['schema-v8', 'state-block']); // 8.9
+    expect(Object.values(DEPRECATIONS)).toEqual([]); // 9.0
   });
 });
 
@@ -82,7 +82,7 @@ describe('mcp-gateway migrate --to 5', () => {
     expect(r.changes).toEqual(['version: 3 → 5', 'auth.apiKeys[0]: servers → scope', 'servers[0] (a): timeout → timeoutMs']);
     const out = JSON.parse(r.text);
     expect(out.servers[0]).toEqual({ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 3 });
-    expect(validateConfig({ ...out, version: 8 }).auth!.apiKeys![0]).toMatchObject({ servers: ['a'] });
+    expect(validateConfig({ ...out, version: 9 }).auth!.apiKeys![0]).toMatchObject({ servers: ['a'] });
   });
 });
 

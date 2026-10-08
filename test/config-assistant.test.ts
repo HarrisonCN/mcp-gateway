@@ -31,7 +31,7 @@ describe('config assistant (8.7)', () => {
     expect(parseInstruction('make it faster')).toBeUndefined();
     expect(mergePatch({ a: 1, b: { c: 2, d: 3 } }, { b: { c: null, e: 4 }, f: [1] })).toEqual({ a: 1, b: { d: 3, e: 4 }, f: [1] });
     expect(withoutSecrets({ auth: { apiKeys: [{ key: 'sk-1', name: 'a' }] }, token: 't' })).toEqual({ auth: { apiKeys: [{ key: '<redacted>', name: 'a' }] }, token: '<redacted>' });
-    expect(validateConfig({ version: 8, servers: [], configAssistant: { llm: { baseUrl: 'https://x.example/v1', model: 'm' } } }).configAssistant).toBeDefined();
+    expect(validateConfig({ version: 9, servers: [], configAssistant: { llm: { baseUrl: 'https://x.example/v1', model: 'm' } } }).configAssistant).toBeDefined();
   });
 
   it('plan (dry run) then apply; stale plans are refused', async () => {

@@ -56,6 +56,7 @@ export class EventLogStateStore implements StateStore {
   private lastSnapshotAt?: number;
   private replayed = 0;
   private closed = false;
+  private torn = false;
 
   constructor(private readonly opts: EventLogOptions) {
     this.now = opts.now ?? Date.now;
@@ -65,6 +66,7 @@ export class EventLogStateStore implements StateStore {
     this.snapPath = join(opts.dir, 'snapshot.json');
     this.load();
     this.fd = openSync(this.logPath, 'a');
+    if (this.torn) this.compact();
   }
 
   private load(): void {
@@ -86,7 +88,9 @@ export class EventLogStateStore implements StateStore {
           this.apply(JSON.parse(line) as Event);
           this.replayed++;
         } catch {
-          // A torn last line (crash mid-write) is skipped.
+          // A torn last line (crash mid-write) is skipped; the log is compacted on open so the next append
+          // does not continue that line.
+          this.torn = true;
         }
       }
       this.sinceSnapshot = this.replayed;
