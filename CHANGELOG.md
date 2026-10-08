@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.1.0] - 2026-10-08
+
+### Added
+- **Terraform** — manage servers, tenants and API keys with the generic `Mastercard/restapi` provider:
+  `GET/POST /api/v1/admin/terraform/:kind`, `GET/PUT/DELETE /api/v1/admin/terraform/:kind/:id` (`ETag` / `If-Match`,
+  `?dryRun=true`, `<redacted>` keeps secrets), each write validated and hot-applied (`controlPlane.configApi: true`).
+- `GET /api/v1/admin/terraform/export` — `main.tf` for the running config with `import` blocks; secrets become
+  sensitive variables. [Guide](docs/guides/terraform.md).
+- Feature context `applyConfig()` (validate + diff + hot-apply a full config) for feature modules.
+
+### Notes
+- A native Go `mcp-gateway` provider is deferred: it needs a Go toolchain and Terraform Registry signing; the resource
+  API is designed so it can be layered on later.
+
 ## [7.0.0] - 2026-10-08
 
 ### Breaking

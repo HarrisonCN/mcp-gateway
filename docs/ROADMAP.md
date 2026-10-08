@@ -3,7 +3,7 @@
 Post-7.0 plan for mcp-gateway. Every minor release stays backward compatible within 7.x; v8.0 is the next breaking
 release. (The 6.x → 7.0 plan is complete; see the [CHANGELOG](../CHANGELOG.md).)
 
-- v7.1：Terraform Provider：用 Terraform 声明式管理服务器、密钥、策略与租户
+- ✅ v7.1：Terraform Provider：用 Terraform 声明式管理服务器、密钥、策略与租户
 - v7.2：多租户 SaaS 控制台：租户自助开通、配额与计费视图、组织级管理
 - v7.3：提示注入防御与工具输出净化：入站检测、出站内容清洗与隔离标记
 - v7.4：语义缓存：基于向量相似度命中工具结果，支持按租户隔离与失效策略
