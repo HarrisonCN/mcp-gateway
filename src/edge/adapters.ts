@@ -9,12 +9,15 @@
  * Config can also come from environment variables with `configFromEnv(env)`:
  * `MCP_GATEWAY_SERVERS` (JSON array of `{ id, url, headers?, tools? }`),
  * `MCP_GATEWAY_API_KEYS` (comma separated), `MCP_GATEWAY_TOOL_NAMING`,
- * `MCP_GATEWAY_CORS_ORIGINS`.
+ * `MCP_GATEWAY_CORS_ORIGINS`; offline / edge sync (4.8): `MCP_GATEWAY_CONTROL_PLANE`,
+ * `MCP_GATEWAY_CONTROL_KEY`, `MCP_GATEWAY_EDGE_ID`, `MCP_GATEWAY_QUEUE_TOOLS` (comma separated globs),
+ * `MCP_GATEWAY_SYNC_INTERVAL_MS` and a KV namespace bound as `MCP_GATEWAY_KV`.
  *
  * @module edge/adapters
  */
 
 import { createEdgeGateway, type EdgeConfig, type EdgeGateway } from './index.js';
+import type { EdgeSyncStore } from './sync.js';
 
 type Env = Record<string, unknown>;
 
@@ -29,25 +32,57 @@ export function configFromEnv(env: Env): EdgeConfig {
     servers = parsed as EdgeConfig['servers'];
   }
   const naming = str('MCP_GATEWAY_TOOL_NAMING');
+  const list = (k: string) => str(k)?.split(',').map((x) => x.trim()).filter(Boolean);
+  const cp = str('MCP_GATEWAY_CONTROL_PLANE');
+  const kv = env.MCP_GATEWAY_KV as EdgeSyncStore | undefined;
+  const interval = Number(str('MCP_GATEWAY_SYNC_INTERVAL_MS'));
   return {
     servers,
-    apiKeys: str('MCP_GATEWAY_API_KEYS')?.split(',').map((k) => k.trim()).filter(Boolean),
-    toolNaming: naming === 'prefix' ? 'prefix' : 'auto',
-    corsOrigins: str('MCP_GATEWAY_CORS_ORIGINS')?.split(',').map((o) => o.trim()).filter(Boolean),
+    apiKeys: list('MCP_GATEWAY_API_KEYS'),
+    // With a control plane, an unset naming comes from the snapshot.
+    toolNaming: naming === 'prefix' ? 'prefix' : naming === 'auto' || !cp ? 'auto' : undefined,
+    corsOrigins: list('MCP_GATEWAY_CORS_ORIGINS'),
+    ...(cp
+      ? {
+          sync: {
+            controlPlane: cp,
+            apiKey: str('MCP_GATEWAY_CONTROL_KEY'),
+            edgeId: str('MCP_GATEWAY_EDGE_ID'),
+            store: kv && typeof kv.get === 'function' ? kv : undefined,
+          },
+          offline: { queueTools: list('MCP_GATEWAY_QUEUE_TOOLS') },
+          ...(Number.isFinite(interval) && str('MCP_GATEWAY_SYNC_INTERVAL_MS') ? { syncIntervalMs: interval } : {}),
+        }
+      : {}),
   };
 }
 
-/** Cloudflare Workers module handler. The gateway (and its upstream sessions) is reused per isolate. */
+interface WorkersCtx {
+  waitUntil(p: Promise<unknown>): void;
+}
+
+/**
+ * Cloudflare Workers module handler. The gateway (and its upstream sessions) is reused per isolate.
+ * With sync configured, add a Cron Trigger: `scheduled` pulls config, replays queued calls and pushes usage.
+ */
 export function workersHandler(build: (env: Env) => EdgeConfig = configFromEnv) {
   let gw: EdgeGateway | undefined;
   let built: Env | undefined;
+  const get = (env: Env) => {
+    if (!gw || built !== env) {
+      gw = createEdgeGateway(build(env));
+      built = env;
+    }
+    return gw;
+  };
   return {
-    fetch(request: Request, env: Env = {}): Promise<Response> {
-      if (!gw || built !== env) {
-        gw = createEdgeGateway(build(env));
-        built = env;
-      }
-      return gw.fetch(request);
+    fetch(request: Request, env: Env = {}, ctx?: WorkersCtx): Promise<Response> {
+      return get(env).fetch(request, ctx ? (p) => ctx.waitUntil(p) : undefined);
+    },
+    scheduled(_event: unknown, env: Env = {}, ctx?: WorkersCtx): Promise<unknown> {
+      const p = get(env).sync();
+      ctx?.waitUntil(p);
+      return p;
     },
   };
 }

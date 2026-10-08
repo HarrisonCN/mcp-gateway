@@ -246,6 +246,15 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(html).toContain("tabConfig: '配置'");
     expect(html).not.toMatch(/onclick=|onchange=/);
   });
+  it('simulates the edge control plane (4.8)', async () => {
+    const f = demoFetch();
+    const snap = (await (await f('/api/v1/admin/edge/snapshot')).json()) as any;
+    expect(snap.config.servers[0].catalog.length).toBeGreaterThan(0);
+    const nodes = (await (await f('/api/v1/admin/edge/nodes')).json()) as any;
+    expect(nodes.nodes.map((n: any) => n.edgeId)).toContain('cf-hkg');
+    expect((await f('/api/v1/admin/edge/sync', { method: 'POST', body: '{}' })).status).toBe(400);
+    expect(((await (await f('/api/v1/admin/edge/sync', { method: 'POST', body: JSON.stringify({ edgeId: 'x', events: [{}, {}] }) })).json()) as any).accepted).toBe(2);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

@@ -389,6 +389,9 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `PUT` | `/admin/config?dryRun=` | Hot-apply a config body |
 | `POST` | `/admin/reload` | Re-read the config file |
 | `GET` | `/admin/deprecations` | Deprecated keys / usages |
+| `GET` | `/admin/edge/snapshot?secrets=` | Edge config snapshot (`ETag` / `If-None-Match`; `secrets=true` needs `admin.configApi`) (4.8) |
+| `POST` | `/admin/edge/sync` | Ingest an edge's usage events `{ edgeId, events, queued }` (4.8) |
+| `GET` | `/admin/edge/nodes` | Edges seen: last sync, snapshot ETag, events / errors / queued (4.8) |
 
 ## Bridges
 

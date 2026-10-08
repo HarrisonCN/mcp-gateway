@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '4.7.0';
+  const VERSION = '4.8.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -454,6 +454,20 @@
         demoConfig = JSON.parse(JSON.stringify(body));
         return json({ applied: true, changes });
       }
+    }
+    // 4.8: edge control plane (snapshot + node list) for edge gateways with `sync`.
+    if (p === '/admin/edge/snapshot') return json({ version: VERSION, generatedAt: iso(Date.now()), etag: 'demo-edge-1',
+      config: { servers: [{ id: 'github', url: 'https://api.githubcopilot.com/mcp/', catalog: [{ name: 'search_issues' }, { name: 'create_issue' }] }], apiKeys: ['sha256:' + '0'.repeat(64)], toolNaming: 'auto' } });
+    if (p === '/admin/edge/nodes') return json({ nodes: [
+      { edgeId: 'cf-hkg', firstSeen: iso(Date.now() - 86400000), lastSeen: iso(Date.now() - 20000), lastSync: iso(Date.now() - 20000), snapshotEtag: 'demo-edge-1', events: 1840, errors: 12, queuedCalls: 0, replayed: 7 },
+      { edgeId: 'deno-fra', firstSeen: iso(Date.now() - 3600000), lastSeen: iso(Date.now() - 900000), lastSync: iso(Date.now() - 900000), snapshotEtag: 'demo-edge-1', events: 96, errors: 3, queuedCalls: 4, replayed: 0 },
+    ] });
+    if (p === '/admin/edge/sync' && method === 'POST') {
+      await sleep(80);
+      let body = {};
+      try { body = JSON.parse(init?.body || '{}'); } catch { return json({ error: 'Bad Request', message: 'Invalid JSON' }, 400); }
+      if (!body.edgeId) return json({ error: 'Bad Request', message: '"edgeId" is required' }, 400);
+      return json({ accepted: (body.events || []).length, dropped: 0 });
     }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).
