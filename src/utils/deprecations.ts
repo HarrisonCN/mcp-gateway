@@ -26,6 +26,9 @@ export const DEPRECATIONS = {
   // 4.0: plugin API v2 keeps loading until 5.0.
   // 5.0: plugin API v3 keeps loading until 6.0.
   pluginApiV3: { id: 'plugin-api-v3', removedIn: '6.0.0', replacement: 'apiVersion: 4', message: 'plugin API v3 is deprecated; declare `apiVersion: 4` (adds ctx.state, changes nothing else)' },
+  // 5.9: `compliance.pii` is superseded by `dlp` (5.6) and removed in 6.0.
+  compliancePii: { id: 'compliance-pii', removedIn: '6.0.0', replacement: 'dlp: { … }', message: '`compliance.pii` is deprecated; use `dlp` (same detectors, plus levels and per-tenant masking) — `mcp-gateway migrate --to 6` converts it' },
+  schemaV5: { id: 'schema-v5', removedIn: '6.0.0', replacement: 'version: 6', message: 'config schema v5 is deprecated; `mcp-gateway migrate --to 6` writes `version: 6`' },
 } as const satisfies Record<string, Deprecation>;
 
 /** Config keys removed in 3.0 → replacement. */
@@ -36,6 +39,7 @@ export const REMOVED_IN_3: Record<string, string> = {
 
 const GUIDE4 = 'run `mcp-gateway migrate` (see docs/guides/migrating-to-v4.md)';
 const GUIDE5 = 'run `mcp-gateway migrate` (see docs/guides/migrating-to-v5.md)';
+const GUIDE6 = 'run `mcp-gateway migrate --to 6` (see docs/guides/migrating-to-v6.md)';
 
 /** Validation errors for removed keys / forms used in a raw config object (3.0 and 4.0 removals). */
 export function removedConfigKeys(raw: unknown): string[] {
@@ -46,7 +50,9 @@ export function removedConfigKeys(raw: unknown): string[] {
     .map(([k, v]) => `${k}: removed in 3.0 — use \`${v}\` (see docs/guides/migrating-to-v3.md)`);
   if (r.version === 3) out.push(`version: config schema v3 was removed in 4.0 — use \`version: 4\`; ${GUIDE4}`);
   else if (r.version === 4) out.push(`version: config schema v4 was removed in 5.0 — use \`version: 5\`; ${GUIDE5}`);
-  else if (r.version !== undefined && r.version !== 5) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 5.x reads \`version: 5\` (see docs/guides/migrating-to-v5.md)`);
+  else if (r.version !== undefined && r.version !== 5 && r.version !== 6) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 5.x reads \`version: 5\` or \`version: 6\` (see docs/guides/migrating-to-v6.md)`);
+  // 5.9: schema v6 preview — `compliance.pii` is not part of v6.
+  if (r.version === 6 && (r.compliance as { pii?: unknown } | undefined)?.pii !== undefined) out.push(`compliance.pii: not part of config schema v6 — use \`dlp\`; ${GUIDE6}`);
   ((r.servers as unknown[] | undefined) ?? []).forEach((s, i) => {
     if (!s || typeof s !== 'object') return;
     if ((s as Record<string, unknown>).timeout !== undefined) out.push(`servers.${i}.timeout: removed in 5.0 — use \`timeoutMs\`; ${GUIDE5}`);
@@ -65,9 +71,14 @@ export function removedConfigKeys(raw: unknown): string[] {
   return out;
 }
 
-/** Deprecated keys used in a raw config object. 5.0 has none (the 4.9 ones are removals now). */
-export function configDeprecations(_raw: unknown): Array<Deprecation & { detail?: string }> {
-  return [];
+/** Deprecated keys used in a raw config object (5.9: schema v5, `compliance.pii`; both removed in 6.0). */
+export function configDeprecations(raw: unknown): Array<Deprecation & { detail?: string }> {
+  if (typeof raw !== 'object' || raw === null) return [];
+  const r = raw as Record<string, unknown>;
+  const out: Array<Deprecation & { detail?: string }> = [];
+  if (r.version === 5) out.push({ ...DEPRECATIONS.schemaV5, detail: 'version: 5' });
+  if ((r.compliance as { pii?: unknown } | undefined)?.pii !== undefined) out.push({ ...DEPRECATIONS.compliancePii, detail: 'compliance.pii' });
+  return out;
 }
 
 /** Schema v5 → internal shape: `servers[].timeoutMs` becomes the internal `timeout`. */
