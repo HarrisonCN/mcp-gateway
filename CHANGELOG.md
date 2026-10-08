@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.0] - 2026-10-08
+
+### Added
+- **Python SDK 5.7.0** — `stream_tool()` (SSE from `POST /api/v1/tools/stream`), `McpSession` (Streamable HTTP
+  `/mcp`: initialize, paginated `list_tools`, `call_tool` with JSON or SSE replies, `ping`, `DELETE` on close),
+  `McpError`, `parse_sse`; PyPI-ready metadata (classifiers, project URLs, keywords).
+- **Go SDK 5.7.0** — `Client.StreamTool()`, `Client.MCP()` → `MCPSession` (`ListTools`, `CallTool`, `Ping`,
+  `Close`), `ParseSSE`, `RPCError`.
+- `test/sdk-python.test.ts` runs the Python SDK against a live gateway (MCP session + streaming).
+- [docs/guides/sdk-release.md](docs/guides/sdk-release.md): per-SDK version / build / publish checklist and feature
+  parity table.
+
+### Notes
+- Publishing to PyPI / Go module tags / Swift Package Index is documented but not performed (needs registry
+  credentials). Swift and Kotlin streaming + MCP sessions are deferred.
+
 ## [5.6.0] - 2026-10-08
 
 ### Added

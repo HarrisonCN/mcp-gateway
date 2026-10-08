@@ -15,7 +15,7 @@ import (
 )
 
 // Version of this client.
-const Version = "4.7.0"
+const Version = "5.7.0"
 
 // Error is returned for non-2xx responses (Status = HTTP status) and for
 // network or timeout failures (Status = 0).

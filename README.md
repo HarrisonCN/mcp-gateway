@@ -586,6 +586,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v5.7
+
+| Feature | Description |
+|---------|-------------|
+| **Python SDK** | `stream_tool()` and `McpSession` for the gateway's `/mcp` |
+| **Go SDK** | `StreamTool()` and `Client.MCP()` sessions |
+| **Release checklist** | Version, build and publish steps for every SDK |
+
 ## What's New in v5.6
 
 | Feature | Description |
