@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v7.5
+
+| Feature | |
+|---------|---|
+| **Gradual rollout** | Sticky % canaries per server, beta client lists, promote / rollback at runtime |
+| **Auto rollback** | Canary error rate over a window rolls it back to 0 % — [guide](docs/guides/rollouts.md) |
+
 ## What's New in v7.4
 
 | Feature | |

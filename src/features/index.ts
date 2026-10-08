@@ -23,5 +23,6 @@ import './terraform.js';
 import './console.js';
 import './sanitize.js';
 import './semantic-cache.js';
+import './rollouts.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

@@ -169,6 +169,8 @@ export { SanitizeSchema, sanitizeResult, sanitizeText, ERR_INJECTION_BLOCKED } f
 export type { SanitizeConfig, SanitizeReport } from './features/sanitize.js';
 export { SemanticCacheSchema, SemanticStore, localEmbedding, cosine, splitArgs } from './features/semantic-cache.js';
 export type { SemanticCacheConfig } from './features/semantic-cache.js';
+export { RolloutsSchema, RolloutManager, bucketOf } from './features/rollouts.js';
+export type { RolloutsConfig } from './features/rollouts.js';
 export type {
   GatewayConfig,
   McpServerConfig,

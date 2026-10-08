@@ -455,6 +455,8 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/semantic-cache` | Semantic cache: settings, entries, hits / misses / stores / evictions (7.4) |
 | `POST` | `/admin/semantic-cache/similarity` | Similarity of `{ a, b }` with the configured embedding (7.4) |
 | `DELETE` | `/admin/semantic-cache?tool=` | Purge the semantic cache (7.4) |
+| `GET` | `/admin/rollouts[/:id]` | Gradual rollouts: effective percent, state, calls / error rates per version (7.5) |
+| `POST` | `/admin/rollouts/:id/percent\|promote\|rollback\|reset[?persist=]` | Change a rollout at runtime (`persist=true` writes `percent` to the config) (7.5) |
 
 ## Bridges
 
