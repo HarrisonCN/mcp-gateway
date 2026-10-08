@@ -408,6 +408,10 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `POST` | `/admin/sessions/:name/replay` | Replay and grade `{ mode: success\|structure\|exact, stopOnFailure? }` → eval report (5.5) |
 | `GET` | `/admin/dlp` | DLP policy (levels, default + tenant clearance / strategy) and counters (5.6) |
 | `POST` | `/admin/dlp/classify` | Classify a value `{ value, tenant? }` → findings and the masked value (5.6) |
+| `GET` | `/admin/adaptive` | Adaptive pools with per-candidate calls, error rate, latency, quality, picks (5.8) |
+| `POST` | `/admin/adaptive/pick` | Pick a candidate `{ pool, explore? }` → server, tool, args, scores (5.8) |
+| `POST` | `/admin/adaptive/call` | Pick and call `{ pool, arguments }` (5.8) |
+| `POST` | `/admin/adaptive/feedback` | Report quality `{ pool, candidate, quality: 0..1 }` (5.8) |
 
 ## Bridges
 
