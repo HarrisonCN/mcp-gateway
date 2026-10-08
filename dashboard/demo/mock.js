@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '3.2.0';
+  const VERSION = '3.3.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -271,6 +271,11 @@
         { id: 'search@3', weight: 1, connected: true, healthy: false, ejectedUntil: iso(Date.now() + 25000), latencyMs: 912, calls: 12, errors: 5 },
       ] }] });
     }
+    // 3.3: plugins, one of them a WASM sandbox per tenant.
+    if (p === '/plugins') return json({ plugins: [
+      { name: 'audit-tags', apiVersion: 2, kind: 'module', hooks: ['onToolCall', 'onResponse'] },
+      { name: 'pii-guard', apiVersion: 2, kind: 'wasm', hooks: ['onToolCall', 'onResponse'], isolation: 'tenant', sandboxes: demoTenants.map((t, i) => ({ key: 'tenant:' + t.id, calls: 120 + i * 37 + Math.round((Date.now() - started) / 4000), alive: true })) },
+    ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     if (p === '/admin/deprecations') return json({ version: VERSION, deprecations: [] });
     if (p === '/tenants') return json({ clientId: 'key:demo', operator: true, tenants: demoTenants });

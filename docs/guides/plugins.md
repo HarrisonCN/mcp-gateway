@@ -74,3 +74,55 @@ upstream call ─▶ onToolCall ▶ policy rules / approval ▶ upstream server 
 - A plugin declaring a higher `apiVersion` than the gateway implements is refused at load.
 
 TypeScript types: `import type { GatewayPlugin, PluginFactory } from '@winstonsayno/mcp-gateway'`.
+
+## WASM plugins (3.3)
+
+Write the plugin in Rust, Go (TinyGo), AssemblyScript, C or Zig, compile it to a `.wasm` module, and list it with
+`wasm:` instead of `module:`. The gateway runs it sandboxed and isolated per tenant.
+
+```yaml
+plugins:
+  - wasm: ./pii-guard.wasm
+    isolation: tenant          # tenant (default) | client | shared
+    limits: { timeoutMs: 100, memoryMb: 16, maxInstances: 64 }
+```
+
+### ABI
+
+All payloads are UTF-8 JSON in the module's exported `memory`.
+
+| Export | Signature | |
+|---|---|---|
+| `memory` | memory | required |
+| `alloc` | `(len: i32) -> i32` | required — buffer the host writes the input into |
+| `on_tool_call` | `(ptr: i32, len: i32) -> i64` | optional |
+| `on_response` | `(ptr: i32, len: i32) -> i64` | optional (at least one hook) |
+
+Return `0` for "no change", otherwise `(ptr << 32) | len` of the output JSON.
+
+- `on_tool_call` input: `{ server, tool, kind, method, arguments, clientId, tenant, via }`; output `{}`,
+  `{ "arguments": {…} }`, `{ "deny": "reason" }` or `{ "respond": <result> }`.
+- `on_response` input adds `success`, `result`, `error`; output `{}` or `{ "result": <replacement> }` (only applied to
+  successful calls).
+- The only import is `env.log(ptr: i32, len: i32)` (gateway log, `info`). Modules importing anything else (WASI
+  included) are refused at load.
+
+### Isolation and limits
+
+- `isolation: tenant` gives every tenant (first workspace of the client) its own worker and module instance — no
+  shared linear memory or globals. `client` isolates per API key / JWT subject; `shared` runs one instance.
+- A hook that traps, runs past `timeoutMs`, grows memory past `memoryMb`, or returns invalid JSON fails the call
+  closed (`-32006`); the sandbox is killed and recreated on the next call.
+- `GET /api/v1/plugins` (operators) lists every plugin with its hooks and, for WASM plugins, the live sandboxes.
+
+Minimal Rust sketch:
+
+```rust
+#[no_mangle] pub extern "C" fn alloc(len: i32) -> i32 { let mut v = Vec::<u8>::with_capacity(len as usize); let p = v.as_mut_ptr(); std::mem::forget(v); p as i32 }
+#[no_mangle] pub extern "C" fn on_tool_call(ptr: i32, len: i32) -> i64 {
+    let input = unsafe { std::slice::from_raw_parts(ptr as *const u8, len as usize) };
+    let out: &'static [u8] = if input.windows(8).any(|w| w == b"password") { br#"{"deny":"no secrets"}"# } else { b"{}" };
+    ((out.as_ptr() as i64) << 32) | out.len() as i64
+}
+```
+

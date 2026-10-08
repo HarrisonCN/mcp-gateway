@@ -464,6 +464,22 @@ Hooks: `onRequest` (Express middleware after the network guards), `onToolCall` (
 `deny`, or `respond`), `onResponse` (after the output filter). Hook failures refuse the call (`-32006`). Hot
 reloadable (file change or `SIGHUP`). See [Plugins](guides/plugins.md).
 
+### WASM plugins (3.3)
+
+```yaml
+plugins:
+  - wasm: ./plugins/pii-guard.wasm    # instead of module: — any language that compiles to WebAssembly
+    isolation: tenant                 # tenant (default) | client | shared — one sandbox per key
+    limits:
+      timeoutMs: 100                  # per hook call (default 100)
+      memoryMb: 16                    # linear memory cap (default 16)
+      maxInstances: 64                # sandboxes kept; least recently used closed beyond this
+```
+
+Each sandbox is a worker thread with its own module instance: no WASI, no file system, no network, only an
+`env.log` import. Traps, timeouts, memory overruns and invalid output refuse the call (`-32006`) and the sandbox is
+recreated on the next call. `GET /api/v1/plugins` lists plugins and live sandboxes.
+
 ## Observability
 
 ```yaml

@@ -602,12 +602,24 @@ const GatewayConfigSchema = z.object({
     .array(
       z
         .object({
-          module: z.string().min(1),
+          module: z.string().min(1).optional(),
+          wasm: z.string().min(1).optional(),
           name: z.string().min(1).optional(),
           enabled: z.boolean().optional(),
           options: z.record(z.unknown()).optional(),
+          isolation: z.enum(['tenant', 'client', 'shared']).optional(),
+          limits: z
+            .object({
+              timeoutMs: z.number().int().positive().max(60_000).optional(),
+              memoryMb: z.number().int().min(1).max(4096).optional(),
+              maxInstances: z.number().int().positive().max(10_000).optional(),
+            })
+            .strict()
+            .optional(),
         })
-        .strict(),
+        .strict()
+        .refine((p) => (p.module ? 1 : 0) + (p.wasm ? 1 : 0) === 1, 'a plugin needs exactly one of "module" or "wasm"')
+        .refine((p) => p.wasm || (p.isolation === undefined && p.limits === undefined), '"isolation" / "limits" apply to wasm plugins only'),
     )
     .optional(),
   observability: z
