@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.4.0] - 2026-10-08
+
+### Added
+- **Semantic cache** (`semanticCache`): answers tool calls whose text arguments are similar enough (cosine ≥
+  `threshold`) to an earlier successful call of the same tool, in the same tenant / client / global scope; non-text
+  arguments must match exactly. Embeddings: `local` (offline hashed n-grams) or any OpenAI-compatible `/embeddings`
+  API. Hits carry `_meta["mcp-gateway/semantic-cache"]`. Admin: `GET/DELETE /api/v1/admin/semantic-cache`,
+  `POST /api/v1/admin/semantic-cache/similarity`. [Guide](docs/guides/semantic-cache.md).
+- Call hooks: `before` may return `{ respond }` to answer a call without the upstream (after hooks still run).
+
 ## [7.3.0] - 2026-10-08
 
 ### Added

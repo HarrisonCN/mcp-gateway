@@ -452,6 +452,9 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `POST` | `/admin/console/orgs/:id/reset-usage` | Clear today's call counter (7.2) |
 | `GET` | `/admin/sanitize` | Output sanitisation / injection defence: settings and counters (7.3) |
 | `POST` | `/admin/sanitize/preview` | Sanitise `{ value, server?, tool? }` without a call: cleaned value, report, blocked (7.3) |
+| `GET` | `/admin/semantic-cache` | Semantic cache: settings, entries, hits / misses / stores / evictions (7.4) |
+| `POST` | `/admin/semantic-cache/similarity` | Similarity of `{ a, b }` with the configured embedding (7.4) |
+| `DELETE` | `/admin/semantic-cache?tool=` | Purge the semantic cache (7.4) |
 
 ## Bridges
 

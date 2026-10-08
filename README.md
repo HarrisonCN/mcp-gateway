@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v7.4
+
+| Feature | |
+|---------|---|
+| **Semantic cache** | Paraphrased / reordered queries answered from earlier results, tenant-isolated, exact match on non-text args |
+| **Embeddings** | Offline `local` or any OpenAI-compatible API — [guide](docs/guides/semantic-cache.md) |
+
 ## What's New in v7.3
 
 | Feature | |

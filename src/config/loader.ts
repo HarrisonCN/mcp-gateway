@@ -28,6 +28,7 @@ import { AnomalySchema } from '../features/anomaly.js';
 import { BillingSchema } from '../features/billing.js';
 import { ConsoleSchema } from '../features/console.js';
 import { SanitizeSchema } from '../features/sanitize.js';
+import { SemanticCacheSchema } from '../features/semantic-cache.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
@@ -480,6 +481,7 @@ const GatewayConfigSchema = z.object({
   billing: BillingSchema.optional(),
   console: ConsoleSchema.optional(),
   sanitize: SanitizeSchema.optional(),
+  semanticCache: SemanticCacheSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   audit: z

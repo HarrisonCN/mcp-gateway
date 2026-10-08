@@ -167,6 +167,8 @@ export { ConsoleSchema, DailyCounter, admitCall, ERR_ORG_REFUSED } from './featu
 export type { ConsoleConfig } from './features/console.js';
 export { SanitizeSchema, sanitizeResult, sanitizeText, ERR_INJECTION_BLOCKED } from './features/sanitize.js';
 export type { SanitizeConfig, SanitizeReport } from './features/sanitize.js';
+export { SemanticCacheSchema, SemanticStore, localEmbedding, cosine, splitArgs } from './features/semantic-cache.js';
+export type { SemanticCacheConfig } from './features/semantic-cache.js';
 export type {
   GatewayConfig,
   McpServerConfig,
