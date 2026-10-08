@@ -65,6 +65,7 @@
   },
   "files": [
     "dist",
+    "wit",
     "dashboard/index.html",
     "dashboard/portal.html",
     "README.md",

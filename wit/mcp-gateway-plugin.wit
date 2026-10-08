@@ -1,0 +1,34 @@
+// mcp-gateway plugin API v5 (7.9; required in 8.0).
+//
+// A plugin is a WebAssembly component exporting `hooks`. Inputs and outputs are UTF-8 JSON documents:
+//
+// on-tool-call input:  { "server", "tool", "kind", "method", "arguments", "clientId", "tenant", "via" }
+// on-tool-call output: none (= continue) or one of
+//   { "action": "continue" }
+//   { "action": "rewrite", "arguments": { ... } }
+//   { "action": "deny", "reason": "..." }
+//   { "action": "respond", "result": <MCP tool result> }
+//
+// on-response input:  the on-tool-call input plus { "success", "result", "error" }
+// on-response output: none, { "action": "continue" } or { "action": "replace", "result": <MCP tool result> }
+//
+// The gateway runs the component's core module with the canonical ABI (see docs/guides/plugins-v5.md);
+// the only host import is `log`.
+package mcp-gateway:plugin@5.0.0;
+
+interface host {
+  /// Write a line to the gateway log (prefixed with the plugin name).
+  log: func(message: string);
+}
+
+interface hooks {
+  /// Runs before policy for every upstream call. Return none to continue unchanged.
+  on-tool-call: func(call: string) -> option<string>;
+  /// Runs after the output filter. Return none to keep the result.
+  on-response: func(call: string) -> option<string>;
+}
+
+world plugin {
+  import host;
+  export hooks;
+}

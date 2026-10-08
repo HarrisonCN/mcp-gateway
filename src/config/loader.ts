@@ -1121,7 +1121,7 @@ export function generateDefaultConfig(): string {
   return `# mcp-gateway configuration
 # Documentation: https://github.com/HarrisonCN/mcp-gateway/docs
 
-version: 7
+version: 8
 port: 4000
 host: 0.0.0.0
 logLevel: info

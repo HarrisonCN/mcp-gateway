@@ -668,7 +668,10 @@
     ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 7.0: nothing is deprecated (schema v6, `admin` and `dashboard` were removed).
-    if (p === '/admin/deprecations') return json({ runtime: [], config: [] });
+    // 7.9: the demo config is still on schema v7 (`mcp-gateway migrate --to 8`).
+    if (p === '/admin/deprecations') return json({ runtime: [], config: [
+      { id: 'schema-v7', removedIn: '8.0.0', replacement: 'version: 8', message: 'config schema v7 is deprecated; `mcp-gateway migrate --to 8` writes `version: 8`', detail: 'version: 7', source: 'config' },
+    ] });
     // 7.0: control plane — data planes pulling config and sending heartbeats.
     if (p === '/admin/data-planes') {
       const seen = (s) => new Date(Date.now() - s * 1000).toISOString();

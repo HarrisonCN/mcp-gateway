@@ -54,11 +54,13 @@ const { parentPort, workerData } = require('worker_threads');
 const COMPONENT = workerData.abi === 'component';
 const enc = new TextEncoder(), dec = new TextDecoder();
 let inst;
-const imports = { env: { log: (p, l) => { try { parentPort.postMessage({ log: dec.decode(new Uint8Array(inst.exports.memory.buffer, p, l)) }); } catch {} } } };
+const log = (p, l) => { try { parentPort.postMessage({ log: dec.decode(new Uint8Array(inst.exports.memory.buffer, p, l)) }); } catch {} };
+const HOST = 'mcp-gateway:plugin/host@5.0.0';
+const imports = { env: { log }, [HOST]: { log } };
 try {
   const mod = new WebAssembly.Module(workerData.bytes);
-  const wanted = WebAssembly.Module.imports(mod).filter((i) => !(i.module === 'env' && i.name === 'log'));
-  if (wanted.length) throw new Error('unsupported imports: ' + wanted.map((i) => i.module + '.' + i.name).join(', ') + ' (only env.log is provided)');
+  const wanted = WebAssembly.Module.imports(mod).filter((i) => !(i.name === 'log' && (COMPONENT ? i.module === HOST : i.module === 'env')));
+  if (wanted.length) throw new Error('unsupported imports: ' + wanted.map((i) => i.module + '.' + i.name).join(', ') + ' (only ' + (COMPONENT ? HOST : 'env') + '.log is provided)');
   inst = new WebAssembly.Instance(mod, imports);
   for (const k of COMPONENT ? ['memory', 'cabi_realloc'] : ['memory', 'alloc']) if (!inst.exports[k]) throw new Error('module must export "' + k + '"');
   parentPort.postMessage({ ready: true, exports: Object.keys(inst.exports), mem: inst.exports.memory.buffer.byteLength });

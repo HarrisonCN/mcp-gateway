@@ -120,3 +120,40 @@ export const counterWasm = () => {
     hooks: [{ name: 'on_tool_call', body: [...op.i32(at), ...op.i32(at), ...op.load8, ...op.i32(1), ...op.add, ...op.store8, ...op.i64(packed(16, json.length))] }],
   });
 };
+
+// ─── 7.9: plugin API v5 component ABI (core module of a `mcp-gateway:plugin@5.0.0` component) ───────────────────
+
+export const COMPONENT_HOOK = { on_tool_call: 'mcp-gateway:plugin/hooks@5.0.0#on-tool-call', on_response: 'mcp-gateway:plugin/hooks@5.0.0#on-response' } as const;
+
+/**
+ * A component-ABI module: `memory`, `cabi_realloc` (returns 4096) and one hook returning a fixed `option<string>`
+ * (`json` = some(json), `undefined` = none). Retarea at 16, string at 32.
+ */
+export function componentModule(hook: keyof typeof COMPONENT_HOOK, json: string | undefined, opts: { post?: boolean } = {}): Uint8Array {
+  const types = [
+    [0x60, ...vec([[I32], [I32], [I32], [I32]]), ...vec([[I32]])], // 0: cabi_realloc
+    [0x60, ...vec([[I32], [I32]]), ...vec([[I32]])], // 1: hook
+    [0x60, ...vec([[I32]]), ...vec([])], // 2: cabi_post
+  ];
+  const le = (n: number) => [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >>> 24) & 0xff];
+  const len = json === undefined ? 0 : Buffer.byteLength(json);
+  const ret = [json === undefined ? 0 : 1, 0, 0, 0, ...le(32), ...le(len)];
+  const blob = [...ret, ...new Array(32 - 16 - ret.length).fill(0), ...(json === undefined ? [] : [...Buffer.from(json)])];
+  const funcs = [[...uleb(0)], [...uleb(1)], ...(opts.post ? [[...uleb(2)]] : [])];
+  const exports = [
+    [...str('memory'), 0x02, 0x00],
+    [...str('cabi_realloc'), 0x00, ...uleb(0)],
+    [...str(COMPONENT_HOOK[hook]), 0x00, ...uleb(1)],
+    ...(opts.post ? [[...str(`cabi_post_${COMPONENT_HOOK[hook]}`), 0x00, ...uleb(2)]] : []),
+  ];
+  const code = [[0x00, ...op.i32(4096), 0x0b], [0x00, ...op.i32(16), 0x0b], ...(opts.post ? [[0x00, 0x0b]] : [])].map((b) => [...uleb(b.length), ...b]);
+  return new Uint8Array([
+    0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+    ...section(1, vec(types)),
+    ...section(3, vec(funcs)),
+    ...section(5, vec([[0x00, 0x01]])),
+    ...section(7, vec(exports)),
+    ...section(10, vec(code)),
+    ...section(11, vec([[0x00, ...op.i32(16), 0x0b, ...uleb(blob.length), ...blob]])),
+  ]);
+}
