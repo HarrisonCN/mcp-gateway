@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.2.0] - 2026-10-08
+
+### Added
+- **SaaS console** — organisations on top of tenants with **plans** (`console.plans`: servers, `callsPerDay`):
+  onboarding (`POST /api/v1/admin/console/orgs` creates the tenant + owner), plan changes that re-scope the tenant's
+  servers, suspension and offboarding; usage today / remaining per organisation. Calls over the daily limit or from a
+  suspended organisation are refused with JSON-RPC error **-32016**. [Guide](docs/guides/console.md).
+
 ## [7.1.0] - 2026-10-08
 
 ### Added

@@ -369,6 +369,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(tf).toContain('resource "restapi_object" "server_github"');
     expect(tf).toContain('id = "/api/v1/admin/terraform/servers/github"');
   });
+  it('shows SaaS console organisations and plans (7.2)', async () => {
+    const f = demoFetch();
+    const c = (await (await f('/api/v1/admin/console')).json()) as any;
+    expect(c.orgs.map((o: any) => `${o.id}:${o.plan}`)).toEqual(['acme:pro', 'globex:free']);
+    expect(c.totals.orgs).toBe(2);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

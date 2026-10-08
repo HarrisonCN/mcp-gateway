@@ -163,6 +163,8 @@ export { ControlPlaneSchema, DataPlaneSync, configEtag, distributedConfig, creat
 export type { ControlPlaneConfig, DataPlaneNode, DataPlaneStatus } from './gateway/control-plane.js';
 export { exportHcl, toHcl, KINDS as TERRAFORM_KINDS } from './features/terraform.js';
 export type { ResourceKind } from './features/terraform.js';
+export { ConsoleSchema, DailyCounter, admitCall, ERR_ORG_REFUSED } from './features/console.js';
+export type { ConsoleConfig } from './features/console.js';
 export type {
   GatewayConfig,
   McpServerConfig,
