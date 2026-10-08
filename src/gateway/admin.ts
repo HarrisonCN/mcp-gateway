@@ -8,6 +8,8 @@
  *   `<redacted>` values keep the running value, so a GET → edit → PUT round trip works.
  * - `POST /admin/reload` — re-read the config file from disk (`controlPlane.configApi: true`; CLI-started gateways).
  * - `GET  /admin/deprecations` — deprecated config keys and runtime usages (each with its `removedIn`).
+ * - `GET  /admin/store` — the shared store backend; for `eventlog` (9.0) keys, events and snapshot stats.
+ * - `POST /admin/store/compact` — write a snapshot and truncate the event log (`eventlog` only).
  *
  * The config is validated with the same schema as files; `policy.files` in a body resolve against the running
  * config's directory. Changes to restart-only fields are reported with `restart: true` and not applied.
@@ -28,6 +30,8 @@ export interface AdminDeps {
   reloadFromDisk?: () => Promise<GatewayConfig>;
   authenticate: RequestHandler;
   isOperator: (req: Request) => boolean;
+  /** The shared state store (9.0: `GET /admin/store`). */
+  store?: () => { kind: string; stats?: () => unknown; compact?: () => void } | undefined;
 }
 
 /** Strip loader-set fields so a running config can be re-validated. */
@@ -44,8 +48,8 @@ export function portableConfig(cfg: GatewayConfig): Record<string, unknown> {
       return Object.keys(scope).length ? { ...key, scope } : key;
     });
   }
-  // 8.9: schema v9 names the shared store `store` (`backend`); internals keep `state` (`store`).
-  if (out.version === 9 && out.state && typeof out.state === 'object') {
+  // Schema v9 (9.0) names the shared store `store` (`backend`); internals keep `state` (`store`).
+  if (out.state && typeof out.state === 'object') {
     const { store, ...st } = out.state as Record<string, unknown>;
     out.store = { ...(store !== undefined ? { backend: store } : {}), ...st };
     delete out.state;
@@ -191,6 +195,19 @@ export function createAdminRouter(deps: AdminDeps): express.Router {
 
   router.get('/admin/deprecations', ...guard, (_req, res) => {
     res.json({ config: deps.config().deprecations ?? [], runtime: runtimeDeprecations() });
+  });
+
+  // 9.0: shared store status; event-sourced store stats and manual compaction.
+  router.get('/admin/store', ...guard, (_req, res) => {
+    const s = deps.store?.();
+    const cfg = deps.config().state;
+    res.json({ backend: s?.kind ?? cfg?.store ?? 'memory', failureMode: cfg?.failureMode ?? 'open', ...(s?.stats ? { eventlog: s.stats() } : {}) });
+  });
+  router.post('/admin/store/compact', ...guard, (_req, res) => {
+    const s = deps.store?.();
+    if (!s?.compact) return void res.status(409).json({ error: 'Conflict', message: 'Compaction needs `store.backend: eventlog`' });
+    s.compact();
+    res.json({ compacted: true, eventlog: s.stats?.() });
   });
 
   return router;

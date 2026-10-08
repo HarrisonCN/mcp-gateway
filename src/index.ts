@@ -10,11 +10,12 @@ export {
   MemoryStateStore,
   PrefixedStateStore,
   RedisStateStore,
+  EventLogStateStore,
   RedisClient,
   createStoreRateLimiter,
   StoreAuthLockout,
 } from './state/index.js';
-export type { StateStore } from './state/index.js';
+export type { StateStore, EventLogOptions, EventLogStats } from './state/index.js';
 export {
   createTracer,
   BatchTracer,

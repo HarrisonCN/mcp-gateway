@@ -78,10 +78,10 @@ const stable = (v: unknown): string =>
 /** Strong ETag of a config object (order independent). */
 export const configEtag = (config: unknown) => `"${createHash('sha256').update(stable(config)).digest('hex').slice(0, 32)}"`;
 
-/** The config a control plane distributes: `portable` minus `controlPlane`, `port` and `host` (schema version kept: 8 or 9, 8.9). */
+/** The config a control plane distributes: `portable` minus `controlPlane`, `port` and `host` (schema v9). */
 export function distributedConfig(portable: Record<string, unknown>): Record<string, unknown> {
   const { controlPlane: _c, port: _p, host: _h, configDir: _d, deprecations: _x, ...rest } = portable;
-  return { ...rest, version: rest.version === 9 ? 9 : 8 };
+  return { ...rest, version: 9 };
 }
 
 export interface DataPlaneNode {
