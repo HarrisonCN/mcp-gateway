@@ -199,6 +199,14 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const run = (await (await f('/api/v1/chains/triage/run', { method: 'POST', body: '{}' })).json()) as any;
     expect(run).toMatchObject({ chain: 'triage', success: true });
   });
+
+  it('reports costs and budgets (4.3)', async () => {
+    const f = demoFetch();
+    const r = (await (await f('/api/v1/costs?by=model')).json()) as any;
+    expect(r.totals[0]).toMatchObject({ key: 'gpt-4o' });
+    expect(r.budgets.map((b: any) => b.action)).toEqual(['alert', 'block']);
+    expect(r.alerts[0].threshold).toBe(0.8);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

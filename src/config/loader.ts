@@ -803,6 +803,31 @@ const GatewayConfigSchema = z.object({
     })
     .strict()
     .optional(),
+  costs: z
+    .object({
+      currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+      tools: z.array(z.object({ match: z.string().min(1), perCall: z.number().min(0) }).strict()).optional(),
+      models: z.record(z.object({ input: z.number().min(0), output: z.number().min(0) }).strict()).optional(),
+      budgets: z
+        .array(
+          z
+            .object({
+              name: z.string().min(1),
+              clients: z.array(z.string()).optional(),
+              tenants: z.array(z.string()).optional(),
+              perClient: z.boolean().optional(),
+              period: z.enum(['day', 'month']),
+              limit: z.number().positive(),
+              alertAt: z.array(z.number().gt(0).max(10)).optional(),
+              action: z.enum(['alert', 'block']).optional(),
+              webhook: z.string().url().optional(),
+            })
+            .strict(),
+        )
+        .optional(),
+    })
+    .strict()
+    .optional(),
   chains: z
     .object({
       toolPrefix: z.string().regex(/^[A-Za-z0-9_.-]{1,32}$/).optional(),

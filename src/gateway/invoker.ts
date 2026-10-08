@@ -38,6 +38,7 @@ import type { SecretManager } from '../secrets/index.js';
 import type { Federation } from './federation.js';
 import type { ToolCache } from './cache.js';
 import { ERR_QUOTA_EXCEEDED, type UsageMeter } from './usage.js';
+import { ERR_BUDGET_EXCEEDED, type CostLedger } from '../costs/index.js';
 export { ERR_QUOTA_EXCEEDED };
 import { NOOP_TRACER, type Tracer } from '../observability/tracing.js';
 import type { ReplayRecorder } from './replay.js';
@@ -81,6 +82,8 @@ export interface InvokeResult extends ProxyResponse {
 }
 
 export interface InvokerDeps {
+  /** 4.3: cost accounting and budgets. */
+  costs?: CostLedger;
   proxy: McpProxy;
   /** Captures calls for the replay debugger (3.2). */
   recorder?: ReplayRecorder;
@@ -241,6 +244,14 @@ export class ToolInvoker {
       if (over) {
         const message = `Quota "${over.rule}" exceeded for ${over.subject} (${over.limit} per period)`;
         return this.refuse(ctx, ERR_QUOTA_EXCEEDED, message, { decision: 'quota', quota: over.rule, limit: over.limit, resetsAt: new Date(over.resetsAt).toISOString() }, span);
+      }
+    }
+    const costs = this.deps.costs;
+    if (costs && ctx.kind === 'tool') {
+      const over = costs.blocked(ctx.clientId, this.deps.tenantsOf?.(ctx.clientId));
+      if (over) {
+        const message = `Budget "${over.budget}" exhausted for ${over.subject} (${over.spent} of ${over.limit}); resets ${over.resetsAt}`;
+        return this.refuse(ctx, ERR_BUDGET_EXCEEDED, message, { decision: 'budget', budget: over.budget, limit: over.limit, spent: over.spent, resetsAt: over.resetsAt }, span);
       }
     }
     let result: ProxyResponse;
@@ -429,6 +440,11 @@ export class ToolInvoker {
     }
     if (ctx.kind === 'tool') {
       this.deps.usage?.record({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name, success: result.success, durationMs: result.durationMs });
+      if (result.success && this.deps.costs?.enabled) {
+        const c = this.deps.costs.record({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name, result: result.result });
+        if (c.cost) span.setAttribute('mcp.cost', c.cost);
+        if (c.usage) span.setAttribute('gen_ai.usage.input_tokens', c.usage.inputTokens), span.setAttribute('gen_ai.usage.output_tokens', c.usage.outputTokens);
+      }
     }
     const record = this.deps.metrics.record({
       serverId: ctx.serverId,

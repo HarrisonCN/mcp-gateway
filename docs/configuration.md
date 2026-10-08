@@ -812,3 +812,37 @@ chains:
 Templates read `input.*`, `steps.<id>.*` (the step's MCP result plus `text` — the joined text blocks; `forEach` steps
 hold an array) and `item` / `index`. A value that is exactly one `{{path}}` keeps its type.
 
+## Costs and budgets (4.3)
+
+Price every tool call — flat per call, and per LLM token when the upstream reports usage in the result's
+`_meta.usage` (`{ model, inputTokens, outputTokens }`; OpenAI `prompt_tokens` / `completion_tokens` and Anthropic
+`input_tokens` / `output_tokens` also work) — and alert or block when a budget is reached.
+
+```yaml
+costs:
+  currency: USD
+  tools:                          # first match wins ("server/tool" globs)
+    - { match: "search/*", perCall: 0.002 }
+  models:                         # per 1K tokens; globs and "*" allowed
+    gpt-4o: { input: 0.005, output: 0.015 }
+    "claude-*": { input: 0.003, output: 0.015 }
+  budgets:
+    - name: team-monthly          # everyone, pooled
+      period: month               # UTC calendar day | month
+      limit: 50
+      alertAt: [0.5, 0.8, 1]      # fractions (default [0.8, 1]); each fires once per period
+      webhook: https://hooks.example.com/budget   # POST { type: "budget.alert", budget, subject, threshold, spent, limit, … }
+    - name: per-key-daily
+      clients: ["key:*"]
+      perClient: true             # one budget per client
+      period: day
+      limit: 2
+      action: block               # refuse calls (-32013) until the period resets
+    - name: acme
+      tenants: [acme]             # per tenant
+      period: month
+      limit: 200
+```
+
+Spans carry `mcp.cost` and `gen_ai.usage.input_tokens` / `output_tokens`. Report: `GET /api/v1/costs`.
+

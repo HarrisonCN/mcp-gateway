@@ -182,6 +182,12 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
 ```
 `kind` is present for resources and prompts. Invalid parameters → `400`.
 
+### Costs and budgets (4.3)
+
+`GET /costs?by=client|tenant|server|model|tool&period=day|month|all` (operators) →
+`{ currency, period, by, totals: [{ key, cost, calls, inputTokens, outputTokens }], budgets: [{ name, subject, period, limit, spent, used, action }], alerts: [{ budget, subject, threshold, spent, limit, at, period }] }`.
+A call refused by an exhausted `action: block` budget fails with `-32013` (`data.decision: "budget"`, `resetsAt`).
+
 ### Tool chains (4.2)
 
 `GET /chains` → `{ toolPrefix, chains: [{ name, tool, description, inputSchema, steps, targets, allowed }], recent: [run summaries] }`.
