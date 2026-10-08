@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.9.0] - 2026-10-08
+
+### Added
+- **Schema v9 preview** — 8.9 reads `version: 9`, where the shared store is configured as
+  `store: { backend: memory | redis, redis, failureMode }` (replaces `state`; 9.0 adds `backend: eventlog`).
+  `GatewayConfig.state` stays the internal name; the config API round-trips `store` for v9 files.
+- **`mcp-gateway migrate --to 9`** (now the default): `version: 9` and `state` → `store` (`state.store` →
+  `store.backend`), comments kept. [Migrating to 9.0](docs/guides/migrating-to-v9.md).
+
+### Deprecated (removed in 9.0)
+- Config schema v8 (`version: 8`) and the `state` block — listed by `mcp-gateway validate`, at startup and by
+  `GET /api/v1/admin/deprecations`.
+
+### Changed
+- `init`, the desktop profile, examples, docs and Helm values use `version: 9`; data planes receive the control
+  plane's schema version (8 or 9). Pages demo lists the 8.9 deprecations.
+
+### Fixed
+- **Chaos testing (8.8):** the steady-state guard now also runs when an injected error or timeout refuses the call
+  (previously only after upstream responses, so error-only experiments never aborted). 8.8.0 was merged with a red CI
+  run caused by this and an outdated test; both are fixed here.
+
 ## [8.8.0] - 2026-10-08
 
 ### Added

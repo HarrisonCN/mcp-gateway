@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v8.9
+
+| Change | |
+|--------|---|
+| **`migrate --to 9`** | Schema v9 preview: `store` replaces `state`; schema v8 and `state` deprecated (removed in 9.0) — [guide](docs/guides/migrating-to-v9.md) |
+| **Fix** | Chaos steady-state guard now aborts error-only experiments |
+
 ## What's New in v8.8
 
 | Feature | |
