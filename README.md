@@ -586,6 +586,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v5.1
+
+| Feature | Description |
+|---------|-------------|
+| **Conformance suite** | `mcp-gateway conformance <url>` — 11 protocol checks against any Streamable HTTP MCP endpoint |
+| **Self-test** | `POST /api/v1/admin/conformance/run` checks the running gateway's own `/mcp` |
+| **Feature modules** | `GET /api/v1/admin/features`; embedders add modules with `registerFeature()` |
+
 ## What's New in v5.0
 
 ⚠ Breaking release — read [Migrating to 5.0](docs/guides/migrating-to-v5.md). On 4.9: `npx @winstonsayno/mcp-gateway@4.9 migrate --write`.

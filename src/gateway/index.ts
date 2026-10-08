@@ -17,6 +17,8 @@ import { createApiRouter, serverStateSamples, type ApiRouter, type ToolCallRespo
 import { createOpenAIRouter } from '../bridges/openai.js';
 import { createAdminRouter } from './admin.js';
 import { createEdgeControlRouter } from './edge-control.js';
+import { createFeatureRouter } from './features.js';
+import '../features/index.js';
 import { deprecate } from '../utils/deprecations.js';
 import { createA2ARouter } from '../bridges/a2a.js';
 import { ServerSupervisor } from './supervisor.js';
@@ -333,6 +335,27 @@ export class Gateway {
         record: (m) => void this.metrics.record(m),
         authenticate: this.router.authenticate,
         isOperator: (req) => this.router!.isOperator(req),
+      }),
+    );
+    // 5.1: feature modules under /api/v1/admin/<id> (src/features).
+    this.app.use(
+      '/api/v1',
+      createFeatureRouter({
+        authenticate: this.router.authenticate,
+        isOperator: (req) => this.router!.isOperator(req),
+        context: {
+          config: () => this.config,
+          tools: () => this.registry.getAllTools(),
+          invoke: (serverId, name, args, clientId) =>
+            this.invoker!.invoke({ serverId, name, kind: 'tool', method: 'tools/call', params: { name, arguments: args }, clientId: clientId ?? 'feature', via: 'rest', timeoutMs: this.registry.getServer(serverId)?.timeout }),
+          recent: (limit) => this.metrics.getRecent(limit),
+          baseUrl: () => {
+            const a = this.address();
+            if (!a) return undefined;
+            const host = a.address === '::' || a.address === '0.0.0.0' ? '127.0.0.1' : a.address.includes(':') ? `[${a.address}]` : a.address;
+            return `http://${host}:${a.port}`;
+          },
+        },
       }),
     );
     this.app.use('/api/v1', this.router);
