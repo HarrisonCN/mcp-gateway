@@ -59,6 +59,7 @@
     { id: "sanitize", since: "7.3.0", summary: "Prompt-injection defence: tool-output sanitisation (hidden Unicode, ANSI, HTML, exfil images), spotlighting, inbound / outbound blocking" },
     { id: "semantic-cache", since: "7.4.0", summary: "Semantic cache: answer paraphrased tool calls from earlier results by embedding similarity (tenant-isolated)" },
     { id: "rollouts", since: "7.5.0", summary: "Tool versioning and gradual rollout: sticky percentage canaries per server with automatic rollback" },
+    { id: "offline", since: "7.6.0", summary: "Offline desktop gateway: connectivity probe, fail-fast for remote upstreams when offline, desktop-client config import" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────

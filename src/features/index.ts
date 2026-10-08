@@ -24,5 +24,6 @@ import './console.js';
 import './sanitize.js';
 import './semantic-cache.js';
 import './rollouts.js';
+import './offline.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';
