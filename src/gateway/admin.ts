@@ -7,7 +7,7 @@
  * - `PUT  /admin/config[?dryRun=true]` — validate, diff and hot-apply a full config (`admin.configApi: true`).
  *   `<redacted>` values keep the running value, so a GET → edit → PUT round trip works.
  * - `POST /admin/reload` — re-read the config file from disk (`admin.configApi: true`; CLI-started gateways).
- * - `GET  /admin/deprecations` — deprecated config keys and runtime usages (removed in 3.0).
+ * - `GET  /admin/deprecations` — deprecated config keys and runtime usages (each with its `removedIn`).
  *
  * The config is validated with the same schema as files; `policy.files` in a body resolve against the running
  * config's directory. Changes to restart-only fields are reported with `restart: true` and not applied.

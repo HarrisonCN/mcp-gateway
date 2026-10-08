@@ -147,8 +147,8 @@ program
       console.log(`  Servers: ${config.servers.length}`);
       console.log(`  Auth: ${config.auth?.strategy ?? 'none'}`);
       if (config.deprecations?.length) {
-        console.log('\nDeprecated (removed in 3.0):');
-        for (const d of config.deprecations) console.log(`  ! ${d.message}`);
+        console.log('\nDeprecated:');
+        for (const d of config.deprecations) console.log(`  ! (removed in ${d.removedIn}) ${d.message}${(d as { detail?: string }).detail ? ` — ${(d as { detail?: string }).detail}` : ''}`);
       }
       const warnings = securityWarnings(config);
       if (warnings.length > 0) {
@@ -315,6 +315,77 @@ program
     console.log(`key:  ${key}`);
     console.log(`hash: ${hash}`);
     console.log('\nGive the key to the client; put the hash in auth.apiKeys. The key is not shown again.');
+  });
+
+// ─── migrate (3.9) ────────────────────────────────────────────────────────────
+
+program
+  .command('migrate')
+  .description('Rewrite a config file to schema v4 (keeps comments); prints the changes')
+  .option('-c, --config <path>', 'Config file (default: the usual search paths)')
+  .option('--to <version>', 'Target schema version', '4')
+  .option('--write', 'Write the file in place (a .bak copy is kept)')
+  .option('-o, --output <path>', 'Write the migrated config to this file instead')
+  .option('--check', 'Exit with code 3 when the file needs migrating (CI)')
+  .action(async (options) => {
+    const { readFile } = await import('fs/promises');
+    const { migrateConfigText } = await import('./config/migrate.js');
+    const path = resolveConfigPath(options.config);
+    if (!path) {
+      logger.error('No config file found (use -c <path>)');
+      process.exit(1);
+    }
+    try {
+      const text = await readFile(path, 'utf8');
+      const r = migrateConfigText(text, /\.json$/i.test(path) ? 'json' : 'yaml', Number(options.to));
+      if (!r.changed) {
+        console.log(`✓ ${path} is already on schema v${options.to}`);
+      } else {
+        console.log(`${path}: ${r.changes.length} change(s)`);
+        for (const c of r.changes) console.log(`  ~ ${c}`);
+      }
+      for (const n of r.notes) console.log(`  ! ${n}`);
+      if (r.changed && options.check) process.exit(3);
+      if (!r.changed) return;
+      if (options.output) {
+        await writeFile(options.output, r.text);
+        console.log(`Written to ${options.output}`);
+      } else if (options.write) {
+        await writeFile(`${path}.bak`, text);
+        await writeFile(path, r.text);
+        console.log(`Written (backup: ${path}.bak)`);
+      } else {
+        console.log('\n--- migrated config (use --write to save) ---\n');
+        process.stdout.write(r.text);
+      }
+    } catch (err) {
+      logger.error(`Migration failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+// ─── bench (3.9) ──────────────────────────────────────────────────────────────
+
+program
+  .command('bench')
+  .description('Benchmark an in-process gateway with a local echo server (REST, auth, cache, /mcp)')
+  .option('-d, --duration <seconds>', 'Seconds per scenario', '10')
+  .option('--concurrency <n>', 'Concurrent clients', '32')
+  .option('-s, --scenario <list>', 'Comma-separated: rest,rest-auth,cache,mcp', 'rest,rest-auth,cache,mcp')
+  .option('--json', 'Print JSON')
+  .action(async (options) => {
+    const { runBenchmark, benchMarkdown, BENCH_SCENARIOS } = await import('./bench/index.js');
+    const scenarios = String(options.scenario).split(',').map((x: string) => x.trim()).filter(Boolean);
+    const bad = scenarios.filter((x: string) => !(BENCH_SCENARIOS as string[]).includes(x));
+    const duration = Number(options.duration);
+    const concurrency = Number(options.concurrency);
+    if (bad.length || !(duration > 0) || !Number.isInteger(concurrency) || concurrency < 1) {
+      logger.error(`Invalid options${bad.length ? `: unknown scenario(s) ${bad.join(', ')}` : ''}`);
+      process.exit(1);
+    }
+    logger.setLevel('error');
+    const report = await runBenchmark({ durationMs: duration * 1000, concurrency, scenarios: scenarios as never });
+    console.log(options.json ? JSON.stringify(report, null, 2) : benchMarkdown(report));
   });
 
 program.parse(process.argv);
