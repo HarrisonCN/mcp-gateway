@@ -388,6 +388,49 @@ program
     console.log(options.json ? JSON.stringify(report, null, 2) : benchMarkdown(report));
   });
 
+// ─── plugin signing (5.4) ─────────────────────────────────────────────────────
+
+const pluginCmd = program.command('plugin').description('Signed plugins: keygen, sign, verify');
+pluginCmd
+  .command('keygen')
+  .description('Generate an Ed25519 signing key pair (PEM files)')
+  .option('-o, --out <prefix>', 'Output prefix (writes <prefix>.key and <prefix>.pub)', 'plugin-signing')
+  .action(async (options) => {
+    const { generateSigningKey } = await import('./plugins/trust.js');
+    const { writeFileSync } = await import('fs');
+    const k = generateSigningKey();
+    writeFileSync(`${options.out}.key`, k.privateKey, { mode: 0o600 });
+    writeFileSync(`${options.out}.pub`, k.publicKey);
+    console.log(`Wrote ${options.out}.key (keep secret) and ${options.out}.pub (add to pluginTrust.keys)`);
+  });
+pluginCmd
+  .command('sign <file>')
+  .description('Sign a plugin file (writes <file>.sig)')
+  .requiredOption('-k, --key <file>', 'Private key PEM')
+  .requiredOption('--key-id <id>', 'Key id recorded in the signature (matches pluginTrust.keys[].id)')
+  .action(async (file: string, options) => {
+    const { signArtifact } = await import('./plugins/trust.js');
+    const { readFileSync, writeFileSync } = await import('fs');
+    const sig = signArtifact(readFileSync(file), readFileSync(options.key, 'utf8'), options.keyId);
+    writeFileSync(`${file}.sig`, JSON.stringify(sig, null, 2) + '\n');
+    console.log(`Signed ${file} (sha256 ${sig.sha256}) → ${file}.sig`);
+  });
+pluginCmd
+  .command('verify <file>')
+  .description('Verify a plugin file against its .sig and a public key')
+  .requiredOption('-p, --pub <file>', 'Public key PEM')
+  .requiredOption('--key-id <id>', 'Key id of that public key')
+  .option('-s, --sig <file>', 'Signature file (default <file>.sig)')
+  .action(async (file: string, options) => {
+    const { verifyArtifact } = await import('./plugins/trust.js');
+    const { readFileSync } = await import('fs');
+    let sig: unknown;
+    try { sig = JSON.parse(readFileSync(options.sig ?? `${file}.sig`, 'utf8')); } catch (e) { logger.error(`Cannot read signature: ${(e as Error).message}`); process.exit(1); }
+    const r = verifyArtifact(readFileSync(file), sig, [{ id: options.keyId, publicKey: readFileSync(options.pub, 'utf8') }]);
+    if (!r.ok) { logger.error(`✗ ${file}: ${r.reason}`); process.exit(1); }
+    console.log(`✓ ${file} signed by ${r.keyId}`);
+  });
+
 // ─── conformance (5.1) ────────────────────────────────────────────────────────
 
 program

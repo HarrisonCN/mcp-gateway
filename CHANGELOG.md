@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.4.0] - 2026-10-08
+
+### Added
+- **Signed plugins** — Ed25519 signatures (`<plugin>.sig`: `{ keyId, sha256, signature }`) checked at load against
+  `pluginTrust: { keys[], requireSigned }`; tampered, unknown-key or (with `requireSigned`) unsigned plugins are
+  refused. `plugins[].signature` overrides the signature path. Hot reloads.
+- **CLI** — `mcp-gateway plugin keygen | sign | verify`.
+- **Plugin marketplace** — `marketplace: { dir, indexes[], maxBytes }`; `GET /admin/marketplace` browses indexes
+  (`trusted` flag), `POST /admin/marketplace/install` downloads, checks size + sha256 + signature and writes the
+  plugin and its `.sig`, returning the `plugins:` entry to add. See [docs/guides/plugins.md](docs/guides/plugins.md#signed-plugins-and-the-marketplace-54).
+- Library: `generateSigningKey`, `signArtifact`, `verifyArtifact`, `PluginTrustSchema`, `MarketplaceSchema`,
+  `parseMarketplaceIndex`, `installMarketplaceEntry`, `compareVersions`.
+- Pages demo: marketplace list and install.
+
 ## [5.3.0] - 2026-10-08
 
 ### Added

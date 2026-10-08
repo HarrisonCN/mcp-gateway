@@ -13,6 +13,8 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { RegionsSchema } from '../features/regions.js';
 import { EdgeFleetSchema } from '../features/edge-fleet.js';
+import { PluginTrustSchema } from '../plugins/trust.js';
+import { MarketplaceSchema } from '../features/marketplace.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
@@ -476,6 +478,8 @@ const GatewayConfigSchema = z.object({
   admin: z.object({ configApi: z.boolean().optional() }).strict().optional(),
   regions: RegionsSchema.optional(),
   edgeFleet: EdgeFleetSchema.optional(),
+  pluginTrust: PluginTrustSchema.optional(),
+  marketplace: MarketplaceSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   dashboard: z.object({ enabled: z.boolean().default(true) }).optional(),
@@ -884,6 +888,7 @@ const GatewayConfigSchema = z.object({
         .object({
           module: z.string().min(1).optional(),
           wasm: z.string().min(1).optional(),
+          signature: z.string().min(1).optional(),
           name: z.string().min(1).optional(),
           enabled: z.boolean().optional(),
           options: z.record(z.unknown()).optional(),

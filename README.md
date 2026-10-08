@@ -586,6 +586,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v5.4
+
+| Feature | Description |
+|---------|-------------|
+| **Signed plugins** | Ed25519 `.sig` files verified at load; `pluginTrust.requireSigned` refuses unsigned code |
+| **Plugin marketplace** | Browse signed indexes and install with sha256 + signature checks |
+| **`mcp-gateway plugin`** | `keygen`, `sign`, `verify` |
+
 ## What's New in v5.3
 
 | Feature | Description |

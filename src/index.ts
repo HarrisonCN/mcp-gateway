@@ -131,6 +131,10 @@ export { RegionMesh, RegionsSchema, resolveRegions } from './features/regions.js
 export type { RegionsConfig, ReplicatedEntry, PeerState as RegionPeerState } from './features/regions.js';
 export { EdgeFleetSchema, fleetView, selectNodes, pushToNodes } from './features/edge-fleet.js';
 export type { EdgeFleetConfig, FleetNode, Drift as EdgeDrift, PushResult as EdgePushResult } from './features/edge-fleet.js';
+export { PluginTrustSchema, generateSigningKey, signArtifact, verifyArtifact } from './plugins/trust.js';
+export type { PluginTrustConfig, PluginSignature } from './plugins/trust.js';
+export { MarketplaceSchema, parseIndex as parseMarketplaceIndex, installEntry as installMarketplaceEntry, compareVersions } from './features/marketplace.js';
+export type { MarketplaceConfig, MarketplaceEntry } from './features/marketplace.js';
 export type {
   GatewayConfig,
   McpServerConfig,

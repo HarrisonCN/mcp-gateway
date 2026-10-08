@@ -37,6 +37,8 @@
 import { DEPRECATIONS, deprecate } from '../utils/deprecations.js';
 import { isAbsolute, resolve } from 'path';
 import { pathToFileURL } from 'url';
+import { readFile } from 'fs/promises';
+import { PluginTrustSchema, verifyArtifact, type PluginTrustConfig } from './trust.js';
 import type { NextFunction, Request, Response } from 'express';
 import type { PluginConfig, ProxyResponse } from '../utils/types.js';
 import { logger, type Logger } from '../utils/logger.js';
@@ -215,8 +217,35 @@ async function instantiate(src: unknown, ctx: PluginContext, label: string): Pro
   return value;
 }
 
+/** 5.4: verify a plugin's `.sig` against `pluginTrust` (throws when it must not load). */
+export async function checkSignature(cfg: PluginConfig, baseDir: string, trust?: PluginTrustConfig): Promise<string | undefined> {
+  const t = PluginTrustSchema.parse(trust ?? {});
+  const spec = cfg.wasm ?? cfg.module;
+  if (!spec || (!t.keys.length && !t.requireSigned)) return undefined;
+  const label = cfg.name ?? spec;
+  const isPath = !!cfg.wasm || spec.startsWith('.') || isAbsolute(spec);
+  if (!isPath) {
+    if (t.requireSigned) throw new Error(`Plugin "${label}": pluginTrust.requireSigned refuses package-name modules — install a signed file (mcp-gateway plugin verify)`);
+    return undefined;
+  }
+  const file = resolve(baseDir, spec);
+  const sigFile = cfg.signature ? resolve(baseDir, cfg.signature) : `${file}.sig`;
+  let sig: unknown;
+  try {
+    sig = JSON.parse(await readFile(sigFile, 'utf8'));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error(`Plugin "${label}": unreadable signature ${sigFile}: ${(e as Error).message}`);
+    if (t.requireSigned) throw new Error(`Plugin "${label}" is not signed (no ${sigFile}) and pluginTrust.requireSigned is on`);
+    return undefined;
+  }
+  const r = verifyArtifact(await readFile(file), sig, t.keys);
+  if (!r.ok) throw new Error(`Plugin "${label}" failed signature verification: ${r.reason}`);
+  return r.keyId;
+}
+
 /** Load one configured plugin (`module` is a path relative to `baseDir`, or a package name). */
-export async function loadPlugin(cfg: PluginConfig, baseDir = process.cwd()): Promise<GatewayPlugin> {
+export async function loadPlugin(cfg: PluginConfig, baseDir = process.cwd(), trust?: PluginTrustConfig): Promise<GatewayPlugin> {
+  await checkSignature(cfg, baseDir, trust);
   if (cfg.wasm) {
     const { loadWasmPlugin } = await import('./wasm.js');
     return loadWasmPlugin({ wasm: cfg.wasm, name: cfg.name, isolation: cfg.isolation, limits: cfg.limits }, baseDir);
@@ -308,12 +337,12 @@ export class PluginHost {
   }
 
   /** Build plugin instances from config entries plus embedder-supplied sources. */
-  static async build(configs: PluginConfig[] | undefined, extra: PluginSource[] = [], baseDir?: string): Promise<GatewayPlugin[]> {
+  static async build(configs: PluginConfig[] | undefined, extra: PluginSource[] = [], baseDir?: string, trust?: PluginTrustConfig): Promise<GatewayPlugin[]> {
     const out: GatewayPlugin[] = [];
     for (const src of extra) out.push(await instantiate(src, contextFor({}), 'option'));
     for (const cfg of configs ?? []) {
       if (cfg.enabled === false) continue;
-      out.push(await loadPlugin(cfg, baseDir));
+      out.push(await loadPlugin(cfg, baseDir, trust));
     }
     const names = new Set<string>();
     for (const p of out) {

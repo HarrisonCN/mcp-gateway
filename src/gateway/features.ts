@@ -40,7 +40,7 @@ export interface FeatureModule {
 const registry: FeatureModule[] = [];
 
 /** Top-level config sections owned by feature modules; all hot reload (5.2+). */
-export const FEATURE_CONFIG_KEYS = ['regions', 'edgeFleet'] as const satisfies ReadonlyArray<keyof GatewayConfig>;
+export const FEATURE_CONFIG_KEYS = ['regions', 'edgeFleet', 'pluginTrust', 'marketplace'] as const satisfies ReadonlyArray<keyof GatewayConfig>;
 
 /** Copy the feature-owned config sections of `next` (for hot reload). */
 export function featureSections(next: GatewayConfig): Partial<GatewayConfig> {
