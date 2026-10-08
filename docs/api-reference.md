@@ -375,6 +375,10 @@ curl -N -H "Authorization: Bearer $KEY" http://localhost:4000/api/v1/events
 
 ## Admin API (`/api/v1/admin`)
 
+The dashboard's **Config** tab (4.6) is a graphical client of these endpoints: it loads `GET /admin/config`, checks
+`PUT /admin/config?dryRun=true` to decide whether it may apply (403 → read-only), and uses `POST /admin/config/validate`,
+`POST /admin/config/diff` and `PUT /admin/config`.
+
 Operators only. Writes need `admin.configApi: true`. See [Declarative config](guides/declarative-config.md).
 
 | Method | Path | Description |

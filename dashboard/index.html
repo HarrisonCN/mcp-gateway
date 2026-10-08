@@ -519,6 +519,19 @@ tbody tr:hover { background: var(--surface-2); }
     </div>
   </section>
 
+  <!-- Config editor (4.6) -->
+  <section class="view" id="view-config" role="tabpanel" aria-labelledby="tab-config">
+    <div class="page-head"><div><h1 data-i18n="cfTitle">Configuration</h1><p data-i18n="cfSub">Edit the running config</p></div>
+      <div class="row"><button class="btn" id="cfValidate" type="button" data-i18n="cfValidate">Validate</button><button class="btn" id="cfDiff" type="button" data-i18n="cfDiff">Preview changes</button><button class="btn primary" id="cfApply" type="button" data-i18n="cfApply">Apply</button></div></div>
+    <p class="badge" id="cfLocked" hidden data-i18n="cfLocked">Read-only</p>
+    <div class="card" id="cfResult" hidden aria-live="polite"></div>
+    <div class="card" style="margin-top:14px"><h2 data-i18n="cfGeneral">General</h2><div class="filters" id="cfGeneral"></div></div>
+    <div class="card" style="margin-top:14px"><h2 data-i18n="cfServers">Servers</h2><div class="table-wrap"><table><thead><tr><th>id</th><th>transport</th><th>url / command</th><th>timeout</th><th data-i18n="cfEnabled">Enabled</th><th></th></tr></thead><tbody id="cfServers"></tbody></table></div>
+      <div class="row" style="margin-top:10px"><button class="btn sm" id="cfAdd" type="button" data-i18n="cfAddServer">Add server</button></div></div>
+    <div class="card" style="margin-top:14px"><h2 data-i18n="cfRaw">Raw JSON</h2><textarea class="input mono" id="cfJson" rows="16" spellcheck="false" style="width:100%;resize:vertical"></textarea>
+      <div class="row" style="margin-top:10px"><button class="btn sm" id="cfUseJson" type="button" data-i18n="cfUseJson">Use JSON</button></div></div>
+  </section>
+
   <!-- Connect -->
   <section class="view" id="view-connect" role="tabpanel" aria-labelledby="tab-connect">
     <div class="page-head"><div><h1 data-i18n="cnTitle">Connect a client</h1><p data-i18n="cnSub">Point any MCP client at this gateway</p></div></div>
@@ -611,7 +624,8 @@ const I18N = {
   en: {
     skip: 'Skip to content', guide: 'Guide', apiKey: 'API key', theme: 'Toggle theme', keyPh: 'API key or JWT',
     remember: 'Remember on this device', saveConnect: 'Save & connect', clear: 'Clear', close: 'Close',
-    tabOverview: 'Overview', tabServers: 'Servers', tabPlayground: 'Playground', tabHistory: 'History', tabConnect: 'Connect',
+    tabOverview: 'Overview', tabServers: 'Servers', tabPlayground: 'Playground', tabHistory: 'History', tabConfig: 'Config', tabConnect: 'Connect',
+    cfTitle: 'Configuration', cfSub: 'Edit the running config — validated, diffed and hot-reloaded', cfGeneral: 'General', cfServers: 'Servers', cfRaw: 'Raw JSON (schema v4)', cfValidate: 'Validate', cfDiff: 'Preview changes', cfApply: 'Apply', cfAddServer: 'Add server', cfRemove: 'Remove', cfValid: 'Configuration is valid', cfNoChanges: 'No changes', cfApplied: 'Applied — hot reloaded', cfLocked: 'Read-only: set admin.configApi: true to apply changes from the dashboard', cfBadJson: 'Invalid JSON', cfUseJson: 'Use JSON', cfConfirm: 'Apply these changes to the running gateway?', cfRate: 'Rate limit (requests / window s)', cfNaming: 'Tool naming', cfLog: 'Log level', cfEnabled: 'Enabled',
     ovTitle: 'Overview', ovSub: 'Live traffic through the gateway', window: 'Time window',
     reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server', approvals: 'Pending approvals', tenants: 'Workspaces', rpTitle: 'Request details', replay: 'Replay', replayOf: 'replay of', rpArgs: 'Arguments', rpResult: 'Result', rpReplayed: 'Replay', rpSame: 'identical', rpDifferent: 'different', rpBadJson: 'Arguments must be valid JSON', rpHint: 'Edit the arguments and replay through the gateway', rpTruncated: 'Payload too large to capture; pass arguments to replay', rpOff: 'Not captured. Turn on replay.enabled to inspect and replay calls.', quotas: 'Quotas', lb: 'Load balancing', cache: 'Result cache', purge: 'Purge', purged: 'Purged {n} cache entries', rules: 'rules', noUsage: 'No usage in the current period', ejected: 'ejected', entries: 'Entries', hitRate: 'Hit rate', hits: 'Hits', misses: 'Misses', deduped: 'Deduplicated', evictions: 'Evictions', catalog: 'Add a server', add: 'Add', added: 'Server added', installOff: 'read-only (catalog.install is off)', installedAs: 'installed as', role: 'Role', members: 'members', roleSaved: 'Role updated', approve: 'Approve', deny: 'Deny', approved: 'Approved', denied: 'Denied', expires: 'expires',
     errRate: 'Error rate', liveStream: 'Live requests', pause: 'Pause', health: 'Server health',
@@ -656,7 +670,8 @@ const I18N = {
   zh: {
     skip: '跳到内容', guide: '新手引导', apiKey: 'API 密钥', theme: '切换主题', keyPh: 'API 密钥或 JWT',
     remember: '在此设备上记住', saveConnect: '保存并连接', clear: '清除', close: '关闭',
-    tabOverview: '总览', tabServers: '服务器', tabPlayground: '调试台', tabHistory: '历史', tabConnect: '接入',
+    tabOverview: '总览', tabServers: '服务器', tabPlayground: '调试台', tabHistory: '历史', tabConfig: '配置', tabConnect: '接入',
+    cfTitle: '配置', cfSub: '编辑运行中的配置——校验、对比差异并热加载', cfGeneral: '常规', cfServers: '服务器', cfRaw: '原始 JSON（schema v4）', cfValidate: '校验', cfDiff: '预览变更', cfApply: '应用', cfAddServer: '添加服务器', cfRemove: '移除', cfValid: '配置有效', cfNoChanges: '没有变更', cfApplied: '已应用（热加载）', cfLocked: '只读：设置 admin.configApi: true 后才能在仪表盘中应用变更', cfBadJson: 'JSON 无效', cfUseJson: '使用 JSON', cfConfirm: '将这些变更应用到运行中的网关？', cfRate: '限流（请求数 / 窗口秒）', cfNaming: '工具命名', cfLog: '日志级别', cfEnabled: '启用',
     ovTitle: '总览', ovSub: '网关实时流量', window: '时间范围',
     reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用', approvals: '待审批调用', tenants: '工作区', rpTitle: '请求详情', replay: '重放', replayOf: '重放自', rpArgs: '参数', rpResult: '结果', rpReplayed: '重放结果', rpSame: '一致', rpDifferent: '不一致', rpBadJson: '参数必须是合法 JSON', rpHint: '可修改参数后经网关重放', rpTruncated: '负载过大未被捕获；重放需手动填写参数', rpOff: '未捕获。开启 replay.enabled 后可查看并重放调用。', quotas: '配额', lb: '负载均衡', cache: '结果缓存', purge: '清空', purged: '已清除 {n} 条缓存', rules: '条规则', noUsage: '当前周期暂无用量', ejected: '已摘除', entries: '条目', hitRate: '命中率', hits: '命中', misses: '未命中', deduped: '合并请求', evictions: '淘汰', catalog: '添加服务器', add: '添加', added: '已添加服务器', installOff: '只读（未开启 catalog.install）', installedAs: '已安装为', role: '角色', members: '成员', roleSaved: '角色已更新', approve: '批准', deny: '拒绝', approved: '已批准', denied: '已拒绝', expires: '到期',
     errRate: '错误率', liveStream: '实时请求', pause: '暂停', health: '服务器健康',
@@ -736,6 +751,7 @@ const ICON = {
   servers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/></svg>',
   playground: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M7 4v16l13-8z"/></svg>',
   history: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>',
+  config: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
   connect: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 15l6-6M10.5 6.5l1.8-1.8a4 4 0 0 1 5.7 5.7l-1.8 1.8M13.5 17.5l-1.8 1.8a4 4 0 0 1-5.7-5.7l1.8-1.8"/></svg>',
   copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>',
@@ -836,7 +852,7 @@ const state = {
 };
 
 // ─── Navigation ──────────────────────────────────────────────────────────────
-const VIEWS = ['overview', 'servers', 'playground', 'history', 'connect'];
+const VIEWS = ['overview', 'servers', 'playground', 'history', 'config', 'connect'];
 function buildNav() {
   const tabs = $('#tabs'), bottom = $('#bottomNav');
   tabs.querySelectorAll('.tab').forEach((b) => b.remove());
@@ -886,11 +902,96 @@ function go(view, push = true) {
   if (view === 'servers') loadServers();
   if (view === 'playground') renderPlayground($('#pgMain'), 'main');
   if (view === 'history') loadHistory();
+  if (view === 'config') loadConfigEditor();
   if (view === 'connect') { renderSnippets($('#connectCard'), 'main'); loadSecurity(); }
   if (view === 'overview') requestAnimationFrame(renderCharts);
 }
 window.addEventListener('hashchange', () => go(location.hash.slice(1), false));
 window.addEventListener('resize', () => { markNav(); scheduleCharts(); });
+
+// ─── Config editor (4.6) ─────────────────────────────────────────────────────
+const cf = { cfg: null, locked: false };
+async function loadConfigEditor() {
+  try {
+    const r = await api('/admin/config');
+    cf.cfg = r.config;
+    try { await api('/admin/config?dryRun=true', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(cf.cfg) }); cf.locked = false; } catch (e) { cf.locked = e.status === 403; }
+    renderConfigEditor();
+  } catch (e) { cfShow([esc(e.message)], true); }
+}
+function cfShow(lines, bad) {
+  const box = $('#cfResult');
+  box.hidden = false;
+  box.innerHTML = `<div class="badge" style="color:var(--${bad ? 'bad' : 'good'})">${bad ? '✕' : '✓'}</div><ul class="sec-list">${lines.map((l) => `<li>${l}</li>`).join('')}</ul>`;
+}
+function cfField(id, label, html) { return `<div class="field"><label for="${id}">${esc(label)}</label>${html}</div>`; }
+function renderConfigEditor() {
+  const c = cf.cfg || {};
+  $('#cfLocked').hidden = !cf.locked;
+  $('#cfApply').disabled = cf.locked;
+  const opt = (vals, cur) => vals.map((v) => `<option${v === cur ? ' selected' : ''}>${esc(v)}</option>`).join('');
+  $('#cfGeneral').innerHTML =
+    cfField('cf-log', t('cfLog'), `<select class="input" id="cf-log" data-cf="logLevel">${opt(['debug', 'info', 'warn', 'error'], c.logLevel || 'info')}</select>`) +
+    cfField('cf-naming', t('cfNaming'), `<select class="input" id="cf-naming" data-cf="mcp.toolNaming">${opt(['auto', 'prefix'], (c.mcp && c.mcp.toolNaming) || 'auto')}</select>`) +
+    cfField('cf-rl', t('cfRate'), `<div class="row"><input class="input" id="cf-rl" type="number" min="1" data-cf="rateLimit.limit" data-num value="${esc(String((c.rateLimit && c.rateLimit.limit) ?? ''))}"><input class="input" type="number" min="1" aria-label="window seconds" data-cf="rateLimit.windowSeconds" data-num value="${esc(String((c.rateLimit && c.rateLimit.windowSeconds) ?? ''))}"></div>`);
+  const servers = c.servers || [];
+  $('#cfServers').innerHTML = servers.map((s, i) => `<tr data-i="${i}">
+    <td><input class="input mono" aria-label="id" data-srv="id" value="${esc(s.id || '')}"></td>
+    <td><select class="input" aria-label="transport" data-srv="transport">${opt(['stdio', 'streamable-http', 'sse', 'websocket'], s.transport || 'stdio')}</select></td>
+    <td><input class="input mono" aria-label="url or command" data-srv="${s.transport === 'stdio' ? 'command' : 'url'}" value="${esc(s.transport === 'stdio' ? s.command || '' : s.url || '')}"></td>
+    <td><input class="input" type="number" min="1" aria-label="timeout" data-srv="timeout" data-num value="${esc(String(s.timeout ?? ''))}"></td>
+    <td><input type="checkbox" aria-label="${esc(t('cfEnabled'))}" data-srv="enabled" ${s.enabled === false ? '' : 'checked'}></td>
+    <td><button class="btn ghost sm" type="button" data-cf-remove="${i}">${esc(t('cfRemove'))}</button></td></tr>`).join('');
+  $('#cfJson').value = JSON.stringify(c, null, 2);
+}
+function cfSet(obj, path, value) {
+  const parts = path.split('.');
+  let o = obj;
+  for (const p of parts.slice(0, -1)) o = o[p] = o[p] && typeof o[p] === 'object' ? o[p] : {};
+  if (value === undefined) delete o[parts.at(-1)]; else o[parts.at(-1)] = value;
+}
+function cfValue(el) {
+  if (el.type === 'checkbox') return el.checked;
+  if (el.hasAttribute('data-num')) return el.value === '' ? undefined : Number(el.value);
+  return el.value;
+}
+document.addEventListener('change', (e) => {
+  const el = e.target;
+  if (!cf.cfg || !(el instanceof HTMLElement) || !el.closest('#view-config')) return;
+  if (el.dataset.cf) cfSet(cf.cfg, el.dataset.cf, cfValue(el));
+  const row = el.closest('tr[data-i]');
+  if (row && el.dataset.srv) {
+    const s = cf.cfg.servers[Number(row.dataset.i)];
+    const v = cfValue(el);
+    if (el.dataset.srv === 'enabled') { if (v) delete s.enabled; else s.enabled = false; } else if (v === undefined || v === '') delete s[el.dataset.srv]; else s[el.dataset.srv] = v;
+    if (el.dataset.srv === 'transport') { renderConfigEditor(); return; }
+  }
+  if (el.id !== 'cfJson') $('#cfJson').value = JSON.stringify(cf.cfg, null, 2);
+});
+document.addEventListener('click', async (e) => {
+  const b = e.target instanceof Element ? e.target.closest('button') : null;
+  if (!b || !b.closest('#view-config') || !cf.cfg) return;
+  if (b.dataset.cfRemove !== undefined) { cf.cfg.servers.splice(Number(b.dataset.cfRemove), 1); renderConfigEditor(); return; }
+  if (b.id === 'cfAdd') { (cf.cfg.servers = cf.cfg.servers || []).push({ id: `server-${cf.cfg.servers.length + 1}`, name: 'New server', transport: 'streamable-http', url: 'https://' }); renderConfigEditor(); return; }
+  if (b.id === 'cfUseJson') { try { cf.cfg = JSON.parse($('#cfJson').value); renderConfigEditor(); } catch { cfShow([esc(t('cfBadJson'))], true); } return; }
+  const json = { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(cf.cfg) };
+  try {
+    if (b.id === 'cfValidate') {
+      const r = await api('/admin/config/validate', json);
+      return cfShow(r.valid ? [esc(t('cfValid'))] : r.errors.map(esc), !r.valid);
+    }
+    const r = await api('/admin/config/diff', json);
+    const lines = (r.changes || []).map((c) => `<code>${esc(c.change)}</code> ${esc(c.path)}`);
+    if (b.id === 'cfDiff') return cfShow(lines.length ? lines : [esc(t('cfNoChanges'))], false);
+    if (b.id === 'cfApply') {
+      if (!lines.length) return cfShow([esc(t('cfNoChanges'))], false);
+      if (!confirm(t('cfConfirm'))) return;
+      const done = await api('/admin/config', { ...json, method: 'PUT' });
+      cfShow([esc(t(done.applied ? 'cfApplied' : 'cfNoChanges')), ...lines], false);
+      loadConfigEditor();
+    }
+  } catch (err) { cfShow([esc(err.message), ...((err.body && err.body.errors) || []).map(esc)], true); }
+});
 
 // ─── Live connection (SSE over fetch → fallback polling) ─────────────────────
 let sseAbort = null, pollTimer = null, sseRetry = 0, statsTimer = null, statsPending = false;

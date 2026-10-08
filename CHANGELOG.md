@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.6.0] - 2026-10-08
+
+### Added
+- **Graphical config editor** in the dashboard (new **Config** tab): edit general settings (log level, tool naming,
+  rate limit) and the server list (add / remove, transport, URL or command, timeout, enabled) in forms, or the full
+  schema-v4 JSON; **Validate**, **Preview changes** (diff) and **Apply** (hot reload, with confirmation) use the admin
+  API (`/api/v1/admin/config…`). Secrets stay `<redacted>` and keep their running values.
+- The tab is read-only (Apply disabled, with a hint) unless `admin.configApi: true`; operators only.
+- Bilingual (English / 中文), no inline handlers — the dashboard CSP (hashed inline script) is unchanged.
+- The GitHub Pages demo has a simulated config backend (validate / diff / dry run / apply).
+
 ## [4.5.0] - 2026-10-08
 
 ### Added

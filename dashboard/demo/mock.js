@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '4.5.0';
+  const VERSION = '4.6.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -19,6 +19,18 @@
     { id: 'research', name: 'Research', role: 'operator', servers: ['search*'], serverIds: [], members: [{ client: 'jwt:bob', role: 'admin' }] },
   ];
   // One held tool call so the approvals card can be tried out.
+  let demoConfig = {
+    version: 4, port: 4000, logLevel: 'info',
+    auth: { strategy: 'api-key', apiKeys: ['<redacted>', { key: '<redacted>', name: 'aura', scope: { servers: ['github', 'fs-*'] } }] },
+    rateLimit: { limit: 120, windowSeconds: 60 },
+    mcp: { toolNaming: 'auto' },
+    admin: { configApi: true },
+    servers: [
+      { id: 'github', name: 'GitHub', transport: 'streamable-http', url: 'https://api.githubcopilot.com/mcp/', timeout: 30000 },
+      { id: 'filesystem', name: 'Filesystem', transport: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '/data'] },
+      { id: 'search', name: 'Search', transport: 'streamable-http', url: 'https://search.internal:8443/mcp', tls: { spiffeId: 'spiffe://example.org/ns/tools/*' } },
+    ],
+  };
   let demoApprovals = [{ id: 'demo-approval-1', status: 'pending', serverId: 'github', tool: 'create_issue', clientId: 'key:aura', via: 'mcp', rule: 'review-github-writes', arguments: { repo: 'HarrisonCN/aura', title: 'Crash on launch' }, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600e3).toISOString() }];
   const demoCache = { entries: 42, maxEntries: 1000, hits: 318, misses: 127, deduped: 9, evictions: 0 };
   const rnd = (a, b) => a + Math.random() * (b - a);
@@ -417,6 +429,32 @@
       identity: { spiffeId: 'spiffe://example.org/ns/gateway/sa/mcp-gateway', subject: 'O=SPIRE', notAfter: iso(Date.now() + 40 * 60000), fingerprint: '4B:1F:…:9C', expiresInHours: 1, loadedAt: iso(Date.now() - 20 * 60000), rotations: 17 },
       peers: [{ server: 'search', spiffeIds: ['spiffe://example.org/ns/tools/sa/search'], at: iso(Date.now() - 30000) }],
       servers: [{ id: 'github', mtls: false, spiffeId: null }, { id: 'search', mtls: true, spiffeId: 'spiffe://example.org/ns/tools/*' }] });
+    if (p === '/admin/config' && method === 'GET') return json({ version: VERSION, config: demoConfig });
+    if (p.startsWith('/admin/config')) {
+      let body = {};
+      try { body = JSON.parse(init?.body || '{}'); } catch { return json({ error: 'Bad Request', message: 'Invalid JSON' }, 400); }
+      const errors = [];
+      if (!Array.isArray(body.servers)) errors.push('servers: Expected array');
+      for (const [i, s] of (body.servers || []).entries()) {
+        if (!s.id || !/^[A-Za-z0-9._-]+$/.test(s.id)) errors.push(`servers.${i}.id: letters, digits, ".", "_" or "-"`);
+        if (s.transport !== 'stdio' && !/^https?:\/\/[^/]+/.test(s.url || '')) errors.push(`servers.${i}.url: Invalid url`);
+      }
+      if (p === '/admin/config/validate') return json({ valid: !errors.length, errors });
+      if (errors.length) return json({ error: 'Bad Request', message: 'Invalid configuration', errors }, 400);
+      const changes = [];
+      const keys = new Set([...Object.keys(demoConfig), ...Object.keys(body)]);
+      for (const k of keys) {
+        const a = JSON.stringify(demoConfig[k]), b = JSON.stringify(body[k]);
+        if (a !== b) changes.push({ path: k, change: a === undefined ? 'added' : b === undefined ? 'removed' : 'changed' });
+      }
+      if (p === '/admin/config/diff') return json({ changes });
+      if (method === 'PUT') {
+        await sleep(120);
+        if (q.get('dryRun') === 'true' || !changes.length) return json({ applied: false, changes });
+        demoConfig = JSON.parse(JSON.stringify(body));
+        return json({ applied: true, changes });
+      }
+    }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).
     if (p === '/admin/deprecations') return json({ runtime: [
