@@ -716,14 +716,27 @@ export async function loadPolicyFiles(policy: ToolPolicyConfig, baseDir: string)
     if (!parsed.success) {
       throw new Error(`Invalid configuration: policy file ${f}:\n${parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n')}`);
     }
-    rules.push(...(parsed.data.rules as PolicyRule[]).map((r, i) => ({ ...r, name: r.name ?? `${f}#${i + 1}` })));
-    tests.push(...(parsed.data.tests ?? []));
+    // Idempotent: a policy that already holds this file's rules (a running config sent back through
+    // GET → PUT /admin/config, or a reload) must not end up with them twice.
+    const fileRules = (parsed.data.rules as PolicyRule[]).map((r, i) => ({ ...r, name: r.name ?? `${f}#${i + 1}` }));
+    const fileTests = parsed.data.tests ?? [];
+    dropEqual(rules, fileRules);
+    dropEqual(tests, fileTests);
+    rules.push(...fileRules);
+    tests.push(...fileTests);
     if (parsed.data.default) fileDefault = parsed.data.default;
   }
   const merged: ToolPolicyConfig = { ...policy, rules, tests, default: policy.default ?? fileDefault };
   const bad = invalidPolicy(merged);
   if (bad) throw new Error(`Invalid configuration: ${bad}`);
   return merged;
+}
+
+/** Remove from `list` every entry structurally equal to one in `incoming`. */
+function dropEqual<T>(list: T[], incoming: T[]): void {
+  const key = (v: unknown) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
+  const seen = new Set(incoming.map(key));
+  for (let i = list.length - 1; i >= 0; i--) if (seen.has(key(list[i]))) list.splice(i, 1);
 }
 
 async function readConfigFile(filePath: string): Promise<unknown> {

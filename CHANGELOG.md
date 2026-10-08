@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-10-08
+
+Patch release: bug sweep of the 1.3 – 3.0 features and the dashboard demo.
+
+### Fixed
+- **Dashboard:** pending approvals, workspaces and the server catalog were laid out inside the 8px status-dot
+  column of the list grid (stacked meta, stretched Approve button, unusable role selects), on desktop and at
+  mobile width. They now use a row layout that wraps cleanly at ~390px.
+- **Dashboard:** the workspaces card threw when a tenant had neither `serverIds` nor `servers`.
+- **Dashboard:** quotas, load-balancing groups and the result cache (1.8 / 2.1 / 2.2) had no UI; the Servers view
+  now shows them (operator views, hidden when the endpoint is unavailable), with a cache Purge button.
+- **Demo (GitHub Pages):** the simulated backend reported v1.2.0 and had no `/quotas`, `/usage`, `/cache`,
+  `/load-balancing`, `/policy`, `/servers/:id` or `/admin/deprecations`; the single demo approval never came back
+  after approve / deny. All added; the version now follows the package.
+- **Redis state store:** a failed `AUTH` / `SELECT` left the half-initialised connection in place, so the next
+  command ran unauthenticated / on the wrong database instead of re-authenticating.
+- **Hot reload:** if the config file was briefly missing (atomic save, delete + recreate) the watcher failed to
+  re-attach once and hot reload stopped for good. It now retries and reloads when the file is back.
+- **Policy files:** merging `policy.files` was not idempotent, so a `GET → PUT /admin/config` round trip (or a
+  diff against it) duplicated every file rule and test. File rules already present are now replaced, not appended.
+- **OpenAI bridge:** an unreachable or timed-out `openai.upstream` returned `500 Internal Server Error`; it now
+  returns `502 Bad Gateway` / `504 Gateway Timeout`.
+
+### Tests
+- Regression tests for each fix, plus `test/dashboard.test.ts` (i18n key parity, demo backend endpoints and
+  version, row layout).
+
 ## [3.0.0] - 2026-10-07
 
 **Breaking release.** Config schema v3, the 2.9 deprecations removed, plugin API v2. Migration:

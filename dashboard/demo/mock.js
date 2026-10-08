@@ -3,14 +3,14 @@
  *
  * Loaded only by the GitHub Pages build (see .github/workflows/pages.yml), before
  * the dashboard script. It replaces window.fetch for the gateway's own API
- * (`/`, `/api/v1/*`) with an in-browser simulation: four MCP servers (one of them
+ * (`/`, `/api/v1/*`) with an in-browser simulation: five MCP servers (one of them
  * flapping), a dozen tools, several clients and a steady stream of tool calls,
  * served through the same JSON shapes and SSE events as the real gateway.
  * Nothing leaves the browser.
  */
 (() => {
   'use strict';
-  const VERSION = '1.2.0';
+  const VERSION = '3.0.1';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -20,6 +20,7 @@
   ];
   // One held tool call so the approvals card can be tried out.
   let demoApprovals = [{ id: 'demo-approval-1', status: 'pending', serverId: 'github', tool: 'create_issue', clientId: 'key:aura', via: 'mcp', rule: 'review-github-writes', arguments: { repo: 'HarrisonCN/aura', title: 'Crash on launch' }, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600e3).toISOString() }];
+  const demoCache = { entries: 42, maxEntries: 1000, hits: 318, misses: 127, deduped: 9, evictions: 0 };
   const rnd = (a, b) => a + Math.random() * (b - a);
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => { const r = (Math.random() * 16) | 0; return (c === 'x' ? r : (r & 3) | 8).toString(16); }));
@@ -214,6 +215,7 @@
   async function handle(url, init) {
     const path = url.pathname.replace(/^.*?(\/api\/v1)/, '$1');
     const q = url.searchParams, method = (init?.method || 'GET').toUpperCase();
+    let m;
     if (!path.startsWith('/api/v1')) return json({ name: 'mcp-gateway', version: VERSION, docs: '/api/v1/health', mcp: '/mcp', dashboard: '/dashboard' });
     const p = path.slice(7);
     await sleep(rnd(40, 160));
@@ -221,6 +223,7 @@
     if (p === '/stats') { const [w, b] = windowOf(q); return json(stats(w, b)); }
     if (p === '/events') return events(q, init?.signal);
     if (p === '/servers') return json({ servers: SERVERS.map(serverView), total: SERVERS.length });
+    if ((m = p.match(/^\/servers\/([^/]+)$/)) && method === 'GET') { const sv = SERVERS.find((x) => x.id === decodeURIComponent(m[1])); return sv ? json(serverView(sv)) : json({ error: 'Not Found', message: `Server "${decodeURIComponent(m[1])}" not found` }, 404); }
     if (p === '/security') return json({
       authStrategy: 'api-key',
       warnings: [
@@ -233,13 +236,43 @@
       lockout: { lockedClients: 1, trackedClients: 3, lockoutsTotal: 2 },
     });
     if (p === '/tools') return json({ tools: SERVERS.filter((s) => isUp(s.id)).flatMap((s) => s.tools.map((t) => ({ ...t, serverId: s.id, serverName: s.name }))), total: SERVERS.reduce((a, s) => a + (isUp(s.id) ? s.tools.length : 0), 0) });
-    let m;
     if (p === '/approvals') return json({ pending: demoApprovals, recent: [] });
     if (p === '/catalog') return json({ install: false, installedServers: [], entries: [
       { id: 'filesystem', name: 'Filesystem', description: 'Read, write and search files in allowed directories', template: { transport: 'stdio' }, installed: ['filesystem'] },
       { id: 'memory', name: 'Memory', description: 'Knowledge-graph based persistent memory', template: { transport: 'stdio' }, installed: [] },
       { id: 'github', name: 'GitHub', description: 'GitHub repositories, issues and pull requests (remote server)', template: { transport: 'streamable-http' }, installed: ['github'] },
     ] });
+    // Usage metering + quotas (1.8), result cache (2.2), load balancing (2.1), policy (2.0 / 2.8).
+    if (p === '/quotas') {
+      const day = new Date(); day.setUTCHours(24, 0, 0, 0);
+      const since = Date.now() - 3600000;
+      const count = (fn) => records.filter((r) => r.timestamp >= since && fn(r)).length;
+      return json({
+        rules: [{ id: 'per-tenant-daily', subject: 'tenant', period: 'day', limit: 500 }, { id: 'ci-hourly', subject: 'client', match: 'ci-bot', period: 'hour', limit: 60 }],
+        usage: [
+          { rule: 'per-tenant-daily', period: 'day', limit: 500, subject: 'tenant:platform', used: Math.min(468, 212 + Math.round(count((r) => r.serverId === 'github' || r.serverId === 'filesystem') / 3)), resetsAt: day.toISOString() },
+          { rule: 'per-tenant-daily', period: 'day', limit: 500, subject: 'tenant:research', used: Math.min(400, 37 + Math.round(count((r) => r.serverId === 'search') / 3)), resetsAt: day.toISOString() },
+          { rule: 'ci-hourly', period: 'hour', limit: 60, subject: 'client:ci-bot', used: Math.min(58, 41 + Math.round(count((r) => r.clientId === 'ci-bot') / 4)), resetsAt: iso(Math.ceil(Date.now() / 3600000) * 3600000) },
+        ],
+      });
+    }
+    if (p === '/usage') {
+      const by = new Map();
+      for (const r of records) { const k = r.clientId || 'anonymous'; const u = by.get(k) || { client: k, calls: 0, errors: 0, durationMs: 0 }; u.calls++; if (!r.success) u.errors++; u.durationMs += r.durationMs; by.set(k, u); }
+      return json({ group: ['client'], rows: [...by.values()].sort((a, b) => b.calls - a.calls), generatedAt: iso(Date.now()) });
+    }
+    if (p === '/cache' && method === 'DELETE') { const n = demoCache.entries; demoCache.entries = 0; return json({ purged: n }); }
+    if (p === '/cache') { demoCache.hits += Math.round(rnd(0, 4)); demoCache.misses += Math.round(rnd(0, 2)); demoCache.entries = Math.min(demoCache.maxEntries, demoCache.entries + Math.round(rnd(0, 2))); return json({ enabled: true, ...demoCache }); }
+    if (p === '/load-balancing') {
+      const up = isUp('search');
+      return json({ groups: [{ server: 'search', strategy: 'least-latency', failoverOn: ['timeout', 'connection'], members: [
+        { id: 'search', weight: 1, connected: up, healthy: up, latencyMs: health.get('search').latencyMs || 40, calls: records.filter((r) => r.serverId === 'search').length, errors: records.filter((r) => r.serverId === 'search' && !r.success).length },
+        { id: 'search@2', weight: 2, connected: true, healthy: true, latencyMs: 31, calls: 58, errors: 1 },
+        { id: 'search@3', weight: 1, connected: true, healthy: false, ejectedUntil: iso(Date.now() + 25000), latencyMs: 912, calls: 12, errors: 5 },
+      ] }] });
+    }
+    if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
+    if (p === '/admin/deprecations') return json({ version: VERSION, deprecations: [] });
     if (p === '/tenants') return json({ clientId: 'key:demo', operator: true, tenants: demoTenants });
     if ((m = p.match(/^\/tenants\/([^/]+)\/members$/)) && method === 'PUT') {
       const tn = demoTenants.find((x) => x.id === decodeURIComponent(m[1]));
@@ -253,6 +286,7 @@
       const a = demoApprovals.find((x) => x.id === decodeURIComponent(m[1]));
       if (!a) return json({ error: 'Approval request not found' }, 404);
       demoApprovals = demoApprovals.filter((x) => x !== a);
+      if (!demoApprovals.length) setTimeout(() => { demoApprovals.push({ ...a, id: uuid(), status: 'pending', createdAt: iso(Date.now()), expiresAt: iso(Date.now() + 300000) }); }, 20000);
       return json({ ...a, status: m[2] === 'approve' ? 'approved' : 'denied', decidedAt: new Date().toISOString() });
     }
     if ((m = p.match(/^\/servers\/([^/]+)\/reconnect$/)) && method === 'POST') {

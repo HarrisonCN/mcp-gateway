@@ -163,9 +163,21 @@ export class RedisClient {
       .then(async (socket) => {
         const user = decodeURIComponent(this.url.username);
         const pass = decodeURIComponent(this.url.password);
-        if (pass) await this.raw(socket, user ? ['AUTH', user, pass] : ['AUTH', pass]);
-        const db = this.url.pathname.replace(/^\//, '');
-        if (db && db !== '0') await this.raw(socket, ['SELECT', db]);
+        try {
+          if (pass) await this.raw(socket, user ? ['AUTH', user, pass] : ['AUTH', pass]);
+          const db = this.url.pathname.replace(/^\//, '');
+          if (db && db !== '0') await this.raw(socket, ['SELECT', db]);
+        } catch (err) {
+          // Never keep a half-initialised (unauthenticated / wrong-db) connection around: the next
+          // command would reuse it and skip AUTH / SELECT.
+          if (this.socket === socket) this.socket = undefined;
+          socket.destroy();
+          throw err;
+        }
+        if (this.closed) {
+          socket.destroy();
+          throw new Error('Redis client is closed');
+        }
         return socket;
       })
       .finally(() => {

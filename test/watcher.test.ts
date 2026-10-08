@@ -130,3 +130,17 @@ describe('ConfigWatcher', () => {
     expect(logger.warn).toHaveBeenCalledWith(expect.stringMatching(/Cannot watch/));
   });
 });
+
+describe('ConfigWatcher: file missing for a while (3.0.1)', () => {
+  it('keeps retrying and reloads once the file is back, instead of ending hot reload', async () => {
+    const { path, w } = setup(SERVER('a'));
+    w.start();
+    rmSync(path);
+    // Let the watcher notice the deletion and fail to re-attach at least once.
+    await new Promise((r) => setTimeout(r, 300));
+    const reloaded = next<GatewayConfig>(w, 'reload');
+    writeFileSync(path, SERVER('b'));
+    const cfg = await reloaded;
+    expect(cfg.servers.map((s) => s.id)).toEqual(['b']);
+  });
+});

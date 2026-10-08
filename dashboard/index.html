@@ -174,6 +174,15 @@ main { max-width: 1320px; margin: 0 auto; padding: 20px 16px 96px; }
 .stream li .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stream li .what span { color: var(--faint); }
 .stream li .meta { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stream.rows li { grid-template-columns: minmax(0, 1fr) auto auto; }
+.stream.rows li > div:first-child { overflow-wrap: anywhere; }
+@media (max-width: 560px) { .stream.rows li { grid-template-columns: 1fr auto; } .stream.rows li > div:first-child { grid-column: 1 / -1; } }
+.ops .kv-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+.ops .kv-row:last-child { border-bottom: 0; }
+.ops .kv-row > span:last-child { white-space: nowrap; }
+.ops .meter { height: 6px; border-radius: 6px; background: var(--surface-2); overflow: hidden; margin: 4px 0 8px; }
+.ops .meter i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+.ops .meter i.hot { background: var(--bad); }
 @keyframes slideIn { from { opacity: 0; transform: translateY(-10px) scale(.98); } to { opacity: 1; transform: none; } }
 .empty { color: var(--faint); text-align: center; padding: 24px 8px; font-size: 13px; }
 .empty svg { display: block; margin: 0 auto 8px; opacity: .6; }
@@ -421,11 +430,11 @@ tbody tr:hover { background: var(--surface-2); }
     </div>
     <div class="card" id="approvalsCard" hidden style="margin-bottom:14px">
       <h2><span data-i18n="approvals">Pending approvals</span><span class="right" id="approvalsNote"></span></h2>
-      <ul class="stream" id="approvals"></ul>
+      <ul class="stream rows" id="approvals"></ul>
     </div>
     <div class="card" id="tenantsCard" hidden style="margin-bottom:14px">
       <h2><span data-i18n="tenants">Workspaces</span><span class="right" id="tenantsNote"></span></h2>
-      <ul class="stream" id="tenants"></ul>
+      <ul class="stream rows" id="tenants"></ul>
     </div>
     <div class="grid kpis stagger" id="kpis"></div>
     <div class="grid two" style="margin-top:14px">
@@ -462,7 +471,12 @@ tbody tr:hover { background: var(--surface-2); }
     <div class="grid servers stagger" id="servers"></div>
     <div class="card" id="catalogCard" hidden style="margin-top:14px">
       <h2><span data-i18n="catalog">Add a server</span><span class="right muted" id="catalogNote"></span></h2>
-      <ul class="stream" id="catalog"></ul>
+      <ul class="stream rows" id="catalog"></ul>
+    </div>
+    <div class="grid two ops" style="margin-top:14px">
+      <div class="card" id="quotasCard" hidden><h2><span data-i18n="quotas">Quotas</span><span class="right muted" id="quotasNote"></span></h2><div id="quotas"></div></div>
+      <div class="card" id="lbCard" hidden><h2><span data-i18n="lb">Load balancing</span><span class="right muted" id="lbNote"></span></h2><div id="lb"></div></div>
+      <div class="card" id="cacheCard" hidden><h2><span data-i18n="cache">Result cache</span><span class="right"><button class="btn sm ghost" type="button" id="cachePurge" data-i18n="purge">Purge</button></span></h2><div id="cache"></div></div>
     </div>
   </section>
 
@@ -577,7 +591,7 @@ const I18N = {
     remember: 'Remember on this device', saveConnect: 'Save & connect', clear: 'Clear', close: 'Close',
     tabOverview: 'Overview', tabServers: 'Servers', tabPlayground: 'Playground', tabHistory: 'History', tabConnect: 'Connect',
     ovTitle: 'Overview', ovSub: 'Live traffic through the gateway', window: 'Time window',
-    reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server', approvals: 'Pending approvals', tenants: 'Workspaces', catalog: 'Add a server', add: 'Add', added: 'Server added', installOff: 'read-only (catalog.install is off)', installedAs: 'installed as', role: 'Role', members: 'members', roleSaved: 'Role updated', approve: 'Approve', deny: 'Deny', approved: 'Approved', denied: 'Denied', expires: 'expires',
+    reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server', approvals: 'Pending approvals', tenants: 'Workspaces', quotas: 'Quotas', lb: 'Load balancing', cache: 'Result cache', purge: 'Purge', purged: 'Purged {n} cache entries', rules: 'rules', noUsage: 'No usage in the current period', ejected: 'ejected', entries: 'Entries', hitRate: 'Hit rate', hits: 'Hits', misses: 'Misses', deduped: 'Deduplicated', evictions: 'Evictions', catalog: 'Add a server', add: 'Add', added: 'Server added', installOff: 'read-only (catalog.install is off)', installedAs: 'installed as', role: 'Role', members: 'members', roleSaved: 'Role updated', approve: 'Approve', deny: 'Deny', approved: 'Approved', denied: 'Denied', expires: 'expires',
     errRate: 'Error rate', liveStream: 'Live requests', pause: 'Pause', health: 'Server health',
     kRpm: 'Requests / min', kP50: 'p50 latency', kP95: 'p95 latency', kErr: 'Error rate', kSrv: 'Servers online',
     kTotal: '{n} in window', kP99: 'p99 {v}', kErrN: '{n} failed', kTools: '{n} tools',
@@ -622,7 +636,7 @@ const I18N = {
     remember: '在此设备上记住', saveConnect: '保存并连接', clear: '清除', close: '关闭',
     tabOverview: '总览', tabServers: '服务器', tabPlayground: '调试台', tabHistory: '历史', tabConnect: '接入',
     ovTitle: '总览', ovSub: '网关实时流量', window: '时间范围',
-    reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用', approvals: '待审批调用', tenants: '工作区', catalog: '添加服务器', add: '添加', added: '已添加服务器', installOff: '只读（未开启 catalog.install）', installedAs: '已安装为', role: '角色', members: '成员', roleSaved: '角色已更新', approve: '批准', deny: '拒绝', approved: '已批准', denied: '已拒绝', expires: '到期',
+    reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用', approvals: '待审批调用', tenants: '工作区', quotas: '配额', lb: '负载均衡', cache: '结果缓存', purge: '清空', purged: '已清除 {n} 条缓存', rules: '条规则', noUsage: '当前周期暂无用量', ejected: '已摘除', entries: '条目', hitRate: '命中率', hits: '命中', misses: '未命中', deduped: '合并请求', evictions: '淘汰', catalog: '添加服务器', add: '添加', added: '已添加服务器', installOff: '只读（未开启 catalog.install）', installedAs: '已安装为', role: '角色', members: '成员', roleSaved: '角色已更新', approve: '批准', deny: '拒绝', approved: '已批准', denied: '已拒绝', expires: '到期',
     errRate: '错误率', liveStream: '实时请求', pause: '暂停', health: '服务器健康',
     kRpm: '每分钟请求', kP50: 'p50 延迟', kP95: 'p95 延迟', kErr: '错误率', kSrv: '在线服务器',
     kTotal: '窗口内 {n} 次', kP99: 'p99 {v}', kErrN: '{n} 次失败', kTools: '{n} 个工具',
@@ -990,7 +1004,7 @@ async function loadTenants() {
       ? `<span class="pill mono">${esc(m.client)} <select class="input" style="padding:0 4px;height:22px" data-tenant="${esc(tn.id)}" data-client="${esc(m.client)}" aria-label="${esc(t('role'))}">${roles.map((x) => `<option value="${x}"${x === m.role ? ' selected' : ''}>${x}</option>`).join('')}</select></span>`
       : `<span class="pill mono">${esc(m.client)} · ${esc(m.role)}</span>`).join(' ');
     return `<li><div style="flex:1;min-width:0"><b>${esc(tn.name)}</b> <span class="badge ${tn.role === 'viewer' ? '' : 'ok'}">${esc(tn.role || '')}</span>
-      <span class="muted"> · ${esc((tn.serverIds || []).join(', ') || tn.servers.join(', '))}</span>
+      <span class="muted"> · ${esc((tn.serverIds || []).join(', ') || (tn.servers || []).join(', '))}</span>
       ${members ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">${members}</div>` : ''}</div></li>`;
   }).join('');
 }
@@ -1037,6 +1051,41 @@ document.addEventListener('click', async (e) => {
   } catch (err) { toast(err.message || String(err)); }
   b.classList.remove('loading');
   loadCatalog();
+});
+
+// Quotas, load balancing and result cache (operator views): each card hides when its endpoint is unavailable.
+async function loadOps() {
+  const get = (p) => api(p).catch(() => null);
+  const [q, lb, c] = await Promise.all([get('/quotas'), get('/load-balancing'), get('/cache')]);
+  const usage = (q && q.usage) || [];
+  $('#quotasCard').hidden = !q || !((q.rules || []).length || usage.length);
+  if (q) {
+    $('#quotasNote').textContent = (q.rules || []).length ? `${q.rules.length} ${t('rules')}` : '';
+    $('#quotas').innerHTML = usage.length ? usage.map((u) => { const pct = u.limit ? Math.min(100, Math.round((u.used / u.limit) * 100)) : 0;
+      return `<div class="kv-row"><span><b class="mono">${esc(u.subject)}</b> <span class="muted">· ${esc(u.rule)} · ${esc(u.period)}</span></span><span class="mono">${u.used} / ${u.limit}</span></div>
+      <div class="meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i class="${pct >= 90 ? 'hot' : ''}" style="width:${pct}%"></i></div>`; }).join('')
+      : `<div class="muted">${esc(t('noUsage'))}</div>`;
+  }
+  const groups = (lb && lb.groups) || [];
+  $('#lbCard').hidden = !groups.length;
+  $('#lbNote').textContent = groups.length ? String(groups.length) : '';
+  $('#lb').innerHTML = groups.map((g) => `<div style="margin-bottom:10px"><b class="mono">${esc(g.server)}</b> <span class="badge">${esc(g.strategy)}</span>
+    ${(g.members || []).map((m) => `<div class="kv-row"><span class="mono">${esc(m.id)}${m.weight && m.weight !== 1 ? ` <span class="muted">×${m.weight}</span>` : ''}</span>
+      <span>${m.latencyMs !== undefined ? `<span class="muted">${m.latencyMs}ms · </span>` : ''}<span class="muted">${m.calls || 0} / ${m.errors || 0}✕</span>
+      <span class="badge ${m.ejectedUntil ? 'bad' : m.healthy && m.connected ? 'ok' : 'warn'}">${esc(m.ejectedUntil ? t('ejected') : m.healthy && m.connected ? 'online' : 'offline')}</span></span></div>`).join('')}</div>`).join('');
+  $('#cacheCard').hidden = !c || !c.enabled;
+  if (c && c.enabled) {
+    const total = (c.hits || 0) + (c.misses || 0);
+    const rows = [[t('entries'), `${c.entries} / ${c.maxEntries}`], [t('hitRate'), total ? `${Math.round((c.hits / total) * 100)}%` : '—'], [t('hits'), c.hits], [t('misses'), c.misses], [t('deduped'), c.deduped], [t('evictions'), c.evictions]];
+    $('#cache').innerHTML = rows.map(([k, v]) => `<div class="kv-row"><span class="muted">${esc(String(k))}</span><span class="mono">${esc(String(v ?? 0))}</span></div>`).join('');
+  }
+  const grid = $('#quotasCard').parentElement;
+  grid.hidden = $('#quotasCard').hidden && $('#lbCard').hidden && $('#cacheCard').hidden;
+}
+document.addEventListener('click', async (e) => {
+  if (!(e.target.closest && e.target.closest('#cachePurge'))) return;
+  try { const r = await api('/cache', { method: 'DELETE' }); toast(t('purged', { n: r.purged ?? 0 })); } catch (err) { toast(err.message || String(err)); }
+  loadOps();
 });
 
 async function loadServers() {
@@ -1718,7 +1767,9 @@ reloadAll().then(() => {
 setInterval(() => { if (!document.hidden) loadApprovals(); }, 3000);
 loadTenants();
 loadCatalog();
+loadOps();
 setInterval(() => { if (!document.hidden) loadTenants(); }, 30000);
+setInterval(() => { if (!document.hidden) loadOps(); }, 15000);
 setInterval(() => { if (!document.hidden) { loadServers(); if (state.live === 'live') loadStats().catch(() => {}); } }, 10000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && state.live !== 'live') startLive(); });
 })();

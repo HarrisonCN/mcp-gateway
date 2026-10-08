@@ -23,6 +23,9 @@ export class ConfigWatcher extends EventEmitter {
   private logger: Logger;
   private watcher: fs.FSWatcher | null = null;
   private debounceTimer: NodeJS.Timeout | null = null;
+  /** Retries attaching while the file is missing (mid atomic save, or deleted and recreated). */
+  private retryTimer: NodeJS.Timeout | null = null;
+  private attachFailures = 0;
   private debounceMs: number;
   private stopped = true;
   /** Set by stop(): no further reloads, not even reloadNow(). */
@@ -56,10 +59,23 @@ export class ConfigWatcher extends EventEmitter {
       this.watcher.on('error', (err) => {
         this.logger.warn(`Config watcher error: ${err.message}`);
       });
+      if (this.attachFailures > 0) {
+        // The file came back after being missing: it was (re)written in the meantime.
+        this.attachFailures = 0;
+        this._schedule();
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Cannot watch ${this.configPath}: ${msg}`);
+      if (this.attachFailures++ === 0) this.logger.warn(`Cannot watch ${this.configPath}: ${msg} (retrying)`);
       this.watcher = null;
+      // Without a handle no further event arrives, so keep trying instead of silently ending hot reload.
+      if (!this.stopped && !this.retryTimer) {
+        this.retryTimer = setTimeout(() => {
+          this.retryTimer = null;
+          if (!this.stopped && !this.watcher) this._attach();
+        }, Math.min(5_000, Math.max(100, this.debounceMs) * Math.min(this.attachFailures, 10)));
+        this.retryTimer.unref?.();
+      }
     }
   }
 
@@ -101,6 +117,8 @@ export class ConfigWatcher extends EventEmitter {
     this.closed = true;
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = null;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
     this.watcher?.close();
     this.watcher = null;
     this.logger.debug('Config watcher stopped');

@@ -1,0 +1,107 @@
+/**
+ * Static checks for the dashboard page and its GitHub Pages demo backend (dashboard/demo/mock.js).
+ * Regression tests for 3.0.1: list rows laid out in the 8px dot column, demo gaps for the 1.6 – 3.0
+ * features, stale demo version.
+ */
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import vm from 'vm';
+import { VERSION } from '../src/utils/version.js';
+
+const root = fileURLToPath(new URL('..', import.meta.url));
+const html = readFileSync(`${root}dashboard/index.html`, 'utf8');
+const mockSrc = readFileSync(`${root}dashboard/demo/mock.js`, 'utf8');
+
+function i18n(): Record<string, Record<string, string>> {
+  const start = html.indexOf('const I18N = {');
+  let depth = 0;
+  let end = start + 'const I18N = '.length;
+  for (; end < html.length; end++) {
+    if (html[end] === '{') depth++;
+    else if (html[end] === '}' && --depth === 0) break;
+  }
+  return vm.runInNewContext(`(${html.slice(start + 'const I18N = '.length, end + 1)})`) as Record<string, Record<string, string>>;
+}
+
+/** Load mock.js in a sandbox and return its fetch. Long timers are dropped so nothing keeps running. */
+function demoFetch(): (path: string, init?: RequestInit) => Promise<Response> {
+  const origin = 'https://demo.example';
+  const win: Record<string, unknown> = { fetch: () => Promise.reject(new Error('real fetch')) };
+  const ctx = vm.createContext({
+    window: win,
+    location: { href: `${origin}/mcp-gateway/`, origin },
+    localStorage: { getItem: () => '1', setItem: () => {} },
+    document: { readyState: 'complete', addEventListener: () => {}, createElement: () => ({ style: {}, setAttribute: () => {}, append: () => {}, appendChild: () => {}, addEventListener: () => {}, querySelector: () => null }), body: { append: () => {}, appendChild: () => {} }, querySelector: () => null, getElementById: () => null, head: { append: () => {}, appendChild: () => {} } },
+    crypto: globalThis.crypto,
+    URL, Response, ReadableStream, TextEncoder, DOMException, Math, Date, JSON, Promise, Map, Set, Number, String, Array, Object,
+    setTimeout: (fn: () => void, ms: number) => (ms <= 200 ? setTimeout(fn, 0) : 0),
+    clearTimeout: () => {},
+    setInterval: () => 0,
+    clearInterval: () => {},
+  });
+  vm.runInContext(mockSrc, ctx);
+  const f = win.fetch as (u: string, i?: RequestInit) => Promise<Response>;
+  return (path, init) => f(`${origin}${path}`, init);
+}
+
+describe('dashboard page', () => {
+  it('English and Chinese have the same keys, and every data-i18n key exists', () => {
+    const { en, zh } = i18n();
+    expect(Object.keys(zh).sort()).toEqual(Object.keys(en).sort());
+    const used = [...html.matchAll(/data-i18n(?:-title|-ph|-aria)?="([^"]+)"/g)].map((m) => m[1]!);
+    expect(used.filter((k) => !(k in en))).toEqual([]);
+  });
+
+  it('action lists (approvals, workspaces, catalog) use the row layout, not the 8px status-dot column', () => {
+    for (const id of ['approvals', 'tenants', 'catalog']) expect(html).toContain(`<ul class="stream rows" id="${id}">`);
+    expect(html).toMatch(/\.stream\.rows li \{ grid-template-columns: minmax\(0, 1fr\) auto auto; \}/);
+  });
+
+  it('tolerates tenants without serverIds / servers', () => {
+    expect(html).toContain("(tn.servers || []).join(', ')");
+  });
+
+  it('has cards for quotas, load balancing and the result cache', () => {
+    for (const id of ['quotasCard', 'lbCard', 'cacheCard', 'cachePurge']) expect(html).toContain(`id="${id}"`);
+  });
+});
+
+describe('GitHub Pages demo backend', () => {
+  it('reports the package version', async () => {
+    const f = demoFetch();
+    expect(((await (await f('/')).json()) as { version: string }).version).toBe(VERSION);
+  });
+
+  it('serves every endpoint the dashboard reads, in the gateway shapes', async () => {
+    const f = demoFetch();
+    const get = async (p: string) => {
+      const r = await f(`/api/v1${p}`);
+      expect(r.status, p).toBe(200);
+      return r.json() as Promise<Record<string, any>>;
+    };
+    expect((await get('/health')).version).toBe(VERSION);
+    expect((await get('/servers')).servers.length).toBeGreaterThan(0);
+    expect((await get('/approvals')).pending.length).toBe(1);
+    expect((await get('/tenants')).tenants.length).toBe(2);
+    expect((await get('/catalog')).entries.length).toBeGreaterThan(0);
+    const q = await get('/quotas');
+    expect(q.rules.length).toBeGreaterThan(0);
+    for (const u of q.usage) expect(u.used).toBeLessThanOrEqual(u.limit);
+    expect((await get('/load-balancing')).groups[0].members.length).toBeGreaterThan(1);
+    const c = await get('/cache');
+    expect(c.enabled).toBe(true);
+    expect(((await (await f('/api/v1/cache', { method: 'DELETE' })).json()) as { purged: number }).purged).toBeGreaterThanOrEqual(0);
+    expect((await get('/policy')).outputFilter.enabled).toBe(true);
+    expect((await get('/usage')).rows).toBeInstanceOf(Array);
+    expect((await get('/servers/github')).id).toBe('github');
+    expect((await f('/api/v1/servers/nope')).status).toBe(404);
+  });
+
+  it('approving the demo approval works', async () => {
+    const f = demoFetch();
+    const r = await f('/api/v1/approvals/demo-approval-1/approve', { method: 'POST', body: '{}' });
+    expect(((await r.json()) as { status: string }).status).toBe('approved');
+    expect(((await (await f('/api/v1/approvals')).json()) as { pending: unknown[] }).pending).toHaveLength(0);
+  });
+});
