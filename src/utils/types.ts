@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Data loss prevention (5.6). */
+  dlp?: import('../features/dlp.js').DlpConfig;
   /** Agent session recordings (5.5). */
   sessions?: import('../features/sessions.js').SessionsConfig;
   /** Signed plugins: trusted keys, require signatures (5.4). */

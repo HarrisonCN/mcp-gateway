@@ -57,13 +57,14 @@ function cnIdValid(id: string): boolean {
   return codes[sum % 11] === id[17]!.toUpperCase();
 }
 
-interface Detector {
+export interface Detector {
   category: PiiCategory;
   re: RegExp;
   valid?: (m: string) => boolean;
 }
 
-const DETECTORS: Detector[] = [
+/** Built-in PII detectors (exported 5.6 for DLP). */
+export const DETECTORS: Detector[] = [
   { category: 'email', re: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g },
   { category: 'iban', re: /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?\b/g, valid: ibanValid },
   { category: 'credit-card', re: /\b(?:\d[ -]?){12,18}\d\b/g, valid: (m) => luhn(m.replace(/[ -]/g, '')) && m.replace(/[ -]/g, '').length >= 13 },

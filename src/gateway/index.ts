@@ -215,6 +215,7 @@ export class Gateway {
       secrets: this.secrets,
       serverConfig: (id) => this.registry.getServer(id),
       compliance: new ComplianceEngine(() => this.config.compliance),
+      config: () => this.config,
       federation: (this.federation = new Federation({
         config: () => this.config.federation,
         version: VERSION,

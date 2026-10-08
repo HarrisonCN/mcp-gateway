@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '5.5.0';
+  const VERSION = '5.6.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -44,6 +44,7 @@
     { id: "edge-fleet", since: "5.3.0", summary: "Managed edge nodes: fleet view with config drift, push config to edges" },
     { id: "marketplace", since: "5.4.0", summary: "Signed plugin marketplace: browse indexes, verified install" },
     { id: "sessions", since: "5.5.0", summary: "Agent session recording, replay and regression evals" },
+    { id: "dlp", since: "5.6.0", summary: "Data loss prevention: sensitivity levels, per-tenant clearance and masking" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -532,6 +533,19 @@
         { index: 2, serverId: 'github', tool: 'create_issue', passed: false, reason: 'result shape changed', durationMs: 160, recordedMs: 200, diff: [{ path: 'structuredContent.number', change: 'changed', before: 'number', after: 'string' }] },
         { index: 3, serverId: 'slack', tool: 'post_message', passed: true, durationMs: 95, recordedMs: 150 },
       ] });
+    }
+    // 5.6: DLP.
+    if (p === '/admin/dlp') return json({ enabled: true, scope: 'results',
+      levels: { email: 'internal', phone: 'internal', ipv4: 'internal', iban: 'confidential', 'credit-card': 'restricted', ssn: 'restricted', 'cn-id': 'restricted', 'employee-id': 'confidential' },
+      default: { clearance: 'internal', strategy: 'mask' }, tenants: { finance: { clearance: 'restricted', strategy: 'mask' }, trial: { clearance: 'public', strategy: 'block' } },
+      stats: { calls: 412, byCategory: { email: 230, 'credit-card': 9, 'employee-id': 41 }, byLevel: { internal: 230, confidential: 41, restricted: 9 }, byAction: { allow: 230, mask: 47, block: 3 } } });
+    if (p === '/admin/dlp/classify' && method === 'POST') {
+      let body = {};
+      try { body = JSON.parse(init?.body || '{}'); } catch { return json({ error: 'Bad Request', message: 'Invalid JSON' }, 400); }
+      const v = String(body.value ?? '');
+      const findings = [];
+      const out = v.replace(/\b(?:\d[ -]?){12,18}\d\b/g, (m) => { findings.push({ category: 'credit-card', level: 'restricted', path: '', action: body.tenant === 'finance' ? 'allow' : 'mask' }); return body.tenant === 'finance' ? m : '•'.repeat(m.length - 4) + m.slice(-4); });
+      return json({ policy: body.tenant === 'finance' ? { clearance: 'restricted', strategy: 'mask' } : { clearance: 'internal', strategy: 'mask' }, blocked: false, findings, value: out });
     }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).

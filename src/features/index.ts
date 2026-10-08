@@ -9,5 +9,6 @@ import './regions.js';
 import './edge-fleet.js';
 import './marketplace.js';
 import './sessions.js';
+import './dlp.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

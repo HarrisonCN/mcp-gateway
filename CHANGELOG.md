@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.0] - 2026-10-08
+
+### Added
+- **Data loss prevention** — `dlp: { scope, servers, default, tenants, detectors, levels }`: PII and custom
+  detectors get sensitivity levels (`public` < `internal` < `confidential` < `restricted`); data above a tenant's
+  clearance is masked (`mask`, `redact`, stable `hash` pseudonyms) or the call is refused (`block`, `-32013`), on
+  arguments and / or results. `GET /admin/dlp` (policy + counters), `POST /admin/dlp/classify` (test bench).
+  See [docs/guides/dlp.md](docs/guides/dlp.md).
+- **Call hooks** — `registerCallHook({ id, before, after })` lets feature modules and embedders inspect / rewrite /
+  refuse tool calls inside the invoker pipeline.
+- Pages demo: DLP policy and classification.
+
 ## [5.5.0] - 2026-10-08
 
 ### Added

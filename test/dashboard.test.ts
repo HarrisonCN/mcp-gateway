@@ -294,6 +294,14 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const r = (await (await f('/api/v1/admin/sessions/triage-flow/replay', { method: 'POST', body: '{}' })).json()) as any;
     expect(r).toMatchObject({ recording: 'triage-flow', failed: 1, passRate: 0.75 });
   });
+  it('simulates DLP policy and classification (5.6)', async () => {
+    const f = demoFetch();
+    const st = (await (await f('/api/v1/admin/dlp')).json()) as any;
+    expect(st.tenants.trial.strategy).toBe('block');
+    const c = (await (await f('/api/v1/admin/dlp/classify', { method: 'POST', body: JSON.stringify({ value: 'card 4111 1111 1111 1111' }) })).json()) as any;
+    expect(c.value).toMatch(/•+1111$/);
+    expect(c.findings[0].level).toBe('restricted');
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {
