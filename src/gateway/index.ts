@@ -294,7 +294,7 @@ export class Gateway {
         if (req.path === '/api/v1/admin' || req.path.startsWith('/api/v1/admin/')) {
           return void res.status(403).json({ error: 'Forbidden', message: `This gateway is a data plane; the admin API is served by the control plane (${cp.url})`, controlPlane: cp.url });
         }
-        if (dp.ready || req.path === '/' || req.path === '/api/v1/health' || req.path === '/api/v1/data-plane') return next();
+        if (dp.ready || req.path === '/' || req.path === '/api/v1/health' || req.path === '/api/v1/health/live' || req.path === '/api/v1/data-plane') return next();
         res.status(503).set('Retry-After', '5').json({ error: 'Service Unavailable', message: 'Data plane is waiting for its first config from the control plane', controlPlane: cp.url });
       });
     }

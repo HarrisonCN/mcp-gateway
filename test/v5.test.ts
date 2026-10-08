@@ -26,36 +26,38 @@ plugins:
   - module: ./audit.mjs
 `;
 
-describe('schema v6 (6.0)', () => {
-  it('reads version 6 (or none) with servers[].timeoutMs (internally timeout)', () => {
-    const cfg = validateConfig({ version: 6, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 1234 }] });
-    expect(cfg.version).toBe(6);
+describe('schema v7 (7.0)', () => {
+  it('reads version 7 (or none) with servers[].timeoutMs (internally timeout)', () => {
+    const cfg = validateConfig({ version: 7, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 1234 }] });
+    expect(cfg.version).toBe(7);
     expect(cfg.servers[0]!.timeout).toBe(1234);
-    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['schema-v6']); // 6.9
+    expect(cfg.deprecations).toBeUndefined();
     expect(validateConfig({ servers: [{ id: 'b', name: 'b', transport: 'stdio', command: 'x' }] }).servers[0]!.timeout).toBe(30000);
   });
 
-  it('refuses the v4 and v5 forms with the migration hint', () => {
-    expect(() => validateConfig({ version: 4, servers: [] })).toThrow(/config schema v4 was removed in 5.0 — use `version: 6`/);
-    expect(() => validateConfig({ version: 5, servers: [] })).toThrow(/config schema v5 was removed in 6.0 — use `version: 6`/);
+  it('refuses the v4, v5 and v6 forms with the migration hint', () => {
+    expect(() => validateConfig({ version: 4, servers: [] })).toThrow(/config schema v4 was removed in 5.0 — use `version: 7`/);
+    expect(() => validateConfig({ version: 5, servers: [] })).toThrow(/config schema v5 was removed in 6.0 — use `version: 7`/);
+    expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/config schema v6 was removed in 7.0 — use `version: 7`/);
     expect(() => validateConfig({ servers: [{ id: 'a', transport: 'stdio', command: 'x', timeout: 5 }] })).toThrow(/servers.0.timeout: removed in 5.0 — use `timeoutMs`/);
     expect(removedConfigKeys({ version: 4, servers: [{ id: 'a', timeout: 1 }] })).toHaveLength(2);
-    expect(() => validateConfig({ version: 8, servers: [] })).toThrow(/6.9 reads `version: 6` or `version: 7`/);
+    expect(() => validateConfig({ version: 8, servers: [] })).toThrow(/7.x reads `version: 7`/);
     expect(configDeprecations({ version: 7, servers: [] })).toEqual([]);
   });
 
-  it('admin round trip uses schema v6 field names', () => {
-    const cfg = validateConfig({ version: 6, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 99 }] });
+  it('admin round trip uses schema v7 field names', () => {
+    const cfg = validateConfig({ version: 7, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 99 }] });
     const p = portableConfig(cfg) as { servers: Array<Record<string, unknown>> };
     expect(p.servers[0]).toMatchObject({ timeoutMs: 99 });
     expect(p.servers[0]).not.toHaveProperty('timeout');
     expect(validateConfig(p).servers[0]!.timeout).toBe(99);
   });
 
-  it('removed normalizeV4Preview(); 6.9 deprecates schema v6, admin and dashboard', async () => {
+  it('removed normalizeV4Preview() and normalizeControlPlane(); 7.0 deprecates nothing', async () => {
     const mod = (await import('../src/utils/deprecations.js')) as Record<string, unknown>;
     expect(mod.normalizeV4Preview).toBeUndefined();
-    expect(Object.values(DEPRECATIONS).map((d) => `${d.id}@${d.removedIn}`)).toEqual(['schema-v6@7.0.0', 'admin-section@7.0.0', 'dashboard-section@7.0.0']);
+    expect(mod.normalizeControlPlane).toBeUndefined();
+    expect(Object.values(DEPRECATIONS)).toEqual([]);
   });
 });
 
@@ -79,7 +81,7 @@ describe('mcp-gateway migrate --to 5', () => {
     expect(r.changes).toEqual(['version: 3 → 5', 'auth.apiKeys[0]: servers → scope', 'servers[0] (a): timeout → timeoutMs']);
     const out = JSON.parse(r.text);
     expect(out.servers[0]).toEqual({ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 3 });
-    expect(validateConfig({ ...out, version: 6 }).auth!.apiKeys![0]).toMatchObject({ servers: ['a'] });
+    expect(validateConfig({ ...out, version: 7 }).auth!.apiKeys![0]).toMatchObject({ servers: ['a'] });
   });
 });
 

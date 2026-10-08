@@ -180,7 +180,7 @@ describe('optional auth for health, metrics and dashboard', () => {
     expect(html).toContain('id="keyInput"');
     expect(html).toContain('Authorization');
     await gw!.stop();
-    url = await start({ ...base, dashboard: { enabled: false } });
+    url = await start({ ...base, controlPlane: { dashboard: false } });
     expect((await fetch(`${url}/dashboard`)).status).toBe(404);
   });
 });

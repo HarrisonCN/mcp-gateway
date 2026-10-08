@@ -159,6 +159,8 @@ export { BillingSchema, UsageMeter as BillingUsageMeter, usageMeter, priceFor, b
 export type { BillingConfig, Invoice, InvoiceLine } from './features/billing.js';
 export { renderManifests, McpGatewaySpecSchema, K8sOperator, inClusterApi, configHash, MCPGATEWAY_CRD } from './features/k8s.js';
 export type { McpGatewaySpec, K8sApi } from './features/k8s.js';
+export { ControlPlaneSchema, DataPlaneSync, configEtag, distributedConfig, createControlPlaneRouter } from './gateway/control-plane.js';
+export type { ControlPlaneConfig, DataPlaneNode, DataPlaneStatus } from './gateway/control-plane.js';
 export type {
   GatewayConfig,
   McpServerConfig,

@@ -72,12 +72,12 @@ describe('loadConfig', () => {
       file(
         'reconnect: {initialDelayMs: 500, maxAttempts: 5}\n' +
           'auth: {strategy: api-key, apiKeys: [k], protect: {metrics: true}}\n' +
-          'dashboard: {enabled: false}\n',
+          'controlPlane: {dashboard: false}\n',
       ),
     );
     expect(c.reconnect).toEqual({ initialDelayMs: 500, maxAttempts: 5 });
     expect(c.auth?.protect).toEqual({ health: false, metrics: true });
-    expect(c.dashboard).toEqual({ enabled: false });
+    expect(c.controlPlane).toEqual({ role: 'all', dashboard: false, pullIntervalMs: 10000 });
     expect(c.health?.intervalMs).toBeUndefined();
     await expect(loadConfig(file('reconnect: {jitter: 2}\n'))).rejects.toThrow(/jitter/);
   });
