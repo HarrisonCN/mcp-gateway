@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '6.1.0';
+  const VERSION = '6.2.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -47,6 +47,7 @@
     { id: "dlp", since: "5.6.0", summary: "Data loss prevention: sensitivity levels, per-tenant clearance and masking" },
     { id: "adaptive", since: "5.8.0", summary: "Adaptive routing 2.0: pick upstream / model by quality, cost and latency (Thompson sampling)" },
     { id: "api-upstreams", since: "6.1.0", summary: "GraphQL and gRPC (Connect / JSON transcoding) upstreams exposed as tools" },
+    { id: "workflows", since: "6.2.0", summary: "Workflow engine: multi-tool DAGs with dependencies, parallelism, conditions and retries" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -566,6 +567,16 @@
       { name: 'billing.getInvoice', upstream: 'billing', kind: 'grpc', description: 'billing.v1.Invoices/Get', inputSchema: { type: 'object', properties: { id: { type: 'string' } } } },
     ] });
     if (p === '/admin/api-upstreams/call' && method === 'POST') { await sleep(60); return json({ tool: 'shop.product', success: true, result: { product: { id: 'p-1', title: 'Demo mug', price: 12 } }, durationMs: 58 }); }
+    // 6.2: workflow engine.
+    if (p === '/admin/workflows') return json({ workflows: [{ id: 'enrich-lead', description: 'Look up a company, search news, score it, notify', concurrency: 4, nodes: [
+      { id: 'company', tool: 'crm/lookup', needs: [], onError: 'fail' }, { id: 'news', tool: 'search/web', needs: [], onError: 'fail' },
+      { id: 'score', tool: 'llm/score', needs: ['company', 'news'], onError: 'fail' }, { id: 'notify', tool: 'slack/post', needs: ['score'], if: 'nodes.score.structuredContent.hot', onError: 'continue' },
+    ], layers: [['company', 'news'], ['score'], ['notify']] }] });
+    if (p === '/admin/workflows/run' && method === 'POST') { await sleep(120); return json({ runId: 'run-demo-1', workflow: 'enrich-lead', status: 'succeeded', startedAt: iso(Date.now() - 120), finishedAt: iso(Date.now()), output: { score: 87, hot: true }, nodes: [
+      { id: 'company', status: 'succeeded', attempts: 1, durationMs: 41 }, { id: 'news', status: 'succeeded', attempts: 2, durationMs: 77 },
+      { id: 'score', status: 'succeeded', attempts: 1, durationMs: 33 }, { id: 'notify', status: 'succeeded', attempts: 1, durationMs: 9 },
+    ] }); }
+    if (p === '/admin/workflows/runs') return json({ runs: [{ runId: 'run-demo-1', workflow: 'enrich-lead', status: 'succeeded', startedAt: iso(Date.now() - 60e3), finishedAt: iso(Date.now() - 59.8e3) }] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 6.0: the 5.x deprecations were removed; nothing is deprecated yet.
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });

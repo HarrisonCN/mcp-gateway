@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v6.2
+
+| Feature | Description |
+|---------|-------------|
+| **Workflow DAGs** | Nodes with dependencies run in parallel; conditions, retries, continue-on-error |
+| **Async runs** | Start, poll, and inspect per-node status and output |
+
 ## What's New in v6.1
 
 | Feature | Description |
