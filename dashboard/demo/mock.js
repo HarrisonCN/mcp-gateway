@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '8.2.0';
+  const VERSION = '8.3.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -64,6 +64,7 @@
     { id: "compliance-reports", since: "7.8.0", summary: "Automated compliance reports: scheduled SOC 2 / ISO 27001 / GDPR evidence bundles with SHA-256 manifests" },
     { id: "agent-identity", since: "8.1.0", summary: "Agent identity & delegated auth: agent registry, on-behalf-of delegation tokens (RFC 8693 act chains), scoped agent calls" },
     { id: "a2a-federation", since: "8.2.0", summary: "Cross-gateway A2A federation: remote agent discovery (agent cards), skill catalog, task forwarding with shared audit" },
+    { id: "debug-sessions", since: "8.3.0", summary: "Live collaborative debugging: shared sessions, live call stream (SSE), breakpoints, edit/resume/abort, notes, replay" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -682,6 +683,11 @@
       { id: 'partner', url: 'https://agents.partner.example', enabled: true, skillsFilter: ['quote*'], clients: ['key:ops-*'], status: 'error', skills: [], error: 'agent card: HTTP 503', fetchedAt: new Date().toISOString() },
     ], recent: [
       { id: 'f1', remote: 'eu', skill: 'translate', client: 'agent:travel-bot', state: 'completed', durationMs: 182, at: new Date().toISOString() },
+    ] });
+    // 8.3: live collaborative debugging.
+    if (p === '/admin/debug-sessions') return json({ enabled: true, sessions: [
+      { id: 'a1b2c3d4', name: 'checkout bug', createdAt: new Date(Date.now() - 600000).toISOString(), owner: 'alice', participants: ['alice', 'bob'], match: { tools: ['payments/*'] }, breakpoints: [{ tool: 'payments/charge', when: { path: 'currency', equals: 'JPY' } }],
+        paused: [{ callId: 'f00dcafe', tool: 'payments/charge', client: 'key:checkout', arguments: { amount: 1200, currency: 'JPY', card: '<redacted>' }, pausedForMs: 8000 }], lastSeq: 42 },
     ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 8.0: nothing is deprecated (schema v7, `plugins[].wasm` and plugin API v4 were removed).

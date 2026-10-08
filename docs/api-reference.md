@@ -477,6 +477,14 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `POST` | `/admin/a2a-federation/refresh` | Re-read every remote agent card now (8.2) |
 | `GET` | `/features/a2a-federation/skills` | Any client: remote skills it may use (`<skill>@<remote>`) (8.2) |
 | `POST` | `/features/a2a-federation/send` | Any client: forward an A2A task `{ remote, skill, arguments? }` (8.2) |
+| `GET` / `POST` | `/admin/debug-sessions` | Live debugging: list sessions / create `{ name?, match?, breakpoints? }` (8.3) |
+| `GET` / `DELETE` | `/admin/debug-sessions/:id` | Session state + events since `?after=<seq>` / close (resumes paused calls) (8.3) |
+| `GET` | `/admin/debug-sessions/:id/events` | Server-Sent Events stream of calls, pauses, results, notes (8.3) |
+| `POST` | `/admin/debug-sessions/:id/join` | Join as a collaborator `{ user }` (8.3) |
+| `POST` | `/admin/debug-sessions/:id/calls/:callId/resume\|abort` | Resume a paused call (optionally with edited `arguments`) or abort it (-32020) (8.3) |
+| `POST` / `DELETE` | `/admin/debug-sessions/:id/breakpoints[/:n]` | Add `{ tool, when? }` / remove a breakpoint (8.3) |
+| `POST` | `/admin/debug-sessions/:id/notes` | Annotate `{ text, callId? }` (8.3) |
+| `POST` | `/admin/debug-sessions/:id/replay/:callId` | Re-run a captured call (8.3) |
 
 ## Bridges
 

@@ -35,6 +35,7 @@ import { ApprovalFlowsSchema } from '../features/approval-flows.js';
 import { ComplianceReportsSchema } from '../features/compliance-reports.js';
 import { AgentIdentitySchema } from '../features/agent-identity.js';
 import { A2aFederationSchema } from '../features/a2a-federation.js';
+import { DebugSessionsSchema } from '../features/debug-sessions.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
@@ -494,6 +495,7 @@ const GatewayConfigSchema = z.object({
   complianceReports: ComplianceReportsSchema.optional(),
   agentIdentity: AgentIdentitySchema.optional(),
   a2aFederation: A2aFederationSchema.optional(),
+  debugSessions: DebugSessionsSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   audit: z
