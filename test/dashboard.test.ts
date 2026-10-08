@@ -410,6 +410,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(c.bundles[0].frameworks.map((x: any) => x.framework)).toEqual(['soc2', 'iso27001', 'gdpr']);
     expect(c.bundles[0].verified).toBe(true);
   });
+  it('lists agents and delegation tokens (8.1)', async () => {
+    const f = demoFetch();
+    const a = (await (await f('/api/v1/admin/agent-identity')).json()) as any;
+    expect(a.agents.map((x: any) => x.id)).toEqual(['travel-bot', 'booker']);
+    expect(a.recent[0].chain).toEqual(['agent:booker', 'agent:travel-bot']);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

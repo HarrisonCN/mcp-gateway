@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.1.0] - 2026-10-08
+
+### Added
+- **Agent identity & delegated auth** (`agentIdentity`): an agent registry (id, tools, allowed `delegators`) and
+  short-lived **delegation tokens** (HS256 `agent+jwt`) obtained by token exchange —
+  `POST /api/v1/features/agent-identity/token` — with RFC 8693 `act` chains for sub-agents (scope narrowed per hop,
+  `maxDelegationDepth`). Agents call tools with `POST /api/v1/features/agent-identity/call` as client `agent:<id>`
+  on behalf of the user. `requireAgentFor` tool globs refuse direct calls with **-32019**. Operators:
+  `GET /api/v1/admin/agent-identity`, `POST …/introspect`, `POST …/revoke`. [Guide](docs/guides/agent-identity.md).
+- Pages demo: agent registry and delegation chains.
+
 ## [8.0.0] - 2026-10-08
 
 ### Breaking

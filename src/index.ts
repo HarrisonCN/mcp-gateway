@@ -177,6 +177,8 @@ export { ApprovalFlowsSchema, FlowQueue, matchFlow } from './features/approval-f
 export type { ApprovalFlowsConfig, FlowRequest } from './features/approval-flows.js';
 export { ComplianceReportsSchema, writeBundle, verifyBundle, renderFramework, iso27001Controls } from './features/compliance-reports.js';
 export type { ComplianceReportsConfig, Manifest as ComplianceManifest } from './features/compliance-reports.js';
+export { AgentIdentitySchema, signAgentToken, verifyAgentToken, issueAgentToken, ERR_AGENT_REQUIRED } from './features/agent-identity.js';
+export type { AgentIdentityConfig, AgentTokenClaims } from './features/agent-identity.js';
 export type {
   GatewayConfig,
   McpServerConfig,

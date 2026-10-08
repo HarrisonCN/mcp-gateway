@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '8.0.0';
+  const VERSION = '8.1.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -62,6 +62,7 @@
     { id: "offline", since: "7.6.0", summary: "Offline desktop gateway: connectivity probe, fail-fast for remote upstreams when offline, desktop-client config import" },
     { id: "approval-flows", since: "7.7.0", summary: "Approvals 2.0: multi-step, conditional approval flows with named approvers and escalation" },
     { id: "compliance-reports", since: "7.8.0", summary: "Automated compliance reports: scheduled SOC 2 / ISO 27001 / GDPR evidence bundles with SHA-256 manifests" },
+    { id: "agent-identity", since: "8.1.0", summary: "Agent identity & delegated auth: agent registry, on-behalf-of delegation tokens (RFC 8693 act chains), scoped agent calls" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -665,6 +666,14 @@
     // 7.8: automated compliance reports.
     if (p === '/admin/compliance-reports') return json({ outputDir: '/var/lib/mcp-gateway/compliance', keep: 12, schedules: [{ id: 'monthly', frameworks: ['soc2', 'iso27001', 'gdpr'], every: 'monthly', periodDays: 30, lastRunAt: '2026-10-01T00:00:00.000Z', nextRunAt: '2026-10-31T00:00:00.000Z' }], bundles: [
       { name: 'monthly-2026-10-01T00-00-00-000Z', schedule: 'monthly', generatedAt: '2026-10-01T00:00:00.000Z', frameworks: [{ framework: 'soc2', pass: 8, warn: 1, fail: 0 }, { framework: 'iso27001', pass: 11, warn: 1, fail: 0 }, { framework: 'gdpr', pass: 5, warn: 1, fail: 0 }], verified: true },
+    ] });
+    // 8.1: agent identity & delegated auth.
+    if (p === '/admin/agent-identity') return json({ enabled: true, issuer: 'mcp-gateway', tokenTtlSeconds: 900, maxDelegationDepth: 2, requireAgentFor: ['payments/*'], agents: [
+      { id: 'travel-bot', name: 'Travel bot', tools: ['flights/*', 'hotels/search'], delegators: ['jwt:*'], enabled: true, activeTokens: 2 },
+      { id: 'booker', name: 'Booking sub-agent', tools: ['flights/book', 'payments/*'], delegators: ['*'], enabled: true, activeTokens: 1 },
+    ], tokens: { issued: 14, active: 3, revoked: 1 }, recent: [
+      { jti: '7c1e9a40-demo', agent: 'booker', sub: 'jwt:alice@example.com', chain: ['agent:booker', 'agent:travel-bot'], scope: ['flights/book'], issuedAt: '2026-10-08T16:40:00.000Z', expiresAt: '2026-10-08T16:55:00.000Z', calls: 1, revoked: false },
+      { jti: '52b0d3f1-demo', agent: 'travel-bot', sub: 'jwt:alice@example.com', chain: ['agent:travel-bot'], scope: ['flights/*', 'hotels/search'], issuedAt: '2026-10-08T16:38:00.000Z', expiresAt: '2026-10-08T16:53:00.000Z', calls: 6, revoked: false },
     ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 8.0: nothing is deprecated (schema v7, `plugins[].wasm` and plugin API v4 were removed).

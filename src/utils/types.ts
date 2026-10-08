@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Agent identity & delegated auth (8.1). */
+  agentIdentity?: import('../features/agent-identity.js').AgentIdentityConfig;
   /** Automated compliance reports (7.8). */
   complianceReports?: import('../features/compliance-reports.js').ComplianceReportsConfig;
   /** Approvals 2.0 (7.7). */
