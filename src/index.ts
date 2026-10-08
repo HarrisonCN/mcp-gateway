@@ -161,6 +161,8 @@ export { renderManifests, McpGatewaySpecSchema, K8sOperator, inClusterApi, confi
 export type { McpGatewaySpec, K8sApi } from './features/k8s.js';
 export { ControlPlaneSchema, DataPlaneSync, configEtag, distributedConfig, createControlPlaneRouter } from './gateway/control-plane.js';
 export type { ControlPlaneConfig, DataPlaneNode, DataPlaneStatus } from './gateway/control-plane.js';
+export { exportHcl, toHcl, KINDS as TERRAFORM_KINDS } from './features/terraform.js';
+export type { ResourceKind } from './features/terraform.js';
 export type {
   GatewayConfig,
   McpServerConfig,

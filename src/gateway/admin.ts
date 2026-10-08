@@ -71,7 +71,20 @@ function normalized(cfg: GatewayConfig): Record<string, unknown> {
   }
 }
 
-const diffAgainst = (current: GatewayConfig, next: GatewayConfig) => diffConfigs(normalized(current), normalized(next));
+export const diffAgainst = (current: GatewayConfig, next: GatewayConfig) => diffConfigs(normalized(current), normalized(next));
+
+/** Validate a full config in schema form for hot-apply on top of `current` (port / host / configDir kept; 7.1). */
+export async function prepareConfig(raw: Record<string, unknown>, current: GatewayConfig): Promise<GatewayConfig> {
+  const r: Record<string, unknown> = { ...raw };
+  delete r.configDir;
+  delete r.deprecations;
+  delete r.port;
+  delete r.host;
+  const next = validateConfig(r);
+  next.configDir = current.configDir;
+  if (next.policy?.files?.length) next.policy = await loadPolicyFiles(next.policy, current.configDir ?? process.cwd());
+  return { ...next, port: current.port, host: current.host };
+}
 
 export function createAdminRouter(deps: AdminDeps): express.Router {
   const router = express.Router();

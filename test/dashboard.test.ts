@@ -361,6 +361,14 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const f = demoFetch();
     expect(((await (await f('/api/v1/admin/k8s/manifests')).json()) as any).items.map((m: any) => m.kind)).toEqual(['ConfigMap', 'Deployment', 'Service', 'PodDisruptionBudget']);
   });
+  it('lists Terraform resources and exports main.tf (7.1)', async () => {
+    const f = demoFetch();
+    const s = (await (await f('/api/v1/admin/terraform/servers')).json()) as any;
+    expect(s.items.map((x: any) => x.id)).toContain('github');
+    const tf = await (await f('/api/v1/admin/terraform/export')).text();
+    expect(tf).toContain('resource "restapi_object" "server_github"');
+    expect(tf).toContain('id = "/api/v1/admin/terraform/servers/github"');
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

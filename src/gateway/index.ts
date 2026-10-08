@@ -56,7 +56,7 @@ import { CostLedger, costsRouter } from '../costs/index.js';
 import { PluginHost, type PluginSource } from '../plugins/index.js';
 import { PROTECTED_RESOURCE_METADATA_PATH, protectedResourceMetadata } from '../auth/oauth.js';
 import { createControlPlaneRouter, DataPlaneSync, roleOf } from './control-plane.js';
-import { portableConfig } from './admin.js';
+import { diffAgainst, portableConfig, prepareConfig } from './admin.js';
 import { validateConfig } from '../config/loader.js';
 
 function findDashboard(): string | undefined {
@@ -394,6 +394,12 @@ export class Gateway {
           onStop: (fn) => void this.featureStops.push(fn),
           edgeNodes: () => [...edgeControl.nodes.values()],
           capturedCalls: () => this.invoker?.recorder?.list() ?? [],
+          applyConfig: async (raw, dryRun) => {
+            const next = await prepareConfig(raw, this.config);
+            const changes = diffAgainst(this.config, next);
+            if (!dryRun) await this.reload(next);
+            return { changes };
+          },
           baseUrl: () => {
             const a = this.address();
             if (!a) return undefined;

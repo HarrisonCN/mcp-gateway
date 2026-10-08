@@ -19,5 +19,6 @@ import './policy-sim.js';
 import './anomaly.js';
 import './billing.js';
 import './k8s.js';
+import './terraform.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';
