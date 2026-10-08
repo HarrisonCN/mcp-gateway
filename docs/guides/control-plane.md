@@ -14,7 +14,7 @@ Run one control plane and as many data planes as you need behind a load balancer
 ## Control plane
 
 ```yaml
-version: 8
+version: 9
 controlPlane:
   role: control
   configApi: true          # optional: edit the config over the admin API / dashboard
@@ -40,7 +40,7 @@ its own). It contains secrets (API keys, upstream headers), so it is only served
 ## Data plane
 
 ```yaml
-version: 8
+version: 9
 port: 4000
 controlPlane:
   role: data

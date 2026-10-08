@@ -5,7 +5,7 @@ plus a **plan**: the plan decides which upstream servers the organisation's tena
 members may make per UTC day.
 
 ```yaml
-version: 8
+version: 9
 controlPlane: { configApi: true }      # needed for onboarding / plan changes over the API
 console:
   defaultPlan: free

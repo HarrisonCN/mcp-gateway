@@ -493,7 +493,7 @@ scopes, policy, quotas), then diffs the two results. Captured payloads are redac
 ## Admin API
 
 ```yaml
-version: 8
+version: 9
 controlPlane:
   configApi: true   # allow PUT /api/v1/admin/config and POST /api/v1/admin/reload (default false)
   dashboard: true   # serve /dashboard (default true)
@@ -516,7 +516,7 @@ controlPlane:
 
 ```yaml
 # data plane
-version: 8
+version: 9
 port: 4000
 controlPlane:
   role: data
