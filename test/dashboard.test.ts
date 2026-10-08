@@ -331,6 +331,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const sp = (await (await f('/api/v1/admin/genai-otel/spans')).json()) as any;
     expect(sp.spans[0].attributes['gen_ai.operation.name']).toBe('chat');
   });
+  it('shows SSO / SCIM status, users and memberships (6.4)', async () => {
+    const f = demoFetch();
+    expect(((await (await f('/api/v1/admin/identity')).json()) as any).groupRoles).toHaveLength(3);
+    expect(((await (await f('/api/v1/admin/identity/scim/v2/Users')).json()) as any).totalResults).toBe(2);
+    expect(((await (await f('/api/v1/admin/identity/memberships?user=ada@acme.example')).json()) as any).memberships[0].role).toBe('admin');
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

@@ -21,6 +21,7 @@ import { AdaptiveSchema } from '../features/adaptive.js';
 import { ApiUpstreamsSchema } from '../features/api-upstreams.js';
 import { WorkflowsSchema } from '../features/workflows.js';
 import { GenaiTelemetrySchema } from '../features/genai-otel.js';
+import { IdentitySchema } from '../features/identity.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
@@ -492,6 +493,7 @@ const GatewayConfigSchema = z.object({
   apiUpstreams: ApiUpstreamsSchema.optional(),
   workflows: WorkflowsSchema.optional(),
   genaiTelemetry: GenaiTelemetrySchema.optional(),
+  identity: IdentitySchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   dashboard: z.object({ enabled: z.boolean().default(true) }).optional(),

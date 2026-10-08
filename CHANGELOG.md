@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.4.0] - 2026-10-08
+
+### Added
+- **Enterprise SSO and SCIM** — `identity` adds a SCIM 2.0 provisioning endpoint
+  (`/admin/identity/scim/v2/Users|Groups`, filters, PATCH incl. group members, ServiceProviderConfig), OIDC ID-token
+  verification (`POST /admin/identity/sso/verify`, JWKS or inline keys) and an authorization-code + PKCE login URL,
+  and maps IdP groups to tenant roles (`groupRoles`, highest role wins; deactivated users lose access). Optional JSON
+  persistence. See [docs/guides/identity.md](docs/guides/identity.md).
+- Library: `IdentitySchema`, `ScimDirectory`, `scimFilter`, `resolveMemberships`, `verifyIdToken`, `authorizeUrl`.
+- Pages demo: identity status, SCIM users, memberships.
+
 ## [6.3.0] - 2026-10-08
 
 ### Added

@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v6.4
+
+| Feature | Description |
+|---------|-------------|
+| **SCIM 2.0** | Okta / Entra provision users and groups (filters, PATCH, group members) |
+| **OIDC SSO** | ID-token verification, PKCE login URL, IdP groups → tenant roles |
+
 ## What's New in v6.3
 
 | Feature | Description |
