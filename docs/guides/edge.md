@@ -61,7 +61,7 @@ export default {
 | Piece | Behaviour |
 |---|---|
 | **Config snapshot** | `GET /api/v1/admin/edge/snapshot` on the control plane: enabled `streamable-http` servers (url, tool filters, timeout, known tools), unscoped API keys as `sha256:` digests, tool naming, CORS. `ETag` / `If-None-Match`. The last good snapshot is kept in the store, so a cold isolate boots without the control plane. |
-| **Secrets** | Upstream `headers` are only in the snapshot with `sync.includeSecrets: true` (`?secrets=true`), which the control plane allows only with `admin.configApi: true`. Otherwise set them on the edge (`servers[].headers` merge over the snapshot). |
+| **Secrets** | Upstream `headers` are only in the snapshot with `sync.includeSecrets: true` (`?secrets=true`), which the control plane allows only with `controlPlane.configApi: true`. Otherwise set them on the edge (`servers[].headers` merge over the snapshot). |
 | **Offline tool lists** | When `tools/list` to an upstream fails, the edge serves its last list, or the snapshot's catalog. |
 | **Offline queue** | Calls to tools matching `offline.queueTools` (exposed name or `<server>__<tool>`) are queued when the upstream is unreachable or answers 5xx: REST answers `202` with `queued`, MCP returns a result with `structuredContent: { queued: true, id }`. `sync()` replays them oldest-first; calls the upstream rejects are dropped (and reported). Only queue idempotent / fire-and-forget tools. |
 | **Usage outbox** | Every call (live, queued, replayed) is recorded and pushed to `POST /api/v1/admin/edge/sync`; it appears in the control plane's metrics as client `edge:<edgeId>`. Events stay in the outbox until accepted. |

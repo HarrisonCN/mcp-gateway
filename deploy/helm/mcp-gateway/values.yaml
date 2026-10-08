@@ -1,6 +1,6 @@
 # Gateway config (mcp-gateway.yml). API keys belong in the Secret below, not here.
 config:
-  version: 6
+  version: 7
   monitor: { prometheus: true }
   servers: []
 

@@ -27,10 +27,10 @@ hot reload is rejected and the running configuration kept.
 | `port` | `4000` | restart | HTTP port |
 | `host` | `0.0.0.0` | restart | bind address |
 | `logLevel` | `info` | ✓ | `debug` \| `info` \| `warn` \| `error` |
-| `version` | — | | config schema version; optional, must be `3` when set |
+| `version` | — | | config schema version; optional, must be `7` when set |
 | `cors.origins` | `["*"]` | ✓ | allowed browser origins: exact values, `*`, or `/regex/` |
 | `health.intervalMs` | `30000` | restart | MCP `ping` interval (min 1000) |
-| `dashboard.enabled` | `true` | restart | serve `/dashboard` |
+| `controlPlane` | role `all` | restart | role (`all` / `control` / `data`), config API, dashboard, data-plane sync — see [Admin API](#admin-api) |
 | `servers` | `[]` | ✓ | see [Servers](#servers) |
 | `auth` | none | ✓ | see [Authentication](#authentication) |
 | `rateLimit` | none | ✓ | see [Rate limiting](#rate-limiting) |
@@ -499,8 +499,32 @@ controlPlane:
   dashboard: true   # serve /dashboard (default true)
 ```
 
-(Schema v6 spelled these `admin: { configApi }` and `dashboard: { enabled }` — deprecated in 6.9, removed in 7.0;
+(Schema v6 spelled these `admin: { configApi }` and `dashboard: { enabled }` — removed in 7.0;
 `mcp-gateway migrate --to 7` moves them.)
+
+### Control plane / data plane (7.0)
+
+| Key | Default | |
+|---|---|---|
+| `controlPlane.role` | `all` | `all` (one process, as in 6.x), `control` (admin API + config distribution) or `data` (tool traffic only) |
+| `controlPlane.configApi` | `false` | allow config writes over the admin API |
+| `controlPlane.dashboard` | `true` | serve `/dashboard` |
+| `controlPlane.url` | — | data plane: control plane base URL (required for `role: data`) |
+| `controlPlane.token` | — | data plane: operator API key of the control plane (required for `role: data`) |
+| `controlPlane.pullIntervalMs` | `10000` | data plane: config pull + heartbeat interval (min 1000) |
+| `controlPlane.nodeId` | `<hostname>-<random>` | data plane: id shown on the control plane |
+
+```yaml
+# data plane
+version: 7
+port: 4000
+controlPlane:
+  role: data
+  url: https://cp.internal:4000
+  token: ${CONTROL_PLANE_KEY}
+```
+
+See the [control plane guide](guides/control-plane.md).
 
 See [Declarative config](guides/declarative-config.md). 3.0 removed `corsOrigins` and `healthCheckIntervalMs` — use
 `cors.origins` and `health.intervalMs` ([migration guide](guides/migrating-to-v3.md)).

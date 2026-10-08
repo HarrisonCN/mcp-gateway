@@ -1,7 +1,8 @@
 # Migrating to 7.0
 
 7.0 is a breaking release built around the **control-plane / data-plane split**. A config that **6.9** loads without
-deprecation warnings runs on 7.0 unchanged.
+deprecation warnings runs on 7.0 unchanged. 7.0 refuses `version: 6` and the top-level `admin` / `dashboard`
+sections with a validation error that names the replacement.
 
 ## Checklist
 
@@ -19,14 +20,27 @@ deprecation warnings runs on 7.0 unchanged.
 | `admin: { configApi: true }` | `controlPlane: { configApi: true }` | ✓ moves it |
 | `dashboard: { enabled: false }` | `controlPlane: { dashboard: false }` | ✓ moves it |
 
-6.9 reads both forms (but not both at once), so a migrated file works before and after upgrading.
+6.9 reads both forms (but not both at once), so a migrated file works before and after upgrading. 7.0 reads only `version: 7`.
 
 ### Why `controlPlane`
 
 In 7.0 a gateway runs in one of three roles: `all` (default — what every 6.x gateway is), `control` (admin API,
 dashboard, config distribution) or `data` (serves tool traffic only and pulls its config from a control plane).
 Everything that belongs to the control plane — the config API and the dashboard — lives under `controlPlane`, next
-to the new `role`, `url` and `token` settings. With the default role nothing else changes.
+to the new `role`, `url` and `token` settings. With the default role nothing else changes. See the
+[control plane guide](control-plane.md) to split a deployment.
+
+## Removed in 7.0
+
+| Removed | Use instead |
+|---------|-------------|
+| `version: 6` | `version: 7` |
+| `admin.configApi` | `controlPlane.configApi` |
+| `dashboard.enabled` | `controlPlane.dashboard` |
+| `AdminConfig` type, `normalizeControlPlane()` | `ControlPlaneConfig` (`controlPlane` on `GatewayConfig`) |
+
+Embedders that build a `GatewayConfig` in code: replace `admin: { configApi }` with `controlPlane: { configApi }` and
+`dashboard: { enabled }` with `controlPlane: { dashboard }`.
 
 ## Deprecations in 6.9
 

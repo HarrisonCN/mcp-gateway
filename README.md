@@ -320,8 +320,8 @@ reconnect:                    # automatic reconnect of crashed / disconnected se
 
 health:
   intervalMs: 30000           # MCP ping interval
-dashboard:
-  enabled: true               # serve /dashboard
+controlPlane:
+  dashboard: true             # serve /dashboard
 
 rateLimit:
   limit: 100                  # Max requests per window
@@ -772,7 +772,7 @@ Getting ready for 6.0: `npx @winstonsayno/mcp-gateway@5.9 migrate --write` — s
 |---------|-------------|
 | **Config editor** | New dashboard tab: forms + raw JSON for the running config |
 | **Validate · diff · apply** | Schema-checked, previewed, hot-reloaded — no restart, no YAML editing |
-| **Safe by default** | Read-only unless `admin.configApi: true`; secrets stay redacted |
+| **Safe by default** | Read-only unless `controlPlane.configApi: true`; secrets stay redacted |
 
 ## What's New in v4.5
 
