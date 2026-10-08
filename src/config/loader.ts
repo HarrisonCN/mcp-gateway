@@ -536,6 +536,15 @@ const GatewayConfigSchema = z.object({
       if (bad) ctx.addIssue({ code: z.ZodIssueCode.custom, message: bad });
     })
     .optional(),
+  replay: z
+    .object({
+      enabled: z.boolean().optional(),
+      maxEntries: z.number().int().positive().max(100_000).optional(),
+      maxBytes: z.number().int().positive().max(10 * 1024 * 1024).optional(),
+      results: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
   cache: z
     .object({
       enabled: z.boolean().optional(),

@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '3.1.0';
+  const VERSION = '3.2.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -295,6 +295,34 @@
       await sleep(rnd(500, 1200));
       setOnline(id);
       return json({ ok: true, server: serverView(SERVERS.find((s) => s.id === id)) });
+    }
+    // Request details + replay (3.2): demo arguments are derived from the tool's input schema.
+    if ((m = p.match(/^\/requests\/([^/]+)(\/replay)?$/))) {
+      const r = records.find((x) => x.id === decodeURIComponent(m[1]));
+      if (!r) return json({ error: 'Not Found', message: 'No captured call with that id (it may have been evicted)' }, 404);
+      const s = SERVERS.find((x) => x.id === r.serverId);
+      const tool = s.tools.find((x) => x.name === r.toolName);
+      const demoArgs = r.args || (r.args = Object.fromEntries(Object.keys(tool?.inputSchema?.properties || {}).slice(0, 2).map((k) => [k, k === 'path' ? '/srv/projects/README.md' : k === 'query' || k === 'q' ? 'mcp gateway' : 'demo'])));
+      const resultOf = (a) => ({ content: [{ type: 'text', text: sampleResult(r.serverId, r.toolName, a) }] });
+      const captured = { id: r.id, timestamp: iso(r.timestamp), serverId: r.serverId, tool: r.toolName, kind: 'tool', clientId: r.clientId, via: r.via, durationMs: r.durationMs, success: r.success, arguments: demoArgs, ...(r.success ? { result: resultOf(demoArgs) } : { error: { code: -32603, message: r.errorMessage } }), ...(r.replayOf ? { replayOf: r.replayOf } : {}) };
+      if (!m[2]) return json(captured);
+      if (method !== 'POST') return json({ error: 'Method Not Allowed' }, 405);
+      let b = {};
+      try { b = JSON.parse(init?.body || '{}'); } catch {}
+      const a = b.arguments || demoArgs;
+      await sleep(rnd(60, 180));
+      const up = isUp(s.id);
+      const res = resultOf(a);
+      const nr = { id: uuid(), timestamp: Date.now(), serverId: s.id, toolName: r.toolName, durationMs: Math.round(s.base * (0.5 + Math.random())), success: up, clientId: 'key:demo', via: 'rest', kind: 'tool', args: a, replayOf: r.id };
+      if (!up) nr.errorMessage = `Server "${s.id}" is not connected`;
+      add(nr);
+      const before = captured.result ? captured.result.content[0].text : undefined;
+      const diff = up && before !== undefined ? (before === res.content[0].text ? [] : [{ path: 'content[0].text', change: 'changed', before, after: res.content[0].text }]) : null;
+      return json({
+        original: { id: r.id, serverId: r.serverId, arguments: demoArgs, success: r.success, durationMs: r.durationMs, result: captured.result, error: captured.error },
+        replay: up ? { status: 200, requestId: nr.id, server: s.id, arguments: a, durationMs: nr.durationMs, body: { result: res, server: s.id, tool: r.toolName, durationMs: nr.durationMs, requestId: nr.id } } : { status: 503, server: s.id, arguments: a, body: { error: 'Service Unavailable', message: nr.errorMessage } },
+        diff, identical: diff ? diff.length === 0 : null,
+      });
     }
     if (p === '/requests') {
       const limit = Math.min(500, Math.max(1, Number(q.get('limit')) || 50));

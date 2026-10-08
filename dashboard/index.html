@@ -290,6 +290,18 @@ tbody tr:hover { background: var(--surface-2); }
 @keyframes shimmer { to { transform: translateX(100%); } }
 .sk-line { height: 12px; margin: 8px 0; }
 
+/* ── Request details / replay (3.2) ──────────────────── */
+#hiBody tr[data-req], .hc[data-req] { cursor: pointer; }
+#hiBody tr[data-req]:hover td { background: var(--surface-2); }
+.rp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 640px) { .rp-grid { grid-template-columns: 1fr; } }
+.rp-grid h4 { margin: 0 0 6px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.rp pre, .rp textarea { margin: 0; width: 100%; box-sizing: border-box; min-height: 120px; max-height: 260px; overflow: auto; padding: 10px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.rp textarea { resize: vertical; }
+.rp .diff { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.rp .diff li { padding: 4px 8px; border-radius: 6px; background: var(--surface-2); overflow-wrap: anywhere; }
+.rp .diff .added { color: var(--ok); } .rp .diff .removed { color: var(--bad); } .rp .diff .changed { color: var(--warn); }
+
 /* ── Onboarding ──────────────────────────────────────── */
 .ob-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(5, 7, 12, .55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: grid; place-items: center; padding: 16px; opacity: 0; transition: opacity .3s var(--ease); }
 .ob-backdrop.open { opacity: 1; }
@@ -517,6 +529,16 @@ tbody tr:hover { background: var(--surface-2); }
 
 <nav class="bottom-nav" id="bottomNav" role="tablist" aria-label="Sections"></nav>
 
+<!-- Request details / replay (3.2) -->
+<div class="ob-backdrop" id="rp" hidden>
+  <div class="ob rp" role="dialog" aria-modal="true" aria-labelledby="rpTitle">
+    <div class="ob-top"><h3 id="rpTitle" style="flex:1;margin:0" data-i18n="rpTitle">Request details</h3>
+      <button class="icon-btn" id="rpClose" type="button" data-i18n-title="close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div class="ob-body" id="rpBody"></div>
+    <div class="ob-foot"><span class="count" id="rpNote"></span><button class="btn primary sm" id="rpReplay" type="button" data-i18n="replay">Replay</button></div>
+  </div>
+</div>
+
 <!-- Onboarding -->
 <div class="ob-backdrop" id="ob" hidden>
   <div class="ob" role="dialog" aria-modal="true" aria-labelledby="obTitle">
@@ -591,7 +613,7 @@ const I18N = {
     remember: 'Remember on this device', saveConnect: 'Save & connect', clear: 'Clear', close: 'Close',
     tabOverview: 'Overview', tabServers: 'Servers', tabPlayground: 'Playground', tabHistory: 'History', tabConnect: 'Connect',
     ovTitle: 'Overview', ovSub: 'Live traffic through the gateway', window: 'Time window',
-    reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server', approvals: 'Pending approvals', tenants: 'Workspaces', quotas: 'Quotas', lb: 'Load balancing', cache: 'Result cache', purge: 'Purge', purged: 'Purged {n} cache entries', rules: 'rules', noUsage: 'No usage in the current period', ejected: 'ejected', entries: 'Entries', hitRate: 'Hit rate', hits: 'Hits', misses: 'Misses', deduped: 'Deduplicated', evictions: 'Evictions', catalog: 'Add a server', add: 'Add', added: 'Server added', installOff: 'read-only (catalog.install is off)', installedAs: 'installed as', role: 'Role', members: 'members', roleSaved: 'Role updated', approve: 'Approve', deny: 'Deny', approved: 'Approved', denied: 'Denied', expires: 'expires',
+    reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server', approvals: 'Pending approvals', tenants: 'Workspaces', rpTitle: 'Request details', replay: 'Replay', replayOf: 'replay of', rpArgs: 'Arguments', rpResult: 'Result', rpReplayed: 'Replay', rpSame: 'identical', rpDifferent: 'different', rpBadJson: 'Arguments must be valid JSON', rpHint: 'Edit the arguments and replay through the gateway', rpTruncated: 'Payload too large to capture; pass arguments to replay', rpOff: 'Not captured. Turn on replay.enabled to inspect and replay calls.', quotas: 'Quotas', lb: 'Load balancing', cache: 'Result cache', purge: 'Purge', purged: 'Purged {n} cache entries', rules: 'rules', noUsage: 'No usage in the current period', ejected: 'ejected', entries: 'Entries', hitRate: 'Hit rate', hits: 'Hits', misses: 'Misses', deduped: 'Deduplicated', evictions: 'Evictions', catalog: 'Add a server', add: 'Add', added: 'Server added', installOff: 'read-only (catalog.install is off)', installedAs: 'installed as', role: 'Role', members: 'members', roleSaved: 'Role updated', approve: 'Approve', deny: 'Deny', approved: 'Approved', denied: 'Denied', expires: 'expires',
     errRate: 'Error rate', liveStream: 'Live requests', pause: 'Pause', health: 'Server health',
     kRpm: 'Requests / min', kP50: 'p50 latency', kP95: 'p95 latency', kErr: 'Error rate', kSrv: 'Servers online',
     kTotal: '{n} in window', kP99: 'p99 {v}', kErrN: '{n} failed', kTools: '{n} tools',
@@ -636,7 +658,7 @@ const I18N = {
     remember: '在此设备上记住', saveConnect: '保存并连接', clear: '清除', close: '关闭',
     tabOverview: '总览', tabServers: '服务器', tabPlayground: '调试台', tabHistory: '历史', tabConnect: '接入',
     ovTitle: '总览', ovSub: '网关实时流量', window: '时间范围',
-    reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用', approvals: '待审批调用', tenants: '工作区', quotas: '配额', lb: '负载均衡', cache: '结果缓存', purge: '清空', purged: '已清除 {n} 条缓存', rules: '条规则', noUsage: '当前周期暂无用量', ejected: '已摘除', entries: '条目', hitRate: '命中率', hits: '命中', misses: '未命中', deduped: '合并请求', evictions: '淘汰', catalog: '添加服务器', add: '添加', added: '已添加服务器', installOff: '只读（未开启 catalog.install）', installedAs: '已安装为', role: '角色', members: '成员', roleSaved: '角色已更新', approve: '批准', deny: '拒绝', approved: '已批准', denied: '已拒绝', expires: '到期',
+    reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用', approvals: '待审批调用', tenants: '工作区', rpTitle: '请求详情', replay: '重放', replayOf: '重放自', rpArgs: '参数', rpResult: '结果', rpReplayed: '重放结果', rpSame: '一致', rpDifferent: '不一致', rpBadJson: '参数必须是合法 JSON', rpHint: '可修改参数后经网关重放', rpTruncated: '负载过大未被捕获；重放需手动填写参数', rpOff: '未捕获。开启 replay.enabled 后可查看并重放调用。', quotas: '配额', lb: '负载均衡', cache: '结果缓存', purge: '清空', purged: '已清除 {n} 条缓存', rules: '条规则', noUsage: '当前周期暂无用量', ejected: '已摘除', entries: '条目', hitRate: '命中率', hits: '命中', misses: '未命中', deduped: '合并请求', evictions: '淘汰', catalog: '添加服务器', add: '添加', added: '已添加服务器', installOff: '只读（未开启 catalog.install）', installedAs: '已安装为', role: '角色', members: '成员', roleSaved: '角色已更新', approve: '批准', deny: '拒绝', approved: '已批准', denied: '已拒绝', expires: '到期',
     errRate: '错误率', liveStream: '实时请求', pause: '暂停', health: '服务器健康',
     kRpm: '每分钟请求', kP50: 'p50 延迟', kP95: 'p95 延迟', kErr: '错误率', kSrv: '在线服务器',
     kTotal: '窗口内 {n} 次', kP99: 'p99 {v}', kErrN: '{n} 次失败', kTools: '{n} 个工具',
@@ -1550,8 +1572,8 @@ async function loadHistory() {
       body.innerHTML = `<tr><td colspan="7"><div class="empty">${ICON.empty}${esc(t('noData'))}</div></td></tr>`;
       cards.innerHTML = `<div class="empty">${ICON.empty}${esc(t('noData'))}</div>`;
     } else {
-      body.innerHTML = r.requests.map((x) => `<tr title="${esc(x.errorMessage || '')}"><td>${esc(fmtDateTime(x.timestamp))}</td><td class="mono">${esc(x.toolName)}</td><td>${esc(x.serverId)}</td><td class="mono">${esc(x.clientId || '—')}</td><td>${esc(x.via || 'rest')}</td><td>${fmtMs(x.durationMs)}</td><td><span class="badge ${x.success ? 'ok' : 'bad'}">${esc(x.success ? t('ok') : t('failed'))}</span></td></tr>`).join('');
-      cards.innerHTML = r.requests.map((x) => `<div class="hc"><div class="top"><span class="dot ${x.success ? 'ok' : 'bad'}" style="animation:none"></span><b>${esc(x.toolName)}</b><span class="badge ${x.success ? 'ok' : 'bad'}">${fmtMs(x.durationMs)}</span></div><div class="sub"><span>${esc(x.serverId)}</span><span>${esc(x.clientId || '—')}</span><span>${esc(x.via || 'rest')}</span><span>${esc(fmtDateTime(x.timestamp))}</span></div>${!x.success && x.errorMessage ? `<div style="color:var(--bad)">${esc(x.errorMessage)}</div>` : ''}</div>`).join('');
+      body.innerHTML = r.requests.map((x) => `<tr data-req="${esc(x.id)}" tabindex="0" title="${esc(x.errorMessage || '')}"><td>${esc(fmtDateTime(x.timestamp))}</td><td class="mono">${esc(x.toolName)}</td><td>${esc(x.serverId)}</td><td class="mono">${esc(x.clientId || '—')}</td><td>${esc(x.via || 'rest')}</td><td>${fmtMs(x.durationMs)}</td><td><span class="badge ${x.success ? 'ok' : 'bad'}">${esc(x.success ? t('ok') : t('failed'))}</span></td></tr>`).join('');
+      cards.innerHTML = r.requests.map((x) => `<div class="hc" data-req="${esc(x.id)}" tabindex="0"><div class="top"><span class="dot ${x.success ? 'ok' : 'bad'}" style="animation:none"></span><b>${esc(x.toolName)}</b><span class="badge ${x.success ? 'ok' : 'bad'}">${fmtMs(x.durationMs)}</span></div><div class="sub"><span>${esc(x.serverId)}</span><span>${esc(x.clientId || '—')}</span><span>${esc(x.via || 'rest')}</span><span>${esc(fmtDateTime(x.timestamp))}</span></div>${!x.success && x.errorMessage ? `<div style="color:var(--bad)">${esc(x.errorMessage)}</div>` : ''}</div>`).join('');
     }
     $('#hiInfo').textContent = t('page', { n: h.page + 1 });
     $('#hiPrev').disabled = h.page === 0;
@@ -1561,6 +1583,60 @@ async function loadHistory() {
     cards.innerHTML = '';
   }
 }
+// Request details + replay (3.2): needs replay.enabled on the gateway (captured arguments / results).
+const rp = { id: null, call: null };
+const pretty = (v) => (v === undefined ? '—' : JSON.stringify(v, null, 2));
+async function openRequest(id) {
+  rp.id = id; rp.call = null;
+  const box = $('#rp'), body = $('#rpBody');
+  body.innerHTML = '<div class="sk sk-line"></div><div class="sk sk-line" style="width:60%"></div>';
+  $('#rpNote').textContent = ''; $('#rpReplay').disabled = true;
+  box.hidden = false; requestAnimationFrame(() => box.classList.add('open'));
+  try {
+    const c = await api(`/requests/${encodeURIComponent(id)}`);
+    rp.call = c;
+    body.innerHTML = `<p class="muted" style="margin:0 0 12px"><b class="mono">${esc(c.tool)}</b> · ${esc(c.serverId)} · ${esc(c.clientId || 'anonymous')} · ${esc(c.via)} · ${esc(fmtDateTime(c.timestamp))} · ${fmtMs(c.durationMs)} <span class="badge ${c.success ? 'ok' : 'bad'}">${esc(c.success ? t('ok') : t('failed'))}</span>${c.replayOf ? ` · <span class="badge">${esc(t('replayOf'))} ${esc(c.replayOf.slice(0, 8))}</span>` : ''}</p>
+      <div class="rp-grid"><div><h4 data-i18n="rpArgs">${esc(t('rpArgs'))}</h4><textarea id="rpArgs" spellcheck="false" aria-label="${esc(t('rpArgs'))}">${esc(c.arguments ? JSON.stringify(c.arguments, null, 2) : '')}</textarea></div>
+      <div><h4>${esc(t('rpResult'))}</h4><pre id="rpResult">${esc(pretty(c.success ? c.result : c.error))}</pre></div></div>
+      <div id="rpOut"></div>`;
+    $('#rpReplay').disabled = c.kind !== 'tool';
+    $('#rpNote').textContent = c.truncated ? t('rpTruncated') : t('rpHint');
+  } catch (e) {
+    body.innerHTML = `<div class="empty">${esc(e.status === 404 ? t('rpOff') : t('loadErr', { e: e.message }))}</div>`;
+  }
+}
+function closeRequest() {
+  const box = $('#rp'); box.classList.remove('open');
+  setTimeout(() => { box.hidden = true; }, reduced() ? 0 : 300);
+}
+async function replayRequest() {
+  if (!rp.call) return;
+  let args;
+  const raw = $('#rpArgs').value.trim();
+  try { args = raw ? JSON.parse(raw) : {}; } catch { toast(t('rpBadJson')); return; }
+  const btn = $('#rpReplay'); btn.classList.add('loading'); btn.disabled = true;
+  try {
+    const r = await api(`/requests/${encodeURIComponent(rp.call.id)}/replay`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ arguments: args }) });
+    const ok = r.replay.status === 200;
+    const res = ok ? r.replay.body.result : r.replay.body;
+    $('#rpOut').innerHTML = `<h4 style="margin:14px 0 6px">${esc(t('rpReplayed'))} · HTTP ${r.replay.status}${r.replay.durationMs !== undefined ? ` · ${fmtMs(r.replay.durationMs)}` : ''} ${r.identical === true ? `<span class="badge ok">${esc(t('rpSame'))}</span>` : r.identical === false ? `<span class="badge warn">${esc(t('rpDifferent'))}</span>` : ''}</h4>
+      <pre>${esc(pretty(res))}</pre>
+      ${r.diff && r.diff.length ? `<ul class="diff">${r.diff.map((d) => `<li class="${d.change}">${d.change === 'added' ? '+' : d.change === 'removed' ? '−' : '~'} ${esc(d.path || '(value)')}: ${esc(d.change === 'added' ? JSON.stringify(d.after) : d.change === 'removed' ? JSON.stringify(d.before) : `${JSON.stringify(d.before)} → ${JSON.stringify(d.after)}`)}</li>`).join('')}</ul>` : ''}`;
+  } catch (e) { toast(e.message || String(e)); }
+  btn.classList.remove('loading'); btn.disabled = false;
+}
+document.addEventListener('click', (e) => {
+  const row = e.target.closest && e.target.closest('[data-req]');
+  if (row) openRequest(row.dataset.req);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.dataset && e.target.dataset.req) openRequest(e.target.dataset.req);
+  if (e.key === 'Escape' && !$('#rp').hidden) closeRequest();
+});
+$('#rpClose').addEventListener('click', closeRequest);
+$('#rp').addEventListener('click', (e) => { if (e.target.id === 'rp') closeRequest(); });
+$('#rpReplay').addEventListener('click', replayRequest);
+
 $('#hiFilters').addEventListener('submit', (e) => {
   e.preventDefault();
   state.hist.filters = Object.fromEntries(new FormData(e.target));

@@ -34,6 +34,7 @@ import type { ToolCache } from './cache.js';
 import { ERR_QUOTA_EXCEEDED, type UsageMeter } from './usage.js';
 export { ERR_QUOTA_EXCEEDED };
 import { NOOP_TRACER, type Tracer } from '../observability/tracing.js';
+import type { ReplayRecorder } from './replay.js';
 
 export type CallKind = 'tool' | 'resource' | 'prompt';
 
@@ -53,6 +54,8 @@ export interface InvokeContext {
   onProgress?: (u: ProgressUpdate) => void;
   /** Downstream caller (MCP session) for sampling / elicitation / roots passthrough (3.1). */
   caller?: RelayCaller;
+  /** Request id of the call this one replays (3.2). */
+  replayOf?: string;
   /** Incoming W3C `traceparent` (parent span). */
   traceparent?: string;
 }
@@ -60,10 +63,14 @@ export interface InvokeContext {
 export interface InvokeResult extends ProxyResponse {
   /** `traceparent` of the gateway span (empty when tracing is off). */
   traceparent: string;
+  /** Id of the history / audit record of this call. */
+  requestId?: string;
 }
 
 export interface InvokerDeps {
   proxy: McpProxy;
+  /** Captures calls for the replay debugger (3.2). */
+  recorder?: ReplayRecorder;
   metrics: MetricsCollector;
   tracer?: () => Tracer;
   requestLog?: () => boolean;
@@ -297,7 +304,7 @@ export class ToolInvoker {
     if (ctx.kind === 'tool') {
       this.deps.usage?.record({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name, success: result.success, durationMs: result.durationMs });
     }
-    this.deps.metrics.record({
+    const record = this.deps.metrics.record({
       serverId: ctx.serverId,
       toolName: ctx.name,
       durationMs: result.durationMs,
@@ -306,6 +313,20 @@ export class ToolInvoker {
       clientId: ctx.clientId,
       via: ctx.via,
       ...(ctx.kind === 'tool' ? {} : { kind: ctx.kind }),
+    });
+    this.deps.recorder?.capture({
+      id: record.id,
+      timestamp: record.timestamp.toISOString(),
+      serverId: ctx.serverId,
+      tool: ctx.name,
+      kind: ctx.kind,
+      clientId: ctx.clientId,
+      via: ctx.via,
+      durationMs: result.durationMs,
+      success: result.success,
+      arguments: ctx.params,
+      ...(result.success ? { result: result.result } : { error: result.error ? { code: result.error.code, message: record.errorMessage ?? result.error.message } : undefined }),
+      ...(ctx.replayOf ? { replayOf: ctx.replayOf } : {}),
     });
     if (this.deps.requestLog?.() !== false) {
       const label = ctx.kind === 'tool' ? ctx.name : `${ctx.method} ${ctx.name}`;
@@ -318,7 +339,11 @@ export class ToolInvoker {
       span.setError(result.error?.message ?? 'error');
     }
     span.end();
-    return { ...result, traceparent: span.traceparent() };
+    return { ...result, traceparent: span.traceparent(), requestId: record.id };
+  }
+
+  get recorder(): ReplayRecorder | undefined {
+    return this.deps.recorder;
   }
 }
 

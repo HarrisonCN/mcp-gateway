@@ -36,6 +36,7 @@ import { globToRegExp } from '../utils/tool-filter.js';
 import { ERR_QUOTA_EXCEEDED, usageCsv, type UsageGroup } from './usage.js';
 import { ToolInvoker, POLICY_ERROR_CODES, ERR_OUTPUT_BLOCKED } from './invoker.js';
 import { ApprovalError } from '../policy/approvals.js';
+import { jsonDiff } from './replay.js';
 
 export type ApiRouter = express.Router & {
   close(): void;
@@ -56,7 +57,7 @@ export type ApiRouter = express.Router & {
   /** Whether the authenticated caller is an operator (no key scope / tenant restriction). */
   isOperator(req: Request): boolean;
   /** REST-semantics tool call (after `authenticate`), for bridges. */
-  runToolCall(req: Request, body: Record<string, unknown>, res: ToolCallResponse): Promise<void>;
+  runToolCall(req: Request, body: Record<string, unknown>, res: ToolCallResponse, opts?: { replayOf?: string }): Promise<void>;
 };
 
 /** Whether `args` serialise to more than `limit` bytes (0 / undefined = no limit). */
@@ -549,7 +550,7 @@ export function createApiRouter(
    * One REST-semantics tool call (auth scope, tenants, routing, policy, quotas, status mapping).
    * Used by POST /tools/call and the OpenAI / A2A bridges.
    */
-  async function runToolCall(req: Request, body: Record<string, unknown>, res: ToolCallResponse): Promise<void> {
+  async function runToolCall(req: Request, body: Record<string, unknown>, res: ToolCallResponse, opts: { replayOf?: string } = {}): Promise<void> {
     const { tool, server: serverId } = body;
     const args = body.arguments ?? {};
 
@@ -651,6 +652,7 @@ export function createApiRouter(
       clientId: (req as AuthedRequest).clientId,
       via: 'rest',
       traceparent: traceparentOf(req),
+      ...(opts.replayOf ? { replayOf: opts.replayOf } : {}),
     });
 
     if (res.headersSent) return;
@@ -690,6 +692,7 @@ export function createApiRouter(
       server: targetServerId,
       tool,
       durationMs: result.durationMs,
+      ...(result.requestId ? { requestId: result.requestId } : {}),
     });
   }
   router.runToolCall = runToolCall;
@@ -1111,6 +1114,57 @@ export function createApiRouter(
         : null,
     });
   });
+
+  // ─── Replay / debugger (3.2) ────────────────────────────────────────────────
+
+  /** A captured call the caller may see: operators any, restricted clients only their own. */
+  const capturedFor = (req: Request, res: Response) => {
+    const rec = invoker.recorder;
+    if (!rec?.enabled) {
+      res.status(404).json({ error: 'Not Found', message: 'Request capture is off (replay.enabled: true turns it on)' });
+      return undefined;
+    }
+    const c = rec.get(req.params.id!);
+    const own = isRestricted(scopeOf(req)) ? (req as AuthedRequest).clientId ?? '' : undefined;
+    if (!c || (own !== undefined && (c.clientId ?? '') !== own)) {
+      res.status(404).json({ error: 'Not Found', message: 'No captured call with that id (it may have been evicted)' });
+      return undefined;
+    }
+    return c;
+  };
+
+  router.get('/requests/:id', auth, (req, res) => {
+    const c = capturedFor(req, res);
+    if (c) res.set('Cache-Control', 'no-store').json(c);
+  });
+
+  router.post(
+    '/requests/:id/replay',
+    auth,
+    asyncHandler(async (req, res) => {
+      const c = capturedFor(req, res);
+      if (!c) return;
+      if (c.kind !== 'tool') return void res.status(400).json({ error: 'Bad Request', message: 'Only tool calls can be replayed' });
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      if (b.arguments !== undefined && (typeof b.arguments !== 'object' || b.arguments === null || Array.isArray(b.arguments))) {
+        return void res.status(400).json({ error: 'Bad Request', message: '"arguments" must be an object' });
+      }
+      const args = (b.arguments as Record<string, unknown> | undefined) ?? c.arguments;
+      if (!args) return void res.status(409).json({ error: 'Conflict', message: 'The arguments of this call were not captured (too large); pass "arguments"' });
+      const server = typeof b.server === 'string' && b.server ? b.server : c.serverId;
+      const out = new CapturedResponse();
+      // Through the normal pipeline with the caller's own credentials (scopes, policy, quotas, rate limits apply).
+      await runToolCall(req, { tool: c.tool, server, arguments: args }, out, { replayOf: c.id });
+      const replayBody = out.body as Record<string, unknown> | undefined;
+      const replayResult = out.statusCode === 200 ? replayBody?.result : undefined;
+      res.json({
+        original: { id: c.id, serverId: c.serverId, arguments: c.arguments, success: c.success, durationMs: c.durationMs, result: c.result, error: c.error },
+        replay: { status: out.statusCode, requestId: replayBody?.requestId, server, arguments: args, durationMs: replayBody?.durationMs, body: replayBody },
+        diff: c.result !== undefined && replayResult !== undefined ? jsonDiff(c.result, replayResult) : null,
+        identical: c.result !== undefined && replayResult !== undefined ? jsonDiff(c.result, replayResult, 1).length === 0 : null,
+      });
+    }),
+  );
 
   // ─── Recent Requests ────────────────────────────────────────────────────────
 

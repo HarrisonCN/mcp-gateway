@@ -32,6 +32,8 @@ export type { CatalogEntry, InstallRequest } from './catalog/index.js';
 export { UsageMeter, usageCsv, periodBounds, ERR_QUOTA_EXCEEDED } from './gateway/usage.js';
 export type { UsageRow, UsageGroup } from './gateway/usage.js';
 export { ToolCache, canonicalJson } from './gateway/cache.js';
+export { ReplayRecorder, jsonDiff } from './gateway/replay.js';
+export type { CapturedCall, JsonChange } from './gateway/replay.js';
 export type { CacheStats } from './gateway/cache.js';
 export { LoadBalancer, expandReplicas } from './gateway/balancer.js';
 export { PluginHost, PluginError, loadPlugin, PLUGIN_API_VERSION } from './plugins/index.js';
@@ -52,7 +54,8 @@ export {
 export { computeReadiness } from './gateway/api.js';
 export type { Readiness } from './gateway/api.js';
 export { ServerRegistry } from './registry/index.js';
-export { McpProxy, defaultChannelFactory, MCP_PROTOCOL_VERSION } from './proxy/index.js';
+export { McpProxy, defaultChannelFactory, MCP_PROTOCOL_VERSION, PASSTHROUGH_METHODS, passthroughCapabilities } from './proxy/index.js';
+export type { ClientRequestHandler, PassthroughMethod, RelayCaller } from './proxy/index.js';
 export type { ProxyOptions, SessionInfo, RequestOptions, ProgressUpdate } from './proxy/index.js';
 export { ServerSupervisor, computeBackoff, DEFAULT_RECONNECT } from './gateway/supervisor.js';
 export type { UpstreamChannel, ChannelFactory, ChannelOptions, JsonRpcMessage } from './transport/channel.js';

@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-10-08
+
+### Added
+- **Request replay & debugger.** `replay.enabled` keeps the redacted arguments and results of recent calls in memory
+  (`maxEntries`, `maxBytes`, `results`). `GET /api/v1/requests/:id` shows a captured call;
+  `POST /api/v1/requests/:id/replay` runs it again — same or edited `arguments` / `server` — with the caller's own
+  credentials through the full pipeline, and returns both results with a structural `diff`. Replays are captured
+  too and point back via `replayOf`.
+- **Dashboard:** History rows open a request dialog (arguments, result, metadata) with an editable-arguments
+  **Replay** button and a highlighted diff; works at mobile width. The GitHub Pages demo simulates it.
+- `POST /tools/call` responses carry `requestId`. `ReplayRecorder`, `jsonDiff` exported.
+
+### Fixed
+- `PASSTHROUGH_METHODS`, `passthroughCapabilities` and the passthrough types (3.1) are now exported from the package
+  root as the 3.1 notes said.
+
+### Security
+- Restricted clients only see / replay their own calls; captured payloads are redacted and never written to disk.
+
 ## [3.1.0] - 2026-10-08
 
 ### Added
