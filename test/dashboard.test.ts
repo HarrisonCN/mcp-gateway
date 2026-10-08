@@ -119,6 +119,14 @@ describe('GitHub Pages demo backend', () => {
   });
 });
 
+describe('GitHub Pages demo backend: 3.3+ APIs', () => {
+  it('lists plugins with their WASM sandboxes (3.3)', async () => {
+    const f = demoFetch();
+    const r = (await (await f('/api/v1/plugins')).json()) as any;
+    expect(r.plugins.find((p: { kind: string }) => p.kind === 'wasm').sandboxes.length).toBe(2);
+  });
+});
+
 describe('dashboard replay dialog (3.2)', () => {
   it('has the dialog and clickable history rows', () => {
     expect(html).toContain('id="rp"');

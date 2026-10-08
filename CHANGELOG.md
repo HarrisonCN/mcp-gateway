@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-10-08
+
+### Added
+- **WASM plugin sandbox.** A `plugins:` entry with `wasm: ./plugin.wasm` (instead of `module:`) runs a WebAssembly
+  module — Rust, TinyGo, AssemblyScript, C, Zig… — in a worker thread with no WASI and no host access (only
+  `env.log`). Small JSON ABI: `alloc`, `on_tool_call`, `on_response` (deny / rewrite arguments / respond / replace
+  result).
+- **Per-tenant isolation:** `isolation: tenant` (default) | `client` | `shared` — one sandbox (worker + module
+  instance) per key, so tenants never share memory or globals. `limits`: `timeoutMs` (100), `memoryMb` (16),
+  `maxInstances` (64, LRU).
+- `GET /api/v1/plugins` (operators): plugins, hooks, kind, and live WASM sandboxes. `PluginCall.tenant`.
+  `WasmPlugin`, `loadWasmPlugin` exported. The GitHub Pages demo serves the new endpoint.
+
+### Security
+- Fail closed: traps, timeouts, memory overruns and invalid output refuse the call (`-32006`); the sandbox is
+  recreated on the next call. Modules with any import other than `env.log` are refused at load.
+
 ## [3.2.0] - 2026-10-08
 
 ### Added

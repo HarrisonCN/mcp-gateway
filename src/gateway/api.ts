@@ -1115,6 +1115,25 @@ export function createApiRouter(
     });
   });
 
+  // ─── Plugins (3.3) ──────────────────────────────────────────────────────────
+  router.get('/plugins', auth, (req, res) => {
+    if (!operatorOnly(req, res)) return;
+    const list = invoker.pluginHost?.list() ?? [];
+    res.json({
+      plugins: list.map((p) => {
+        const w = p as unknown as { stats?: () => Array<{ key: string; calls: number; alive: boolean }>; isolation?: string };
+        const hooks = (['onRequest', 'onToolCall', 'onResponse', 'onError'] as const).filter((h) => typeof (p as unknown as Record<string, unknown>)[h] === 'function');
+        return {
+          name: p.name,
+          apiVersion: p.apiVersion ?? 1,
+          kind: typeof w.stats === 'function' ? 'wasm' : 'module',
+          hooks,
+          ...(typeof w.stats === 'function' ? { isolation: w.isolation, sandboxes: w.stats() } : {}),
+        };
+      }),
+    });
+  });
+
   // ─── Replay / debugger (3.2) ────────────────────────────────────────────────
 
   /** A captured call the caller may see: operators any, restricted clients only their own. */

@@ -174,7 +174,7 @@ export class ToolInvoker {
     });
     const plugins = this.deps.plugins && this.deps.plugins.size > 0 ? this.deps.plugins : undefined;
     const call: PluginCall | undefined = plugins
-      ? { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, method: ctx.method, arguments: ctx.params, clientId: ctx.clientId, via: ctx.via, state: new Map() }
+      ? { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, method: ctx.method, arguments: ctx.params, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], via: ctx.via, state: new Map() }
       : undefined;
     if (plugins && call) {
       try {
@@ -243,6 +243,11 @@ export class ToolInvoker {
 
   get balancer(): LoadBalancer | undefined {
     return this.deps.balancer;
+  }
+
+  /** Active plugins (3.3: `GET /api/v1/plugins`). */
+  get pluginHost(): PluginHost | undefined {
+    return this.deps.plugins;
   }
 
   private send(ctx: InvokeContext, target: string): Promise<ProxyResponse> {

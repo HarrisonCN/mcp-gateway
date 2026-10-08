@@ -182,6 +182,10 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
 ```
 `kind` is present for resources and prompts. Invalid parameters → `400`.
 
+### Plugins (3.3)
+
+`GET /plugins` (operators): `{ plugins: [{ name, apiVersion, kind: "module" | "wasm", hooks, isolation?, sandboxes?: [{ key, calls, alive }] }] }`.
+
 ### Request details and replay (3.2)
 
 Needs `replay.enabled: true` (otherwise 404). Restricted clients see and replay only their own calls.

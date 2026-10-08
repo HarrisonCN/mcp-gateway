@@ -581,6 +581,16 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v3.3
+
+| Feature | Description |
+|---------|-------------|
+| **WASM plugins** | `wasm: ./plugin.wasm` — write plugins in any language that compiles to WebAssembly |
+| **Tenant isolation** | One sandbox per tenant / client; no WASI, no host access; time and memory limits |
+| **API** | `GET /api/v1/plugins` lists plugins and live sandboxes |
+
+Details: [CHANGELOG](CHANGELOG.md) · [Plugins guide](docs/guides/plugins.md#wasm-plugins-33).
+
 ## What's New in v3.2
 
 | Feature | Description |

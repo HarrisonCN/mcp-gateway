@@ -51,6 +51,8 @@ export interface PluginCall {
   /** Tool arguments (tools) or request params (resources / prompts). Mutable. */
   arguments: Record<string, unknown>;
   clientId?: string;
+  /** First tenant (workspace) of the client, when tenants are configured (3.3). */
+  tenant?: string;
   via: 'rest' | 'mcp';
   /** Scratch space shared by the hooks of one call. */
   readonly state: Map<string, unknown>;
@@ -119,6 +121,11 @@ async function instantiate(src: unknown, ctx: PluginContext, label: string): Pro
 
 /** Load one configured plugin (`module` is a path relative to `baseDir`, or a package name). */
 export async function loadPlugin(cfg: PluginConfig, baseDir = process.cwd()): Promise<GatewayPlugin> {
+  if (cfg.wasm) {
+    const { loadWasmPlugin } = await import('./wasm.js');
+    return loadWasmPlugin({ wasm: cfg.wasm, name: cfg.name, isolation: cfg.isolation, limits: cfg.limits }, baseDir);
+  }
+  if (!cfg.module) throw new Error('A plugin needs "module" or "wasm"');
   const spec = cfg.module;
   const isPath = spec.startsWith('.') || isAbsolute(spec);
   const target = isPath ? pathToFileURL(resolve(baseDir, spec)).href : spec;

@@ -242,13 +242,29 @@ export interface A2ABridgeConfig {
 
 /** One `plugins:` entry. */
 export interface PluginConfig {
-  /** Path (relative to the config file) or package name of an ES module. */
-  module: string;
+  /** Path (relative to the config file) or package name of an ES module. Exactly one of `module` / `wasm`. */
+  module?: string;
+  /** Path (relative to the config file) of a WebAssembly plugin, run sandboxed (3.3). */
+  wasm?: string;
+  /** WASM only: one sandbox per tenant (default), per client, or one shared. */
+  isolation?: 'tenant' | 'client' | 'shared';
+  /** WASM only: per-sandbox limits. */
+  limits?: WasmPluginLimits;
   /** Override the plugin's own name. */
   name?: string;
   enabled?: boolean;
   /** Passed to a factory export as `ctx.options`. */
   options?: Record<string, unknown>;
+}
+
+/** Limits of one WASM plugin sandbox (3.3). */
+export interface WasmPluginLimits {
+  /** Per hook call (default 100). */
+  timeoutMs?: number;
+  /** Linear memory + worker heap cap (default 16). */
+  memoryMb?: number;
+  /** Sandboxes kept per plugin; the least recently used is closed beyond this (default 64). */
+  maxInstances?: number;
 }
 
 // ─── Security ────────────────────────────────────────────────────────────────

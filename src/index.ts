@@ -37,6 +37,8 @@ export type { CapturedCall, JsonChange } from './gateway/replay.js';
 export type { CacheStats } from './gateway/cache.js';
 export { LoadBalancer, expandReplicas } from './gateway/balancer.js';
 export { PluginHost, PluginError, loadPlugin, PLUGIN_API_VERSION } from './plugins/index.js';
+export { WasmPlugin, WasmSandbox, loadWasmPlugin, DEFAULT_WASM_LIMITS } from './plugins/wasm.js';
+export type { WasmIsolation, WasmPluginOptions } from './plugins/wasm.js';
 export type { GatewayPlugin, PluginCall, PluginContext, PluginFactory, PluginSource, ToolCallOutcome } from './plugins/index.js';
 export { evaluatePolicy, argMatches, isUnder } from './policy/tool-policy.js';
 export type { PolicyDecision, PolicyRequest, PolicyEffect } from './policy/tool-policy.js';
