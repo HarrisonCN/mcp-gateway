@@ -291,6 +291,42 @@ Health checks: the periodic ping (`health.intervalMs`) runs on every member; mem
 reconnects on its own with the `reconnect` policy. Tools come from the primary, or from a replica while the primary
 has none. `GET /api/v1/load-balancing` shows members, health, latency (EWMA) and ejections. Hot reloadable.
 
+## Secrets (3.5)
+
+```yaml
+secrets:
+  cacheSeconds: 300                 # resolved values are cached this long
+  rotation: { intervalSeconds: 900 }   # re-resolve and reconnect servers whose credentials changed
+  providers:
+    - { id: vault, type: vault, address: https://vault.example:8200, token: "${VAULT_TOKEN}", mount: secret }
+    # or AppRole: roleId / secretId (re-login on 403); namespace for Vault Enterprise
+    - { id: kms, type: aws-kms, region: eu-west-1 }      # credentials from AWS_* env when not set here
+    - { id: gkms, type: gcp-kms, token: "${GCP_TOKEN}" }
+    - { id: files, type: file }                          # paths relative to this file
+    # `env` is always available: secret://env/NAME
+
+servers:
+  - id: github
+    env: { GITHUB_PERSONAL_ACCESS_TOKEN: "secret://vault/mcp/github#token" }
+  - id: search
+    url: https://search.example/mcp
+    headers: { Authorization: "Bearer secret://kms/AQICAHh…" }   # KMS: path = base64 ciphertext
+    inject:                                                     # per-call, per-tenant credentials
+      - { ref: "secret://vault/tenants/{tenant}/search#key", argument: api_key }
+      - { ref: "secret://vault/clients/{client}/search#token", meta: authorization, format: "Bearer {value}" }
+```
+
+- `secret://<provider>/<path>[#field]` may appear in a server's `env`, `headers`, `url` and `args`. References are
+  resolved when the server (re)connects; the registry, `GET /servers`, the audit log and config diffs only see the
+  reference. A provider outage keeps the last good value.
+- **Rotation:** every `rotation.intervalSeconds` (or `POST /api/v1/secrets/rotate`) the references are read again;
+  a server whose resolved credentials changed is reconnected with them.
+- **Per-tenant injection:** `inject` adds a credential to every call — a tool argument or a `_meta` field — after
+  plugins, policy, cache keys and request capture, so it never reaches logs or the replay debugger. `{tenant}` is
+  the caller's first tenant, `{client}` its client id. A call that needs `{tenant}` from a caller without one is
+  refused (`-32010`) unless `required: false`.
+- `GET /api/v1/secrets` lists providers and references with version / fetched / rotated times — never values.
+
 ## Smart routing (3.4)
 
 ```yaml

@@ -242,6 +242,12 @@ Viewers get `403` (REST) / `-32003` (`/mcp`) on tool calls.
                  "ejectedUntil": "2026-10-07T18:00:30.000Z" } ] } ] }
 ```
 
+### Secrets (3.5)
+
+`GET /secrets` (operators): `{ providers: [{ id, type }], rotation: { intervalSeconds }, secrets: [{ ref, provider, type, version, fetchedAt?, rotatedAt?, error?, usedBy }] }` — values are never returned.
+`POST /secrets/rotate`: re-read every reference now; `{ rotated: [serverId] }` lists the servers reconnected with new credentials.
+Calls whose `inject` credential cannot be resolved fail with JSON-RPC `-32010`.
+
 ### Smart routing (3.4)
 
 `GET /routing` (operators): `{ splits: [{ name, server, tools?, sticky, variants: [{ server, label, weight, effectiveWeight, calls, errors, errorRate, latencyMs?, rolledBack? }] }], groups: [<load-balancing group with member score>] }`.

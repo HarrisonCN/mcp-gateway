@@ -72,6 +72,8 @@ export interface ProgressUpdate {
 }
 
 export interface RequestOptions {
+  /** Extra `_meta` fields for `tools/call` (3.5: injected credentials). */
+  meta?: Record<string, unknown>;
   /** Abort the request: upstream gets `notifications/cancelled`, the result is `ERR_CANCELLED`. */
   signal?: AbortSignal;
   /**
@@ -460,7 +462,7 @@ export class McpProxy extends EventEmitter {
     timeout?: number,
     options: RequestOptions = {},
   ): Promise<ProxyResponse> {
-    return this.request(serverId, 'tools/call', { name: toolName, arguments: args }, timeout, options);
+    return this.request(serverId, 'tools/call', { name: toolName, arguments: args, ...(options.meta ? { _meta: options.meta } : {}) }, timeout, options);
   }
 
   /**

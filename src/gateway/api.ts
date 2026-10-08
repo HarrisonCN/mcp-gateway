@@ -119,6 +119,13 @@ export interface ApiRouterOptions {
   invoker?: ToolInvoker;
   /** Called after tenant members change at runtime (refreshes MCP sessions). */
   onTenantsChanged?: () => void;
+  /** Secrets (3.5): status (never values) and on-demand rotation. */
+  secrets?: {
+    providers(): Array<{ id: string; type: string }>;
+    status(): Array<Record<string, unknown>>;
+    rotationSeconds(): number | undefined;
+    rotate(): Promise<string[]>;
+  };
   /** Upstream catalog (GET /catalog, one-click install). */
   catalog?: {
     installEnabled(): boolean;
@@ -1101,6 +1108,29 @@ export function createApiRouter(
     if (!operatorOnly(req, res)) return;
     res.json({ groups: invoker.balancer?.snapshot() ?? [] });
   });
+
+  // ─── Secrets (3.5) ──────────────────────────────────────────────────────────
+  router.get('/secrets', auth, (req, res) => {
+    if (!operatorOnly(req, res)) return;
+    const sec = options.secrets;
+    res.set('Cache-Control', 'no-store').json({
+      providers: sec?.providers() ?? [],
+      rotation: { intervalSeconds: sec?.rotationSeconds() ?? null },
+      secrets: sec?.status() ?? [],
+    });
+  });
+
+  router.post(
+    '/secrets/rotate',
+    auth,
+    asyncHandler(async (req, res) => {
+      if (!operatorOnly(req, res)) return;
+      if (!options.secrets) return void res.status(501).json({ error: 'Not Implemented', message: 'Secrets are not available' });
+      const rotated = await options.secrets.rotate();
+      logger.info(`Secret rotation requested via API: ${rotated.length} server(s) reconnected`);
+      res.json({ rotated });
+    }),
+  );
 
   // ─── Smart routing (3.4) ────────────────────────────────────────────────────
   router.get('/routing', auth, (req, res) => {

@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '3.4.0';
+  const VERSION = '3.5.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -294,6 +294,21 @@
       if (decodeURIComponent(m[1]) !== 'search-canary') return json({ error: 'Not Found', message: `No traffic split "${m[1]}"` }, 404);
       return json({ ok: true, split: { name: 'search-canary', server: 'search', sticky: 'client', variants: [{ server: 'search', label: 'stable', weight: 90, effectiveWeight: 90, calls: 0, errors: 0, errorRate: 0 }, { server: 'search-v2', label: 'canary', weight: 10, effectiveWeight: 10, calls: 0, errors: 0, errorRate: 0 }] } });
     }
+    // 3.5: secrets — references and rotation status only, never values.
+    if (p === '/secrets') {
+      const ago = (s) => iso(Date.now() - s * 1000);
+      return json({
+        providers: [{ id: 'vault', type: 'vault' }, { id: 'kms', type: 'aws-kms' }, { id: 'env', type: 'env' }],
+        rotation: { intervalSeconds: 900 },
+        secrets: [
+          { ref: 'secret://vault/mcp/github#token', provider: 'vault', type: 'vault', version: 3, fetchedAt: ago(120), rotatedAt: ago(3600 * 20), usedBy: ['server:github'] },
+          { ref: 'secret://vault/mcp/slack#bot_token', provider: 'vault', type: 'vault', version: 1, fetchedAt: ago(120), usedBy: ['server:slack'] },
+          { ref: 'secret://vault/tenants/{tenant}/search#key', provider: 'vault', type: 'vault', version: 1, fetchedAt: ago(40), usedBy: ['server:search'] },
+          { ref: 'secret://kms/AQICAHh…', provider: 'kms', type: 'aws-kms', version: 1, fetchedAt: ago(600), usedBy: ['server:postgres'] },
+        ],
+      });
+    }
+    if (p === '/secrets/rotate' && method === 'POST') { await sleep(rnd(80, 180)); return json({ rotated: ['github'] }); }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     if (p === '/admin/deprecations') return json({ version: VERSION, deprecations: [] });
     if (p === '/tenants') return json({ clientId: 'key:demo', operator: true, tenants: demoTenants });

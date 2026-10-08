@@ -86,6 +86,8 @@ export interface McpServerConfig {
   weight?: number;
   /** Relative cost per call, for `strategy: smart` (3.4). */
   cost?: number;
+  /** Per-call credentials from `secrets:` providers, per tenant / client (3.5). */
+  inject?: SecretInjection[];
   /** Set on the internal replica servers (`<id>~<n>`): id of the logical server. */
   replicaOf?: string;
 }
@@ -193,6 +195,8 @@ export interface GatewayConfig {
   cache?: CacheConfig;
   /** Request capture + replay / debugger (3.2). Off by default. */
   replay?: ReplayConfig;
+  /** Secret providers (Vault / KMS / env / file) and rotation (3.5). */
+  secrets?: SecretsConfig;
   /** Traffic splits: canary / A-B across servers (3.4). */
   routing?: RoutingConfig;
   /** Plugins (hooks: onRequest, onToolCall before policy, onResponse after the output filter). */
@@ -461,6 +465,55 @@ export interface McpEndpointConfig {
 }
 
 /** Which upstream→client requests are relayed to the downstream client that made the call (3.1). */
+/** Secrets management (3.5). */
+export interface SecretsConfig {
+  providers?: SecretProviderConfig[];
+  /** How long a resolved value is cached (default 300 s). */
+  cacheSeconds?: number;
+  /** Re-resolve server credentials periodically and reconnect servers whose credentials changed. */
+  rotation?: { intervalSeconds?: number };
+}
+
+export interface SecretProviderConfig {
+  /** Referenced as `secret://<id>/...`. */
+  id: string;
+  type: 'vault' | 'aws-kms' | 'gcp-kms' | 'env' | 'file';
+  /** vault: server address. */
+  address?: string;
+  /** vault: token; gcp-kms: OAuth access token. */
+  token?: string;
+  /** vault: AppRole login (instead of token). */
+  roleId?: string;
+  secretId?: string;
+  /** vault: KV v2 mount (default `secret`). */
+  mount?: string;
+  namespace?: string;
+  /** aws-kms. */
+  region?: string;
+  keyId?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  sessionToken?: string;
+  /** aws-kms / gcp-kms: API endpoint override. */
+  endpoint?: string;
+  /** file: base directory (default: the config directory). */
+  baseDir?: string;
+}
+
+/** One per-call credential injected into a server's calls (3.5). */
+export interface SecretInjection {
+  /** `secret://…` reference; `{tenant}` / `{client}` are replaced per call. */
+  ref: string;
+  /** Tool argument to set (tools only). */
+  argument?: string;
+  /** `_meta` key to set. */
+  meta?: string;
+  /** e.g. `Bearer {value}`. */
+  format?: string;
+  /** Refuse the call when `{tenant}` is used and the caller has no tenant (default true). */
+  required?: boolean;
+}
+
 /** Smart routing (3.4). */
 export interface RoutingConfig {
   splits?: TrafficSplitConfig[];

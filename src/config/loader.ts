@@ -104,6 +104,20 @@ const McpServerSchema = z.object({
     .optional(),
   weight: z.number().positive().optional(),
   cost: z.number().min(0).optional(),
+  inject: z
+    .array(
+      z
+        .object({
+          ref: z.string().regex(/^secret:\/\/[A-Za-z0-9_-]+\/\S+$/, 'must be a secret://<provider>/<path>[#field] reference'),
+          argument: z.string().min(1).optional(),
+          meta: z.string().min(1).optional(),
+          format: z.string().includes('{value}').optional(),
+          required: z.boolean().optional(),
+        })
+        .strict()
+        .refine((i) => !!i.argument !== !!i.meta, 'set exactly one of "argument" or "meta"'),
+    )
+    .optional(),
 }).superRefine((s, ctx) => {
   if (s.id.includes('~')) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['id'], message: '"~" is reserved for replica ids' });
@@ -542,6 +556,49 @@ const GatewayConfigSchema = z.object({
       if (bad) ctx.addIssue({ code: z.ZodIssueCode.custom, message: bad });
     })
     .optional(),
+  secrets: z
+    .object({
+      providers: z
+        .array(
+          z
+            .object({
+              id: z.string().regex(/^[A-Za-z0-9_-]+$/),
+              type: z.enum(['vault', 'aws-kms', 'gcp-kms', 'env', 'file']),
+              address: z.string().url().optional(),
+              token: z.string().min(1).optional(),
+              roleId: z.string().min(1).optional(),
+              secretId: z.string().min(1).optional(),
+              mount: z.string().min(1).optional(),
+              namespace: z.string().min(1).optional(),
+              region: z.string().min(1).optional(),
+              keyId: z.string().min(1).optional(),
+              accessKeyId: z.string().min(1).optional(),
+              secretAccessKey: z.string().min(1).optional(),
+              sessionToken: z.string().min(1).optional(),
+              endpoint: z.string().url().optional(),
+              baseDir: z.string().min(1).optional(),
+            })
+            .strict()
+            .superRefine((p, ctx) => {
+              if (p.type === 'vault' && !p.address) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['address'], message: 'required for vault' });
+              if (p.type === 'vault' && !p.token && !(p.roleId && p.secretId)) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['token'], message: 'vault needs token or roleId + secretId' });
+              }
+            }),
+        )
+        .optional(),
+      cacheSeconds: z.number().int().min(0).max(86_400).optional(),
+      rotation: z.object({ intervalSeconds: z.number().int().min(10).max(86_400).optional() }).strict().optional(),
+    })
+    .strict()
+    .superRefine((sc, ctx) => {
+      const ids = new Set<string>();
+      (sc.providers ?? []).forEach((p, i) => {
+        if (ids.has(p.id)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['providers', i, 'id'], message: `duplicate provider "${p.id}"` });
+        ids.add(p.id);
+      });
+    })
+    .optional(),
   routing: z
     .object({
       splits: z
@@ -722,6 +779,16 @@ const GatewayConfigSchema = z.object({
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['servers', i, 'id'], message: `duplicate server id "${s.id}"` });
     }
     seen.add(s.id);
+  });
+  // secret:// references must name a configured provider (or the built-in "env").
+  const providers = new Set(['env', ...(c.secrets?.providers ?? []).map((p) => p.id)]);
+  c.servers.forEach((s, i) => {
+    const vals = [...Object.values(s.env ?? {}), ...Object.values(s.headers ?? {}), s.url ?? '', ...(s.args ?? []), ...(s.inject ?? []).map((x) => x.ref)];
+    for (const v of vals) {
+      for (const m of v.matchAll(/secret:\/\/([A-Za-z0-9_-]+)\//g)) {
+        if (!providers.has(m[1]!)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['servers', i], message: `unknown secret provider "${m[1]}"` });
+      }
+    }
   });
   (c.routing?.splits ?? []).forEach((sp, i) => {
     for (const [j, id] of [sp.server, ...sp.variants.map((v) => v.server)].entries()) {

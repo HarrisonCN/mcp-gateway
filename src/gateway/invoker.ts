@@ -11,7 +11,7 @@
 
 import type { McpProxy, ProgressUpdate, RelayCaller } from '../proxy/index.js';
 import type { MetricsCollector } from '../monitor/index.js';
-import type { ProxyResponse, ToolPolicyConfig } from '../utils/types.js';
+import type { McpServerConfig, ProxyResponse, ToolPolicyConfig } from '../utils/types.js';
 import { evaluatePolicy } from '../policy/tool-policy.js';
 import { ApprovalQueue } from '../policy/approvals.js';
 import { OutputFilter } from '../policy/output-filter.js';
@@ -31,6 +31,7 @@ import { logger } from '../utils/logger.js';
 import { ERR_NOT_CONNECTED, ERR_TIMEOUT } from '../proxy/index.js';
 import type { FailureKind, LoadBalancer } from './balancer.js';
 import type { RouteDecision, SmartRouter } from './routing.js';
+import type { SecretManager } from '../secrets/index.js';
 import type { ToolCache } from './cache.js';
 import { ERR_QUOTA_EXCEEDED, type UsageMeter } from './usage.js';
 export { ERR_QUOTA_EXCEEDED };
@@ -38,6 +39,9 @@ import { NOOP_TRACER, type Tracer } from '../observability/tracing.js';
 import type { ReplayRecorder } from './replay.js';
 
 export type CallKind = 'tool' | 'resource' | 'prompt';
+
+/** A per-call credential could not be resolved (3.5). */
+export const ERR_SECRET_UNAVAILABLE = -32010;
 
 export interface InvokeContext {
   serverId: string;
@@ -59,6 +63,8 @@ export interface InvokeContext {
   replayOf?: string;
   /** Incoming W3C `traceparent` (parent span). */
   traceparent?: string;
+  /** Extra `_meta` for the upstream request (3.5: injected credentials; never logged). */
+  meta?: Record<string, unknown>;
 }
 
 export interface InvokeResult extends ProxyResponse {
@@ -81,6 +87,10 @@ export interface InvokerDeps {
   approvals?: ApprovalQueue;
   /** Plugin hooks (`onToolCall` before policy, `onResponse` after the output filter). */
   plugins?: PluginHost;
+  /** Secret resolution for per-call credential injection (3.5). */
+  secrets?: SecretManager;
+  /** Config of a server id (for `inject:`). */
+  serverConfig?: (id: string) => McpServerConfig | undefined;
   /** Traffic splits (canary / A-B) across servers (3.4). */
   router?: SmartRouter;
   /** Routes calls on servers with `replicas:` (load balancing + failover). */
@@ -255,12 +265,34 @@ export class ToolInvoker {
 
   private send(ctx: InvokeContext, target: string): Promise<ProxyResponse> {
     return ctx.kind === 'tool'
-      ? this.deps.proxy.callTool(target, ctx.name, ctx.params, ctx.timeoutMs, { signal: ctx.signal, onProgress: ctx.onProgress, caller: ctx.caller })
-      : this.deps.proxy.request(target, ctx.method, ctx.params, ctx.timeoutMs, { signal: ctx.signal, caller: ctx.caller });
+      ? this.deps.proxy.callTool(target, ctx.name, ctx.params, ctx.timeoutMs, { signal: ctx.signal, onProgress: ctx.onProgress, caller: ctx.caller, meta: ctx.meta })
+      : this.deps.proxy.request(target, ctx.method, ctx.meta ? { ...ctx.params, _meta: { ...((ctx.params._meta as Record<string, unknown>) ?? {}), ...ctx.meta } } : ctx.params, ctx.timeoutMs, { signal: ctx.signal, caller: ctx.caller });
   }
 
   /** One upstream call, spread over replicas and failed over when the server has `replicas:`. */
+  /** Per-call credentials (`inject:`), added after plugins, policy, cache keys and capture saw the call (3.5). */
+  private async injectSecrets(ctx: InvokeContext): Promise<InvokeContext> {
+    const secrets = this.deps.secrets;
+    const server = this.deps.serverConfig?.(ctx.serverId);
+    if (!secrets || !server?.inject?.length) return ctx;
+    const values = await secrets.injections(server, { tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], clientId: ctx.clientId });
+    let params = ctx.params;
+    let meta = ctx.meta;
+    for (const v of values) {
+      if (v.argument && ctx.kind === 'tool') params = { ...params, [v.argument]: v.value };
+      if (v.meta) meta = { ...(meta ?? {}), [v.meta]: v.value };
+    }
+    return { ...ctx, params, meta };
+  }
+
   private async callUpstream(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>): Promise<ProxyResponse> {
+    try {
+      ctx = await this.injectSecrets(ctx);
+    } catch (err) {
+      const message = `Credential injection failed: ${err instanceof Error ? err.message : String(err)}`;
+      logger.warn(`${ctx.serverId}/${ctx.name}: ${message}`);
+      return { success: false, durationMs: 0, error: { code: ERR_SECRET_UNAVAILABLE, message } };
+    }
     const route: RouteDecision | undefined = ctx.kind === 'tool' ? this.deps.router?.route(ctx.serverId, ctx.name, ctx.clientId) : undefined;
     if (route) {
       span.setAttribute('mcp.route.split', route.split);

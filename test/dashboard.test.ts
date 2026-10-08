@@ -133,6 +133,14 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(r.groups[0].strategy).toBe('smart');
     expect((await f('/api/v1/routing/splits/search-canary/reset', { method: 'POST' })).status).toBe(200);
   });
+
+  it('serves secret status without values, and rotation (3.5)', async () => {
+    const f = demoFetch();
+    const r = (await (await f('/api/v1/secrets')).json()) as any;
+    expect(r.secrets.length).toBeGreaterThan(0);
+    expect(r.secrets.every((s: { ref: string }) => s.ref.startsWith('secret://'))).toBe(true);
+    expect(((await (await f('/api/v1/secrets/rotate', { method: 'POST' })).json()) as any).rotated).toEqual(['github']);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {
