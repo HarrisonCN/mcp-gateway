@@ -723,8 +723,10 @@
       { id: 'github-flaky', servers: ['github'], tools: ['*'], clients: ['*'], percent: 10, fault: { errorRate: 0.5, timeoutMs: 30000 }, every: null, state: 'aborted', reason: 'steady-state guard: error rate 0.31 > 0.3', startedAt: new Date(Date.now() - 86400000).toISOString(), remainingSeconds: 0, injected: { latency: 0, error: 19, timeout: 0, corrupt: 0 }, calls: 61, errors: 19 },
     ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
-    // 8.0: nothing is deprecated (schema v7, `plugins[].wasm` and plugin API v4 were removed).
-    if (p === '/admin/deprecations') return json({ runtime: [], config: [] });
+    // 8.9: the demo config is still on schema v8 (`mcp-gateway migrate --to 9`).
+    if (p === '/admin/deprecations') return json({ runtime: [], config: [
+      { id: 'schema-v8', removedIn: '9.0.0', replacement: 'version: 9', message: 'config schema v8 is deprecated; `mcp-gateway migrate --to 9` writes `version: 9`', detail: 'version: 8', source: 'config' },
+    ] });
     // 7.0: control plane — data planes pulling config and sending heartbeats.
     if (p === '/admin/data-planes') {
       const seen = (s) => new Date(Date.now() - s * 1000).toISOString();

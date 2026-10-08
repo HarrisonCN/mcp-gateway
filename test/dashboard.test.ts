@@ -176,11 +176,11 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(((await (await f('/api/v1/portal/keys/pend0001/approve', { method: 'POST' })).json()) as any).status).toBe('active');
   });
 
-  it('lists no config deprecations (8.0) and the data planes of the control plane', async () => {
+  it('lists the 8.9 config deprecations and the data planes of the control plane', async () => {
     const f = demoFetch();
     const r = (await (await f('/api/v1/admin/deprecations')).json()) as any;
     expect(r.runtime).toEqual([]);
-    expect(r.config).toEqual([]); // 8.0
+    expect(r.config.map((d: any) => `${d.id}@${d.removedIn}`)).toEqual(['schema-v8@9.0.0']); // 8.9
     const dp = (await (await f('/api/v1/admin/data-planes')).json()) as any;
     expect(dp.role).toBe('control');
     expect(dp.dataPlanes.map((d: any) => `${d.nodeId}:${d.status}:${d.inSync}`)).toEqual(['dp-eu-1:online:true', 'dp-eu-2:online:true', 'dp-us-1:stale:false']);
