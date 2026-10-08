@@ -84,7 +84,7 @@ As [MCP](https://modelcontextprotocol.io) becomes the standard protocol for AI a
 - **YAML/JSON config** — simple, declarative configuration with env var overrides
 - **Docker-ready** — official Docker image, Compose examples included
 - **TypeScript SDK** — embed the gateway as a library in your own project
-- **Client libraries** — a dependency-free TypeScript client ([`clients/js`](clients/js), browser + Node) and a Kotlin/JVM/Android client ([`clients/kotlin`](clients/kotlin))
+- **Client libraries** — a dependency-free TypeScript client ([`clients/js`](clients/js), browser + Node) a Kotlin/JVM/Android client ([`clients/kotlin`](clients/kotlin)), and Python, Go and Swift SDKs ([`clients/python`](clients/python), [`clients/go`](clients/go), [`clients/swift`](clients/swift))
 - **LLM tool schemas** — `GET /api/v1/tools?format=openai|anthropic` returns ready-to-use function-calling definitions
 
 ## Quick Start
@@ -267,6 +267,9 @@ Names follow `mcp.toolNaming`, are sanitised to `^[a-zA-Z0-9_-]{1,64}$` and de-d
 |---|---|
 | **TypeScript / JavaScript** — [`clients/js`](clients/js) | `@winstonsayno/mcp-gateway-client`: zero dependencies, `fetch`-based (browser, Node 18+, Deno, Bun, React Native), typed `health`, `servers`, `listTools`, `toolSchemas`, `callTool`, `callLlmTool`, plus a small MCP-over-`/mcp` session helper |
 | **Kotlin / JVM / Android** — [`clients/kotlin`](clients/kotlin) | OkHttp + kotlinx.serialization, Java 11 bytecode; same API surface, `McpSession` for `/mcp` |
+| **Python** — [`clients/python`](clients/python) | `mcp-gateway-client`: stdlib only, Python ≥ 3.9, typed `health`, `list_tools`, `tool_schemas`, `call_tool`, `call_llm_tool`, approvals, `GatewayError.is_policy_error` |
+| **Go** — [`clients/go`](clients/go) | `github.com/HarrisonCN/mcp-gateway/clients/go`: `net/http` only, Go ≥ 1.21, context-aware, `*mcpgateway.Error` with `IsPolicyError()` |
+| **Swift** — [`clients/swift`](clients/swift) | SwiftPM `MCPGateway`: async/await, `URLSession` (pluggable transport), macOS 12 / iOS 15 / Linux |
 
 Both are in this repository and not yet published to npm / Maven Central.
 
@@ -582,6 +585,15 @@ await gateway.start();
 // Graceful shutdown
 process.on('SIGTERM', () => gateway.stop());
 ```
+
+## What's New in v4.7
+
+| Feature | Description |
+|---------|-------------|
+| **Python SDK** | `clients/python` — stdlib only, typed, policy-aware errors |
+| **Go SDK** | `clients/go` — `net/http` only, context-aware |
+| **Swift SDK** | `clients/swift` — async/await, macOS / iOS / Linux |
+| **SDK CI** | New `sdks.yml` workflow builds and tests all three |
 
 ## What's New in v4.6
 

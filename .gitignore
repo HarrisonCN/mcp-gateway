@@ -9,3 +9,9 @@ coverage/
 dashboard/node_modules/
 dashboard/dist/
 dashboard/.next/
+__pycache__/
+*.egg-info/
+clients/python/dist/
+clients/python/build/
+clients/swift/.build/
+clients/swift/Package.resolved

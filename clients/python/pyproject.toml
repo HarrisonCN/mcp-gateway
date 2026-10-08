@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-gateway-client"
+version = "4.7.0"
+description = "Typed, dependency-free Python client for mcp-gateway"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [{ name = "HarrisonCN" }]
+classifiers = ["Programming Language :: Python :: 3", "License :: OSI Approved :: MIT License", "Typing :: Typed"]
+
+[project.urls]
+Homepage = "https://github.com/HarrisonCN/mcp-gateway"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+mcp_gateway_client = ["py.typed"]
