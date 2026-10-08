@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Anomaly detection (6.6). */
+  anomaly?: import('../features/anomaly.js').AnomalyConfig;
   /** Policy simulation: shadow policy (6.5). */
   policyShadow?: import('../features/policy-sim.js').PolicyShadowConfig;
   /** Enterprise SSO (OIDC) and SCIM 2.0 (6.4). */

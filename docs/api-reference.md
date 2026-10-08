@@ -430,6 +430,9 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `POST` | `/admin/policy-sim/dry-run` | Decide one hypothetical call `{ server, tool, arguments?, clientId? }` under the enforced and shadow policies (6.5) |
 | `GET` | `/admin/policy-sim/shadow` | Shadow-policy agreement, transitions and recent divergences (6.5) |
 | `POST` | `/admin/policy-sim/shadow/reset` | Reset the shadow counters (6.5) |
+| `GET` | `/admin/anomaly` | Anomaly alerts (newest first, `?kind=`), quarantined clients and per-client baselines (6.6) |
+| `POST` | `/admin/anomaly/score` | Prompt-injection score and signals for `{ text }` or `{ value }` (6.6) |
+| `POST` | `/admin/anomaly/release` | Lift a client's quarantine `{ client }` (6.6) |
 
 ## Bridges
 

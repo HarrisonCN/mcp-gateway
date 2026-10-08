@@ -153,6 +153,8 @@ export { IdentitySchema, ScimDirectory, scimFilter, resolveMemberships, verifyId
 export type { IdentityConfig, ScimUser, ScimGroup } from './features/identity.js';
 export { PolicyShadowSchema, CandidatePolicySchema, simulatePolicy, ShadowRecorder, shadowRecorder } from './features/policy-sim.js';
 export type { PolicyShadowConfig, SimulationReport, SimCall } from './features/policy-sim.js';
+export { AnomalySchema, AnomalyDetector, anomalyDetector, injectionScore, ERR_ANOMALY_QUARANTINED } from './features/anomaly.js';
+export type { AnomalyConfig, AnomalyAlert } from './features/anomaly.js';
 export type {
   GatewayConfig,
   McpServerConfig,
