@@ -1,12 +1,12 @@
 /**
  * Deprecations and removals.
  *
- * 3.0 removed the 2.x deprecations and 4.0 the 3.x ones (`version: 3`, flat API-key scope fields, `least-latency`,
- * plugin API v1): using a removed form is a validation error naming its replacement ({@link removedConfigKeys}).
- * Current deprecations (all scheduled for 5.0: plugin API v2, `version: 4`, `servers[].timeout`) are recorded once per
- * id with {@link deprecate}, logged as warnings and listed by `GET /api/v1/admin/deprecations` and
- * `mcp-gateway validate`. 4.9 already reads schema v5 (`version: 5`, `servers[].timeoutMs`), so a file migrated with
- * `mcp-gateway migrate --to 5` works before and after upgrading. See docs/guides/migrating-to-v5.md.
+ * 3.0 removed the 2.x deprecations, 4.0 the 3.x ones (`version: 3`, flat API-key scope fields, `least-latency`,
+ * plugin API v1) and 5.0 the 4.x ones (`version: 4`, `servers[].timeout`, plugin API v2, `normalizeV4Preview`):
+ * using a removed form is a validation error naming its replacement ({@link removedConfigKeys}).
+ * Current deprecations (scheduled for 6.0: plugin API v3) are recorded once per id with {@link deprecate}, logged as
+ * warnings and listed by `GET /api/v1/admin/deprecations` and `mcp-gateway validate`.
+ * See docs/guides/migrating-to-v5.md.
  *
  * @module utils/deprecations
  */
@@ -24,11 +24,8 @@ export interface Deprecation {
 
 export const DEPRECATIONS = {
   // 4.0: plugin API v2 keeps loading until 5.0.
-  pluginApiV2: { id: 'plugin-api-v2', removedIn: '5.0.0', replacement: 'apiVersion: 4', message: 'plugin API v2 is deprecated and refused by 5.0; declare `apiVersion: 4` (adds ctx.secrets, ctx.tenant, onConfigChange and ctx.state)' },
-  // 4.9: schema v5 preview — the v4 forms below are refused by 5.0.
-  configVersion4: { id: 'config-version-4', removedIn: '5.0.0', replacement: 'version: 5', message: 'config schema v4 is deprecated; 5.0 reads `version: 5` — run `mcp-gateway migrate --to 5`' },
-  serverTimeout: { id: 'config-server-timeout', removedIn: '5.0.0', replacement: 'servers[].timeoutMs', message: '`servers[].timeout` is renamed to `timeoutMs` in schema v5 — run `mcp-gateway migrate --to 5`' },
-  normalizeV4Preview: { id: 'api-normalizeV4Preview', removedIn: '5.0.0', replacement: 'normalizeApiKeyScopes', message: '`normalizeV4Preview()` is removed in 5.0; use `normalizeApiKeyScopes()`' },
+  // 5.0: plugin API v3 keeps loading until 6.0.
+  pluginApiV3: { id: 'plugin-api-v3', removedIn: '6.0.0', replacement: 'apiVersion: 4', message: 'plugin API v3 is deprecated; declare `apiVersion: 4` (adds ctx.state, changes nothing else)' },
 } as const satisfies Record<string, Deprecation>;
 
 /** Config keys removed in 3.0 → replacement. */
@@ -38,7 +35,7 @@ export const REMOVED_IN_3: Record<string, string> = {
 };
 
 const GUIDE4 = 'run `mcp-gateway migrate` (see docs/guides/migrating-to-v4.md)';
-const GUIDE5 = 'run `mcp-gateway migrate --to 5` (see docs/guides/migrating-to-v5.md)';
+const GUIDE5 = 'run `mcp-gateway migrate` (see docs/guides/migrating-to-v5.md)';
 
 /** Validation errors for removed keys / forms used in a raw config object (3.0 and 4.0 removals). */
 export function removedConfigKeys(raw: unknown): string[] {
@@ -48,12 +45,11 @@ export function removedConfigKeys(raw: unknown): string[] {
     .filter(([k]) => r[k] !== undefined)
     .map(([k, v]) => `${k}: removed in 3.0 — use \`${v}\` (see docs/guides/migrating-to-v3.md)`);
   if (r.version === 3) out.push(`version: config schema v3 was removed in 4.0 — use \`version: 4\`; ${GUIDE4}`);
-  else if (r.version !== undefined && r.version !== 4 && r.version !== 5) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 4.9 reads \`version: 4\` and \`version: 5\` (see docs/guides/migrating-to-v5.md)`);
+  else if (r.version === 4) out.push(`version: config schema v4 was removed in 5.0 — use \`version: 5\`; ${GUIDE5}`);
+  else if (r.version !== undefined && r.version !== 5) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 5.x reads \`version: 5\` (see docs/guides/migrating-to-v5.md)`);
   ((r.servers as unknown[] | undefined) ?? []).forEach((s, i) => {
     if (!s || typeof s !== 'object') return;
-    const o = s as Record<string, unknown>;
-    if (r.version === 5 && o.timeout !== undefined) out.push(`servers.${i}.timeout: schema v5 names it \`timeoutMs\`; ${GUIDE5}`);
-    else if (o.timeout !== undefined && o.timeoutMs !== undefined) out.push(`servers.${i}: set either \`timeout\` (v4) or \`timeoutMs\` (v5), not both`);
+    if ((s as Record<string, unknown>).timeout !== undefined) out.push(`servers.${i}.timeout: removed in 5.0 — use \`timeoutMs\`; ${GUIDE5}`);
   });
   const keys = (r.auth as { apiKeys?: unknown[] } | undefined)?.apiKeys ?? [];
   keys.forEach((k, i) => {
@@ -69,20 +65,12 @@ export function removedConfigKeys(raw: unknown): string[] {
   return out;
 }
 
-/** Deprecated keys used in a raw config object (4.9: the v4 forms that 5.0 refuses). */
-export function configDeprecations(raw: unknown): Array<Deprecation & { detail?: string }> {
-  if (typeof raw !== 'object' || raw === null) return [];
-  const r = raw as Record<string, unknown>;
-  const out: Array<Deprecation & { detail?: string }> = [];
-  if (r.version === 4) out.push({ ...DEPRECATIONS.configVersion4 });
-  const ids = ((r.servers as unknown[] | undefined) ?? [])
-    .filter((s) => s && typeof s === 'object' && (s as Record<string, unknown>).timeout !== undefined)
-    .map((s) => String((s as Record<string, unknown>).id));
-  if (ids.length) out.push({ ...DEPRECATIONS.serverTimeout, detail: `servers: ${ids.join(', ')}` });
-  return out;
+/** Deprecated keys used in a raw config object. 5.0 has none (the 4.9 ones are removals now). */
+export function configDeprecations(_raw: unknown): Array<Deprecation & { detail?: string }> {
+  return [];
 }
 
-/** Schema v5 → internal shape: `servers[].timeoutMs` becomes the internal `timeout` (4.9 reads both). */
+/** Schema v5 → internal shape: `servers[].timeoutMs` becomes the internal `timeout`. */
 export function normalizeSchemaV5(raw: unknown): unknown {
   if (typeof raw !== 'object' || raw === null || !Array.isArray((raw as { servers?: unknown }).servers)) return raw;
   const r = raw as Record<string, unknown> & { servers: unknown[] };
@@ -119,12 +107,6 @@ export function normalizeApiKeyScopes(raw: unknown): { raw: unknown; errors: str
     };
   }
   return { raw: r, errors };
-}
-
-/** @deprecated 3.9 name of {@link normalizeApiKeyScopes}; removed in 5.0. */
-export function normalizeV4Preview(raw: unknown): { raw: unknown; errors: string[] } {
-  deprecate(DEPRECATIONS.normalizeV4Preview);
-  return normalizeApiKeyScopes(raw);
 }
 
 const seen = new Map<string, Deprecation & { detail?: string }>();

@@ -468,7 +468,7 @@ const GatewayConfigSchema = z.object({
     })
     .optional(),
   servers: z.array(McpServerSchema).default([]),
-  version: z.union([z.literal(4), z.literal(5)]).optional(),
+  version: z.literal(5).optional(),
   cors: z.object({ origins: z.array(z.string()).optional() }).strict().optional(),
   health: z.object({ intervalMs: z.number().int().min(1000).optional() }).strict().optional(),
   admin: z.object({ configApi: z.boolean().optional() }).strict().optional(),
@@ -1112,7 +1112,7 @@ export function generateDefaultConfig(): string {
   return `# mcp-gateway configuration
 # Documentation: https://github.com/HarrisonCN/mcp-gateway/docs
 
-version: 4
+version: 5
 port: 4000
 host: 0.0.0.0
 logLevel: info

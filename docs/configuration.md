@@ -53,7 +53,7 @@ servers:
     env: { GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}" }
     tags: [vcs]
     enabled: true              # default true
-    timeout: 30000             # ms per request, incl. time queued for maxConcurrency (default 30000); schema v5: timeoutMs
+    timeoutMs: 30000           # ms per request, incl. time queued for maxConcurrency (default 30000; `timeout` before 5.0)
     maxConcurrency: 10         # in-flight requests to this server (default 10)
     maxQueue: 50               # 4.4: calls allowed to wait for a slot; more fail fast with 503 / -32014 (default unbounded)
     tools:                     # optional tool filter (globs * and ?; deny wins)

@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-10-08
+
+⚠ **Breaking release** — see [Migrating to 5.0](docs/guides/migrating-to-v5.md). A config or plugin that 4.9 loads
+without deprecation warnings runs on 5.0 unchanged; `mcp-gateway migrate` rewrites v3 / v4 files to v5.
+
+### Removed
+- Config schema v4: `version: 4` is refused — use `version: 5` (or omit it).
+- `servers[].timeout` — use `servers[].timeoutMs`.
+- Plugin API v2 is refused at load — declare `apiVersion: 4`.
+- `normalizeV4Preview()` (library) — use `normalizeApiKeyScopes()`.
+
+### Changed
+- **Config schema v5** is the only schema; `mcp-gateway init` writes v5; examples migrated.
+- **Plugin API v4** (`ctx.state`) is the current contract; `PLUGIN_API_MIN_VERSION` is 3.
+- The admin API (`GET /api/v1/admin/config`) and the dashboard Config tab use `timeoutMs`; the Pages demo config is v5.
+- `mcp-gateway migrate` keeps YAML flow collections compact (`["a", "b"]`).
+- `docs/ROADMAP.md` now holds the post-5.0 plan (v5.1 → v6.0).
+- Test PKI for the mTLS tests is generated at run time (`test/helpers/mtls-certs.ts`, needs `openssl`); the committed
+  test keys under `test/fixtures/mtls/` were removed.
+
+### Deprecated (removed in 6.0)
+- Plugin API v3 — declare `apiVersion: 4`.
+
+### Unchanged
+- REST / MCP / edge APIs, the JS / Kotlin / Python / Go / Swift clients (no client upgrade needed; the JS client is not
+  republished), Docker base image (Node 22), dashboard CSP.
+
 ## [4.9.0] - 2026-10-08
 
 ### Added

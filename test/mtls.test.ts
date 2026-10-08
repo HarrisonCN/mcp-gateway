@@ -5,13 +5,13 @@ import { readFileSync, writeFileSync, mkdtempSync, copyFileSync } from 'fs';
 import { X509Certificate } from 'crypto';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { fileURLToPath } from 'url';
 import { MtlsManager, spiffeIdsOf, spiffeMatches, loadPem } from '../src/security/mtls.js';
 import { validateConfig } from '../src/config/loader.js';
 import { logger } from '../src/utils/logger.js';
+import { mtlsFixtureDir } from './helpers/mtls-certs.js';
 
 logger.setLevel('error');
-const dir = fileURLToPath(new URL('./fixtures/mtls/', import.meta.url));
+const dir = mtlsFixtureDir(); // generated per run (no committed private keys)
 const pem = (f: string) => readFileSync(join(dir, f), 'utf8');
 
 let srv: Server | undefined;

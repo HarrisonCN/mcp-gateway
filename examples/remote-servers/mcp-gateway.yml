@@ -5,6 +5,7 @@
 # (npx -y @modelcontextprotocol/server-everything streamableHttp — check its
 # README for the port it listens on and adjust `url` below).
 
+version: 5
 port: 4000
 host: 127.0.0.1
 logLevel: info
@@ -13,7 +14,7 @@ auth:
   strategy: api-key
   apiKeys: ["dev-key-replace-me"]
   protect:
-    health: true       # /api/v1/health/live stays public for probes
+    health: true # /api/v1/health/live stays public for probes
     metrics: true
 
 monitor:
@@ -26,7 +27,7 @@ reconnect:
   maxDelayMs: 60000
   multiplier: 2
   jitter: 0.2
-  maxAttempts: 0       # retry forever
+  maxAttempts: 0 # retry forever
 
 health:
   intervalMs: 15000
@@ -37,7 +38,7 @@ servers:
     name: Everything (Streamable HTTP)
     transport: streamable-http
     url: http://localhost:3001/mcp
-    timeout: 30000
+    timeoutMs: 30000
 
   # Hosted server that needs a token; ${VAR} is read from the gateway's environment
   - id: hosted
@@ -54,7 +55,7 @@ servers:
     transport: sse
     url: http://localhost:8080/sse
     reconnect:
-      maxAttempts: 10  # give up after 10 failed retries
+      maxAttempts: 10 # give up after 10 failed retries
     enabled: false
 
   # WebSocket (one JSON-RPC message per frame, "mcp" subprotocol)
@@ -62,5 +63,5 @@ servers:
     name: WebSocket server
     transport: websocket
     url: ws://localhost:8081
-    subprotocol: mcp   # set to "" if the server rejects subprotocols
+    subprotocol: mcp # set to "" if the server rejects subprotocols
     enabled: false

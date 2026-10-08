@@ -30,6 +30,9 @@ layout are kept, and **4.9 already reads schema v5**, so you can deploy the migr
 | Plugin API v2 | `apiVersion: 4` |
 | `normalizeV4Preview()` (library) | `normalizeApiKeyScopes()` |
 
+On 5.0 itself `mcp-gateway migrate` still rewrites v3 / v4 files (`--to 5` is the default), so you can also migrate
+after upgrading — the gateway just refuses to start until you do.
+
 ## 3. Plugins
 
 Plugin API v4 ships in 4.9: v3 plus `ctx.state`, a per-plugin key-value store with TTLs (see
@@ -38,4 +41,23 @@ loading in 5.x with a deprecation warning (removed in 6.0), v2 is refused by 5.0
 
 ## 4. Upgrade
 
-Bump to 5.0 once `validate` shows no deprecations. 5.0 refuses the removed forms with a message naming the replacement.
+Bump to 5.0 once `validate` shows no deprecations. 5.0 refuses the removed forms with a message naming the replacement:
+
+```
+Invalid configuration:
+  - version: config schema v4 was removed in 5.0 — use `version: 5`; run `mcp-gateway migrate` (see docs/guides/migrating-to-v5.md)
+  - servers.0.timeout: removed in 5.0 — use `timeoutMs`; run `mcp-gateway migrate` (see docs/guides/migrating-to-v5.md)
+```
+
+## What else changes in 5.0
+
+- The admin API (`GET /api/v1/admin/config`) and the dashboard's Config tab use `timeoutMs`.
+- `PLUGIN_API_MIN_VERSION` is 3; v3 plugins log `DEPRECATED (removed in 6.0.0)` once.
+- Library embedders: the in-memory `McpServerConfig` passed to `new Gateway()` keeps its `timeout` field (it is the
+  internal shape, not the file schema); `validateConfig()` / `loadConfig()` map `timeoutMs` onto it.
+- Unchanged: REST / MCP / edge APIs, the JS / Kotlin / Python / Go / Swift clients (no client upgrade needed), Docker
+  base image (Node 22), dashboard CSP.
+
+## Deprecated in 5.0 (removed in 6.0)
+
+- Plugin API v3 — declare `apiVersion: 4`.

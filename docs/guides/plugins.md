@@ -81,7 +81,7 @@ export default {
 ```
 
 `ctx.state`: `get(key)`, `set(key, value, ttlMs?)`, `has`, `delete`, `size()`, `clear()`; at most 10 000 keys (oldest
-evicted). v3 plugins load unchanged in 4.x; 5.0 deprecates v3 (removed in 6.0) and refuses v2.
+evicted). 5.0 refuses v2 and deprecates v3 (it still loads, with a warning, until 6.0).
 
 ## Plugin API v3 (4.0)
 
@@ -99,8 +99,8 @@ evicted). v3 plugins load unchanged in 4.x; 5.0 deprecates v3 (removed in 6.0) a
     when `tenants:` are configured.
 - New `onConfigChange(change, ctx)` — runs after every applied hot reload with `{ applied: string[], servers: string[], at }`
   (errors are logged, never fail the reload).
-- Plugin API v1 (no `apiVersion`) is **refused** since 4.0. Plugin API v2 still loads with a deprecation warning and is
-  removed in 5.0 — v2 plugins only need `apiVersion: 3` (v3 adds fields, changes nothing).
+- Plugin API v1 (no `apiVersion`) is **refused** since 4.0 and plugin API v2 since 5.0 — both only need
+  `apiVersion: 4` (later versions add fields, change nothing). v3 is deprecated in 5.0 and removed in 6.0.
 - Embedders granting secrets to plugins passed in code: `grantSecrets(plugin, { NAME: 'secret://…' })`.
 
 ## Plugin API v2 (3.0, deprecated in 4.0)

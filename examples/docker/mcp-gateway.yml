@@ -1,6 +1,7 @@
 # Config mounted by examples/docker/docker-compose.yml
 # API keys come from MCP_GATEWAY_API_KEYS (set via GATEWAY_API_KEY in compose).
 
+version: 5
 port: 4000
 host: 0.0.0.0
 logLevel: info
@@ -10,7 +11,7 @@ auth:
   apiKeys: ["overridden-by-MCP_GATEWAY_API_KEYS"]
   protect:
     health: false
-    metrics: true      # Prometheus authenticates with the same key (see prometheus.yml)
+    metrics: true # Prometheus authenticates with the same key (see prometheus.yml)
 
 monitor:
   prometheus: true

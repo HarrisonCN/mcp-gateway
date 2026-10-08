@@ -176,11 +176,11 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(((await (await f('/api/v1/portal/keys/pend0001/approve', { method: 'POST' })).json()) as any).status).toBe('active');
   });
 
-  it('lists the 5.0 deprecations (4.0: plugin API v2; 4.9: schema v4 forms)', async () => {
+  it('lists the 6.0 deprecations (5.0: plugin API v3)', async () => {
     const f = demoFetch();
     const r = (await (await f('/api/v1/admin/deprecations')).json()) as any;
-    expect(r.runtime.map((d: { id: string; removedIn: string }) => `${d.id}@${d.removedIn}`)).toEqual(['plugin-api-v2@5.0.0']);
-    expect(r.config.map((d: { id: string }) => d.id)).toEqual(['config-version-4', 'config-server-timeout']);
+    expect(r.runtime.map((d: { id: string; removedIn: string }) => `${d.id}@${d.removedIn}`)).toEqual(['plugin-api-v3@6.0.0']);
+    expect(r.config).toEqual([]);
   });
 
   it('reports MCP revisions and features (4.1)', async () => {
@@ -227,7 +227,7 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
   it('backs the config editor: get, validate, diff, dry run and apply (4.6)', async () => {
     const f = demoFetch();
     const { config } = (await (await f('/api/v1/admin/config')).json()) as any;
-    expect(config.version).toBe(4);
+    expect(config.version).toBe(5);
     const bad = { ...config, servers: [...config.servers, { id: 'x y', transport: 'sse', url: 'nope' }] };
     const v = (await (await f('/api/v1/admin/config/validate', { method: 'POST', body: JSON.stringify(bad) })).json()) as any;
     expect(v.valid).toBe(false);

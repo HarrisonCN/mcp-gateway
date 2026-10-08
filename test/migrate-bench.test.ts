@@ -43,10 +43,10 @@ describe('4.0 removals (were 3.9 deprecations)', () => {
     expect(configDeprecations(raw)).toEqual([]);
   });
 
-  it('reads schema v4 (version 4 or omitted, nested key scope)', () => {
-    const cfg = validateConfig({ version: 4, servers: [], auth: { strategy: 'api-key', apiKeys: [{ name: 'ci', key: 'k', scope: { servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } } }] } });
+  it('reads nested key scope (schema v5 or version omitted)', () => {
+    const cfg = validateConfig({ version: 5, servers: [], auth: { strategy: 'api-key', apiKeys: [{ name: 'ci', key: 'k', scope: { servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } } }] } });
     expect(cfg.auth!.apiKeys![0]).toMatchObject({ name: 'ci', servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } });
-    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['config-version-4']); // 4.9
+    expect(cfg.deprecations).toBeUndefined();
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', servers: ['a'], scope: { servers: ['b'] } }] } })).toThrow(/removed in 4.0/);
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', scope: { nope: 1 } }] } })).toThrow(/unknown key/);
     expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/not supported/);
@@ -69,8 +69,9 @@ describe('mcp-gateway migrate', () => {
     expect(r.text).toContain('version: 4');
     expect(r.text).toContain('${CI_KEY}');
     process.env.CI_KEY = 'ci-key-value';
-    const cfg = validateConfig(JSON.parse(JSON.stringify((await_yaml(r.text)))));
-    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['config-version-4']);
+    // 5.x reads v5 only: finish the migration (v4 → v5).
+    const cfg = validateConfig(JSON.parse(JSON.stringify(await_yaml(migrateConfigText(r.text).text))));
+    expect(cfg.deprecations).toBeUndefined();
     expect(cfg.auth!.apiKeys![0]).toMatchObject({ servers: ['github'], rateLimit: { limit: 10, windowSeconds: 60 } });
     expect(cfg.servers[0]!.loadBalancing).toMatchObject({ strategy: 'smart', score: { latency: 1, errorRate: 0, cost: 0 } });
     // Idempotent.
