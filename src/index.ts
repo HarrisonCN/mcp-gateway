@@ -151,6 +151,8 @@ export { GenaiTelemetrySchema, GenaiRecorder, genaiRecorder, genaiAttributes, ex
 export type { GenaiTelemetryConfig, GenaiSpan } from './features/genai-otel.js';
 export { IdentitySchema, ScimDirectory, scimFilter, resolveMemberships, verifyIdToken, authorizeUrl } from './features/identity.js';
 export type { IdentityConfig, ScimUser, ScimGroup } from './features/identity.js';
+export { PolicyShadowSchema, CandidatePolicySchema, simulatePolicy, ShadowRecorder, shadowRecorder } from './features/policy-sim.js';
+export type { PolicyShadowConfig, SimulationReport, SimCall } from './features/policy-sim.js';
 export type {
   GatewayConfig,
   McpServerConfig,

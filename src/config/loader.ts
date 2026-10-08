@@ -22,6 +22,8 @@ import { ApiUpstreamsSchema } from '../features/api-upstreams.js';
 import { WorkflowsSchema } from '../features/workflows.js';
 import { GenaiTelemetrySchema } from '../features/genai-otel.js';
 import { IdentitySchema } from '../features/identity.js';
+import { PolicyRuleSchema } from '../policy/rule-schema.js';
+import { PolicyShadowSchema } from '../features/policy-sim.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
@@ -295,35 +297,8 @@ const SecuritySchema = z
   })
   .strict();
 
-const PolicyRuleSchema = z
-            .object({
-              name: z.string().optional(),
-              effect: z.enum(['allow', 'deny', 'approve']),
-              clients: z.array(z.string()).optional(),
-              servers: z.array(z.string()).optional(),
-              tools: z.array(z.string()).optional(),
-              args: z
-                .array(
-                  z
-                    .object({
-                      path: z.string().min(1),
-                      exists: z.boolean().optional(),
-                      equals: z.union([z.string(), z.number(), z.boolean()]).optional(),
-                      in: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
-                      glob: z.array(z.string()).optional(),
-                      notGlob: z.array(z.string()).optional(),
-                      regex: z.string().optional(),
-                      notRegex: z.string().optional(),
-                      longerThan: z.number().int().min(0).optional(),
-                      under: z.array(z.string()).optional(),
-                      notUnder: z.array(z.string()).optional(),
-                    })
-                    .strict(),
-                )
-                .optional(),
-              message: z.string().optional(),
-            })
-            .strict();
+// 6.5: the rule schema lives in policy/rule-schema.ts (shared with policy simulation).
+
 
 const ExportCommon = {
   enabled: z.boolean().optional(),
@@ -494,6 +469,7 @@ const GatewayConfigSchema = z.object({
   workflows: WorkflowsSchema.optional(),
   genaiTelemetry: GenaiTelemetrySchema.optional(),
   identity: IdentitySchema.optional(),
+  policyShadow: PolicyShadowSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   dashboard: z.object({ enabled: z.boolean().default(true) }).optional(),

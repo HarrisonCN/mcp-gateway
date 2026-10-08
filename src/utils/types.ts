@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Policy simulation: shadow policy (6.5). */
+  policyShadow?: import('../features/policy-sim.js').PolicyShadowConfig;
   /** Enterprise SSO (OIDC) and SCIM 2.0 (6.4). */
   identity?: import('../features/identity.js').IdentityConfig;
   /** OpenTelemetry GenAI semantic conventions (6.3). */

@@ -337,6 +337,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(((await (await f('/api/v1/admin/identity/scim/v2/Users')).json()) as any).totalResults).toBe(2);
     expect(((await (await f('/api/v1/admin/identity/memberships?user=ada@acme.example')).json()) as any).memberships[0].role).toBe('admin');
   });
+  it('simulates a candidate policy and shows shadow divergences (6.5)', async () => {
+    const f = demoFetch();
+    const s = (await (await f('/api/v1/admin/policy-sim/simulate', { method: 'POST', body: '{"policy":{"default":"deny"}}' })).json()) as any;
+    expect(s.changed).toBe(69);
+    expect(((await (await f('/api/v1/admin/policy-sim/shadow')).json()) as any).diverged).toBe(116);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {
