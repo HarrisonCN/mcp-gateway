@@ -388,6 +388,27 @@ program
     console.log(options.json ? JSON.stringify(report, null, 2) : benchMarkdown(report));
   });
 
+// ─── conformance (5.1) ────────────────────────────────────────────────────────
+
+program
+  .command('conformance <url>')
+  .description('Run the MCP conformance suite against a Streamable HTTP endpoint (e.g. http://127.0.0.1:8080/mcp)')
+  .option('-H, --header <header...>', 'Extra request header "Name: value" (repeatable)')
+  .option('--only <ids>', 'Comma-separated check ids')
+  .option('--json', 'Print JSON')
+  .action(async (url: string, options) => {
+    const { runConformance, formatReport } = await import('./features/conformance.js');
+    const headers: Record<string, string> = {};
+    for (const h of (options.header ?? []) as string[]) {
+      const i = h.indexOf(':');
+      if (i > 0) headers[h.slice(0, i).trim()] = h.slice(i + 1).trim();
+    }
+    const only = options.only ? String(options.only).split(',').map((x: string) => x.trim()).filter(Boolean) : undefined;
+    const report = await runConformance(url, { headers, only });
+    console.log(options.json ? JSON.stringify(report, null, 2) : formatReport(report));
+    process.exit(report.failed ? 1 : 0);
+  });
+
 program.parse(process.argv);
 
 if (!process.argv.slice(2).length) {

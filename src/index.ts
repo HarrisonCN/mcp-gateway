@@ -123,6 +123,10 @@ export type { McpSessionSummary } from './mcp/endpoint.js';
 export { toLlmToolSchemas, sanitizeToolName, LLM_SCHEMA_FORMATS } from './mcp/llm-schemas.js';
 export type { LlmSchemaFormat, LlmToolSchemas } from './mcp/llm-schemas.js';
 export { buildToolIndex, prefixedName, TOOL_NAME_SEPARATOR } from './mcp/naming.js';
+export { createFeatureRouter, registerFeature, listFeatures } from './features/index.js';
+export type { FeatureModule, FeatureContext } from './gateway/features.js';
+export { runConformance, formatReport as formatConformanceReport, CHECKS as CONFORMANCE_CHECKS } from './features/conformance.js';
+export type { ConformanceReport, CheckResult as ConformanceCheck } from './features/conformance.js';
 export type {
   GatewayConfig,
   McpServerConfig,

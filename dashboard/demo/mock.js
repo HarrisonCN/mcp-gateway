@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '5.0.0';
+  const VERSION = '5.1.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -37,6 +37,10 @@
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => { const r = (Math.random() * 16) | 0; return (c === 'x' ? r : (r & 3) | 8).toString(16); }));
   const iso = (ms) => new Date(ms).toISOString();
+  // 5.1+: feature modules mounted under /api/v1/admin/<id> (one entry per release that adds one).
+  const DEMO_FEATURES = [
+    { id: 'conformance', since: '5.1.0', summary: "MCP conformance self-test of this gateway's /mcp endpoint" },
+  ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
   const str = (description) => ({ type: 'string', description });
@@ -468,6 +472,14 @@
       try { body = JSON.parse(init?.body || '{}'); } catch { return json({ error: 'Bad Request', message: 'Invalid JSON' }, 400); }
       if (!body.edgeId) return json({ error: 'Bad Request', message: '"edgeId" is required' }, 400);
       return json({ accepted: (body.events || []).length, dropped: 0 });
+    }
+    // 5.1: feature modules + MCP conformance self-test.
+    if (p === '/admin/features') return json({ version: VERSION, features: DEMO_FEATURES.map((f) => ({ ...f, path: '/api/v1/admin/' + f.id })) });
+    if (p === '/admin/conformance/checks') return json({ checks: ['initialize', 'version-negotiation', 'parse-error', 'invalid-request', 'ping', 'method-not-found', 'notification-202', 'tools-list', 'unknown-tool', 'bad-protocol-header', 'unknown-session'].map((id) => ({ id, title: id })) });
+    if (p === '/admin/conformance/run' && method === 'POST') {
+      await sleep(150);
+      const ids = ['initialize', 'version-negotiation', 'parse-error', 'invalid-request', 'ping', 'method-not-found', 'notification-202', 'tools-list', 'unknown-tool', 'bad-protocol-header', 'unknown-session'];
+      return json({ url: location.origin + '/mcp', startedAt: iso(Date.now()), durationMs: 148, passed: ids.length, failed: 0, skipped: 0, checks: ids.map((id) => ({ id, title: id, status: 'pass' })) });
     }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).

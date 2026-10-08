@@ -255,6 +255,14 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect((await f('/api/v1/admin/edge/sync', { method: 'POST', body: '{}' })).status).toBe(400);
     expect(((await (await f('/api/v1/admin/edge/sync', { method: 'POST', body: JSON.stringify({ edgeId: 'x', events: [{}, {}] }) })).json()) as any).accepted).toBe(2);
   });
+  it('simulates feature modules and the conformance self-test (5.1)', async () => {
+    const f = demoFetch();
+    const feats = (await (await f('/api/v1/admin/features')).json()) as any;
+    expect(feats.features.map((x: any) => x.id)).toContain('conformance');
+    const run = (await (await f('/api/v1/admin/conformance/run', { method: 'POST', body: '{}' })).json()) as any;
+    expect(run.failed).toBe(0);
+    expect(run.passed).toBe(run.checks.length);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

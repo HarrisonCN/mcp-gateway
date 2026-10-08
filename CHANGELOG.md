@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-10-08
+
+### Added
+- **MCP conformance suite** — `mcp-gateway conformance <url>` runs 11 black-box checks (initialize, version
+  negotiation, JSON-RPC error codes, ping, 202 notifications, tools/list shape, unknown tool, `MCP-Protocol-Version`
+  header, unknown session) against any Streamable HTTP MCP endpoint; `--only`, `-H`, `--json`; exit 1 on failure.
+  Library: `runConformance()`, `formatConformanceReport()`. See [docs/guides/conformance.md](docs/guides/conformance.md).
+- **Feature modules** — `GET /api/v1/admin/features`; modules mount under `/api/v1/admin/<id>` (operators only).
+  `registerFeature()` / `createFeatureRouter()` exported for embedders.
+- `POST /api/v1/admin/conformance/run` self-tests the running gateway's `/mcp`; `GET /admin/conformance/checks`.
+- Pages demo: features list and conformance run.
+
+### Notes
+- The roadmap's "authorization extension passthrough" item is deferred (no new upstream auth extension to pass
+  through yet); the gateway already forwards `_meta` and OAuth protected-resource metadata.
+
 ## [5.0.0] - 2026-10-08
 
 ⚠ **Breaking release** — see [Migrating to 5.0](docs/guides/migrating-to-v5.md). A config or plugin that 4.9 loads

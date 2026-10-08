@@ -392,6 +392,9 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `GET` | `/admin/edge/snapshot?secrets=` | Edge config snapshot (`ETag` / `If-None-Match`; `secrets=true` needs `admin.configApi`) (4.8) |
 | `POST` | `/admin/edge/sync` | Ingest an edge's usage events `{ edgeId, events, queued }` (4.8) |
 | `GET` | `/admin/edge/nodes` | Edges seen: last sync, snapshot ETag, events / errors / queued (4.8) |
+| `GET` | `/admin/features` | Feature modules mounted under `/admin/<id>` (5.1) |
+| `GET` | `/admin/conformance/checks` | MCP conformance checks (5.1) |
+| `POST` | `/admin/conformance/run` | Run the conformance suite against this gateway's `/mcp` `{ only? }` (5.1) |
 
 ## Bridges
 
