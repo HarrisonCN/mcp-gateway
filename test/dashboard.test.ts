@@ -397,6 +397,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const o = (await (await f('/api/v1/admin/offline')).json()) as any;
     expect(o).toMatchObject({ enabled: true, offline: false, servers: { local: ['filesystem'] } });
   });
+  it('lists approval flows and pending multi-step requests (7.7)', async () => {
+    const f = demoFetch();
+    const a = (await (await f('/api/v1/admin/approval-flows')).json()) as any;
+    expect(a.flows[0].steps.map((s: any) => s.name)).toEqual(['lead', 'finance']);
+    expect(a.pending[0]).toMatchObject({ flow: 'payments', current: 1 });
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

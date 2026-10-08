@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v7.7
+
+| Feature | |
+|---------|---|
+| **Multi-step approvals** | Ordered steps with named approvers, quorums and argument conditions (`amount >= 10000`) |
+| **Escalation & inbox** | Escalate to more approvers after a delay; approvers work from their own inbox — [guide](docs/guides/approval-flows.md) |
+
 ## What's New in v7.6
 
 | Feature | |

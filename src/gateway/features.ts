@@ -39,12 +39,17 @@ export interface FeatureModule {
   since: string;
   summary: string;
   mount: (router: Router, ctx: FeatureContext) => void;
+  /** Routes for any authenticated client (not only operators) under `/api/v1/features/<id>` (7.7). */
+  mountClient?: (router: Router, ctx: FeatureContext) => void;
 }
+
+/** Client id of an authenticated request (7.7). */
+export const clientIdOf = (req: Request): string | undefined => (req as Request & { clientId?: string }).clientId;
 
 const registry: FeatureModule[] = [];
 
 /** Top-level config sections owned by feature modules; all hot reload (5.2+). */
-export const FEATURE_CONFIG_KEYS = ['regions', 'edgeFleet', 'pluginTrust', 'marketplace', 'sessions', 'dlp', 'adaptive', 'apiUpstreams', 'workflows', 'genaiTelemetry', 'identity', 'policyShadow', 'anomaly', 'billing', 'console', 'sanitize', 'semanticCache', 'rollouts', 'offline'] as const satisfies ReadonlyArray<keyof GatewayConfig>;
+export const FEATURE_CONFIG_KEYS = ['regions', 'edgeFleet', 'pluginTrust', 'marketplace', 'sessions', 'dlp', 'adaptive', 'apiUpstreams', 'workflows', 'genaiTelemetry', 'identity', 'policyShadow', 'anomaly', 'billing', 'console', 'sanitize', 'semanticCache', 'rollouts', 'offline', 'approvalFlows'] as const satisfies ReadonlyArray<keyof GatewayConfig>;
 
 /** Copy the feature-owned config sections of `next` (for hot reload). */
 export function featureSections(next: GatewayConfig): Partial<GatewayConfig> {
@@ -82,6 +87,11 @@ export function createFeatureRouter(deps: FeatureRouterDeps): express.Router {
     const sub = express.Router();
     m.mount(sub, deps.context);
     router.use(`/admin/${m.id}`, deps.authenticate, operator, sub);
+    if (m.mountClient) {
+      const pub = express.Router();
+      m.mountClient(pub, deps.context);
+      router.use(`/features/${m.id}`, deps.authenticate, pub);
+    }
   }
   return router;
 }
