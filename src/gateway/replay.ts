@@ -81,6 +81,11 @@ export class ReplayRecorder {
     return this.entries.size;
   }
 
+  /** Captured calls, oldest first (5.5). */
+  list(): CapturedCall[] {
+    return [...this.entries.values()];
+  }
+
   clear(): void {
     this.entries.clear();
   }

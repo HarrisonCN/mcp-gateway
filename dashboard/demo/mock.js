@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '5.4.0';
+  const VERSION = '5.5.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -43,6 +43,7 @@
     { id: "regions", since: "5.2.0", summary: "Multi-region active-active: replicated state, peer health, cross-region failover routing" },
     { id: "edge-fleet", since: "5.3.0", summary: "Managed edge nodes: fleet view with config drift, push config to edges" },
     { id: "marketplace", since: "5.4.0", summary: "Signed plugin marketplace: browse indexes, verified install" },
+    { id: "sessions", since: "5.5.0", summary: "Agent session recording, replay and regression evals" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -516,6 +517,21 @@
       if (!body.name) return json({ error: 'Bad Request', message: '"name" is required' }, 400);
       if (body.name === 'unknown-vendor') return json({ error: 'Unprocessable Entity', message: 'signature check failed: untrusted key "someone"' }, 422);
       return json({ name: body.name, version: '1.2.0', file: '/srv/gw/plugins/' + body.name + '-1.2.0.mjs', keyId: 'acme-2026', plugin: { module: './plugins/' + body.name + '-1.2.0.mjs', name: body.name } });
+    }
+    // 5.5: agent session recordings + regression evals.
+    if (p === '/admin/sessions' && method === 'GET') return json({ replayEnabled: true, recordings: [
+      { name: 'triage-flow', createdAt: iso(Date.now() - 86400000), clientId: 'ci-bot', steps: 4, tools: ['search_issues', 'create_issue'] },
+      { name: 'release-notes', createdAt: iso(Date.now() - 3600000), steps: 2, tools: ['list_commits'] },
+    ] });
+    if (/^\/admin\/sessions\/[^/]+\/replay$/.test(p) && method === 'POST') {
+      await sleep(180);
+      const name = decodeURIComponent(p.split('/')[3]);
+      return json({ recording: name, mode: 'structure', steps: 4, passed: 3, failed: 1, skipped: 0, passRate: 0.75, latency: { recordedMs: 820, replayMs: 655 }, outcomes: [
+        { index: 0, serverId: 'github', tool: 'search_issues', passed: true, durationMs: 210, recordedMs: 240 },
+        { index: 1, serverId: 'github', tool: 'search_issues', passed: true, durationMs: 190, recordedMs: 230 },
+        { index: 2, serverId: 'github', tool: 'create_issue', passed: false, reason: 'result shape changed', durationMs: 160, recordedMs: 200, diff: [{ path: 'structuredContent.number', change: 'changed', before: 'number', after: 'string' }] },
+        { index: 3, serverId: 'slack', tool: 'post_message', passed: true, durationMs: 95, recordedMs: 150 },
+      ] });
     }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).

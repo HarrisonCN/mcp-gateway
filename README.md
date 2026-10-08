@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v5.5
+
+| Feature | Description |
+|---------|-------------|
+| **Session recordings** | Capture an agent's tool calls by client and time window; import / export JSON |
+| **Replay evals** | Re-run a recording graded by success, structure or exact match — regression tests for agents |
+
 ## What's New in v5.4
 
 | Feature | Description |

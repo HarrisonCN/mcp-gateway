@@ -26,6 +26,8 @@ export interface FeatureContext {
   onStop?: (fn: () => void | Promise<void>) => void;
   /** Edge gateways seen by the edge control plane (5.3). */
   edgeNodes?: () => import('./edge-control.js').EdgeNode[];
+  /** Calls captured by the replay recorder (`replay.enabled`), oldest first (5.5). */
+  capturedCalls?: () => import('./replay.js').CapturedCall[];
 }
 
 export interface FeatureModule {
@@ -40,7 +42,7 @@ export interface FeatureModule {
 const registry: FeatureModule[] = [];
 
 /** Top-level config sections owned by feature modules; all hot reload (5.2+). */
-export const FEATURE_CONFIG_KEYS = ['regions', 'edgeFleet', 'pluginTrust', 'marketplace'] as const satisfies ReadonlyArray<keyof GatewayConfig>;
+export const FEATURE_CONFIG_KEYS = ['regions', 'edgeFleet', 'pluginTrust', 'marketplace', 'sessions'] as const satisfies ReadonlyArray<keyof GatewayConfig>;
 
 /** Copy the feature-owned config sections of `next` (for hot reload). */
 export function featureSections(next: GatewayConfig): Partial<GatewayConfig> {

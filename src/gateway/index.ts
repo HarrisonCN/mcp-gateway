@@ -347,11 +347,12 @@ export class Gateway {
           config: () => this.config,
           tools: () => this.registry.getAllTools(),
           invoke: (serverId, name, args, clientId) =>
-            this.invoker!.invoke({ serverId, name, kind: 'tool', method: 'tools/call', params: { name, arguments: args }, clientId: clientId ?? 'feature', via: 'rest', timeoutMs: this.registry.getServer(serverId)?.timeout }),
+            this.invoker!.invoke({ serverId, name, kind: 'tool', method: 'tools/call', params: args, clientId: clientId ?? 'feature', via: 'rest', timeoutMs: this.registry.getServer(serverId)?.timeout }),
           recent: (limit) => this.metrics.getRecent(limit),
           onlineServers: () => this.registry.getAllServers().filter((s) => this.registry.getHealth(s.id)?.status === 'online').map((s) => s.id),
           onStop: (fn) => void this.featureStops.push(fn),
           edgeNodes: () => [...edgeControl.nodes.values()],
+          capturedCalls: () => this.invoker?.recorder?.list() ?? [],
           baseUrl: () => {
             const a = this.address();
             if (!a) return undefined;
