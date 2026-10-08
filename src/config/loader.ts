@@ -70,6 +70,7 @@ const McpServerSchema = z.object({
   enabled: z.boolean().default(true),
   timeout: z.number().positive().default(30000),
   maxConcurrency: z.number().int().positive().default(10),
+  maxQueue: z.number().int().min(0).optional(),
   passthrough: z.boolean().optional(),
   tools: ToolFilterSchema.optional(),
   replicas: z
@@ -801,6 +802,10 @@ const GatewayConfigSchema = z.object({
       public: z.boolean().optional(),
       taskRetentionSeconds: z.number().int().positive().optional(),
     })
+    .strict()
+    .optional(),
+  streaming: z
+    .object({ highWaterBytes: z.number().int().min(1024).optional(), maxBufferedBytes: z.number().int().min(4096).optional() })
     .strict()
     .optional(),
   costs: z

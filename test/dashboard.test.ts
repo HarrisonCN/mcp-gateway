@@ -207,6 +207,15 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(r.budgets.map((b: any) => b.action)).toEqual(['alert', 'block']);
     expect(r.alerts[0].threshold).toBe(0.8);
   });
+
+  it('streams a tool call as SSE (4.4)', async () => {
+    const f = demoFetch();
+    const r = await f('/api/v1/tools/stream', { method: 'POST', body: '{}' });
+    expect(r.headers.get('content-type')).toContain('text/event-stream');
+    const t = await r.text();
+    expect(t.match(/event: progress/g)).toHaveLength(3);
+    expect(t).toContain('event: result');
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

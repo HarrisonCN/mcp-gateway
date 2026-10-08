@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '4.3.0';
+  const VERSION = '4.4.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -403,6 +403,15 @@
       return json({ currency: 'USD', period: q.get('period') || 'month', by, totals: rows.map(([key, cost, calls, inputTokens, outputTokens]) => ({ key, cost, calls, inputTokens, outputTokens })),
         budgets: [{ name: 'team-monthly', subject: '*', period: 'month', limit: 50, spent: 22.36, used: 0.447, action: 'alert' }, { name: 'per-key-daily', subject: 'key:aura', period: 'day', limit: 2, spent: 1.71, used: 0.855, action: 'block' }],
         alerts: [{ budget: 'per-key-daily', subject: 'key:aura', threshold: 0.8, spent: 1.62, limit: 2, at: iso(Date.now() - 3600000), period: iso(Date.now()).slice(0, 10) }] });
+    }
+    if (p === '/tools/stream' && method === 'POST') {
+      const steps = ['Searching…', 'Found 3 matches', 'Summarising'];
+      const ev = (e, d) => `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`;
+      let body = '';
+      steps.forEach((m, i) => { body += ev('progress', { progress: i + 1, total: 3, message: m }) + ev('partial', { text: m }); });
+      await sleep(120);
+      body += ev('result', { status: 200, success: true, result: { content: [{ type: 'text', text: 'Demo streamed result' }] } }) + ev('end', { coalesced: 0 });
+      return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } });
     }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).

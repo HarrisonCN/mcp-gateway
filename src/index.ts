@@ -76,6 +76,7 @@ export {
 export { computeReadiness } from './gateway/api.js';
 export type { Readiness } from './gateway/api.js';
 export { ServerRegistry } from './registry/index.js';
+export { SseWriter, DEFAULT_STREAM_LIMITS } from './gateway/stream.js';
 export { McpProxy, defaultChannelFactory, MCP_PROTOCOL_VERSION, PASSTHROUGH_METHODS, passthroughCapabilities } from './proxy/index.js';
 export type { ClientRequestHandler, PassthroughMethod, RelayCaller } from './proxy/index.js';
 export type { ProxyOptions, SessionInfo, RequestOptions, ProgressUpdate } from './proxy/index.js';

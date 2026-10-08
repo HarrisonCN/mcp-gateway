@@ -3,6 +3,8 @@
  * Exposes REST endpoints for tool invocation, server management, and monitoring
  */
 
+import { SseWriter } from './stream.js';
+import { ERR_SERVER_BUSY } from '../proxy/index.js';
 import { PROTOCOL_VERSIONS, featuresOf } from '../mcp/compat.js';
 import express from 'express';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
@@ -563,7 +565,7 @@ export function createApiRouter(
    * One REST-semantics tool call (auth scope, tenants, routing, policy, quotas, status mapping).
    * Used by POST /tools/call and the OpenAI / A2A bridges.
    */
-  async function runToolCall(req: Request, body: Record<string, unknown>, res: ToolCallResponse, opts: { replayOf?: string; fromPeer?: string } = {}): Promise<void> {
+  async function runToolCall(req: Request, body: Record<string, unknown>, res: ToolCallResponse, opts: { replayOf?: string; fromPeer?: string; onProgress?: (u: { progress: number; total?: number; message?: string }) => void; signal?: AbortSignal } = {}): Promise<void> {
     const { tool, server: serverId } = body;
     const args = body.arguments ?? {};
 
@@ -692,6 +694,8 @@ export function createApiRouter(
       traceparent: traceparentOf(req),
       ...(opts.replayOf ? { replayOf: opts.replayOf } : {}),
       ...(opts.fromPeer ? { fromPeer: opts.fromPeer } : {}),
+      ...(opts.onProgress ? { onProgress: opts.onProgress } : {}),
+      ...(opts.signal ? { signal: opts.signal } : {}),
     });
 
     if (res.headersSent) return;
@@ -714,6 +718,11 @@ export function createApiRouter(
       return;
     }
 
+    if (!result.success && result.error?.code === ERR_SERVER_BUSY) {
+      res.set('Retry-After', '1');
+      res.status(503).json({ error: 'Service Unavailable', message: result.error.message, code: result.error.code });
+      return;
+    }
     if (!result.success) {
       // 504 for upstream timeouts, 502 for upstream errors (was always 500).
       const status = result.error?.code === ERR_TIMEOUT ? 504 : 502;
@@ -743,6 +752,36 @@ export function createApiRouter(
     rateLimit,
     asyncHandler(async (req, res) => {
       await runToolCall(req, (req.body ?? {}) as Record<string, unknown>, res);
+    }),
+  );
+
+  // 4.4: streaming tool results (SSE) with backpressure.
+  router.post(
+    '/tools/stream',
+    auth,
+    rateLimit,
+    asyncHandler(async (req, res) => {
+      const limits = cfg.streaming ?? {};
+      res.status(200).set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });
+      res.flushHeaders();
+      const sse = new SseWriter(res, limits);
+      const abort = new AbortController();
+      res.once('close', () => {
+        if (!res.writableFinished) abort.abort();
+      });
+      const captured = new CapturedResponse();
+      await runToolCall(req, (req.body ?? {}) as Record<string, unknown>, captured, {
+        signal: abort.signal,
+        onProgress: (u) => {
+          sse.send('progress', u, true);
+          if (typeof u.message === 'string' && u.message) sse.send('partial', { text: u.message }, true);
+        },
+      });
+      if (sse.isClosed) return;
+      const ok = captured.statusCode < 400;
+      sse.send(ok ? 'result' : 'error', { status: captured.statusCode, ...(captured.body as Record<string, unknown>) });
+      sse.send('end', { coalesced: sse.stats.coalesced });
+      sse.close();
     }),
   );
 
