@@ -28,6 +28,8 @@ export interface FeatureContext {
   edgeNodes?: () => import('./edge-control.js').EdgeNode[];
   /** Calls captured by the replay recorder (`replay.enabled`), oldest first (5.5). */
   capturedCalls?: () => import('./replay.js').CapturedCall[];
+  /** Validate a full config (schema form) and hot-apply it unless `dryRun`; throws when invalid (7.1). */
+  applyConfig?: (raw: Record<string, unknown>, dryRun?: boolean) => Promise<{ changes: import('../config/diff.js').ConfigChange[] }>;
 }
 
 export interface FeatureModule {

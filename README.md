@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v7.1
+
+| Feature | |
+|---------|---|
+| **Terraform** | `restapi_object` resources for servers, tenants and API keys; hot-applied, `ETag` / `If-Match`, dry run |
+| **Adopt with one command** | `GET /api/v1/admin/terraform/export` writes `main.tf` with `import` blocks — [guide](docs/guides/terraform.md) |
+
 ## What's New in v7.0
 
 ⚠ Breaking release — read [Migrating to 7.0](docs/guides/migrating-to-v7.md). On 6.9: `npx @winstonsayno/mcp-gateway@6.9 migrate --write`.

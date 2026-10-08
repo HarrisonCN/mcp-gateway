@@ -442,6 +442,10 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/data-planes/config` | Config for data planes (`ETag` / `If-None-Match` → 304; secrets included; `role: control` only) (7.0) |
 | `POST` | `/admin/data-planes/heartbeat` | Data-plane heartbeat `{ nodeId, configEtag?, version?, pullIntervalMs?, servers? }` (`role: control` only) (7.0) |
 | `DELETE` | `/admin/data-planes/:nodeId` | Forget a data plane (7.0) |
+| `GET` | `/admin/terraform` | Terraform: kinds, paths, provider block, writable (7.1) |
+| `GET` / `POST` | `/admin/terraform/:kind[?dryRun=]` | List / create `servers`, `tenants`, `apiKeys` (restapi provider; writes need `controlPlane.configApi`) (7.1) |
+| `GET` / `PUT` / `DELETE` | `/admin/terraform/:kind/:id[?dryRun=]` | Read (`ETag`) / replace (`If-Match` → 412) / delete one object (7.1) |
+| `GET` | `/admin/terraform/export?format=hcl\|json&url=` | `main.tf` for the running config with `import` blocks; secrets as sensitive variables (7.1) |
 
 ## Bridges
 
