@@ -488,6 +488,7 @@ tbody tr:hover { background: var(--surface-2); }
     <div class="grid two ops" style="margin-top:14px">
       <div class="card" id="quotasCard" hidden><h2><span data-i18n="quotas">Quotas</span><span class="right muted" id="quotasNote"></span></h2><div id="quotas"></div></div>
       <div class="card" id="lbCard" hidden><h2><span data-i18n="lb">Load balancing</span><span class="right muted" id="lbNote"></span></h2><div id="lb"></div></div>
+      <div class="card" id="edgeCard" hidden><h2><span data-i18n="edgeNodes">Edge nodes</span><span class="right"><span class="muted" id="edgeNote"></span> <button class="btn sm ghost" type="button" id="edgePush" data-i18n="pushConfig">Push config</button></span></h2><div id="edgeNodes"></div></div>
       <div class="card" id="cacheCard" hidden><h2><span data-i18n="cache">Result cache</span><span class="right"><button class="btn sm ghost" type="button" id="cachePurge" data-i18n="purge">Purge</button></span></h2><div id="cache"></div></div>
     </div>
   </section>
@@ -627,7 +628,7 @@ const I18N = {
     tabOverview: 'Overview', tabServers: 'Servers', tabPlayground: 'Playground', tabHistory: 'History', tabConfig: 'Config', tabConnect: 'Connect',
     cfTitle: 'Configuration', cfSub: 'Edit the running config — validated, diffed and hot-reloaded', cfGeneral: 'General', cfServers: 'Servers', cfRaw: 'Raw JSON (schema v4)', cfValidate: 'Validate', cfDiff: 'Preview changes', cfApply: 'Apply', cfAddServer: 'Add server', cfRemove: 'Remove', cfValid: 'Configuration is valid', cfNoChanges: 'No changes', cfApplied: 'Applied — hot reloaded', cfLocked: 'Read-only: set admin.configApi: true to apply changes from the dashboard', cfBadJson: 'Invalid JSON', cfUseJson: 'Use JSON', cfConfirm: 'Apply these changes to the running gateway?', cfRate: 'Rate limit (requests / window s)', cfNaming: 'Tool naming', cfLog: 'Log level', cfEnabled: 'Enabled',
     ovTitle: 'Overview', ovSub: 'Live traffic through the gateway', window: 'Time window',
-    reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server', approvals: 'Pending approvals', tenants: 'Workspaces', rpTitle: 'Request details', replay: 'Replay', replayOf: 'replay of', rpArgs: 'Arguments', rpResult: 'Result', rpReplayed: 'Replay', rpSame: 'identical', rpDifferent: 'different', rpBadJson: 'Arguments must be valid JSON', rpHint: 'Edit the arguments and replay through the gateway', rpTruncated: 'Payload too large to capture; pass arguments to replay', rpOff: 'Not captured. Turn on replay.enabled to inspect and replay calls.', quotas: 'Quotas', lb: 'Load balancing', cache: 'Result cache', purge: 'Purge', purged: 'Purged {n} cache entries', rules: 'rules', noUsage: 'No usage in the current period', ejected: 'ejected', entries: 'Entries', hitRate: 'Hit rate', hits: 'Hits', misses: 'Misses', deduped: 'Deduplicated', evictions: 'Evictions', catalog: 'Add a server', add: 'Add', added: 'Server added', installOff: 'read-only (catalog.install is off)', installedAs: 'installed as', role: 'Role', members: 'members', roleSaved: 'Role updated', approve: 'Approve', deny: 'Deny', approved: 'Approved', denied: 'Denied', expires: 'expires',
+    reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server', approvals: 'Pending approvals', tenants: 'Workspaces', rpTitle: 'Request details', replay: 'Replay', replayOf: 'replay of', rpArgs: 'Arguments', rpResult: 'Result', rpReplayed: 'Replay', rpSame: 'identical', rpDifferent: 'different', rpBadJson: 'Arguments must be valid JSON', rpHint: 'Edit the arguments and replay through the gateway', rpTruncated: 'Payload too large to capture; pass arguments to replay', rpOff: 'Not captured. Turn on replay.enabled to inspect and replay calls.', quotas: 'Quotas', lb: 'Load balancing', cache: 'Result cache', purge: 'Purge', purged: 'Purged {n} cache entries', rules: 'rules', noUsage: 'No usage in the current period', ejected: 'ejected', entries: 'Entries', hitRate: 'Hit rate', hits: 'Hits', misses: 'Misses', deduped: 'Deduplicated', evictions: 'Evictions', edgeNodes: 'Edge nodes', pushConfig: 'Push config', pushed: 'Pushed to {n} edge(s), {f} failed', noEdges: 'No edge nodes yet', catalog: 'Add a server', add: 'Add', added: 'Server added', installOff: 'read-only (catalog.install is off)', installedAs: 'installed as', role: 'Role', members: 'members', roleSaved: 'Role updated', approve: 'Approve', deny: 'Deny', approved: 'Approved', denied: 'Denied', expires: 'expires',
     errRate: 'Error rate', liveStream: 'Live requests', pause: 'Pause', health: 'Server health',
     kRpm: 'Requests / min', kP50: 'p50 latency', kP95: 'p95 latency', kErr: 'Error rate', kSrv: 'Servers online',
     kTotal: '{n} in window', kP99: 'p99 {v}', kErrN: '{n} failed', kTools: '{n} tools',
@@ -673,7 +674,7 @@ const I18N = {
     tabOverview: '总览', tabServers: '服务器', tabPlayground: '调试台', tabHistory: '历史', tabConfig: '配置', tabConnect: '接入',
     cfTitle: '配置', cfSub: '编辑运行中的配置——校验、对比差异并热加载', cfGeneral: '常规', cfServers: '服务器', cfRaw: '原始 JSON（schema v4）', cfValidate: '校验', cfDiff: '预览变更', cfApply: '应用', cfAddServer: '添加服务器', cfRemove: '移除', cfValid: '配置有效', cfNoChanges: '没有变更', cfApplied: '已应用（热加载）', cfLocked: '只读：设置 admin.configApi: true 后才能在仪表盘中应用变更', cfBadJson: 'JSON 无效', cfUseJson: '使用 JSON', cfConfirm: '将这些变更应用到运行中的网关？', cfRate: '限流（请求数 / 窗口秒）', cfNaming: '工具命名', cfLog: '日志级别', cfEnabled: '启用',
     ovTitle: '总览', ovSub: '网关实时流量', window: '时间范围',
-    reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用', approvals: '待审批调用', tenants: '工作区', rpTitle: '请求详情', replay: '重放', replayOf: '重放自', rpArgs: '参数', rpResult: '结果', rpReplayed: '重放结果', rpSame: '一致', rpDifferent: '不一致', rpBadJson: '参数必须是合法 JSON', rpHint: '可修改参数后经网关重放', rpTruncated: '负载过大未被捕获；重放需手动填写参数', rpOff: '未捕获。开启 replay.enabled 后可查看并重放调用。', quotas: '配额', lb: '负载均衡', cache: '结果缓存', purge: '清空', purged: '已清除 {n} 条缓存', rules: '条规则', noUsage: '当前周期暂无用量', ejected: '已摘除', entries: '条目', hitRate: '命中率', hits: '命中', misses: '未命中', deduped: '合并请求', evictions: '淘汰', catalog: '添加服务器', add: '添加', added: '已添加服务器', installOff: '只读（未开启 catalog.install）', installedAs: '已安装为', role: '角色', members: '成员', roleSaved: '角色已更新', approve: '批准', deny: '拒绝', approved: '已批准', denied: '已拒绝', expires: '到期',
+    reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用', approvals: '待审批调用', tenants: '工作区', rpTitle: '请求详情', replay: '重放', replayOf: '重放自', rpArgs: '参数', rpResult: '结果', rpReplayed: '重放结果', rpSame: '一致', rpDifferent: '不一致', rpBadJson: '参数必须是合法 JSON', rpHint: '可修改参数后经网关重放', rpTruncated: '负载过大未被捕获；重放需手动填写参数', rpOff: '未捕获。开启 replay.enabled 后可查看并重放调用。', quotas: '配额', lb: '负载均衡', cache: '结果缓存', purge: '清空', purged: '已清除 {n} 条缓存', rules: '条规则', noUsage: '当前周期暂无用量', ejected: '已摘除', entries: '条目', hitRate: '命中率', hits: '命中', misses: '未命中', deduped: '合并请求', evictions: '淘汰', edgeNodes: '边缘节点', pushConfig: '推送配置', pushed: '已推送到 {n} 个边缘节点，失败 {f} 个', noEdges: '暂无边缘节点', catalog: '添加服务器', add: '添加', added: '已添加服务器', installOff: '只读（未开启 catalog.install）', installedAs: '已安装为', role: '角色', members: '成员', roleSaved: '角色已更新', approve: '批准', deny: '拒绝', approved: '已批准', denied: '已拒绝', expires: '到期',
     errRate: '错误率', liveStream: '实时请求', pause: '暂停', health: '服务器健康',
     kRpm: '每分钟请求', kP50: 'p50 延迟', kP95: 'p95 延迟', kErr: '错误率', kSrv: '在线服务器',
     kTotal: '窗口内 {n} 次', kP99: 'p99 {v}', kErrN: '{n} 次失败', kTools: '{n} 个工具',
@@ -1202,10 +1203,23 @@ async function loadOps() {
     const rows = [[t('entries'), `${c.entries} / ${c.maxEntries}`], [t('hitRate'), total ? `${Math.round((c.hits / total) * 100)}%` : '—'], [t('hits'), c.hits], [t('misses'), c.misses], [t('deduped'), c.deduped], [t('evictions'), c.evictions]];
     $('#cache').innerHTML = rows.map(([k, v]) => `<div class="kv-row"><span class="muted">${esc(String(k))}</span><span class="mono">${esc(String(v ?? 0))}</span></div>`).join('');
   }
+  // 5.3: managed edge nodes (drift + push).
+  const ef = await get('/admin/edge-fleet');
+  const en = (ef && ef.nodes) || [];
+  $('#edgeCard').hidden = !en.length;
+  $('#edgeNote').textContent = ef && ef.etag ? ef.etag.slice(0, 8) : '';
+  $('#edgePush').hidden = !en.some((n) => n.managed);
+  const driftCls = { 'in-sync': 'ok', stale: 'warn', 'never-synced': 'warn', offline: 'bad', unmanaged: '' };
+  $('#edgeNodes').innerHTML = en.length ? en.map((n) => `<div class="kv-row"><span><b class="mono">${esc(n.id)}</b>${Object.entries(n.labels || {}).map(([k, v]) => ` <span class="muted">${esc(k)}=${esc(v)}</span>`).join('')}</span>
+    <span>${n.queuedCalls ? `<span class="muted">${n.queuedCalls} queued · </span>` : ''}<span class="badge ${driftCls[n.drift] || ''}">${esc(n.drift)}</span></span></div>`).join('') : `<div class="muted">${esc(t('noEdges'))}</div>`;
   const grid = $('#quotasCard').parentElement;
-  grid.hidden = $('#quotasCard').hidden && $('#lbCard').hidden && $('#cacheCard').hidden;
+  grid.hidden = $('#quotasCard').hidden && $('#lbCard').hidden && $('#cacheCard').hidden && $('#edgeCard').hidden;
 }
 document.addEventListener('click', async (e) => {
+  if (e.target.closest && e.target.closest('#edgePush')) {
+    try { const r = await api('/admin/edge-fleet/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ onlyDrifted: true }) }); toast(t('pushed', { n: r.pushed ?? 0, f: r.failed ?? 0 })); } catch (err) { toast(err.message || String(err)); }
+    return loadOps();
+  }
   if (!(e.target.closest && e.target.closest('#cachePurge'))) return;
   try { const r = await api('/cache', { method: 'DELETE' }); toast(t('purged', { n: r.purged ?? 0 })); } catch (err) { toast(err.message || String(err)); }
   loadOps();

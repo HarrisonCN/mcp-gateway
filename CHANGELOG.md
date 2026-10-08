@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.3.0] - 2026-10-08
+
+### Added
+- **Managed edge nodes** — `edgeFleet: { nodes[{ id, url, apiKey, labels }], pushTimeoutMs, offlineAfterMs }`.
+  `GET /admin/edge-fleet` merges configured and seen edges and classifies config drift (`in-sync`, `stale`,
+  `never-synced`, `offline`, `unmanaged`); `POST /admin/edge-fleet/push` makes selected edges (`nodes`, `labels`
+  ring, `onlyDrifted`) sync now via their `POST /api/v1/edge/sync`. See [docs/guides/edge.md](docs/guides/edge.md#managed-edge-fleet-53).
+- Dashboard: **Edge nodes** card (drift badges, queued calls, *Push config*).
+- Library: `fleetView()`, `selectNodes()`, `pushToNodes()`, `EdgeFleetSchema`.
+- Pages demo: edge fleet view and push.
+
 ## [5.2.0] - 2026-10-08
 
 ### Added

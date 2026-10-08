@@ -399,6 +399,8 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `POST` | `/admin/regions/sync` | Peer exchange `{ region, since, entries, servers }` (5.2) |
 | `GET` / `PUT` / `DELETE` | `/admin/regions/kv/:key` | Replicated state, last-writer-wins (`PUT { value }`) (5.2) |
 | `GET` | `/admin/regions/route/:serverId` | Where a call should run: `local`, a peer, or `none` (5.2) |
+| `GET` | `/admin/edge-fleet` | Managed edge nodes with config drift (`in-sync` / `stale` / `never-synced` / `unmanaged` / `offline`) (5.3) |
+| `POST` | `/admin/edge-fleet/push` | Ask edges to sync now `{ nodes?, labels?, onlyDrifted? }` → per-node results (5.3) |
 
 ## Bridges
 

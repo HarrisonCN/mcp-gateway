@@ -71,3 +71,30 @@ The store is any `{ get, put, delete }` string KV — a Cloudflare KV namespace 
 default (per isolate). With `configFromEnv`, set `MCP_GATEWAY_CONTROL_PLANE`, `MCP_GATEWAY_CONTROL_KEY`,
 `MCP_GATEWAY_EDGE_ID`, `MCP_GATEWAY_QUEUE_TOOLS`, `MCP_GATEWAY_SYNC_INTERVAL_MS` and bind KV as `MCP_GATEWAY_KV`;
 `workersHandler()` then also exports `scheduled`.
+
+## Managed edge fleet (5.3)
+
+List your edges in the Node gateway's config to manage them from the control plane:
+
+```yaml
+edgeFleet:
+  pushTimeoutMs: 10000        # per-edge push timeout
+  offlineAfterMs: 900000      # not seen for 15 min → offline
+  nodes:
+    - { id: cf-hkg, url: https://edge-hkg.example.workers.dev, apiKey: ${EDGE_KEY}, labels: { ring: canary } }
+    - { id: deno-fra, url: https://fra.example.deno.dev, apiKey: ${EDGE_KEY}, labels: { ring: stable } }
+```
+
+`id` must match the edge's `sync.edgeId`. `GET /api/v1/admin/edge-fleet` merges configured and seen edges and
+classifies each one: `in-sync` (applied the current snapshot), `stale`, `never-synced`, `offline`, or `unmanaged`
+(syncs but is not listed). `POST /api/v1/admin/edge-fleet/push` calls each selected edge's
+`POST /api/v1/edge/sync` so it pulls the new snapshot immediately instead of on its next interval:
+
+```bash
+# canary ring first, then everything still drifted
+curl -X POST -H "Authorization: Bearer $OP" -H 'content-type: application/json' $GW/api/v1/admin/edge-fleet/push -d '{"labels":{"ring":"canary"}}'
+curl -X POST -H "Authorization: Bearer $OP" -H 'content-type: application/json' $GW/api/v1/admin/edge-fleet/push -d '{"onlyDrifted":true}'
+```
+
+The dashboard's Operations view shows an **Edge nodes** card with each edge's drift and a *Push config* button
+(pushes to drifted edges).
