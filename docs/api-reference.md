@@ -412,6 +412,8 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `POST` | `/admin/adaptive/pick` | Pick a candidate `{ pool, explore? }` → server, tool, args, scores (5.8) |
 | `POST` | `/admin/adaptive/call` | Pick and call `{ pool, arguments }` (5.8) |
 | `POST` | `/admin/adaptive/feedback` | Report quality `{ pool, candidate, quality: 0..1 }` (5.8) |
+| `GET` | `/admin/api-upstreams` | GraphQL / gRPC upstreams and the tools they expose, with input schemas (6.1) |
+| `POST` | `/admin/api-upstreams/call` | Call `{ tool: "<upstream>.<operation>", arguments }` (6.1) |
 
 ## Bridges
 

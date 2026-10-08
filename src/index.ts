@@ -143,6 +143,8 @@ export { DlpSchema, applyDlp, maskValue, policyFor as dlpPolicyFor, DEFAULT_LEVE
 export type { DlpConfig, DlpFinding } from './features/dlp.js';
 export { AdaptiveSchema, AdaptiveRouter, adaptiveRouter, sampleBeta } from './features/adaptive.js';
 export type { AdaptiveConfig, CandidateStats } from './features/adaptive.js';
+export { ApiUpstreamsSchema, apiUpstreamTools, callApiUpstream, graphqlVariables } from './features/api-upstreams.js';
+export type { ApiUpstreamsConfig, ApiUpstreamTool } from './features/api-upstreams.js';
 export type {
   GatewayConfig,
   McpServerConfig,

@@ -309,6 +309,13 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const pk = (await (await f('/api/v1/admin/adaptive/pick', { method: 'POST', body: '{"pool":"summarize"}' })).json()) as any;
     expect(pk.candidate).toBe('small');
   });
+  it('lists GraphQL / gRPC upstream tools and calls one (6.1)', async () => {
+    const f = demoFetch();
+    const l = (await (await f('/api/v1/admin/api-upstreams')).json()) as any;
+    expect(l.tools.map((t: any) => t.kind)).toEqual(['graphql', 'grpc']);
+    const c = (await (await f('/api/v1/admin/api-upstreams/call', { method: 'POST', body: '{"tool":"shop.product","arguments":{"id":"p-1"}}' })).json()) as any;
+    expect(c.success).toBe(true);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

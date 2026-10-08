@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '6.0.0';
+  const VERSION = '6.1.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -46,6 +46,7 @@
     { id: "sessions", since: "5.5.0", summary: "Agent session recording, replay and regression evals" },
     { id: "dlp", since: "5.6.0", summary: "Data loss prevention: sensitivity levels, per-tenant clearance and masking" },
     { id: "adaptive", since: "5.8.0", summary: "Adaptive routing 2.0: pick upstream / model by quality, cost and latency (Thompson sampling)" },
+    { id: "api-upstreams", since: "6.1.0", summary: "GraphQL and gRPC (Connect / JSON transcoding) upstreams exposed as tools" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -559,6 +560,12 @@
     ] });
     if (p === '/admin/adaptive/feedback' && method === 'POST') return json({ pool: 'summarize', candidate: 'small', quality: 0.71 });
 
+    // 6.1: GraphQL / gRPC upstreams.
+    if (p === '/admin/api-upstreams') return json({ upstreams: [{ id: 'shop', kind: 'graphql', url: 'https://shop.example/graphql' }, { id: 'billing', kind: 'grpc', url: 'https://billing.example' }], tools: [
+      { name: 'shop.product', upstream: 'shop', kind: 'graphql', description: 'Look up a product', inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'], additionalProperties: false } },
+      { name: 'billing.getInvoice', upstream: 'billing', kind: 'grpc', description: 'billing.v1.Invoices/Get', inputSchema: { type: 'object', properties: { id: { type: 'string' } } } },
+    ] });
+    if (p === '/admin/api-upstreams/call' && method === 'POST') { await sleep(60); return json({ tool: 'shop.product', success: true, result: { product: { id: 'p-1', title: 'Demo mug', price: 12 } }, durationMs: 58 }); }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 6.0: the 5.x deprecations were removed; nothing is deprecated yet.
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });

@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.1.0] - 2026-10-08
+
+### Added
+- **GraphQL / gRPC upstreams** — `apiUpstreams[]` exposes GraphQL operations (input schema derived from the variable
+  definitions) and unary gRPC methods (Connect protocol / gRPC-JSON transcoding) as tools `<upstream>.<operation>`.
+  `GET /admin/api-upstreams`, `POST /admin/api-upstreams/call`. See
+  [docs/guides/api-upstreams.md](docs/guides/api-upstreams.md).
+- Library: `ApiUpstreamsSchema`, `apiUpstreamTools`, `callApiUpstream`, `graphqlVariables`.
+- Pages demo: API upstream tools.
+
 ## [6.0.0] - 2026-10-08
 
 ### Breaking

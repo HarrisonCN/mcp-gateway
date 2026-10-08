@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** GraphQL / gRPC upstreams (6.1). */
+  apiUpstreams?: import('../features/api-upstreams.js').ApiUpstreamsConfig;
   /** Adaptive routing 2.0 (5.8). */
   adaptive?: import('../features/adaptive.js').AdaptiveConfig;
   /** Data loss prevention (5.6). */
