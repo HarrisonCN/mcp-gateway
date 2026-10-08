@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.8.0] - 2026-10-08
+
+### Added
+- **Chaos testing** (`chaos`): time-boxed experiments that inject latency, errors (JSON-RPC **-32021**), timeouts and
+  corrupted results into a share of matching calls (servers / tools / clients globs), started on demand
+  (`POST /api/v1/admin/chaos/:id/start`, `…/stop`, `/stop-all`) or on a schedule (`every`), with a steady-state guard
+  that aborts an experiment when the error rate gets too high. `GET /api/v1/admin/chaos` reports injected faults and
+  observed calls / errors. [Guide](docs/guides/chaos.md).
+- Pages demo: chaos experiments.
+
 ## [8.7.0] - 2026-10-08
 
 ### Added

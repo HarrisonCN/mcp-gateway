@@ -452,6 +452,11 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(r.valid).toBe(true);
     expect(r.steps[0].source).toBe('phrasebook');
   });
+  it('lists chaos experiments (8.8)', async () => {
+    const f = demoFetch();
+    const c = (await (await f('/api/v1/admin/chaos')).json()) as any;
+    expect(c.experiments.map((e: any) => e.state)).toEqual(['running', 'aborted']);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

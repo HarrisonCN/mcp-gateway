@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Chaos testing (8.8). */
+  chaos?: import('../features/chaos.js').ChaosConfig;
   /** Natural-language config assistant (8.7). */
   configAssistant?: import('../features/config-assistant.js').ConfigAssistantConfig;
   /** Data lineage (8.6). */

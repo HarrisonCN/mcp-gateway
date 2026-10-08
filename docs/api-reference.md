@@ -495,6 +495,9 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/data-lineage/export` | OpenLineage-style run events (8.6) |
 | `POST` | `/admin/config-assistant/plan` | Config assistant: plain-words change `{ text }` → steps, diff, validity, `planId` (dry run) (8.7) |
 | `POST` | `/admin/config-assistant/apply` | Apply a plan `{ planId }` (409 when the config changed since) (8.7) |
+| `GET` | `/admin/chaos` | Chaos experiments: state, injected faults, calls / errors, remaining time (8.8) |
+| `POST` | `/admin/chaos/:id/start` | Start an experiment `{ durationSeconds? }` (8.8) |
+| `POST` | `/admin/chaos/:id/stop` · `/admin/chaos/stop-all` | Stop one / every running experiment (8.8) |
 
 ## Bridges
 

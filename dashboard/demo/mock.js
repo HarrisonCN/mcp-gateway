@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '8.7.0';
+  const VERSION = '8.8.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -69,6 +69,7 @@
     { id: "blue-green", since: "8.5.0", summary: "Zero-downtime blue/green upgrades: probed atomic switch, in-flight drain, verification window with auto-rollback" },
     { id: "data-lineage", since: "8.6.0", summary: "Data lineage: value fingerprints link tool outputs to later tool inputs (graph, trace by value, OpenLineage export)" },
     { id: "config-assistant", since: "8.7.0", summary: "Natural-language config assistant: plain-words changes \u2192 validated config patch, diff (dry run), apply" },
+    { id: "chaos", since: "8.8.0", summary: "Chaos testing: scheduled or on-demand latency / error / timeout / corruption injection with a steady-state guard" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -716,6 +717,11 @@
       { text: 'rate limit to 60 per minute', summary: 'rate limit 60 per 60s per key', source: 'phrasebook' },
       { text: 'require approval for payments/*', summary: 'policy rule: approve payments/* (first in order)', source: 'phrasebook' },
     ], changes: [{ path: 'rateLimit.limit', from: 120, to: 60 }, { path: 'policy.rules[0]', to: { effect: 'approve', servers: ['payments'], tools: ['*'] } }], unparsed: [] });
+    // 8.8: chaos testing.
+    if (p === '/admin/chaos') return json({ experiments: [
+      { id: 'slow-search', servers: ['search'], tools: ['*'], clients: ['key:staging-*'], percent: 25, fault: { latencyMs: 1500, timeoutMs: 30000 }, every: 'daily', state: 'running', reason: null, startedAt: new Date(Date.now() - 120000).toISOString(), remainingSeconds: 180, injected: { latency: 212, error: 0, timeout: 0, corrupt: 0 }, calls: 847, errors: 4 },
+      { id: 'github-flaky', servers: ['github'], tools: ['*'], clients: ['*'], percent: 10, fault: { errorRate: 0.5, timeoutMs: 30000 }, every: null, state: 'aborted', reason: 'steady-state guard: error rate 0.31 > 0.3', startedAt: new Date(Date.now() - 86400000).toISOString(), remainingSeconds: 0, injected: { latency: 0, error: 19, timeout: 0, corrupt: 0 }, calls: 61, errors: 19 },
+    ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 8.0: nothing is deprecated (schema v7, `plugins[].wasm` and plugin API v4 were removed).
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });

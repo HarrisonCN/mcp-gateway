@@ -191,6 +191,8 @@ export { DataLineageSchema } from './features/data-lineage.js';
 export type { DataLineageConfig, LineageNode, LineageEdge } from './features/data-lineage.js';
 export { ConfigAssistantSchema, parseInstruction } from './features/config-assistant.js';
 export type { ConfigAssistantConfig } from './features/config-assistant.js';
+export { ChaosSchema, ERR_CHAOS_INJECTED } from './features/chaos.js';
+export type { ChaosConfig } from './features/chaos.js';
 export type {
   GatewayConfig,
   McpServerConfig,
