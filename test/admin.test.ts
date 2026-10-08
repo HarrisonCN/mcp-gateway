@@ -23,6 +23,11 @@ const tmp = () => {
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
 
 const server = (id: string) => ({ id, name: id, transport: 'stdio' as const, command: process.execPath, args: [fixture], timeout: 5000 });
+/** The same server in the config-file schema (v5: `timeoutMs`). */
+const fileServer = (id: string) => {
+  const { timeout, ...s } = server(id);
+  return { ...s, timeoutMs: timeout };
+};
 
 describe('config diff and redaction', () => {
   it('redacts secrets and restores them on round trip', () => {
@@ -53,7 +58,7 @@ describe('3.0 removals', () => {
   it('rejects removed keys and foreign config versions with the replacement', () => {
     expect(removedConfigKeys({ corsOrigins: [], healthCheckIntervalMs: 5000 })).toHaveLength(2);
     expect(configDeprecations({ corsOrigins: [] })).toEqual([]);
-    const cfg = validateConfig({ version: 4, servers: [], cors: { origins: ['https://a.example'] }, health: { intervalMs: 5000 } });
+    const cfg = validateConfig({ version: 5, servers: [], cors: { origins: ['https://a.example'] }, health: { intervalMs: 5000 } });
     expect(cfg.cors?.origins).toEqual(['https://a.example']);
     expect(cfg.health?.intervalMs).toBe(5000);
     expect(() => validateConfig({ servers: [], corsOrigins: ['*'] })).toThrow(/corsOrigins: removed in 3.0 — use `cors: \{ origins/);
@@ -131,10 +136,10 @@ describe('admin REST API', () => {
   it('reloads from disk and lists deprecations', async () => {
     resetDeprecations();
     let calls = 0;
-    deprecate(DEPRECATIONS.pluginApiV2, 'plugin "old"');
+    deprecate(DEPRECATIONS.pluginApiV3, 'plugin "old"');
     const url = await start({ admin: { configApi: true } }, async () => {
       calls++;
-      return validateConfig({ servers: [server('fake')], auth: { strategy: 'api-key', apiKeys: ['op'] }, admin: { configApi: true }, logLevel: 'error', monitor: { requestLog: false } });
+      return validateConfig({ servers: [fileServer('fake')], auth: { strategy: 'api-key', apiKeys: ['op'] }, admin: { configApi: true }, logLevel: 'error', monitor: { requestLog: false } });
     });
     const r = (await (await fetch(`${url}/reload`, { method: 'POST', headers: op })).json()) as { applied: boolean; changes: Array<{ path: string }> };
     expect(calls).toBe(1);
@@ -142,7 +147,7 @@ describe('admin REST API', () => {
     expect(r.changes.map((c) => c.path)).toContain('auth');
     const d = (await (await fetch(`${url}/deprecations`, { headers: op })).json()) as { config: unknown[]; runtime: Array<{ id: string }> };
     expect(d.config).toEqual([]);
-    expect(d.runtime.map((x) => x.id)).toEqual(['plugin-api-v2']);
+    expect(d.runtime.map((x) => x.id)).toEqual(['plugin-api-v3']);
   });
 
   it('reload without a config source is 501', async () => {

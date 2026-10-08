@@ -24,9 +24,9 @@
  * optional `onConfigChange(change, ctx)` hook runs after every applied hot reload. v2 plugins still load, with a
  * deprecation warning; v2 is removed in 5.0.
  *
- * Plugin API v4 (4.9; the contract 5.0 is built around): v3 plus `ctx.state`, a per-plugin key-value store with
- * optional TTLs that lives as long as the plugin instance (counters, caches, rate windows) — no more module-level
- * globals. v3 plugins keep loading unchanged in 4.x; 5.0 deprecates v3 (removed in 6.0) and refuses v2.
+ * Plugin API v4 (4.9, current in 5.0): v3 plus `ctx.state`, a per-plugin key-value store with optional TTLs that
+ * lives as long as the plugin instance (counters, caches, rate windows) — no more module-level globals.
+ * 5.0 refuses v2 and deprecates v3 (still loads, with a warning, until 6.0).
  *
  * Hooks run in configuration order; the first refusal / short-circuit wins.
  * A hook that throws fails the call (`-32006`) — plugins fail closed.
@@ -45,8 +45,8 @@ import { VERSION } from '../utils/version.js';
 /** Version of the plugin contract implemented by this gateway. */
 export const PLUGIN_API_VERSION = 4;
 
-/** Oldest plugin contract still loaded (v2: with a deprecation warning until 5.0). */
-export const PLUGIN_API_MIN_VERSION = 2;
+/** Oldest plugin contract still loaded (v3: with a deprecation warning until 6.0). */
+export const PLUGIN_API_MIN_VERSION = 3;
 
 /** Call refused (or failed) by a plugin hook. */
 export const ERR_PLUGIN_REJECTED = -32006;
@@ -169,7 +169,7 @@ export interface PluginCallError {
 
 export interface GatewayPlugin {
   name: string;
-  /** Plugin contract version the plugin was written for: 4 (current, 4.9), 3, or 2 (deprecated, removed in 5.0). Required since 4.0. */
+  /** Plugin contract version the plugin was written for: 4 (current) or 3 (deprecated, removed in 6.0). Required since 4.0. */
   apiVersion?: number;
   onRequest?: (req: Request, res: Response, next: NextFunction, ctx: PluginHookContext) => void | Promise<void>;
   onToolCall?: (call: PluginCall, ctx: PluginHookContext) => ToolCallOutcome | Promise<ToolCallOutcome>;
@@ -207,8 +207,11 @@ async function instantiate(src: unknown, ctx: PluginContext, label: string): Pro
   if (v === 1) {
     throw new Error(`Plugin "${value.name}" uses plugin API v1, which was removed in 4.0 — declare \`apiVersion: 4\` (hooks receive a context argument; see docs/guides/migrating-to-v4.md)`);
   }
+  if (v === 2) {
+    throw new Error(`Plugin "${value.name}" uses plugin API v2, which was removed in 5.0 — declare \`apiVersion: 4\` (see docs/guides/migrating-to-v5.md)`);
+  }
   if (v < PLUGIN_API_MIN_VERSION) throw new Error(`Plugin "${value.name}" declares unsupported plugin API v${v}`);
-  if (v === 2) deprecate(DEPRECATIONS.pluginApiV2, `plugin "${value.name}"`);
+  if (v === 3) deprecate(DEPRECATIONS.pluginApiV3, `plugin "${value.name}"`);
   return value;
 }
 

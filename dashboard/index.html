@@ -526,7 +526,7 @@ tbody tr:hover { background: var(--surface-2); }
     <p class="badge" id="cfLocked" hidden data-i18n="cfLocked">Read-only</p>
     <div class="card" id="cfResult" hidden aria-live="polite"></div>
     <div class="card" style="margin-top:14px"><h2 data-i18n="cfGeneral">General</h2><div class="filters" id="cfGeneral"></div></div>
-    <div class="card" style="margin-top:14px"><h2 data-i18n="cfServers">Servers</h2><div class="table-wrap"><table><thead><tr><th>id</th><th>transport</th><th>url / command</th><th>timeout</th><th data-i18n="cfEnabled">Enabled</th><th></th></tr></thead><tbody id="cfServers"></tbody></table></div>
+    <div class="card" style="margin-top:14px"><h2 data-i18n="cfServers">Servers</h2><div class="table-wrap"><table><thead><tr><th>id</th><th>transport</th><th>url / command</th><th>timeoutMs</th><th data-i18n="cfEnabled">Enabled</th><th></th></tr></thead><tbody id="cfServers"></tbody></table></div>
       <div class="row" style="margin-top:10px"><button class="btn sm" id="cfAdd" type="button" data-i18n="cfAddServer">Add server</button></div></div>
     <div class="card" style="margin-top:14px"><h2 data-i18n="cfRaw">Raw JSON</h2><textarea class="input mono" id="cfJson" rows="16" spellcheck="false" style="width:100%;resize:vertical"></textarea>
       <div class="row" style="margin-top:10px"><button class="btn sm" id="cfUseJson" type="button" data-i18n="cfUseJson">Use JSON</button></div></div>
@@ -939,7 +939,7 @@ function renderConfigEditor() {
     <td><input class="input mono" aria-label="id" data-srv="id" value="${esc(s.id || '')}"></td>
     <td><select class="input" aria-label="transport" data-srv="transport">${opt(['stdio', 'streamable-http', 'sse', 'websocket'], s.transport || 'stdio')}</select></td>
     <td><input class="input mono" aria-label="url or command" data-srv="${s.transport === 'stdio' ? 'command' : 'url'}" value="${esc(s.transport === 'stdio' ? s.command || '' : s.url || '')}"></td>
-    <td><input class="input" type="number" min="1" aria-label="timeout" data-srv="timeout" data-num value="${esc(String(s.timeout ?? ''))}"></td>
+    <td><input class="input" type="number" min="1" aria-label="timeoutMs" data-srv="timeoutMs" data-num value="${esc(String(s.timeoutMs ?? ''))}"></td>
     <td><input type="checkbox" aria-label="${esc(t('cfEnabled'))}" data-srv="enabled" ${s.enabled === false ? '' : 'checked'}></td>
     <td><button class="btn ghost sm" type="button" data-cf-remove="${i}">${esc(t('cfRemove'))}</button></td></tr>`).join('');
   $('#cfJson').value = JSON.stringify(c, null, 2);

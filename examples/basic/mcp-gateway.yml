@@ -1,6 +1,7 @@
 # Basic mcp-gateway configuration
 # Manages two MCP servers: filesystem and GitHub
 
+version: 5
 port: 4000
 host: 0.0.0.0
 logLevel: info
@@ -19,7 +20,7 @@ servers:
     args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
     tags: [files, local]
     enabled: true
-    timeout: 15000
+    timeoutMs: 15000
 
   - id: github
     name: GitHub Server
@@ -31,4 +32,4 @@ servers:
       GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
     tags: [github, vcs]
     enabled: true
-    timeout: 30000
+    timeoutMs: 30000

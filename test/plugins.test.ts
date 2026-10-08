@@ -52,23 +52,24 @@ describe('PluginHost', () => {
     await expect(PluginHost.build(undefined, [{ name: 'future', apiVersion: PLUGIN_API_VERSION + 1 }])).rejects.toThrow(/needs plugin API/);
   });
 
-  it('API v2: hooks get a context, onError observes failures; v2 is deprecated, v1 refused (4.0)', async () => {
+  it('hooks get a context, onError observes failures; v3 is deprecated, v1 / v2 refused (5.0)', async () => {
     resetDeprecations();
     const seen: string[] = [];
     const host = new PluginHost();
     const plugins = await PluginHost.build(undefined, [
-      { name: 'v2', apiVersion: 2, onToolCall: (_c, ctx) => void seen.push(`call:${ctx.plugin}:${ctx.apiVersion}`), onError: (_c, e, ctx) => void seen.push(`err:${ctx.plugin}:${e.message}`) },
-      { name: 'broken-observer', apiVersion: 2, onError: () => { throw new Error('ignored'); } },
+      { name: 'v3', apiVersion: 3, onToolCall: (_c, ctx) => void seen.push(`call:${ctx.plugin}:${ctx.apiVersion}`), onError: (_c, e, ctx) => void seen.push(`err:${ctx.plugin}:${e.message}`) },
+      { name: 'broken-observer', apiVersion: 3, onError: () => { throw new Error('ignored'); } },
     ]);
     await host.set(plugins);
-    expect(runtimeDeprecations().map((d) => `${d.id} ${d.detail}`)).toEqual(['plugin-api-v2 plugin "v2"', 'plugin-api-v2 plugin "broken-observer"']);
+    expect(runtimeDeprecations().map((d) => `${d.id} ${d.detail}`)).toEqual(['plugin-api-v3 plugin "v3"', 'plugin-api-v3 plugin "broken-observer"']);
     await expect(PluginHost.build(undefined, [{ name: 'legacy', onResponse: (_c, r) => r }])).rejects.toThrow(/plugin API v1, which was removed in 4.0/);
     const call = { serverId: 's', name: 't', kind: 'tool' as const, method: 'tools/call', arguments: {}, via: 'rest' as const, state: new Map() };
     await host.beforeCall(call);
     const failed = await host.afterCall(call, { success: false, durationMs: 1, error: { code: -32000, message: 'upstream down' } });
     expect(failed.success).toBe(false);
     await host.afterCall(call, { success: true, durationMs: 1, result: 1 });
-    expect(seen).toEqual([`call:v2:${PLUGIN_API_VERSION}`, 'err:v2:upstream down']);
+    expect(seen).toEqual([`call:v3:${PLUGIN_API_VERSION}`, 'err:v3:upstream down']);
+    await expect(PluginHost.build(undefined, [{ name: 'old', apiVersion: 2 }])).rejects.toThrow(/plugin API v2, which was removed in 5.0/);
     await expect(PluginHost.build(undefined, [{ name: 'zero', apiVersion: 0 }])).rejects.toThrow(/unsupported plugin API v0/);
     await host.close();
   });

@@ -368,7 +368,7 @@ servers:
       MY_VAR: "${ENV_VAR}"    # Environment variable substitution
     tags: [files, local]
     enabled: true
-    timeout: 30000            # ms, includes time queued behind maxConcurrency
+    timeoutMs: 30000          # ms, includes time queued behind maxConcurrency (schema v4: timeout)
     maxConcurrency: 10        # max in-flight tool calls for this server
     tools:                    # optional: expose only some tools (globs: * and ?, deny wins)
       allow: ["read_*", "list_*"]
@@ -585,6 +585,17 @@ await gateway.start();
 // Graceful shutdown
 process.on('SIGTERM', () => gateway.stop());
 ```
+
+## What's New in v5.0
+
+⚠ Breaking release — read [Migrating to 5.0](docs/guides/migrating-to-v5.md). On 4.9: `npx @winstonsayno/mcp-gateway@4.9 migrate --write`.
+
+| Feature | Description |
+|---------|-------------|
+| **Config schema v5** | `version: 5`, `servers[].timeoutMs` — `mcp-gateway migrate` does it for you |
+| **Plugin API v4** | `ctx.state` per-plugin store; v2 refused, v3 deprecated until 6.0 |
+| **Removals** | Every 4.x deprecation is gone; errors name the replacement |
+| **Roadmap to 6.0** | Multi-region clusters, edge fleet management, DLP, signed plugins, SDK publishing — see [ROADMAP](docs/ROADMAP.md) |
 
 ## What's New in v4.9
 

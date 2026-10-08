@@ -1,6 +1,6 @@
 /**
  * `mcp-gateway migrate` (3.9; `--to 5` since 4.9, the default): rewrites a config file to schema v5 (or v4), keeping
- * comments and layout (YAML documents are edited in place).
+ * comments and layout (YAML documents are edited in place). 5.x only reads v5; `--to 4` is kept for 4.x deployments.
  *
  * To v5 (4.9): everything below for v4, then `version: 5` and `servers[].timeout` → `timeoutMs`; plugins are listed
  * as a reminder (v2 is refused by 5.0, v3 keeps loading with a deprecation — declare `apiVersion: 4`).
@@ -40,7 +40,7 @@ export function migrateConfigText(text: string, format?: 'yaml' | 'json', to = 5
   const changes: string[] = [];
   const notes: string[] = [];
   migrateDoc(doc, changes, notes, to);
-  const out = changes.length === 0 ? text : fmt === 'json' ? JSON.stringify(doc.toJS(), null, 2) + '\n' : doc.toString({ lineWidth: 0 });
+  const out = changes.length === 0 ? text : fmt === 'json' ? JSON.stringify(doc.toJS(), null, 2) + '\n' : doc.toString({ lineWidth: 0, flowCollectionPadding: false });
   return { text: out, changes, notes, changed: changes.length > 0 };
 }
 
