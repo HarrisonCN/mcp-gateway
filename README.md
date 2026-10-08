@@ -581,6 +581,16 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v3.5
+
+| Feature | Description |
+|---------|-------------|
+| **Vault / KMS** | `secret://vault/…`, `secret://kms/…` references in server env, headers, URL, args |
+| **Rotation** | Periodic or on-demand re-read; servers reconnect with new credentials |
+| **Per-tenant credentials** | `inject:` adds a tenant's own key to each call, never logged |
+
+Details: [CHANGELOG](CHANGELOG.md) · [Configuration](docs/configuration.md#secrets-35).
+
 ## What's New in v3.4
 
 | Feature | Description |

@@ -38,6 +38,7 @@ import { createTracer, NOOP_TRACER, type Tracer } from '../observability/tracing
 import { ToolInvoker } from './invoker.js';
 import { LoadBalancer, expandReplicas } from './balancer.js';
 import { SmartRouter } from './routing.js';
+import { SecretManager } from '../secrets/index.js';
 import { ToolCache } from './cache.js';
 import { ReplayRecorder } from './replay.js';
 import { UsageMeter } from './usage.js';
@@ -78,6 +79,8 @@ export class Gateway {
   private ipFilter?: express.RequestHandler;
   private jsonParser: express.RequestHandler;
   private readonly reloadLock = new Mutex();
+  /** Secret providers, resolution and rotation (3.5). */
+  readonly secrets: SecretManager;
   private started = false;
   private stopping?: Promise<void>;
   private stateStore?: StateStore;
@@ -97,7 +100,11 @@ export class Gateway {
     this.registry = new ServerRegistry(config.health?.intervalMs ?? 30_000);
     this.proxy = new McpProxy();
     this.metrics = new MetricsCollector(config.monitor);
-    this.supervisor = new ServerSupervisor(this.proxy, this.registry, { reconnect: config.reconnect });
+    this.secrets = new SecretManager(() => this.config.secrets, { baseDir: () => this.config.configDir });
+    this.supervisor = new ServerSupervisor(this.proxy, this.registry, {
+      reconnect: config.reconnect,
+      prepare: (c) => (SecretManager.usesSecrets(c) ? this.secrets.resolveServer(c) : Promise.resolve(c)),
+    });
     this.cors = corsMiddleware({ origins: config.cors?.origins ?? ['*'] });
     this.jsonParser = express.json({ limit: this.maxBodyBytes() });
     configureRedaction(config.security?.redactPatterns);
@@ -165,6 +172,8 @@ export class Gateway {
       recorder: new ReplayRecorder(() => this.config.replay),
       usage: new UsageMeter(() => this.config.quotas),
       tenantsOf: (clientId) => (this.config.tenants?.length ? membershipsOf(this.config.tenants, clientId).map((m) => m.tenant) : []),
+      secrets: this.secrets,
+      serverConfig: (id) => this.registry.getServer(id),
       router: new SmartRouter(() => this.config.routing, { isConnected: (id) => this.proxy.isConnected(id) }),
       balancer: new LoadBalancer({
         servers: () => this.registry.getAllServers(),
@@ -180,6 +189,12 @@ export class Gateway {
       shared,
       invoker: this.invoker,
       onTenantsChanged: () => this.mcp?.refreshClients(),
+      secrets: {
+        providers: () => this.secrets.providerList(),
+        status: () => this.secrets.status() as unknown as Array<Record<string, unknown>>,
+        rotationSeconds: () => this.config.secrets?.rotation?.intervalSeconds,
+        rotate: () => this.rotateSecrets(),
+      },
       catalog: {
         installEnabled: () => this.catalog.installEnabled(),
         entries: () =>
@@ -341,6 +356,7 @@ export class Gateway {
     this.installed.load();
     await this.catalog.refresh();
     await this.connectServers(expandReplicas(this.withInstalled(this.config.servers)));
+    this.startSecretRotation();
 
     this.registry.startHealthChecks((serverId) => this.checkHealth(serverId));
 
@@ -448,6 +464,7 @@ export class Gateway {
       }
     }
     this.router?.close();
+    this.secrets.stopRotation();
     await this.proxy.disconnectAll();
     if (this.stateStore && !this.options.stateStore) await this.stateStore.close().catch(() => undefined);
     await this.tracer.shutdown().catch(() => undefined);
@@ -484,6 +501,7 @@ export class Gateway {
       const prevPolicy = this.config.policy;
       const prevPlugins = this.config.plugins;
       const prevCache = this.config.cache;
+      const prevSecrets = this.config.secrets;
       const prevTenants = this.config.tenants;
       const prevCatalog = this.config.catalog;
       for (const field of ['port', 'host', 'health', 'dashboard', 'audit', 'state', 'observability'] as const) {
@@ -555,6 +573,7 @@ export class Gateway {
         catalog: next.catalog,
         quotas: next.quotas,
         routing: next.routing,
+        secrets: next.secrets,
         // openai.path is fixed at start; other bridge settings hot reload
         openai: next.openai ? { ...next.openai, path: this.config.openai?.path } : next.openai,
         a2a: next.a2a,
@@ -567,6 +586,11 @@ export class Gateway {
       if (!same(prevTenants, next.tenants)) {
         this.mcp?.refreshClients();
         applied.push('tenants');
+      }
+      if (!same(prevSecrets, next.secrets)) {
+        this.secrets.configure();
+        this.startSecretRotation();
+        applied.push('secrets');
       }
       if (!same(prevCache, next.cache)) {
         this.invoker?.cache?.purge();
@@ -597,6 +621,24 @@ export class Gateway {
         `Hot reload applied: ${toConnect.length} (re)connected, ${toRemove.length} removed` +
           (applied.length ? `; updated ${applied.join(', ')}` : ''),
       );
+    });
+  }
+
+  private startSecretRotation(): void {
+    this.secrets.startRotation(
+      () => this.registry.getAllServers(),
+      async (next) => {
+        const reg = this.registry.getServer(next.id);
+        if (reg) await this.supervisor.connect(reg);
+      },
+    );
+  }
+
+  /** Re-resolve every secret now and reconnect servers whose credentials changed (3.5). */
+  async rotateSecrets(): Promise<string[]> {
+    return this.secrets.rotateAll(this.registry.getAllServers(), async (next) => {
+      const reg = this.registry.getServer(next.id);
+      if (reg) await this.supervisor.connect(reg);
     });
   }
 

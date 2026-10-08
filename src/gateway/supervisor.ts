@@ -64,10 +64,13 @@ export interface SupervisorOptions {
   /** Gateway-wide reconnect defaults (merged with each server's `reconnect`). */
   reconnect?: Partial<ReconnectConfig>;
   random?: () => number;
+  /** Turns the registered config into the one to connect with (3.5: resolves `secret://` references). */
+  prepare?: (config: McpServerConfig) => Promise<McpServerConfig>;
 }
 
 export class ServerSupervisor {
   private readonly entries = new Map<string, Entry>();
+  private readonly prepare?: (config: McpServerConfig) => Promise<McpServerConfig>;
   private reconnectDefaults?: Partial<ReconnectConfig>;
   private readonly random: () => number;
   private stopped = false;
@@ -92,6 +95,7 @@ export class ServerSupervisor {
   ) {
     this.reconnectDefaults = options.reconnect;
     this.random = options.random ?? Math.random;
+    this.prepare = options.prepare;
     proxy.on('disconnected', this.onDisconnected);
     proxy.on('tools-changed', this.onToolsChanged);
     proxy.on('catalog-changed', this.onCatalogChanged);
@@ -159,7 +163,7 @@ export class ServerSupervisor {
     entry.state.nextAttemptAt = undefined;
     this.publish(entry);
     try {
-      const tools = await this.proxy.connect(config);
+      const tools = await this.proxy.connect(this.prepare ? await this.prepare(config) : config);
       if (!this.current(entry, gen)) return false; // superseded by reload/removal
       entry.state = {
         state: 'idle',

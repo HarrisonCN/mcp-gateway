@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-10-08
+
+### Added
+- **Secrets management.** `secrets.providers`: HashiCorp Vault KV v2 (token or AppRole, namespaces), AWS KMS
+  (`Decrypt`, SigV4), Google Cloud KMS, files, and env. `secret://<provider>/<path>[#field]` references in server
+  `env`, `headers`, `url` and `args` are resolved at (re)connect; the registry, `GET /servers`, the audit log and
+  config diffs only ever see references. A provider outage keeps serving the last good value.
+- **Token rotation:** `secrets.rotation.intervalSeconds` re-reads references and reconnects servers whose
+  credentials changed; `POST /api/v1/secrets/rotate` does it on demand.
+- **Per-tenant injection:** `servers[].inject` adds a credential per call (tool argument or `_meta`), templated with
+  `{tenant}` / `{client}`, after plugins, policy, cache keys and request capture. Missing tenant → `-32010`.
+- `GET /api/v1/secrets` (references, versions, rotation times — no values). `SecretManager` and the providers are
+  exported. The GitHub Pages demo serves the new endpoints.
+
+### Security
+- Resolved values never appear in API responses, the request log, the audit log or the replay debugger.
+
 ## [3.4.0] - 2026-10-08
 
 ### Added
