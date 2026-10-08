@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v6.9
+
+| Feature | Description |
+|---------|-------------|
+| **`migrate --to 7`** | Moves `admin` / `dashboard` under `controlPlane`, keeps comments |
+| **Deprecations** | Schema v6, `admin`, `dashboard` — all removed in 7.0 |
+
 ## What's New in v6.8
 
 | Feature | Description |

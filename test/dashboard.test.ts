@@ -176,11 +176,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(((await (await f('/api/v1/portal/keys/pend0001/approve', { method: 'POST' })).json()) as any).status).toBe('active');
   });
 
-  it('lists no deprecations after 6.0 removed the 5.x ones', async () => {
+  it('lists the 6.9 config deprecations (schema v6, admin, dashboard)', async () => {
     const f = demoFetch();
     const r = (await (await f('/api/v1/admin/deprecations')).json()) as any;
     expect(r.runtime).toEqual([]);
-    expect(r.config).toEqual([]);
+    expect(r.config.map((d: any) => d.id)).toEqual(['schema-v6', 'admin-section', 'dashboard-section']);
+    expect(r.config.every((d: any) => d.removedIn === '7.0.0')).toBe(true);
   });
 
   it('reports MCP revisions and features (4.1)', async () => {

@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.9.0] - 2026-10-08
+
+### Added
+- **Schema v7 preview** — 6.9 reads `version: 7`, where the control-plane settings live under `controlPlane`
+  (`configApi`, `dashboard`). `admin` / `dashboard` are not part of v7; setting both forms is an error.
+- **`mcp-gateway migrate --to 7`** (now the default): `version: 7`, `admin.configApi` → `controlPlane.configApi`,
+  `dashboard.enabled` → `controlPlane.dashboard`, on top of every earlier step (v3/v4/v5 → v7 in one go).
+- [Migrating to 7.0](docs/guides/migrating-to-v7.md).
+
+### Deprecated (removed in 7.0)
+- Config schema v6 (`version: 6`), the top-level `admin` section and the top-level `dashboard` section — listed by
+  `mcp-gateway validate` and `GET /admin/deprecations`.
+
+### Changed
+- Examples use `version: 7`. Pages demo lists the 6.9 deprecations.
+
 ## [6.8.0] - 2026-10-08
 
 ### Added

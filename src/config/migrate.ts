@@ -1,5 +1,8 @@
 /**
- * To v6 (5.9, the default): everything for v5, then `version: 6` and `compliance.pii` → `dlp` (redact → strategy
+ * To v7 (6.9, the default): everything for v6, then `version: 7` and `admin.configApi` → `controlPlane.configApi`,
+ * `dashboard.enabled` → `controlPlane.dashboard`. 6.9 reads v6 and v7.
+ *
+ * To v6 (5.9): everything for v5, then `version: 6` and `compliance.pii` → `dlp` (redact → strategy
  * `redact`, block → `block`, both with clearance `public`; tag → clearance `restricted`, i.e. detect and count only;
  * `scope` / `servers` kept; categories not listed get level `public`). 5.9 reads v5 and v6.
  *
@@ -36,8 +39,8 @@ export interface MigrationResult {
 export const SCOPE_FIELDS = ['servers', 'tools', 'rateLimit'] as const;
 
 /** Migrate a config file's text. `format` is guessed from the content when omitted. */
-export function migrateConfigText(text: string, format?: 'yaml' | 'json', to = 6): MigrationResult {
-  if (to !== 4 && to !== 5 && to !== 6) throw new Error(`Only migration to schema v4, v5 or v6 is supported (got ${to})`);
+export function migrateConfigText(text: string, format?: 'yaml' | 'json', to = 7): MigrationResult {
+  if (![4, 5, 6, 7].includes(to)) throw new Error(`Only migration to schema v4, v5, v6 or v7 is supported (got ${to})`);
   const fmt = format ?? (/^\s*[{[]/.test(text) ? 'json' : 'yaml');
   const doc = parseDocument(text, { keepSourceTokens: true });
   if (doc.errors.length) throw new Error(`Cannot parse the config: ${doc.errors[0]!.message}`);
@@ -133,10 +136,37 @@ function migrateDoc(doc: Document, changes: string[], notes: string[], to: numbe
     }
   }
 
+  if (to >= 7) {
+    // 6.9 → 7.0: `admin` / `dashboard` move under `controlPlane`.
+    const moves: Array<[string, string, string]> = [['admin', 'configApi', 'configApi'], ['dashboard', 'enabled', 'dashboard']];
+    for (const [section, key, target] of moves) {
+      const sec = doc.get(section);
+      if (sec === undefined) continue;
+      if (isMap(sec)) {
+        const v = sec.get(key);
+        const other = sec.items.filter((p) => (p.key as { value?: unknown })?.value !== key && p.key !== key);
+        if (v !== undefined) {
+          let cp = doc.get('controlPlane');
+          if (!isMap(cp)) {
+            cp = doc.createNode({});
+            doc.set('controlPlane', cp);
+          }
+          (cp as YAMLMap).set(target, v);
+        }
+        if (other.length) notes.push(`${section}: keys other than ${key} are not part of schema v7; review them by hand.`);
+        else doc.delete(section);
+        changes.push(`${section}.${key} → controlPlane.${target}`);
+      } else {
+        doc.delete(section);
+        changes.push(`${section} (empty) removed`);
+      }
+    }
+  }
+
   const plugins = doc.get('plugins');
   if (isSeq(plugins) && plugins.items.some((p) => isMap(p) && p.has('module'))) {
     notes.push(
-      to === 6
+      to >= 6
         ? 'JS plugins: declare `apiVersion: 4` (plugin API v3 is refused by 6.0).'
         : to === 5
         ? 'JS plugins: declare `apiVersion: 4` (v2 is refused by 5.0; v3 keeps loading with a deprecation warning until 6.0).'
@@ -146,7 +176,7 @@ function migrateDoc(doc: Document, changes: string[], notes: string[], to: numbe
 }
 
 /** Plain-object variant (for validation / tests). */
-export function migrateConfigObject(raw: Record<string, unknown>, to = 6): { config: Record<string, unknown>; changes: string[] } {
+export function migrateConfigObject(raw: Record<string, unknown>, to = 7): { config: Record<string, unknown>; changes: string[] } {
   const r = migrateConfigText(JSON.stringify(raw), 'json', to);
   return { config: JSON.parse(r.text) as Record<string, unknown>, changes: r.changes };
 }

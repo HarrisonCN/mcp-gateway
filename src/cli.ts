@@ -362,9 +362,9 @@ program
 
 program
   .command('migrate')
-  .description('Rewrite a config file to schema v6 (or --to 5 / 4), keeping comments; prints the changes')
+  .description('Rewrite a config file to schema v7 (or --to 6 / 5 / 4), keeping comments; prints the changes')
   .option('-c, --config <path>', 'Config file (default: the usual search paths)')
-  .option('--to <version>', 'Target schema version (4, 5 or 6)', '6')
+  .option('--to <version>', 'Target schema version (4, 5, 6 or 7)', '7')
   .option('--write', 'Write the file in place (a .bak copy is kept)')
   .option('-o, --output <path>', 'Write the migrated config to this file instead')
   .option('--check', 'Exit with code 3 when the file needs migrating (CI)')

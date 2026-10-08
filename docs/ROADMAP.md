@@ -11,5 +11,5 @@ release. (The 5.x → 6.0 plan is complete; see the [CHANGELOG](../CHANGELOG.md)
 - ✅ v6.6：异常检测：滥用、突发流量与提示注入特征识别
 - ✅ v6.7：用量计费与账单：按租户计量、价目表与发票导出
 - ✅ v6.8：Kubernetes Operator 与 Helm Chart：声明式部署与自动扩缩
-- v6.9：v7 弃用警告与 `migrate --to 7`
+- ✅ v6.9：v7 弃用警告与 `migrate --to 7`
 - v7.0：（破坏性）控制面 / 数据面分离、schema v7、迁移指南
