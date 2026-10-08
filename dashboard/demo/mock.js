@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '6.2.0';
+  const VERSION = '6.3.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -48,6 +48,7 @@
     { id: "adaptive", since: "5.8.0", summary: "Adaptive routing 2.0: pick upstream / model by quality, cost and latency (Thompson sampling)" },
     { id: "api-upstreams", since: "6.1.0", summary: "GraphQL and gRPC (Connect / JSON transcoding) upstreams exposed as tools" },
     { id: "workflows", since: "6.2.0", summary: "Workflow engine: multi-tool DAGs with dependencies, parallelism, conditions and retries" },
+    { id: "genai-otel", since: "6.3.0", summary: "OpenTelemetry GenAI semantic conventions: execute_tool spans, operation duration and token usage metrics, OTLP export" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -577,6 +578,11 @@
       { id: 'score', status: 'succeeded', attempts: 1, durationMs: 33 }, { id: 'notify', status: 'succeeded', attempts: 1, durationMs: 9 },
     ] }); }
     if (p === '/admin/workflows/runs') return json({ runs: [{ runId: 'run-demo-1', workflow: 'enrich-lead', status: 'succeeded', startedAt: iso(Date.now() - 60e3), finishedAt: iso(Date.now() - 59.8e3) }] });
+    // 6.3: OpenTelemetry GenAI semantic conventions.
+    if (p === '/admin/genai-otel') return json({ enabled: true, systems: { llm: 'openai' }, captureContent: false, otlpEndpoint: 'http://otel-collector:4318', spans: 412,
+      'gen_ai.client.operation.duration': [{ attributes: { 'gen_ai.operation.name': 'chat', 'gen_ai.provider.name': 'openai', 'gen_ai.request.model': 'gpt-mini', 'gen_ai.tool.name': 'complete' }, count: 128, sum: 61.4, min: 0.21, max: 2.9 }, { attributes: { 'gen_ai.operation.name': 'execute_tool', 'gen_ai.tool.name': 'search_issues' }, count: 284, sum: 34.1, min: 0.03, max: 0.8 }],
+      'gen_ai.client.token.usage': [{ attributes: { 'gen_ai.operation.name': 'chat', 'gen_ai.request.model': 'gpt-mini', 'gen_ai.token.type': 'input' }, count: 128, sum: 96500, min: 40, max: 3100 }, { attributes: { 'gen_ai.operation.name': 'chat', 'gen_ai.request.model': 'gpt-mini', 'gen_ai.token.type': 'output' }, count: 128, sum: 21400, min: 5, max: 900 }] });
+    if (p === '/admin/genai-otel/spans') return json({ spans: [{ traceId: 'a'.repeat(32), spanId: 'b'.repeat(16), name: 'chat gpt-mini', startMs: Date.now() - 480, endMs: Date.now(), attributes: { 'gen_ai.operation.name': 'chat', 'gen_ai.provider.name': 'openai', 'gen_ai.request.model': 'gpt-mini', 'gen_ai.usage.input_tokens': 812, 'gen_ai.usage.output_tokens': 140, 'gen_ai.tool.name': 'complete' } }] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 6.0: the 5.x deprecations were removed; nothing is deprecated yet.
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });

@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.3.0] - 2026-10-08
+
+### Added
+- **OpenTelemetry GenAI semantic conventions** — `genaiTelemetry` describes tool calls as `execute_tool` spans (and
+  LLM servers listed in `systems` as `chat` operations) with `gen_ai.*` attributes, token usage read from OpenAI /
+  Anthropic result shapes, and the `gen_ai.client.operation.duration` / `gen_ai.client.token.usage` histograms.
+  Optional OTLP/HTTP JSON push; content capture is opt-in. `GET /admin/genai-otel`, `/spans`, `/otlp`. See
+  [docs/guides/genai-otel.md](docs/guides/genai-otel.md).
+- Library: `GenaiTelemetrySchema`, `GenaiRecorder`, `genaiAttributes`, `extractUsage`.
+- Pages demo: GenAI metrics and spans.
+
 ## [6.2.0] - 2026-10-08
 
 ### Added

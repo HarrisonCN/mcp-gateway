@@ -418,6 +418,9 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `POST` | `/admin/workflows/run` | Start a run `{ workflow, input?, wait? }` → `202 { runId }` or the finished run (6.2) |
 | `GET` | `/admin/workflows/runs` | Run history, newest first (`?workflow=`) (6.2) |
 | `GET` | `/admin/workflows/runs/:id` | One run with per-node status, attempts, errors and output (6.2) |
+| `GET` | `/admin/genai-otel` | GenAI telemetry settings and metric summaries (`gen_ai.client.operation.duration`, `gen_ai.client.token.usage`) (6.3) |
+| `GET` | `/admin/genai-otel/spans` | Recent GenAI spans with semconv attributes, newest first (`?limit=`) (6.3) |
+| `GET` | `/admin/genai-otel/otlp` | Current GenAI metrics as an OTLP/JSON `resourceMetrics` payload (6.3) |
 
 ## Bridges
 
