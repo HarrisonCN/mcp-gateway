@@ -586,6 +586,12 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v8.8
+
+| Feature | |
+|---------|---|
+| **Chaos testing** | Time-boxed latency / error / timeout / corruption injection with a steady-state guard — [guide](docs/guides/chaos.md) |
+
 ## What's New in v8.7
 
 | Feature | |

@@ -34,5 +34,6 @@ import './cost-advisor.js';
 import './blue-green.js';
 import './data-lineage.js';
 import './config-assistant.js';
+import './chaos.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';
