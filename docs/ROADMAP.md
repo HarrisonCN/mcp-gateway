@@ -4,7 +4,7 @@ Post-5.0 plan for mcp-gateway. Every minor release stays backward compatible wit
 release. (The 4.x → 5.0 plan is complete; see the [CHANGELOG](../CHANGELOG.md).)
 
 - ✅ v5.1：MCP 规范跟进（新版本协议协商、授权扩展透传）与协议一致性测试套件
-- v5.2：多区域主动-主动集群（共享状态复制、跨区域故障转移）
+- ✅ v5.2：多区域主动-主动集群（共享状态复制、跨区域故障转移）
 - v5.3：边缘节点托管：控制面主动推送配置、仪表盘边缘节点视图
 - v5.4：插件与工具市场：签名插件分发与供应链校验
 - v5.5：智能体会话录制、回放与回归评测

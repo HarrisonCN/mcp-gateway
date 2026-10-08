@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.0] - 2026-10-08
+
+### Added
+- **Multi-region active-active** — `regions: { self, peers[], syncIntervalMs, downAfter }`. Regions replicate a
+  last-writer-wins key-value state (monotonic per-region clock, tombstones, relay) and gossip online upstream
+  servers; `GET /admin/regions/route/:serverId` picks `local`, the best healthy peer, or `none`.
+  Endpoints: `GET /admin/regions`, `POST /admin/regions/sync`, `GET|PUT|DELETE /admin/regions/kv/:key`.
+  Library: `RegionMesh`, `RegionsSchema`. See [docs/guides/multi-region.md](docs/guides/multi-region.md).
+- Feature-module config sections hot reload (`FEATURE_CONFIG_KEYS`); feature modules can register stop hooks.
+- Pages demo: regions status and routing.
+
 ## [5.1.0] - 2026-10-08
 
 ### Added

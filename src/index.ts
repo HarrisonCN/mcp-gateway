@@ -127,6 +127,8 @@ export { createFeatureRouter, registerFeature, listFeatures } from './features/i
 export type { FeatureModule, FeatureContext } from './gateway/features.js';
 export { runConformance, formatReport as formatConformanceReport, CHECKS as CONFORMANCE_CHECKS } from './features/conformance.js';
 export type { ConformanceReport, CheckResult as ConformanceCheck } from './features/conformance.js';
+export { RegionMesh, RegionsSchema, resolveRegions } from './features/regions.js';
+export type { RegionsConfig, ReplicatedEntry, PeerState as RegionPeerState } from './features/regions.js';
 export type {
   GatewayConfig,
   McpServerConfig,

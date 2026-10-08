@@ -20,6 +20,10 @@ export interface FeatureContext {
   recent: (limit?: number) => RequestMetric[];
   /** Base URL of this gateway when listening (for self-tests). */
   baseUrl: () => string | undefined;
+  /** Upstream server ids currently online on this gateway (5.2). */
+  onlineServers?: () => string[];
+  /** Register a cleanup run when the gateway stops (5.2): timers, sockets. */
+  onStop?: (fn: () => void | Promise<void>) => void;
 }
 
 export interface FeatureModule {
@@ -32,6 +36,14 @@ export interface FeatureModule {
 }
 
 const registry: FeatureModule[] = [];
+
+/** Top-level config sections owned by feature modules; all hot reload (5.2+). */
+export const FEATURE_CONFIG_KEYS = ['regions'] as const satisfies ReadonlyArray<keyof GatewayConfig>;
+
+/** Copy the feature-owned config sections of `next` (for hot reload). */
+export function featureSections(next: GatewayConfig): Partial<GatewayConfig> {
+  return Object.fromEntries(FEATURE_CONFIG_KEYS.map((k) => [k, next[k]])) as Partial<GatewayConfig>;
+}
 
 /** Register a feature module (idempotent by id; later registrations replace earlier ones). */
 export function registerFeature(f: FeatureModule): void {

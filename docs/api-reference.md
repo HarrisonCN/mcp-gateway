@@ -395,6 +395,10 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `GET` | `/admin/features` | Feature modules mounted under `/admin/<id>` (5.1) |
 | `GET` | `/admin/conformance/checks` | MCP conformance checks (5.1) |
 | `POST` | `/admin/conformance/run` | Run the conformance suite against this gateway's `/mcp` `{ only? }` (5.1) |
+| `GET` | `/admin/regions` | Multi-region status: this region, peers (health, last sync, servers online), replicated keys (5.2) |
+| `POST` | `/admin/regions/sync` | Peer exchange `{ region, since, entries, servers }` (5.2) |
+| `GET` / `PUT` / `DELETE` | `/admin/regions/kv/:key` | Replicated state, last-writer-wins (`PUT { value }`) (5.2) |
+| `GET` | `/admin/regions/route/:serverId` | Where a call should run: `local`, a peer, or `none` (5.2) |
 
 ## Bridges
 

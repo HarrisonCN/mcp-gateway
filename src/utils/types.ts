@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Multi-region active-active (5.2). */
+  regions?: import('../features/regions.js').RegionsConfig;
   /** Zero-trust upstream mTLS (SPIFFE, certificate rotation) (4.5). */
   mtls?: import('../security/mtls.js').MtlsConfig;
   /** Streaming tool results: SSE backpressure limits (4.4). */

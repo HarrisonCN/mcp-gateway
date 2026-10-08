@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v5.2
+
+| Feature | Description |
+|---------|-------------|
+| **Active-active regions** | Peer gateways replicate shared state (last-writer-wins) and gossip upstream health |
+| **Cross-region failover** | `GET /api/v1/admin/regions/route/:serverId` → local, best healthy peer, or none |
+
 ## What's New in v5.1
 
 | Feature | Description |

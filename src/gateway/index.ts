@@ -17,7 +17,7 @@ import { createApiRouter, serverStateSamples, type ApiRouter, type ToolCallRespo
 import { createOpenAIRouter } from '../bridges/openai.js';
 import { createAdminRouter } from './admin.js';
 import { createEdgeControlRouter } from './edge-control.js';
-import { createFeatureRouter } from './features.js';
+import { createFeatureRouter, featureSections } from './features.js';
 import '../features/index.js';
 import { deprecate } from '../utils/deprecations.js';
 import { createA2ARouter } from '../bridges/a2a.js';
@@ -87,6 +87,8 @@ export class Gateway {
   private cors: express.RequestHandler;
   private ipFilter?: express.RequestHandler;
   private jsonParser: express.RequestHandler;
+  /** 5.2: cleanups registered by feature modules. */
+  private readonly featureStops: Array<() => void | Promise<void>> = [];
   private readonly reloadLock = new Mutex();
   /** Developer portal keys (3.8). */
   readonly portal: PortalStore;
@@ -349,6 +351,8 @@ export class Gateway {
           invoke: (serverId, name, args, clientId) =>
             this.invoker!.invoke({ serverId, name, kind: 'tool', method: 'tools/call', params: { name, arguments: args }, clientId: clientId ?? 'feature', via: 'rest', timeoutMs: this.registry.getServer(serverId)?.timeout }),
           recent: (limit) => this.metrics.getRecent(limit),
+          onlineServers: () => this.registry.getAllServers().filter((s) => this.registry.getHealth(s.id)?.status === 'online').map((s) => s.id),
+          onStop: (fn) => void this.featureStops.push(fn),
           baseUrl: () => {
             const a = this.address();
             if (!a) return undefined;
@@ -508,6 +512,7 @@ export class Gateway {
 
   private async _stop(): Promise<void> {
     logger.info('Shutting down mcp-gateway...');
+    for (const fn of this.featureStops.splice(0)) await Promise.resolve(fn()).catch(() => {});
     const closed = this.server.listening
       ? new Promise<void>((res, rej) => this.server.close((err) => (err ? rej(err) : res())))
       : Promise.resolve();
@@ -690,6 +695,7 @@ export class Gateway {
         // openai.path is fixed at start; other bridge settings hot reload
         openai: next.openai ? { ...next.openai, path: this.config.openai?.path } : next.openai,
         a2a: next.a2a,
+        ...featureSections(next),
         configDir: next.configDir ?? this.config.configDir,
       };
       if (!same(prevCatalog, next.catalog)) {
