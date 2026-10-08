@@ -46,10 +46,10 @@ describe('4.0 removals (were 3.9 deprecations)', () => {
   it('reads nested key scope (schema v5 or version omitted)', () => {
     const cfg = validateConfig({ version: 5, servers: [], auth: { strategy: 'api-key', apiKeys: [{ name: 'ci', key: 'k', scope: { servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } } }] } });
     expect(cfg.auth!.apiKeys![0]).toMatchObject({ name: 'ci', servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } });
-    expect(cfg.deprecations).toBeUndefined();
+    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['schema-v5']);
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', servers: ['a'], scope: { servers: ['b'] } }] } })).toThrow(/removed in 4.0/);
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', scope: { nope: 1 } }] } })).toThrow(/unknown key/);
-    expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/not supported/);
+    expect(() => validateConfig({ version: 7, servers: [] })).toThrow(/not supported/);
     expect(validateConfig({ servers: [] }).deprecations).toBeUndefined();
   });
 });
@@ -71,7 +71,7 @@ describe('mcp-gateway migrate', () => {
     process.env.CI_KEY = 'ci-key-value';
     // 5.x reads v5 only: finish the migration (v4 → v5).
     const cfg = validateConfig(JSON.parse(JSON.stringify(await_yaml(migrateConfigText(r.text).text))));
-    expect(cfg.deprecations).toBeUndefined();
+    expect(cfg.deprecations).toBeUndefined(); // migrated straight to v6
     expect(cfg.auth!.apiKeys![0]).toMatchObject({ servers: ['github'], rateLimit: { limit: 10, windowSeconds: 60 } });
     expect(cfg.servers[0]!.loadBalancing).toMatchObject({ strategy: 'smart', score: { latency: 1, errorRate: 0, cost: 0 } });
     // Idempotent.
@@ -80,11 +80,11 @@ describe('mcp-gateway migrate', () => {
 
   it('handles JSON and files without a version', () => {
     const { config, changes } = migrateConfigObject({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', tools: ['a*'] }] } });
-    expect(changes[0]).toBe('version: (none) → 5');
+    expect(changes[0]).toBe('version: (none) → 6');
     expect(Object.keys(config)[0]).toBe('version');
     expect((config.auth as { apiKeys: Array<Record<string, unknown>> }).apiKeys[0]).toEqual({ key: 'k', scope: { tools: ['a*'] } });
     expect(() => migrateConfigText('a: [', 'yaml')).toThrow(/Cannot parse/);
-    expect(() => migrateConfigText('version: 3', 'yaml', 6)).toThrow(/v4 or v5/);
+    expect(() => migrateConfigText('version: 3', 'yaml', 7)).toThrow(/v4, v5 or v6/);
     expect(() => migrateConfigText('version: 5', 'yaml', 4)).toThrow(/downgrading/);
   });
 });

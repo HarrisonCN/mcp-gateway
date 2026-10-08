@@ -31,7 +31,8 @@ describe('schema v5 (5.0)', () => {
     const cfg = validateConfig({ version: 5, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 1234 }] });
     expect(cfg.version).toBe(5);
     expect(cfg.servers[0]!.timeout).toBe(1234);
-    expect(cfg.deprecations).toBeUndefined();
+    // 5.9: schema v5 is deprecated (removed in 6.0)
+    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['schema-v5']);
     expect(validateConfig({ servers: [{ id: 'b', name: 'b', transport: 'stdio', command: 'x' }] }).servers[0]!.timeout).toBe(30000);
   });
 
@@ -39,8 +40,8 @@ describe('schema v5 (5.0)', () => {
     expect(() => validateConfig({ version: 4, servers: [] })).toThrow(/config schema v4 was removed in 5.0 — use `version: 5`; run `mcp-gateway migrate`/);
     expect(() => validateConfig({ servers: [{ id: 'a', transport: 'stdio', command: 'x', timeout: 5 }] })).toThrow(/servers.0.timeout: removed in 5.0 — use `timeoutMs`/);
     expect(removedConfigKeys({ version: 4, servers: [{ id: 'a', timeout: 1 }] })).toHaveLength(2);
-    expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/5.x reads `version: 5`/);
-    expect(configDeprecations({ version: 5, servers: [] })).toEqual([]);
+    expect(() => validateConfig({ version: 7, servers: [] })).toThrow(/5.x reads `version: 5` or `version: 6`/);
+    expect(configDeprecations({ version: 6, servers: [] })).toEqual([]);
   });
 
   it('admin round trip uses schema v5 field names', () => {
@@ -54,13 +55,13 @@ describe('schema v5 (5.0)', () => {
   it('removed normalizeV4Preview(); the only runtime deprecation left is plugin API v3', async () => {
     const mod = (await import('../src/utils/deprecations.js')) as Record<string, unknown>;
     expect(mod.normalizeV4Preview).toBeUndefined();
-    expect(Object.values(DEPRECATIONS).map((d) => `${d.id}@${d.removedIn}`)).toEqual(['plugin-api-v3@6.0.0']);
+    expect(Object.values(DEPRECATIONS).map((d) => `${d.id}@${d.removedIn}`)).toEqual(['plugin-api-v3@6.0.0', 'compliance-pii@6.0.0', 'schema-v5@6.0.0']);
   });
 });
 
 describe('mcp-gateway migrate --to 5', () => {
   it('rewrites v4 YAML to v5 in place, keeping comments; idempotent', () => {
-    const r = migrateConfigText(V4);
+    const r = migrateConfigText(V4, undefined, 5);
     expect(r.changes).toEqual(['version: 4 → 5', 'servers[0] (search): timeout → timeoutMs']);
     expect(r.notes[0]).toMatch(/apiVersion: 4/);
     expect(r.text).toContain('# prod gateway');
@@ -69,12 +70,12 @@ describe('mcp-gateway migrate --to 5', () => {
     const cfg = validateConfig(parseYaml(r.text));
     expect(cfg.version).toBe(5);
     expect(cfg.servers[0]!.timeout).toBe(15000);
-    expect(cfg.deprecations).toBeUndefined();
-    expect(migrateConfigText(r.text).changed).toBe(false);
+    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['schema-v5']);
+    expect(migrateConfigText(r.text, undefined, 5).changed).toBe(false);
   });
 
   it('migrates v3 straight to v5 and JSON files', () => {
-    const r = migrateConfigText(JSON.stringify({ version: 3, auth: { strategy: 'api-key', apiKeys: [{ key: 'k', servers: ['a'] }] }, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeout: 3 }] }), 'json');
+    const r = migrateConfigText(JSON.stringify({ version: 3, auth: { strategy: 'api-key', apiKeys: [{ key: 'k', servers: ['a'] }] }, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeout: 3 }] }), 'json', 5);
     expect(r.changes).toEqual(['version: 3 → 5', 'auth.apiKeys[0]: servers → scope', 'servers[0] (a): timeout → timeoutMs']);
     const out = JSON.parse(r.text);
     expect(out.servers[0]).toEqual({ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 3 });

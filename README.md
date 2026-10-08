@@ -586,6 +586,16 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v5.9
+
+Getting ready for 6.0: `npx @winstonsayno/mcp-gateway@5.9 migrate --write` — see [Migrating to 6.0](docs/guides/migrating-to-v6.md).
+
+| Feature | Description |
+|---------|-------------|
+| **Schema v6 preview** | `version: 6` accepted; `init` and examples write it |
+| **`migrate --to 6`** | Converts `compliance.pii` to `dlp`, keeps comments |
+| **Deprecations** | Schema v5, `compliance.pii`, plugin API v3 — all removed in 6.0 |
+
 ## What's New in v5.8
 
 | Feature | Description |

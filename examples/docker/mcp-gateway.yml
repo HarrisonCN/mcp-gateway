@@ -1,7 +1,7 @@
 # Config mounted by examples/docker/docker-compose.yml
 # API keys come from MCP_GATEWAY_API_KEYS (set via GATEWAY_API_KEY in compose).
 
-version: 5
+version: 6
 port: 4000
 host: 0.0.0.0
 logLevel: info
