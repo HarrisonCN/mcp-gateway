@@ -672,6 +672,7 @@ mcp:
   sessionIdleTimeoutSeconds: 1800
   maxSessions: 1000            # least recently used idle session evicted beyond this
   allowedOrigins: ["https://app.example.com"]   # default: cors.origins
+  protocolVersions: ["2025-11-25", "2025-06-18"]  # 4.1: MCP revisions accepted (default: all — 2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05)
   instructions: "Tools for the ACME workspace"  # returned from initialize
   eventBufferSize: 256         # events kept per session for Last-Event-ID replay (0 = off)
   passthrough:                 # 3.1: upstream → client requests relayed to the calling MCP client

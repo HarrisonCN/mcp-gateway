@@ -182,6 +182,15 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(r.runtime.map((d: { id: string; removedIn: string }) => `${d.id}@${d.removedIn}`)).toEqual(['plugin-api-v2@5.0.0']);
     expect(r.config).toEqual([]);
   });
+
+  it('reports MCP revisions and features (4.1)', async () => {
+    const f = demoFetch();
+    const r = (await (await f('/api/v1/mcp/protocol')).json()) as any;
+    expect(r.latest).toBe('2025-11-25');
+    expect(r.features['2024-11-05'].structuredContent).toBe(false);
+    expect(r.features['2025-06-18'].resourceLink).toBe(true);
+    expect(r.upstream.length).toBeGreaterThan(0);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

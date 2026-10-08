@@ -583,6 +583,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v4.1
+
+| Feature | Description |
+|---------|-------------|
+| **MCP 2025-11-25** | Newest spec revision, negotiated per session; `mcp.protocolVersions` to pin |
+| **Structured output, resource links, annotations** | Passed through to new clients, downgraded for old ones |
+| **`GET /api/v1/mcp/protocol`** | Feature matrix + what each upstream negotiated |
+
 ## What's New in v4.0
 
 | Feature | Description |

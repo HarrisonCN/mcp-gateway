@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '4.0.0';
+  const VERSION = '4.1.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -383,6 +383,12 @@
       if ((m = p.match(/^\/portal\/keys\/([^/]+)\/(approve|deny|revoke)$/)) && method === 'POST') return json({ ...demoKey, id: decodeURIComponent(m[1]), status: m[2] === 'approve' ? 'active' : m[2] === 'deny' ? 'denied' : 'revoked' });
     }
 
+    if (p === '/mcp/protocol') {
+      const vs = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
+      const intro = { annotations: '2025-03-26', structuredContent: '2025-06-18', outputSchema: '2025-06-18', resourceLink: '2025-06-18', toolTitle: '2025-06-18', elicitation: '2025-06-18' };
+      return json({ latest: vs[0], supported: vs, features: Object.fromEntries(vs.map((v) => [v, Object.fromEntries(Object.entries(intro).map(([f, d]) => [f, v >= d]))])),
+        upstream: [{ server: 'github', protocolVersion: '2025-11-25' }, { server: 'filesystem', protocolVersion: '2025-06-18' }, { server: 'search', protocolVersion: '2025-03-26' }] });
+    }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).
     if (p === '/admin/deprecations') return json({ runtime: [

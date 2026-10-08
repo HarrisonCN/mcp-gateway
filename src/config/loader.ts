@@ -13,6 +13,7 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
+import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
 import { configDeprecations, normalizeApiKeyScopes, removedConfigKeys } from '../utils/deprecations.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
@@ -468,6 +469,11 @@ const GatewayConfigSchema = z.object({
       sessionIdleTimeoutSeconds: z.number().int().positive().default(1800),
       maxSessions: z.number().int().positive().default(1000),
       allowedOrigins: z.array(z.string()).optional(),
+      protocolVersions: z
+        .array(z.string())
+        .min(1)
+        .refine((l) => unknownVersions(l).length === 0, (l) => ({ message: `unknown MCP revision(s) ${unknownVersions(l).join(', ')} (supported: ${PROTOCOL_VERSIONS.join(', ')})` }))
+        .optional(),
       instructions: z.string().optional(),
       eventBufferSize: z.number().int().min(0).max(100_000).default(256),
       passthrough: z

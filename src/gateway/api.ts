@@ -3,6 +3,7 @@
  * Exposes REST endpoints for tool invocation, server management, and monitoring
  */
 
+import { PROTOCOL_VERSIONS, featuresOf } from '../mcp/compat.js';
 import express from 'express';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import type { GatewayConfig, McpServerConfig, TenantConfig, TenantRole } from '../utils/types.js';
@@ -1085,6 +1086,20 @@ export function createApiRouter(
   });
 
   // ─── Catalog (operator) ─────────────────────────────────────────────────────
+
+  // 4.1: MCP revisions — what /mcp accepts, which features each revision gets, what each upstream negotiated.
+  router.get('/mcp/protocol', auth, (req, res) => {
+    const scope = scopeOf(req);
+    res.json({
+      latest: PROTOCOL_VERSIONS[0],
+      supported: [...PROTOCOL_VERSIONS],
+      features: Object.fromEntries(PROTOCOL_VERSIONS.map((v) => [v, featuresOf(v)])),
+      upstream: registry
+        .getAllServers()
+        .filter((s) => isServerInScope(scope, s.id))
+        .map((s) => ({ server: s.id, protocolVersion: proxy.getSessionInfo(s.id)?.protocolVersion ?? null })),
+    });
+  });
 
   router.get('/catalog', auth, (req, res) => {
     if (!operatorOnly(req, res)) return;

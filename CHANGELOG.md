@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-10-08
+
+### Added
+- **MCP 2025-11-25** is the newest revision on `/mcp` (2025-06-18, 2025-03-26 and now 2024-11-05 are still accepted)
+  and is accepted from upstream servers. Each downstream session negotiates its own revision; `mcp.protocolVersions`
+  pins the list.
+- **Per-revision shaping** (`src/mcp/compat.ts`): structured tool output (`outputSchema` / `structuredContent`),
+  resource links (`resource_link` content) and tool `title` / `annotations` pass through to clients that understand
+  them and are downgraded (text blocks / stripped) for older ones. A text block is added when an upstream returns only
+  `structuredContent`.
+- `GET /api/v1/mcp/protocol`: supported revisions, feature matrix and the revision each upstream negotiated (also in
+  the GitHub Pages demo).
+- Exports: `PROTOCOL_VERSIONS`, `negotiateVersion`, `adaptTool`, `adaptToolResult`, `protocolSupports`.
+
 ## [4.0.0] - 2026-10-08
 
 ### ⚠ Breaking

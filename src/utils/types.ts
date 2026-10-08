@@ -466,6 +466,8 @@ export interface McpEndpointConfig {
   maxSessions?: number;
   /** Origins allowed to call the endpoint from a browser (default: `cors.origins`). */
   allowedOrigins?: string[];
+  /** MCP revisions accepted downstream (4.1; default all the gateway speaks, newest first). */
+  protocolVersions?: string[];
   /** Optional `instructions` returned from `initialize`. */
   instructions?: string;
   /** Events kept per session for `Last-Event-ID` resumability (default 256, 0 = off). */

@@ -42,6 +42,7 @@ import { canCall } from '../auth/tenants.js';
 import { logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
 import { buildToolIndex, toMcpTool, type ToolIndex } from './naming.js';
+import { PROTOCOL_VERSIONS, adaptTool, adaptToolResult, negotiateVersion } from './compat.js';
 import {
   buildPromptIndex,
   dedupeResources,
@@ -59,7 +60,8 @@ export type McpLogLevel = (typeof LOG_LEVELS)[number];
 const levelIndex = (l: unknown) => LOG_LEVELS.indexOf(l as McpLogLevel);
 
 /** Protocol versions the endpoint speaks, newest first. */
-export const DOWNSTREAM_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26'];
+/** Revisions accepted on `/mcp`, newest first (4.1: 2025-11-25 added, 2024-11-05 accepted). */
+export const DOWNSTREAM_PROTOCOL_VERSIONS: string[] = [...PROTOCOL_VERSIONS];
 export const LATEST_PROTOCOL_VERSION = DOWNSTREAM_PROTOCOL_VERSIONS[0]!;
 
 // JSON-RPC error codes
@@ -73,7 +75,7 @@ export const ERR_RATE_LIMITED = -32029;
 /** The caller's scopes do not allow this server / tool. */
 export const ERR_FORBIDDEN = -32003;
 
-export const DEFAULT_MCP_CONFIG: Required<Omit<McpEndpointConfig, 'allowedOrigins' | 'instructions' | 'passthrough'>> = {
+export const DEFAULT_MCP_CONFIG: Required<Omit<McpEndpointConfig, 'allowedOrigins' | 'instructions' | 'passthrough' | 'protocolVersions'>> = {
   enabled: true,
   path: '/mcp',
   toolNaming: 'auto',
@@ -512,11 +514,16 @@ export class McpEndpoint {
     return stream;
   }
 
+  /** Revisions this endpoint accepts (`mcp.protocolVersions`, default all). */
+  private allowedVersions(): string[] {
+    const pinned = this.cfg.protocolVersions?.filter((v) => (PROTOCOL_VERSIONS as readonly string[]).includes(v));
+    return pinned?.length ? pinned : DOWNSTREAM_PROTOCOL_VERSIONS;
+  }
+
   private initialize(req: Request, res: Response, msg: JsonRpcMessage): void {
     const params = isObject(msg.params) ? msg.params : {};
     const requested = typeof params.protocolVersion === 'string' ? params.protocolVersion : undefined;
-    const protocolVersion =
-      requested && DOWNSTREAM_PROTOCOL_VERSIONS.includes(requested) ? requested : LATEST_PROTOCOL_VERSION;
+    const protocolVersion = negotiateVersion(requested, this.allowedVersions());
 
     if (this.sessions.size >= this.cfg.maxSessions && !this.evictOne()) {
       res.status(503).json(rpcError(msg.id, { code: JSONRPC_INTERNAL_ERROR, message: 'Too many sessions' }));
@@ -654,7 +661,7 @@ export class McpEndpoint {
       return undefined;
     }
     const version = req.headers['mcp-protocol-version'];
-    if (typeof version === 'string' && !DOWNSTREAM_PROTOCOL_VERSIONS.includes(version)) {
+    if (typeof version === 'string' && !this.allowedVersions().includes(version)) {
       res.status(400).json(rpcError(null, { code: JSONRPC_INVALID_REQUEST, message: `Bad Request: unsupported MCP-Protocol-Version "${version}"` }));
       return undefined;
     }
@@ -1004,7 +1011,7 @@ export class McpEndpoint {
     const index = this.toolIndex(session.auth);
     if (offset === 0) session.toolsFingerprint = this.fingerprint(index);
     const page = index.list.slice(offset, offset + this.cfg.pageSize);
-    const result: Record<string, unknown> = { tools: page.map(toMcpTool) };
+    const result: Record<string, unknown> = { tools: page.map((t) => adaptTool(toMcpTool(t), session.protocolVersion)) };
     const next = offset + page.length;
     if (next < index.list.length) result.nextCursor = encodeCursor(next);
     return { jsonrpc: '2.0', id: msg.id as JsonRpcId, result };
@@ -1091,7 +1098,7 @@ export class McpEndpoint {
     });
     if (single && result.traceparent && !res.headersSent) res.set('traceparent', result.traceparent);
 
-    if (result.success) return { jsonrpc: '2.0', id, result: result.result ?? { content: [] } };
+    if (result.success) return { jsonrpc: '2.0', id, result: adaptToolResult(result.result ?? { content: [] }, session.protocolVersion) };
     const err = result.error ?? { code: JSONRPC_INTERNAL_ERROR, message: 'Unknown error' };
     switch (err.code) {
       case ERR_CANCELLED:
