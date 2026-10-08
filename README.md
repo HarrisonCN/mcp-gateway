@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v6.3
+
+| Feature | Description |
+|---------|-------------|
+| **GenAI semconv** | `execute_tool` / `chat` spans with `gen_ai.*` attributes and token usage |
+| **GenAI metrics** | Operation duration and token usage histograms, OTLP push or pull |
+
 ## What's New in v6.2
 
 | Feature | Description |

@@ -13,5 +13,6 @@ import './dlp.js';
 import './adaptive.js';
 import './api-upstreams.js';
 import './workflows.js';
+import './genai-otel.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

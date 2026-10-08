@@ -324,7 +324,14 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(r.status).toBe('succeeded');
     expect(r.nodes).toHaveLength(4);
   });
+    it('shows GenAI semconv metrics and spans (6.3)', async () => {
+    const f = demoFetch();
+    const st = (await (await f('/api/v1/admin/genai-otel')).json()) as any;
+    expect(st['gen_ai.client.token.usage']).toHaveLength(2);
+    const sp = (await (await f('/api/v1/admin/genai-otel/spans')).json()) as any;
+    expect(sp.spans[0].attributes['gen_ai.operation.name']).toBe('chat');
   });
+});
 
 describe('dashboard replay dialog (3.2)', () => {
   it('has the dialog and clickable history rows', () => {

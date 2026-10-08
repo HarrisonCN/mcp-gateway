@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** OpenTelemetry GenAI semantic conventions (6.3). */
+  genaiTelemetry?: import('../features/genai-otel.js').GenaiTelemetryConfig;
   /** Workflow engine (multi-tool DAG) (6.2). */
   workflows?: import('../features/workflows.js').WorkflowsConfig;
   /** GraphQL / gRPC upstreams (6.1). */
