@@ -85,7 +85,7 @@ describe('WasmPlugin', () => {
     expect(() => validateConfig({ servers: [], plugins: [{ wasm: './p.wasm', isolation: 'client', limits: { timeoutMs: 50 } }] })).not.toThrow();
     expect(() => validateConfig({ servers: [], plugins: [{ module: './a.js', wasm: './p.wasm' }] })).toThrow(/exactly one/);
     expect(() => validateConfig({ servers: [], plugins: [{ name: 'x' }] })).toThrow(/exactly one/);
-    expect(() => validateConfig({ servers: [], plugins: [{ module: './a.js', isolation: 'tenant' }] })).toThrow(/wasm plugins only/);
+    expect(() => validateConfig({ servers: [], plugins: [{ module: './a.js', isolation: 'tenant' }] })).toThrow(/WASM plugins only/);
   });
 });
 

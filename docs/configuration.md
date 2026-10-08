@@ -27,7 +27,7 @@ hot reload is rejected and the running configuration kept.
 | `port` | `4000` | restart | HTTP port |
 | `host` | `0.0.0.0` | restart | bind address |
 | `logLevel` | `info` | ✓ | `debug` \| `info` \| `warn` \| `error` |
-| `version` | — | | config schema version; optional, must be `7` when set |
+| `version` | — | | config schema version; optional, `8` (or the deprecated `7`) when set |
 | `cors.origins` | `["*"]` | ✓ | allowed browser origins: exact values, `*`, or `/regex/` |
 | `health.intervalMs` | `30000` | restart | MCP `ping` interval (min 1000) |
 | `controlPlane` | role `all` | restart | role (`all` / `control` / `data`), config API, dashboard, data-plane sync — see [Admin API](#admin-api) |
@@ -493,7 +493,7 @@ scopes, policy, quotas), then diffs the two results. Captured payloads are redac
 ## Admin API
 
 ```yaml
-version: 7
+version: 8
 controlPlane:
   configApi: true   # allow PUT /api/v1/admin/config and POST /api/v1/admin/reload (default false)
   dashboard: true   # serve /dashboard (default true)
@@ -516,7 +516,7 @@ controlPlane:
 
 ```yaml
 # data plane
-version: 7
+version: 8
 port: 4000
 controlPlane:
   role: data

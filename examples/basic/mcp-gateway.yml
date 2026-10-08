@@ -1,7 +1,7 @@
 # Basic mcp-gateway configuration
 # Manages two MCP servers: filesystem and GitHub
 
-version: 7
+version: 8
 port: 4000
 host: 0.0.0.0
 logLevel: info

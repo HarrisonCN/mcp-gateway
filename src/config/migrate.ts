@@ -1,5 +1,8 @@
 /**
- * To v7 (6.9, the default): everything for v6, then `version: 7` and `admin.configApi` → `controlPlane.configApi`,
+ * To v8 (7.9, the default): everything for v7, then `version: 8`; `plugins[].wasm` entries are reported (rebuild as
+ * plugin API v5 components, `component:`), JS plugins are reminded to declare `apiVersion: 5`. 7.9 reads v7 and v8.
+ *
+ * To v7 (6.9): everything for v6, then `version: 7` and `admin.configApi` → `controlPlane.configApi`,
  * `dashboard.enabled` → `controlPlane.dashboard`. 6.9 reads v6 and v7.
  *
  * To v6 (5.9): everything for v5, then `version: 6` and `compliance.pii` → `dlp` (redact → strategy
@@ -39,8 +42,8 @@ export interface MigrationResult {
 export const SCOPE_FIELDS = ['servers', 'tools', 'rateLimit'] as const;
 
 /** Migrate a config file's text. `format` is guessed from the content when omitted. */
-export function migrateConfigText(text: string, format?: 'yaml' | 'json', to = 7): MigrationResult {
-  if (![4, 5, 6, 7].includes(to)) throw new Error(`Only migration to schema v4, v5, v6 or v7 is supported (got ${to})`);
+export function migrateConfigText(text: string, format?: 'yaml' | 'json', to = 8): MigrationResult {
+  if (![4, 5, 6, 7, 8].includes(to)) throw new Error(`Only migration to schema v4, v5, v6, v7 or v8 is supported (got ${to})`);
   const fmt = format ?? (/^\s*[{[]/.test(text) ? 'json' : 'yaml');
   const doc = parseDocument(text, { keepSourceTokens: true });
   if (doc.errors.length) throw new Error(`Cannot parse the config: ${doc.errors[0]!.message}`);
@@ -164,9 +167,18 @@ function migrateDoc(doc: Document, changes: string[], notes: string[], to: numbe
   }
 
   const plugins = doc.get('plugins');
+  if (to >= 8 && isSeq(plugins)) {
+    plugins.items.forEach((p, i) => {
+      if (isMap(p) && p.has('wasm')) {
+        notes.push(`plugins[${i}] (${String(p.get('name') ?? p.get('wasm'))}): core-ABI WASM plugins are not part of schema v8 — rebuild against wit/mcp-gateway-plugin.wit (plugin API v5) and replace \`wasm:\` with \`component:\` (see docs/guides/migrating-to-v8.md).`);
+      }
+    });
+  }
   if (isSeq(plugins) && plugins.items.some((p) => isMap(p) && p.has('module'))) {
     notes.push(
-      to >= 6
+      to >= 8
+        ? 'JS plugins: declare `apiVersion: 5` (plugin API v4 is refused by 8.0; hooks may return `{ action }` outcomes).'
+        : to >= 6
         ? 'JS plugins: declare `apiVersion: 4` (plugin API v3 is refused by 6.0).'
         : to === 5
         ? 'JS plugins: declare `apiVersion: 4` (v2 is refused by 5.0; v3 keeps loading with a deprecation warning until 6.0).'
@@ -176,7 +188,7 @@ function migrateDoc(doc: Document, changes: string[], notes: string[], to: numbe
 }
 
 /** Plain-object variant (for validation / tests). */
-export function migrateConfigObject(raw: Record<string, unknown>, to = 7): { config: Record<string, unknown>; changes: string[] } {
+export function migrateConfigObject(raw: Record<string, unknown>, to = 8): { config: Record<string, unknown>; changes: string[] } {
   const r = migrateConfigText(JSON.stringify(raw), 'json', to);
   return { config: JSON.parse(r.text) as Record<string, unknown>, changes: r.changes };
 }

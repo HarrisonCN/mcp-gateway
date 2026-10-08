@@ -28,6 +28,11 @@
  * lives as long as the plugin instance (counters, caches, rate windows) — no more module-level globals.
  * 5.0 refuses v2 and deprecates v3 (still loads, with a warning, until 6.0).
  *
+ * Plugin API v5 (7.9, required in 8.0): hooks may return the outcome shape of the WIT world
+ * `mcp-gateway:plugin@5.0.0` (`wit/mcp-gateway-plugin.wit`) — `{ action: 'continue' | 'rewrite' | 'deny' | 'respond' }`
+ * from `onToolCall`, `{ action: 'continue' | 'replace', result }` from `onResponse` — the same contract WASM component
+ * plugins (`component:`) implement. The v4 shapes keep working. v4 plugins load with a deprecation warning.
+ *
  * Hooks run in configuration order; the first refusal / short-circuit wins.
  * A hook that throws fails the call (`-32006`) — plugins fail closed.
  *
@@ -45,9 +50,9 @@ import { logger, type Logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
 
 /** Version of the plugin contract implemented by this gateway. */
-export const PLUGIN_API_VERSION = 4;
+export const PLUGIN_API_VERSION = 5;
 
-/** Oldest plugin contract still loaded (v3: with a deprecation warning until 6.0). */
+/** Oldest plugin contract still loaded (7.9: v4 with a deprecation warning until 8.0). */
 export const PLUGIN_API_MIN_VERSION = 4;
 
 /** Call refused (or failed) by a plugin hook. */
@@ -216,16 +221,17 @@ async function instantiate(src: unknown, ctx: PluginContext, label: string): Pro
     throw new Error(`Plugin "${value.name}" uses plugin API v3, which was removed in 6.0 — declare \`apiVersion: 4\` (adds ctx.state; see docs/guides/migrating-to-v6.md)`);
   }
   if (v < PLUGIN_API_MIN_VERSION) throw new Error(`Plugin "${value.name}" declares unsupported plugin API v${v}`);
+  if (v === 4) deprecate(DEPRECATIONS.pluginApiV4, value.name);
   return value;
 }
 
 /** 5.4: verify a plugin's `.sig` against `pluginTrust` (throws when it must not load). */
 export async function checkSignature(cfg: PluginConfig, baseDir: string, trust?: PluginTrustConfig): Promise<string | undefined> {
   const t = PluginTrustSchema.parse(trust ?? {});
-  const spec = cfg.wasm ?? cfg.module;
+  const spec = cfg.component ?? cfg.wasm ?? cfg.module;
   if (!spec || (!t.keys.length && !t.requireSigned)) return undefined;
   const label = cfg.name ?? spec;
-  const isPath = !!cfg.wasm || spec.startsWith('.') || isAbsolute(spec);
+  const isPath = !!cfg.wasm || !!cfg.component || spec.startsWith('.') || isAbsolute(spec);
   if (!isPath) {
     if (t.requireSigned) throw new Error(`Plugin "${label}": pluginTrust.requireSigned refuses package-name modules — install a signed file (mcp-gateway plugin verify)`);
     return undefined;
@@ -245,14 +251,48 @@ export async function checkSignature(cfg: PluginConfig, baseDir: string, trust?:
   return r.keyId;
 }
 
+/** Plugin API v5 outcome (`{ action }`) → the internal shape; v4 shapes pass through. */
+export function normalizeToolCallOutcome(out: unknown): ToolCallOutcome {
+  if (!out || typeof out !== 'object' || !('action' in out)) return out as ToolCallOutcome;
+  const o = out as { action: unknown; arguments?: unknown; reason?: unknown; result?: unknown };
+  switch (o.action) {
+    case 'continue':
+      return undefined;
+    case 'rewrite':
+      if (!o.arguments || typeof o.arguments !== 'object' || Array.isArray(o.arguments)) throw new Error('"rewrite" needs an "arguments" object');
+      return { arguments: o.arguments as Record<string, unknown> };
+    case 'deny':
+      return { deny: typeof o.reason === 'string' && o.reason ? o.reason : 'denied by plugin' };
+    case 'respond':
+      return { respond: o.result };
+    default:
+      throw new Error(`unknown outcome action ${JSON.stringify(o.action)}`);
+  }
+}
+
+/** Plugin API v5 `onResponse` outcome (`{ action: 'continue' | 'replace', result }`) → replacement or undefined. */
+export function normalizeResponseOutcome(out: unknown, current: ProxyResponse): ProxyResponse | undefined {
+  if (!out || typeof out !== 'object') return undefined;
+  if (!('action' in out)) return out as ProxyResponse;
+  const o = out as { action: unknown; result?: unknown };
+  if (o.action === 'continue') return undefined;
+  if (o.action === 'replace') return current.success ? { ...current, result: o.result } : undefined;
+  throw new Error(`unknown outcome action ${JSON.stringify(o.action)}`);
+}
+
 /** Load one configured plugin (`module` is a path relative to `baseDir`, or a package name). */
 export async function loadPlugin(cfg: PluginConfig, baseDir = process.cwd(), trust?: PluginTrustConfig): Promise<GatewayPlugin> {
   await checkSignature(cfg, baseDir, trust);
+  if (cfg.component) {
+    const { loadWasmPlugin } = await import('./wasm.js');
+    return loadWasmPlugin({ wasm: cfg.component, name: cfg.name, isolation: cfg.isolation, limits: cfg.limits, abi: 'component' }, baseDir);
+  }
   if (cfg.wasm) {
     const { loadWasmPlugin } = await import('./wasm.js');
+    deprecate(DEPRECATIONS.pluginWasmCore, cfg.name ?? cfg.wasm);
     return loadWasmPlugin({ wasm: cfg.wasm, name: cfg.name, isolation: cfg.isolation, limits: cfg.limits }, baseDir);
   }
-  if (!cfg.module) throw new Error('A plugin needs "module" or "wasm"');
+  if (!cfg.module) throw new Error('A plugin needs "module", "component" or "wasm"');
   const spec = cfg.module;
   const isPath = spec.startsWith('.') || isAbsolute(spec);
   const target = isPath ? pathToFileURL(resolve(baseDir, spec)).href : spec;
@@ -392,6 +432,7 @@ export class PluginHost {
       } catch (err) {
         throw new PluginError(`Plugin "${p.name}" failed: ${err instanceof Error ? err.message : String(err)}`, p.name);
       }
+      out = normalizeToolCallOutcome(out);
       if (!out) continue;
       if ('deny' in out && typeof out.deny === 'string') return { deny: out.deny, plugin: p.name };
       if ('respond' in out && out.respond !== undefined) return { respond: out.respond, plugin: p.name };
@@ -406,7 +447,7 @@ export class PluginHost {
     for (const p of this.plugins) {
       if (!p.onResponse) continue;
       try {
-        const next = await p.onResponse(call, current, this.ctxOf(p, call));
+        const next = normalizeResponseOutcome(await p.onResponse(call, current, this.ctxOf(p, call)), current);
         if (next) current = next;
       } catch (err) {
         throw new PluginError(`Plugin "${p.name}" failed: ${err instanceof Error ? err.message : String(err)}`, p.name);

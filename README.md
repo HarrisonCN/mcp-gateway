@@ -586,6 +586,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v7.9
+
+| Change | |
+|--------|---|
+| **Plugin API v5 preview** | JS and WASM plugins share one WIT-defined contract (`{ action }` outcomes) |
+| **Component plugins** | `plugins[].component` — canonical-ABI WASM plugins built with any component toolchain |
+| **`migrate --to 8`** | Schema v8; `plugins[].wasm`, plugin API v4 and schema v7 deprecated (removed in 8.0) — [guide](docs/guides/migrating-to-v8.md) |
+
 ## What's New in v7.8
 
 | Feature | |

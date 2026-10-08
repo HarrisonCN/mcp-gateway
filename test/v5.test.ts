@@ -31,7 +31,7 @@ describe('schema v7 (7.0)', () => {
     const cfg = validateConfig({ version: 7, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 1234 }] });
     expect(cfg.version).toBe(7);
     expect(cfg.servers[0]!.timeout).toBe(1234);
-    expect(cfg.deprecations).toBeUndefined();
+    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['schema-v7']); // 7.9
     expect(validateConfig({ servers: [{ id: 'b', name: 'b', transport: 'stdio', command: 'x' }] }).servers[0]!.timeout).toBe(30000);
   });
 
@@ -41,8 +41,8 @@ describe('schema v7 (7.0)', () => {
     expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/config schema v6 was removed in 7.0 — use `version: 7`/);
     expect(() => validateConfig({ servers: [{ id: 'a', transport: 'stdio', command: 'x', timeout: 5 }] })).toThrow(/servers.0.timeout: removed in 5.0 — use `timeoutMs`/);
     expect(removedConfigKeys({ version: 4, servers: [{ id: 'a', timeout: 1 }] })).toHaveLength(2);
-    expect(() => validateConfig({ version: 8, servers: [] })).toThrow(/7.x reads `version: 7`/);
-    expect(configDeprecations({ version: 7, servers: [] })).toEqual([]);
+    expect(() => validateConfig({ version: 9, servers: [] })).toThrow(/7.9 reads `version: 7` or `version: 8`/);
+    expect(configDeprecations({ version: 7, servers: [] }).map((d) => d.id)).toEqual(['schema-v7']); // 7.9
   });
 
   it('admin round trip uses schema v7 field names', () => {
@@ -53,11 +53,11 @@ describe('schema v7 (7.0)', () => {
     expect(validateConfig(p).servers[0]!.timeout).toBe(99);
   });
 
-  it('removed normalizeV4Preview() and normalizeControlPlane(); 7.0 deprecates nothing', async () => {
+  it('removed normalizeV4Preview() and normalizeControlPlane(); 7.9 deprecates schema v7, plugins[].wasm and plugin API v4', async () => {
     const mod = (await import('../src/utils/deprecations.js')) as Record<string, unknown>;
     expect(mod.normalizeV4Preview).toBeUndefined();
     expect(mod.normalizeControlPlane).toBeUndefined();
-    expect(Object.values(DEPRECATIONS)).toEqual([]);
+    expect(Object.values(DEPRECATIONS).map((d) => d.id)).toEqual(['schema-v7', 'plugin-wasm-core', 'plugin-api-v4']);
   });
 });
 
@@ -72,7 +72,7 @@ describe('mcp-gateway migrate --to 5', () => {
     expect(() => validateConfig(parseYaml(r.text))).toThrow(/schema v5 was removed in 6.0/);
     expect(migrateConfigText(r.text, undefined, 5).changed).toBe(false);
     const v6 = validateConfig(parseYaml(migrateConfigText(V4).text));
-    expect(v6.version).toBe(7);
+    expect(v6.version).toBe(8);
     expect(v6.servers[0]!.timeout).toBe(15000);
   });
 
@@ -112,7 +112,7 @@ describe('plugin API v4 (5.0)', () => {
   });
 
   it('gives v4 plugins ctx.state (persisting across calls)', async () => {
-    expect(PLUGIN_API_VERSION).toBe(4);
+    expect(PLUGIN_API_VERSION).toBe(5); // 7.9
     const seen: Array<{ name: string; ctx: PluginHookContext }> = [];
     const counter = {
       name: 'counter',
@@ -131,7 +131,7 @@ describe('plugin API v4 (5.0)', () => {
     await host.beforeCall({ ...call });
     const c = seen.filter((x) => x.name === 'counter');
     expect(c[1]!.ctx.state!.get('calls')).toBe(2);
-    expect(c[1]!.ctx.apiVersion).toBe(4);
+    expect(c[1]!.ctx.apiVersion).toBe(5);
   });
 
   it('refuses v2 and (6.0) v3', async () => {
@@ -139,6 +139,6 @@ describe('plugin API v4 (5.0)', () => {
     await expect(PluginHost.build(undefined, [{ name: 'v2', apiVersion: 2 }])).rejects.toThrow(/plugin API v2, which was removed in 5.0 — declare `apiVersion: 4`/);
     await expect(PluginHost.build(undefined, [{ name: 'v3', apiVersion: 3 }])).rejects.toThrow(/plugin API v3, which was removed in 6.0 — declare `apiVersion: 4`/);
     await PluginHost.build(undefined, [{ name: 'v4', apiVersion: 4 }]);
-    expect(runtimeDeprecations()).toEqual([]);
+    expect(runtimeDeprecations().map((d) => d.id)).toEqual(['plugin-api-v4']); // 7.9
   });
 });

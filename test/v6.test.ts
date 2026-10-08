@@ -31,7 +31,7 @@ describe('6.0: schema v6, compliance.pii removed, migrate --to 6', () => {
     expect(configDeprecations(null)).toEqual([]);
     const v7 = validateConfig({ version: 7, servers: [], dlp: { default: { clearance: 'public' } } });
     expect(v7.version).toBe(7);
-    expect(v7.deprecations).toBeUndefined();
+    expect(v7.deprecations?.map((d) => d.id)).toEqual(['schema-v7']); // 7.9
     expect(() => validateConfig({ version: 7, servers: [], compliance: { pii: { action: 'redact' } } })).toThrow(/compliance.pii: removed in 6.0 — use `dlp`/);
   });
 
@@ -60,7 +60,7 @@ describe('6.0: schema v6, compliance.pii removed, migrate --to 6', () => {
     expect(JSON.parse(both.text).compliance.pii).toEqual({});
     const blockNotes = migrateConfigText(JSON.stringify({ compliance: { pii: { action: 'block' } }, servers: [] }), 'json', 6);
     expect(blockNotes.notes.join()).toMatch(/-32013/);
-    expect(migrateConfigText('version: 6\nplugins: [{ module: ./p.mjs }]\n').notes.join()).toMatch(/apiVersion: 4/);
+    expect(migrateConfigText('version: 6\nplugins: [{ module: ./p.mjs }]\n', 'yaml', 7).notes.join()).toMatch(/apiVersion: 4/);
     expect(() => migrateConfigText('version: 6\n', 'yaml', 5)).toThrow(/already on schema v6/);
   });
 });

@@ -61,7 +61,7 @@ describe('PluginHost', () => {
       { name: 'broken-observer', apiVersion: 4, onError: () => { throw new Error('ignored'); } },
     ]);
     await host.set(plugins);
-    expect(runtimeDeprecations()).toEqual([]);
+    expect(runtimeDeprecations().map((d) => d.id)).toEqual(['plugin-api-v4', 'plugin-api-v4']); // 7.9 (one per plugin)
     await expect(PluginHost.build(undefined, [{ name: 'old', apiVersion: 3 }])).rejects.toThrow(/plugin API v3, which was removed in 6.0/);
     await expect(PluginHost.build(undefined, [{ name: 'legacy', onResponse: (_c, r) => r }])).rejects.toThrow(/plugin API v1, which was removed in 4.0/);
     const call = { serverId: 's', name: 't', kind: 'tool' as const, method: 'tools/call', arguments: {}, via: 'rest' as const, state: new Map() };

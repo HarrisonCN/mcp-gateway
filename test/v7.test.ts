@@ -28,7 +28,7 @@ describe('7.0: schema v7', () => {
   it('controlPlane: role defaults to all; data planes need url + token; url/token only on data planes', () => {
     const v7 = validateConfig({ version: 7, servers: [], controlPlane: { configApi: true, dashboard: false } });
     expect(v7.controlPlane).toEqual({ role: 'all', configApi: true, dashboard: false, pullIntervalMs: 10000 });
-    expect(v7.deprecations).toBeUndefined();
+    expect(v7.deprecations?.map((d) => d.id)).toEqual(['schema-v7']); // 7.9
     expect(validateConfig({ servers: [] }).controlPlane).toBeUndefined();
     const dp = validateConfig({ servers: [], controlPlane: { role: 'data', url: 'http://cp:4000', token: 't', pullIntervalMs: 2000, nodeId: 'dp-1' } });
     expect(dp.controlPlane).toMatchObject({ role: 'data', url: 'http://cp:4000', nodeId: 'dp-1', pullIntervalMs: 2000 });
@@ -48,16 +48,16 @@ describe('7.0: schema v7', () => {
   });
 
   it('migrate --to 7 (default) still upgrades 6.x files, keeping comments', () => {
-    const r = migrateConfigText(V6);
+    const r = migrateConfigText(V6, undefined, 7);
     expect(r.changes).toEqual(['version: 6 → 7', 'admin.configApi → controlPlane.configApi', 'dashboard.enabled → controlPlane.dashboard']);
     expect(r.text).toContain('# gateway');
     const cfg = parse(r.text);
     expect(cfg.controlPlane).toEqual({ configApi: true, dashboard: false });
     const v = validateConfig(cfg);
     expect(v.controlPlane?.configApi).toBe(true);
-    expect(v.deprecations).toBeUndefined();
-    expect(migrateConfigText(r.text).changed).toBe(false);
-    const old = migrateConfigObject({ version: 5, compliance: { pii: { action: 'redact' } }, dashboard: {}, servers: [] });
+    expect(v.deprecations?.map((d) => d.id)).toEqual(['schema-v7']); // 7.9
+    expect(migrateConfigText(r.text, undefined, 7).changed).toBe(false);
+    const old = migrateConfigObject({ version: 5, compliance: { pii: { action: 'redact' } }, dashboard: {}, servers: [] }, 7);
     expect(old.changes).toEqual(['version: 5 → 7', 'compliance.pii (action redact) → dlp', 'dashboard.enabled → controlPlane.dashboard']);
     expect(() => validateConfig(old.config)).not.toThrow();
     expect(migrateConfigObject({ admin: 1, servers: [] }).changes).toContain('admin (empty) removed');

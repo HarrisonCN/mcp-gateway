@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.9.0] - 2026-10-08
+
+### Added
+- **Plugin API v5 preview** — one contract for JS and WASM plugins, defined as the WIT world
+  `mcp-gateway:plugin@5.0.0` (`wit/mcp-gateway-plugin.wit`, shipped in the package): hooks return
+  `{ action: "continue" | "rewrite" | "deny" | "respond" }` / `{ action: "continue" | "replace" }`. JS plugins declare
+  `apiVersion: 5` (v4 return shapes still accepted). [Guide](docs/guides/plugins-v5.md).
+- **WASM component plugins** — `plugins[].component` runs the core module of a component for that world with the
+  canonical ABI (`cabi_realloc`, `option<string>` returns, `cabi_post_*`, host import `mcp-gateway:plugin/host@5.0.0`
+  `log`); same sandboxing as 3.3.
+- **Schema v8 preview** — 7.9 reads `version: 8` (no `plugins[].wasm`).
+- **`mcp-gateway migrate --to 8`** (now the default): `version: 8`, plus a note per WASM plugin to rebuild and per JS
+  plugin to declare `apiVersion: 5`. [Migrating to 8.0](docs/guides/migrating-to-v8.md).
+
+### Deprecated (removed in 8.0)
+- Config schema v7 (`version: 7`), `plugins[].wasm` (3.3 core ABI) and plugin API v4 — listed by
+  `mcp-gateway validate` / at startup and by `GET /api/v1/admin/deprecations`.
+
+### Changed
+- Examples, Helm values, `init` and `desktop` profiles use `version: 8`; data planes receive the control plane's schema
+  version. Pages demo lists the 7.9 deprecations.
+
 ## [7.8.0] - 2026-10-08
 
 ### Added
