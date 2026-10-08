@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v6.1
+
+| Feature | Description |
+|---------|-------------|
+| **GraphQL upstreams** | Operations become tools; input schemas from variable definitions |
+| **gRPC upstreams** | Unary methods over Connect / JSON transcoding |
+
 ## What's New in v6.0
 
 | Change | What to do |

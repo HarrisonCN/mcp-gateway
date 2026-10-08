@@ -11,5 +11,6 @@ import './marketplace.js';
 import './sessions.js';
 import './dlp.js';
 import './adaptive.js';
+import './api-upstreams.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';
