@@ -473,6 +473,10 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `POST` | `/admin/agent-identity/revoke` | Revoke a delegation token `{ jti }` (8.1) |
 | `POST` | `/features/agent-identity/token` | Any client: exchange for an agent delegation token `{ agent, tools?, ttlSeconds?, subjectToken? }` (8.1) |
 | `POST` | `/features/agent-identity/call` | Agent: call a tool with a delegation token `{ token, server, tool, arguments? }` (8.1) |
+| `GET` | `/admin/a2a-federation` | A2A federation: remotes, agent-card status, skills, recent forwarded tasks (8.2) |
+| `POST` | `/admin/a2a-federation/refresh` | Re-read every remote agent card now (8.2) |
+| `GET` | `/features/a2a-federation/skills` | Any client: remote skills it may use (`<skill>@<remote>`) (8.2) |
+| `POST` | `/features/a2a-federation/send` | Any client: forward an A2A task `{ remote, skill, arguments? }` (8.2) |
 
 ## Bridges
 

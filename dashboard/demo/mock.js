@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '8.1.0';
+  const VERSION = '8.2.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -63,6 +63,7 @@
     { id: "approval-flows", since: "7.7.0", summary: "Approvals 2.0: multi-step, conditional approval flows with named approvers and escalation" },
     { id: "compliance-reports", since: "7.8.0", summary: "Automated compliance reports: scheduled SOC 2 / ISO 27001 / GDPR evidence bundles with SHA-256 manifests" },
     { id: "agent-identity", since: "8.1.0", summary: "Agent identity & delegated auth: agent registry, on-behalf-of delegation tokens (RFC 8693 act chains), scoped agent calls" },
+    { id: "a2a-federation", since: "8.2.0", summary: "Cross-gateway A2A federation: remote agent discovery (agent cards), skill catalog, task forwarding with shared audit" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -674,6 +675,13 @@
     ], tokens: { issued: 14, active: 3, revoked: 1 }, recent: [
       { jti: '7c1e9a40-demo', agent: 'booker', sub: 'jwt:alice@example.com', chain: ['agent:booker', 'agent:travel-bot'], scope: ['flights/book'], issuedAt: '2026-10-08T16:40:00.000Z', expiresAt: '2026-10-08T16:55:00.000Z', calls: 1, revoked: false },
       { jti: '52b0d3f1-demo', agent: 'travel-bot', sub: 'jwt:alice@example.com', chain: ['agent:travel-bot'], scope: ['flights/*', 'hotels/search'], issuedAt: '2026-10-08T16:38:00.000Z', expiresAt: '2026-10-08T16:53:00.000Z', calls: 6, revoked: false },
+    ] });
+    // 8.2: cross-gateway A2A federation.
+    if (p === '/admin/a2a-federation') return json({ enabled: true, refreshSeconds: 60, remotes: [
+      { id: 'eu', url: 'https://gw-eu.example.com', enabled: true, skillsFilter: ['*'], clients: ['*'], status: 'online', card: { name: 'eu-gateway', url: 'https://gw-eu.example.com/a2a', version: VERSION, protocolVersion: '0.3.0' }, skills: [{ id: 'search', name: 'search' }, { id: 'translate', name: 'translate' }], fetchedAt: new Date().toISOString() },
+      { id: 'partner', url: 'https://agents.partner.example', enabled: true, skillsFilter: ['quote*'], clients: ['key:ops-*'], status: 'error', skills: [], error: 'agent card: HTTP 503', fetchedAt: new Date().toISOString() },
+    ], recent: [
+      { id: 'f1', remote: 'eu', skill: 'translate', client: 'agent:travel-bot', state: 'completed', durationMs: 182, at: new Date().toISOString() },
     ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 8.0: nothing is deprecated (schema v7, `plugins[].wasm` and plugin API v4 were removed).

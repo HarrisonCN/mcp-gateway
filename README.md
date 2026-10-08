@@ -586,6 +586,12 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v8.2
+
+| Feature | |
+|---------|---|
+| **A2A federation** | Discover remote A2A agents and gateways, use their skills, forward tasks with shared audit — [guide](docs/guides/a2a-federation.md) |
+
 ## What's New in v8.1
 
 | Feature | |

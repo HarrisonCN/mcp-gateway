@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.2.0] - 2026-10-08
+
+### Added
+- **Cross-gateway A2A federation** (`a2aFederation`): discover remote A2A agents (other gateways with `a2a.enabled`
+  or any A2A 0.3 agent) from their agent cards, expose their skills (`skills` globs) to selected local clients
+  (`clients` globs) and forward tasks with A2A `message/send` — `GET /api/v1/features/a2a-federation/skills`,
+  `POST …/send`. Tasks carry `metadata.federation { gateway, client }` for the remote's audit; operators see remotes,
+  card status and recent forwarded tasks at `GET /api/v1/admin/a2a-federation` (`POST …/refresh`).
+  [Guide](docs/guides/a2a-federation.md).
+- Pages demo: federated A2A remotes.
+
 ## [8.1.0] - 2026-10-08
 
 ### Added

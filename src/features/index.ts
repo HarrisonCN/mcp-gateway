@@ -28,5 +28,6 @@ import './offline.js';
 import './approval-flows.js';
 import './compliance-reports.js';
 import './agent-identity.js';
+import './a2a-federation.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';
