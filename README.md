@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v6.5
+
+| Feature | Description |
+|---------|-------------|
+| **Policy simulation** | Replay history against a candidate policy; see who and what would be denied |
+| **Shadow policies** | Evaluate a second policy on live traffic without enforcing it |
+
 ## What's New in v6.4
 
 | Feature | Description |

@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '6.4.0';
+  const VERSION = '6.5.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -50,6 +50,7 @@
     { id: "workflows", since: "6.2.0", summary: "Workflow engine: multi-tool DAGs with dependencies, parallelism, conditions and retries" },
     { id: "genai-otel", since: "6.3.0", summary: "OpenTelemetry GenAI semantic conventions: execute_tool spans, operation duration and token usage metrics, OTLP export" },
     { id: "identity", since: "6.4.0", summary: "Enterprise SSO (OIDC ID tokens) and SCIM 2.0 user / group provisioning mapped to tenant roles" },
+    { id: "policy-sim", since: "6.5.0", summary: "Policy simulation and dry-run: replay history against a candidate policy, shadow policies on live traffic" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -591,6 +592,11 @@
       { schemas: ['urn:ietf:params:scim:schemas:core:2.0:User'], id: 'u-2', userName: 'grace@acme.example', displayName: 'Grace Hopper', active: false, meta: { resourceType: 'User', created: iso(Date.now() - 864e5 * 60), lastModified: iso(Date.now() - 864e5 * 2), version: 'W/"5"' } },
     ] }, 200);
     if (p === '/admin/identity/memberships') return json({ user: 'ada@acme.example', active: true, groups: ['Engineering'], memberships: [{ tenant: 'acme', role: 'admin', via: 'Engineering' }] });
+    // 6.5: policy simulation and dry-run.
+    if (p === '/admin/policy-sim/simulate' && method === 'POST') { await sleep(80); return json({ source: 'replay', calls: 1840, withArguments: 1840, unchanged: 1771, changed: 69, transitions: { 'allow→deny': 52, 'allow→approve': 17 }, byRule: { 'read-only': 1610, '(default)': 230 },
+      byClient: { 'key:ci-bot': { changed: 41, newlyDenied: 41 }, 'key:aura': { changed: 28, newlyDenied: 11 } }, byTool: { 'github/create_issue': { changed: 39, newlyDenied: 22 }, 'fs/write_file': { changed: 30, newlyDenied: 30 } }, examples: [] }); }
+    if (p === '/admin/policy-sim/shadow') return json({ enabled: true, evaluated: 5120, agree: 5004, diverged: 116, transitions: { 'allow→deny': 104, 'allow→approve': 12 }, divergences: [{ timestamp: iso(Date.now() - 4e3), clientId: 'key:ci-bot', serverId: 'github', tool: 'create_issue', enforced: { effect: 'allow' }, shadow: { effect: 'deny' } }] });
+    if (p === '/admin/policy-sim/dry-run' && method === 'POST') return json({ call: { serverId: 'fs', tool: 'write_file', args: { path: '/etc/hosts' } }, enforced: { effect: 'approve', rule: 'etc-writes' }, shadow: { effect: 'deny' } });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 6.0: the 5.x deprecations were removed; nothing is deprecated yet.
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });

@@ -426,6 +426,10 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `GET` | `/admin/identity/memberships?user=` | A SCIM user's groups and effective tenant memberships (6.4) |
 | `POST` | `/admin/identity/sso/verify` | Verify an OIDC ID token `{ idToken }` → user, groups, tenant memberships (6.4) |
 | `GET` | `/admin/identity/sso/authorize-url` | Authorization-code + PKCE (S256) login URL (6.4) |
+| `POST` | `/admin/policy-sim/simulate` | Diff a candidate policy `{ policy: { rules, default }, calls?, source? }` against past calls (replay capture, recent metrics or given calls) (6.5) |
+| `POST` | `/admin/policy-sim/dry-run` | Decide one hypothetical call `{ server, tool, arguments?, clientId? }` under the enforced and shadow policies (6.5) |
+| `GET` | `/admin/policy-sim/shadow` | Shadow-policy agreement, transitions and recent divergences (6.5) |
+| `POST` | `/admin/policy-sim/shadow/reset` | Reset the shadow counters (6.5) |
 
 ## Bridges
 

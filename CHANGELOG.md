@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.5.0] - 2026-10-08
+
+### Added
+- **Policy simulation and dry-run** — `POST /admin/policy-sim/simulate` diffs a candidate policy against past calls
+  (replay capture with arguments, recent metrics, or calls in the request): transitions, impact by client / tool /
+  rule, examples. `POST /admin/policy-sim/dry-run` decides a hypothetical call. **Shadow mode** (`policyShadow`)
+  evaluates a second policy on live traffic without enforcing it and records divergences
+  (`GET /admin/policy-sim/shadow`). See [docs/guides/policy-sim.md](docs/guides/policy-sim.md).
+- Library: `simulatePolicy`, `CandidatePolicySchema`, `PolicyShadowSchema`, `ShadowRecorder`.
+
+### Changed
+- The policy rule schema moved to `src/policy/rule-schema.ts` (shared by the loader and simulation).
+
 ## [6.4.0] - 2026-10-08
 
 ### Added

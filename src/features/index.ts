@@ -15,5 +15,6 @@ import './api-upstreams.js';
 import './workflows.js';
 import './genai-otel.js';
 import './identity.js';
+import './policy-sim.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';
