@@ -1,5 +1,8 @@
 /**
- * To v8 (7.9, the default): everything for v7, then `version: 8`; `plugins[].wasm` entries are reported (rebuild as
+ * To v9 (8.9, the default): everything for v8, then `version: 9` and `state` → `store` (`state.store` → `store.backend`).
+ * 8.9 reads v8 and v9.
+ *
+ * To v8 (7.9): everything for v7, then `version: 8`; `plugins[].wasm` entries are reported (rebuild as
  * plugin API v5 components, `component:`), JS plugins are reminded to declare `apiVersion: 5`. 8.0 reads v8 only.
  *
  * To v7 (6.9): everything for v6, then `version: 7` and `admin.configApi` → `controlPlane.configApi`,
@@ -42,8 +45,8 @@ export interface MigrationResult {
 export const SCOPE_FIELDS = ['servers', 'tools', 'rateLimit'] as const;
 
 /** Migrate a config file's text. `format` is guessed from the content when omitted. */
-export function migrateConfigText(text: string, format?: 'yaml' | 'json', to = 8): MigrationResult {
-  if (![4, 5, 6, 7, 8].includes(to)) throw new Error(`Only migration to schema v4, v5, v6, v7 or v8 is supported (got ${to})`);
+export function migrateConfigText(text: string, format?: 'yaml' | 'json', to = 9): MigrationResult {
+  if (![4, 5, 6, 7, 8, 9].includes(to)) throw new Error(`Only migration to schema v4, v5, v6, v7, v8 or v9 is supported (got ${to})`);
   const fmt = format ?? (/^\s*[{[]/.test(text) ? 'json' : 'yaml');
   const doc = parseDocument(text, { keepSourceTokens: true });
   if (doc.errors.length) throw new Error(`Cannot parse the config: ${doc.errors[0]!.message}`);
@@ -166,6 +169,28 @@ function migrateDoc(doc: Document, changes: string[], notes: string[], to: numbe
     }
   }
 
+  if (to >= 9) {
+    // 8.9 → 9.0: `state` becomes `store` (`state.store` → `store.backend`).
+    const st = doc.get('state', true);
+    if (st !== undefined) {
+      if (doc.has('store')) notes.push('state and store are both set: merge state into store by hand, then remove state.');
+      else {
+        const pair = (root as YAMLMap).items.find((p) => (p.key as { value?: unknown })?.value === 'state' || p.key === 'state');
+        if (pair && pair.key && typeof pair.key === 'object' && 'value' in pair.key) (pair.key as { value: unknown }).value = 'store';
+        else if (pair) (pair as { key: unknown }).key = doc.createNode('store');
+        const store = doc.get('store');
+        let detail = '';
+        if (isMap(store) && store.has('store')) {
+          const sp = store.items.find((p) => (p.key as { value?: unknown })?.value === 'store' || p.key === 'store');
+          if (sp && sp.key && typeof sp.key === 'object' && 'value' in sp.key) (sp.key as { value: unknown }).value = 'backend';
+          else if (sp) (sp as { key: unknown }).key = doc.createNode('backend');
+          detail = ' (store → backend)';
+        }
+        changes.push(`state → store${detail}`);
+      }
+    }
+  }
+
   const plugins = doc.get('plugins');
   if (to >= 8 && isSeq(plugins)) {
     plugins.items.forEach((p, i) => {
@@ -188,7 +213,7 @@ function migrateDoc(doc: Document, changes: string[], notes: string[], to: numbe
 }
 
 /** Plain-object variant (for validation / tests). */
-export function migrateConfigObject(raw: Record<string, unknown>, to = 8): { config: Record<string, unknown>; changes: string[] } {
+export function migrateConfigObject(raw: Record<string, unknown>, to = 9): { config: Record<string, unknown>; changes: string[] } {
   const r = migrateConfigText(JSON.stringify(raw), 'json', to);
   return { config: JSON.parse(r.text) as Record<string, unknown>, changes: r.changes };
 }

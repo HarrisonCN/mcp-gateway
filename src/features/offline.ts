@@ -134,7 +134,7 @@ export function desktopConfig(opts: { servers?: McpServerConfig[]; apiKey?: stri
   return {
     apiKey,
     config: {
-      version: 8,
+      version: 9,
       host: '127.0.0.1',
       port: opts.port ?? 4000,
       auth: { strategy: 'api-key', apiKeys: [apiKey] },

@@ -44,12 +44,12 @@ describe('4.0 removals (were 3.9 deprecations)', () => {
   });
 
   it('reads nested key scope (schema v7 or version omitted)', () => {
-    const cfg = validateConfig({ version: 8, servers: [], auth: { strategy: 'api-key', apiKeys: [{ name: 'ci', key: 'k', scope: { servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } } }] } });
+    const cfg = validateConfig({ version: 9, servers: [], auth: { strategy: 'api-key', apiKeys: [{ name: 'ci', key: 'k', scope: { servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } } }] } });
     expect(cfg.auth!.apiKeys![0]).toMatchObject({ name: 'ci', servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } });
     expect(cfg.deprecations).toBeUndefined(); // 8.0
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', servers: ['a'], scope: { servers: ['b'] } }] } })).toThrow(/removed in 4.0/);
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', scope: { nope: 1 } }] } })).toThrow(/unknown key/);
-    expect(() => validateConfig({ version: 9, servers: [] })).toThrow(/not supported/);
+    expect(() => validateConfig({ version: 10, servers: [] })).toThrow(/not supported/);
     expect(validateConfig({ servers: [] }).deprecations).toBeUndefined();
   });
 });
@@ -80,11 +80,11 @@ describe('mcp-gateway migrate', () => {
 
   it('handles JSON and files without a version', () => {
     const { config, changes } = migrateConfigObject({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', tools: ['a*'] }] } });
-    expect(changes[0]).toBe('version: (none) → 8');
+    expect(changes[0]).toBe('version: (none) → 9');
     expect(Object.keys(config)[0]).toBe('version');
     expect((config.auth as { apiKeys: Array<Record<string, unknown>> }).apiKeys[0]).toEqual({ key: 'k', scope: { tools: ['a*'] } });
     expect(() => migrateConfigText('a: [', 'yaml')).toThrow(/Cannot parse/);
-    expect(() => migrateConfigText('version: 3', 'yaml', 9)).toThrow(/v4, v5, v6, v7 or v8/);
+    expect(() => migrateConfigText('version: 3', 'yaml', 10)).toThrow(/v4, v5, v6, v7, v8 or v9/);
     expect(() => migrateConfigText('version: 5', 'yaml', 4)).toThrow(/downgrading/);
   });
 });

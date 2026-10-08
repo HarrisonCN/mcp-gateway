@@ -44,6 +44,12 @@ export function portableConfig(cfg: GatewayConfig): Record<string, unknown> {
       return Object.keys(scope).length ? { ...key, scope } : key;
     });
   }
+  // 8.9: schema v9 names the shared store `store` (`backend`); internals keep `state` (`store`).
+  if (out.version === 9 && out.state && typeof out.state === 'object') {
+    const { store, ...st } = out.state as Record<string, unknown>;
+    out.store = { ...(store !== undefined ? { backend: store } : {}), ...st };
+    delete out.state;
+  }
   // Schema v5: servers use `timeoutMs` (internally `timeout`).
   if (Array.isArray(out.servers)) {
     out.servers = (out.servers as Array<Record<string, unknown>>).map((s) => {
