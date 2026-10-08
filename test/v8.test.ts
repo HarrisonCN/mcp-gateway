@@ -1,4 +1,4 @@
-/** 7.9: 8.0 preparation — schema v8 preview, plugin API v5 (WIT outcomes, component ABI), deprecations, migrate --to 8. */
+/** 8.0: schema v8 only, plugin API v5 only (WIT outcomes, component ABI), no deprecations, migrate --to 8. */
 import { describe, it, expect, afterEach } from 'vitest';
 import { fileURLToPath } from 'url';
 import { mkdtempSync, writeFileSync, readFileSync } from 'fs';
@@ -9,7 +9,7 @@ import { validateConfig, loadConfig } from '../src/config/loader.js';
 import { migrateConfigText } from '../src/config/migrate.js';
 import { configDeprecations, removedConfigKeys, runtimeDeprecations, resetDeprecations, DEPRECATIONS } from '../src/utils/deprecations.js';
 import { WasmPlugin } from '../src/plugins/wasm.js';
-import { PluginHost, PLUGIN_API_VERSION, normalizeToolCallOutcome, normalizeResponseOutcome, type PluginCall } from '../src/plugins/index.js';
+import { PluginHost, PLUGIN_API_VERSION, PLUGIN_API_MIN_VERSION, loadPlugin, normalizeToolCallOutcome, normalizeResponseOutcome, type PluginCall } from '../src/plugins/index.js';
 import { Gateway } from '../src/gateway/index.js';
 import type { GatewayConfig } from '../src/utils/types.js';
 import { logger } from '../src/utils/logger.js';
@@ -23,20 +23,22 @@ afterEach(async () => {
   for (const c of closers.splice(0)) await c();
 });
 
-describe('8.0 preparation (7.9)', () => {
-  it('deprecates schema v7, plugins[].wasm and plugin API v4; schema v8 preview', () => {
-    expect(Object.values(DEPRECATIONS).map((d) => `${d.id}@${d.removedIn}`)).toEqual(['schema-v7@8.0.0', 'plugin-wasm-core@8.0.0', 'plugin-api-v4@8.0.0']);
-    expect(configDeprecations({ version: 7, plugins: [{ module: './a.mjs' }, { wasm: './b.wasm' }] }).map((d) => `${d.id}:${d.detail}`)).toEqual(['schema-v7:version: 7', 'plugin-wasm-core:plugins.1.wasm']);
+describe('8.0: schema v8, plugin API v5', () => {
+  it('refuses schema v7, plugins[].wasm and plugin API v4; nothing is deprecated', () => {
+    expect(DEPRECATIONS).toEqual({});
     expect(configDeprecations({ version: 8, plugins: [{ component: './b.wasm' }] })).toEqual([]);
     const v8 = validateConfig({ version: 8, servers: [], plugins: [{ component: './p.wasm', isolation: 'client' }] });
     expect(v8.version).toBe(8);
     expect(v8.deprecations).toBeUndefined();
-    expect(() => validateConfig({ version: 8, servers: [], plugins: [{ wasm: './p.wasm' }] })).toThrow(/plugins.0.wasm: not part of config schema v8 — rebuild against wit\/mcp-gateway-plugin.wit and use `component`/);
-    expect(() => validateConfig({ servers: [], plugins: [{ wasm: './a.wasm', component: './b.wasm' }] })).toThrow(/exactly one of "module", "component" or "wasm"/);
-    expect(() => validateConfig({ servers: [], plugins: [{ module: './a.mjs', limits: { timeoutMs: 5 } }] })).toThrow(/apply to WASM plugins only/);
-    expect(() => validateConfig({ version: 9, servers: [] })).toThrow(/7.9 reads `version: 7` or `version: 8`/);
+    expect(() => validateConfig({ version: 7, servers: [] })).toThrow(/version: config schema v7 was removed in 8.0 — use `version: 8`; run `mcp-gateway migrate --to 8`/);
+    expect(() => validateConfig({ servers: [], plugins: [{ wasm: './p.wasm' }] })).toThrow(/plugins.0.wasm: removed in 8.0 — rebuild against wit\/mcp-gateway-plugin.wit \(plugin API v5\) and use `component`/);
+    expect(removedConfigKeys({ version: 7, plugins: [{ wasm: 'a' }, { module: 'b' }] })).toHaveLength(2);
+    expect(() => validateConfig({ servers: [], plugins: [{ module: './a.mjs', component: './b.wasm' }] })).toThrow(/exactly one of "module" or "component"/);
+    expect(() => validateConfig({ servers: [], plugins: [{ module: './a.mjs', limits: { timeoutMs: 5 } }] })).toThrow(/apply to WASM component plugins only/);
+    expect(() => validateConfig({ version: 9, servers: [] })).toThrow(/8.0 reads `version: 8`/);
     expect(removedConfigKeys({ version: 8 })).toEqual([]);
     expect(PLUGIN_API_VERSION).toBe(5);
+    expect(PLUGIN_API_MIN_VERSION).toBe(5);
   });
 
   it('plugin API v5 outcomes', () => {
@@ -62,6 +64,9 @@ describe('8.0 preparation (7.9)', () => {
       return p;
     };
     expect(mk(W.componentModule('on_tool_call', '{"action":"rewrite","arguments":{"v5":true}}')).apiVersion).toBe(5);
+    const core = new WasmPlugin({ name: 'core', bytes: W.denyWasm() }); // embedders: core ABI in code — still API v5
+    closers.push(() => core.close());
+    expect(core.apiVersion).toBe(5);
     expect(await mk(W.componentModule('on_tool_call', '{"action":"rewrite","arguments":{"v5":true}}')).onToolCall(call())).toEqual({ arguments: { v5: true } });
     expect(await mk(W.componentModule('on_tool_call', '{"action":"deny","reason":"component says no"}', { post: true })).onToolCall(call())).toEqual({ deny: 'component says no' });
     expect(await mk(W.componentModule('on_tool_call', undefined)).onToolCall(call())).toBeUndefined();
@@ -72,12 +77,14 @@ describe('8.0 preparation (7.9)', () => {
     expect(() => new WasmPlugin({ name: 'x', bytes: new Uint8Array([0, 0x61, 0x73, 0x6d, 0x0d, 0, 1, 0]), abi: 'component' })).toThrow(/is a component binary/);
   });
 
-  it('JS v4 plugins and core WASM plugins load with deprecation warnings; v5 does not warn', async () => {
+  it('JS v4 plugins and wasm entries are refused; v5 runs without warnings', async () => {
     resetDeprecations();
+    await expect(PluginHost.build(undefined, [{ name: 'v4', apiVersion: 4 }])).rejects.toThrow(/plugin API v4, which was removed in 8.0 — declare `apiVersion: 5`/);
+    await expect(loadPlugin({ wasm: './x.wasm' } as never)).rejects.toThrow(/`plugins\[\].wasm` was removed in 8.0/);
     const host = new PluginHost();
-    await host.set(await PluginHost.build(undefined, [{ name: 'v4', apiVersion: 4 }, { name: 'v5', apiVersion: 5, onToolCall: () => ({ action: 'deny', reason: 'v5 deny' }) as never }]));
+    await host.set(await PluginHost.build(undefined, [{ name: 'v5', apiVersion: 5, onToolCall: () => ({ action: 'deny', reason: 'v5 deny' }) as never }]));
     closers.push(() => host.close());
-    expect(runtimeDeprecations().map((d) => `${d.id}:${d.detail}`)).toEqual(['plugin-api-v4:v4']);
+    expect(runtimeDeprecations()).toEqual([]);
     expect(await host.beforeCall(call())).toEqual({ deny: 'v5 deny', plugin: 'v5' });
   });
 

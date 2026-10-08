@@ -33,7 +33,7 @@ shapes (`{ deny }`, `{ arguments }`, `{ respond }`, a replacement result) are st
 
 ```yaml
 plugins:
-  - component: ./policy.wasm     # plugin API v5 (canonical ABI); replaces `wasm:` (3.3 core ABI)
+  - component: ./policy.wasm     # plugin API v5 (canonical ABI); `wasm:` (3.3 core ABI) was removed in 8.0
     isolation: tenant            # tenant (default) | client | shared
     limits: { timeoutMs: 100, memoryMb: 16, maxInstances: 64 }
 ```

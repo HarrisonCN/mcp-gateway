@@ -220,7 +220,8 @@ export class WasmPlugin implements GatewayPlugin {
     this.limits = { ...DEFAULT_WASM_LIMITS, ...Object.fromEntries(Object.entries(opts.limits ?? {}).filter(([, v]) => v !== undefined)) };
     // Validate up front (fails config load instead of the first call).
     this.abi = opts.abi ?? 'core';
-    this.apiVersion = this.abi === 'component' ? 5 : 3;
+    // 8.0: every WASM plugin is plugin API v5 (core-ABI modules can still be passed in code by embedders).
+    this.apiVersion = 5;
     if (this.bytes.length >= 8 && this.bytes[4] === 0x0d && this.bytes[6] === 0x01) {
       throw new Error(`WASM plugin "${this.name}" is a component binary; load its core module (wit-bindgen output before \`wasm-tools component new\`, or \`wasm-tools component unbundle\`) with \`component:\``);
     }

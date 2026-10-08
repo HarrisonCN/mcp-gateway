@@ -129,7 +129,7 @@ export const COMPONENT_HOOK = { on_tool_call: 'mcp-gateway:plugin/hooks@5.0.0#on
  * A component-ABI module: `memory`, `cabi_realloc` (returns 4096) and one hook returning a fixed `option<string>`
  * (`json` = some(json), `undefined` = none). Retarea at 16, string at 32.
  */
-export function componentModule(hook: keyof typeof COMPONENT_HOOK, json: string | undefined, opts: { post?: boolean } = {}): Uint8Array {
+export function componentModule(hook: keyof typeof COMPONENT_HOOK, json: string | undefined, opts: { post?: boolean; counterAt?: number } = {}): Uint8Array {
   const types = [
     [0x60, ...vec([[I32], [I32], [I32], [I32]]), ...vec([[I32]])], // 0: cabi_realloc
     [0x60, ...vec([[I32], [I32]]), ...vec([[I32]])], // 1: hook
@@ -146,7 +146,8 @@ export function componentModule(hook: keyof typeof COMPONENT_HOOK, json: string 
     [...str(COMPONENT_HOOK[hook]), 0x00, ...uleb(1)],
     ...(opts.post ? [[...str(`cabi_post_${COMPONENT_HOOK[hook]}`), 0x00, ...uleb(2)]] : []),
   ];
-  const code = [[0x00, ...op.i32(4096), 0x0b], [0x00, ...op.i32(16), 0x0b], ...(opts.post ? [[0x00, 0x0b]] : [])].map((b) => [...uleb(b.length), ...b]);
+  const hookBody = opts.counterAt === undefined ? [] : [...op.i32(32 + opts.counterAt), ...op.i32(32 + opts.counterAt), ...op.load8, ...op.i32(1), ...op.add, ...op.store8];
+  const code = [[0x00, ...op.i32(4096), 0x0b], [0x00, ...hookBody, ...op.i32(16), 0x0b], ...(opts.post ? [[0x00, 0x0b]] : [])].map((b) => [...uleb(b.length), ...b]);
   return new Uint8Array([
     0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
     ...section(1, vec(types)),
@@ -157,3 +158,9 @@ export function componentModule(hook: keyof typeof COMPONENT_HOOK, json: string 
     ...section(11, vec([[0x00, ...op.i32(16), 0x0b, ...uleb(blob.length), ...blob]])),
   ]);
 }
+
+/** 8.0: per-instance counter as a v5 component — `{"action":"rewrite","arguments":{"n":"<k>"}}` (single digit). */
+export const componentCounter = () => {
+  const json = '{"action":"rewrite","arguments":{"n":"0"}}';
+  return componentModule('on_tool_call', json, { counterAt: json.indexOf('"0"') + 1 });
+};

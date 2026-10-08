@@ -586,6 +586,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v8.0
+
+| Change | |
+|--------|---|
+| **Plugin API v5 only** | JS (`apiVersion: 5`) and WASM (`component:`) plugins share one WIT-defined contract |
+| **Schema v8** | `version: 7`, `plugins[].wasm` and plugin API v4 removed — [migrating to 8.0](docs/guides/migrating-to-v8.md) |
+| **No deprecations** | Clean slate for the 8.x line — [roadmap 8.1 → 9.0](docs/ROADMAP.md) |
+
 ## What's New in v7.9
 
 | Change | |
@@ -962,7 +970,7 @@ Details: [CHANGELOG](CHANGELOG.md) · [Configuration](docs/configuration.md#smar
 
 | Feature | Description |
 |---------|-------------|
-| **WASM plugins** | `wasm: ./plugin.wasm` — write plugins in any language that compiles to WebAssembly |
+| **WASM plugins** | `component: ./plugin.wasm` — plugin API v5 components in any language that compiles to WebAssembly |
 | **Tenant isolation** | One sandbox per tenant / client; no WASI, no host access; time and memory limits |
 | **API** | `GET /api/v1/plugins` lists plugins and live sandboxes |
 

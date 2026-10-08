@@ -29,10 +29,10 @@ describe('6.0: schema v6, compliance.pii removed, migrate --to 6', () => {
     expect(() => validateConfig({ version: 5, servers: [] })).toThrow(/schema v5 was removed in 6.0/);
     expect(configDeprecations({ compliance: { residency: {} } })).toEqual([]);
     expect(configDeprecations(null)).toEqual([]);
-    const v7 = validateConfig({ version: 7, servers: [], dlp: { default: { clearance: 'public' } } });
-    expect(v7.version).toBe(7);
-    expect(v7.deprecations?.map((d) => d.id)).toEqual(['schema-v7']); // 7.9
-    expect(() => validateConfig({ version: 7, servers: [], compliance: { pii: { action: 'redact' } } })).toThrow(/compliance.pii: removed in 6.0 — use `dlp`/);
+    const v7 = validateConfig({ version: 8, servers: [], dlp: { default: { clearance: 'public' } } });
+    expect(v7.version).toBe(8);
+    expect(v7.deprecations).toBeUndefined(); // 8.0
+    expect(() => validateConfig({ version: 8, servers: [], compliance: { pii: { action: 'redact' } } })).toThrow(/compliance.pii: removed in 6.0 — use `dlp`/);
   });
 
   it('migrate --to 6 converts compliance.pii to dlp, keeping comments and residency', () => {

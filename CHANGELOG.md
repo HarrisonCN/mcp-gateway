@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.0.0] - 2026-10-08
+
+### Breaking
+- **Config schema v8 only.** `version: 7` is refused with a hint to run `mcp-gateway migrate --to 8` (7.9 reads both).
+- **`plugins[].wasm` removed** — WASM plugins are plugin API v5 components loaded with `plugins[].component`
+  (WIT world `mcp-gateway:plugin@5.0.0`, `wit/mcp-gateway-plugin.wit`). `PluginConfig.wasm` is gone. Marketplace
+  installs of `.wasm` artifacts now return a `component:` entry.
+- **Plugin API v4 removed** — JS plugins must declare `apiVersion: 5` (`PLUGIN_API_MIN_VERSION` is 5). v4 *return
+  shapes* still work inside v5 plugins; `{ action }` outcomes are the documented contract.
+- Every WASM plugin reports `apiVersion: 5`. Embedders may still pass a core-ABI module in code
+  (`new WasmPlugin({ bytes })` / `loadWasmPlugin()`, `abi: 'core'`).
+
+### Changed
+- No deprecations are active in 8.0 (`DEPRECATIONS` is empty; `GET /api/v1/admin/deprecations` returns empty lists).
+- Data planes always receive `version: 8`. Docs, examples and the Pages demo use schema v8 and `component:`.
+- New roadmap for 8.1 → 9.0 in [docs/ROADMAP.md](docs/ROADMAP.md).
+
+See [docs/guides/migrating-to-v8.md](docs/guides/migrating-to-v8.md).
+
 ## [7.9.0] - 2026-10-08
 
 ### Added

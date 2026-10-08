@@ -1,4 +1,4 @@
-/** 3.3: WASM plugin sandbox with per-tenant isolation. */
+/** 3.3: WASM plugin sandbox with per-tenant isolation (8.0: config entries are v5 components; core ABI only in code). */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { fileURLToPath } from 'url';
 import { mkdtempSync, writeFileSync } from 'fs';
@@ -81,11 +81,17 @@ describe('WasmPlugin', () => {
     expect(() => new WasmPlugin({ name: 'x', bytes: noHooks })).toThrow(/neither on_tool_call nor on_response/);
   });
 
+  it('every WASM plugin is plugin API v5 (core ABI still accepted in code)', () => {
+    expect(plugin(W.denyWasm()).apiVersion).toBe(5);
+    expect(plugin(W.componentCounter(), { abi: 'component' }).apiVersion).toBe(5);
+  });
+
   it('validates plugin entries', () => {
-    expect(() => validateConfig({ servers: [], plugins: [{ wasm: './p.wasm', isolation: 'client', limits: { timeoutMs: 50 } }] })).not.toThrow();
-    expect(() => validateConfig({ servers: [], plugins: [{ module: './a.js', wasm: './p.wasm' }] })).toThrow(/exactly one/);
+    expect(() => validateConfig({ servers: [], plugins: [{ component: './p.wasm', isolation: 'client', limits: { timeoutMs: 50 } }] })).not.toThrow();
+    expect(() => validateConfig({ servers: [], plugins: [{ module: './a.js', component: './p.wasm' }] })).toThrow(/exactly one/);
+    expect(() => validateConfig({ servers: [], plugins: [{ wasm: './p.wasm' }] })).toThrow(/plugins.0.wasm: removed in 8.0/);
     expect(() => validateConfig({ servers: [], plugins: [{ name: 'x' }] })).toThrow(/exactly one/);
-    expect(() => validateConfig({ servers: [], plugins: [{ module: './a.js', isolation: 'tenant' }] })).toThrow(/WASM plugins only/);
+    expect(() => validateConfig({ servers: [], plugins: [{ module: './a.js', isolation: 'tenant' }] })).toThrow(/WASM component plugins only/);
   });
 });
 
@@ -96,12 +102,14 @@ describe('WASM plugins in the gateway', () => {
     gw = undefined;
   });
 
-  it('loads wasm entries from the config file and isolates tenants end to end', async () => {
+  it('loads component entries from the config file and isolates tenants end to end', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'mcpgw-wasm-'));
-    writeFileSync(join(dir, 'counter.wasm'), W.counterWasm());
-    writeFileSync(join(dir, 'deny.wasm'), W.denyWasm());
-    const p = await loadWasmPlugin({ wasm: 'counter.wasm' }, dir);
-    expect(p.name).toBe('counter');
+    writeFileSync(join(dir, 'counter.wasm'), W.componentCounter());
+    writeFileSync(join(dir, 'legacy.wasm'), W.counterWasm());
+    // Embedders may still load a core-ABI module in code; it reports plugin API v5 like every WASM plugin.
+    const p = await loadWasmPlugin({ wasm: 'legacy.wasm' }, dir);
+    expect(p.name).toBe('legacy');
+    expect(p.apiVersion).toBe(5);
     await p.close();
     writeFileSync(
       join(dir, 'mcp-gateway.yml'),
@@ -113,8 +121,9 @@ auth:
 tenants:
   - { id: acme, servers: ["*"], members: [{ client: "key:a", role: admin }] }
   - { id: globex, servers: ["*"], members: [{ client: "key:b", role: admin }] }
+version: 8
 plugins:
-  - { wasm: counter.wasm }
+  - { component: counter.wasm }
 `,
     );
     const cfg = await loadConfig(join(dir, 'mcp-gateway.yml'));

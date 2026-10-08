@@ -1,6 +1,6 @@
 /**
  * To v8 (7.9, the default): everything for v7, then `version: 8`; `plugins[].wasm` entries are reported (rebuild as
- * plugin API v5 components, `component:`), JS plugins are reminded to declare `apiVersion: 5`. 7.9 reads v7 and v8.
+ * plugin API v5 components, `component:`), JS plugins are reminded to declare `apiVersion: 5`. 8.0 reads v8 only.
  *
  * To v7 (6.9): everything for v6, then `version: 7` and `admin.configApi` → `controlPlane.configApi`,
  * `dashboard.enabled` → `controlPlane.dashboard`. 6.9 reads v6 and v7.

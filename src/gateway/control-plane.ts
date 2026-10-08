@@ -48,7 +48,7 @@ export const ControlPlaneSchema = z
     }
   });
 
-/** `controlPlane:` — the gateway's role and control-plane settings (schema v7). Restart required. */
+/** `controlPlane:` — the gateway's role and control-plane settings (schema v8). Restart required. */
 export interface ControlPlaneConfig {
   /** `all` (default), `control` or `data`. */
   role?: 'all' | 'control' | 'data';
@@ -78,10 +78,10 @@ const stable = (v: unknown): string =>
 /** Strong ETag of a config object (order independent). */
 export const configEtag = (config: unknown) => `"${createHash('sha256').update(stable(config)).digest('hex').slice(0, 32)}"`;
 
-/** The config a control plane distributes: `portable` minus `controlPlane`, `port` and `host` (schema version kept, 7.9). */
+/** The config a control plane distributes: `portable` minus `controlPlane`, `port` and `host` (schema v8). */
 export function distributedConfig(portable: Record<string, unknown>): Record<string, unknown> {
   const { controlPlane: _c, port: _p, host: _h, configDir: _d, deprecations: _x, ...rest } = portable;
-  return { ...rest, version: rest.version === 8 ? 8 : 7 };
+  return { ...rest, version: 8 };
 }
 
 export interface DataPlaneNode {

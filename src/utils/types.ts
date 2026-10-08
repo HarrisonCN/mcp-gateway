@@ -308,22 +308,20 @@ export interface A2ABridgeConfig {
 
 /** One `plugins:` entry. */
 export interface PluginConfig {
-  /** Path (relative to the config file) or package name of an ES module. Exactly one of `module` / `wasm`. */
+  /** Path (relative to the config file) or package name of an ES module. Exactly one of `module` / `component`. */
   module?: string;
-  /** Path (relative to the config file) of a WebAssembly plugin, run sandboxed (3.3). Deprecated in 7.9: use `component`. */
-  wasm?: string;
   /** Path of a plugin API v5 WASM plugin (7.9): the core module of a `mcp-gateway:plugin@5.0.0` component (canonical ABI). */
   component?: string;
   /** WASM / component only: one sandbox per tenant (default), per client, or one shared. */
   isolation?: 'tenant' | 'client' | 'shared';
-  /** WASM only: per-sandbox limits. */
+  /** WASM component only: per-sandbox limits. */
   limits?: WasmPluginLimits;
   /** Override the plugin's own name. */
   name?: string;
   enabled?: boolean;
   /** Passed to a factory export as `ctx.options`. */
   options?: Record<string, unknown>;
-  /** 5.4: signature file (default `<module or wasm>.sig`), checked against `pluginTrust`. */
+  /** 5.4: signature file (default `<module or component>.sig`), checked against `pluginTrust`. */
   signature?: string;
   /** Plugin API v3 (4.0): secrets the plugin may read via `ctx.secrets.get(name)` — name → `secret://provider/path`. */
   secrets?: Record<string, string>;

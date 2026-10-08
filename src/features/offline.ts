@@ -4,7 +4,7 @@
  *
  * - **Import** the MCP servers of Claude Desktop, Cursor, VS Code or Windsurf ({@link importDesktopServers}):
  *   `{ mcpServers: { name: { command, args, env } | { url } } }` (VS Code: `servers`, `type`).
- * - **Desktop profile** ({@link desktopConfig} / `mcp-gateway desktop`): `127.0.0.1`, a generated API key, schema v7,
+ * - **Desktop profile** ({@link desktopConfig} / `mcp-gateway desktop`): `127.0.0.1`, a generated API key, schema v8,
  *   the imported servers and `offline` on.
  * - **Offline mode** (`offline`): the gateway probes `probeUrl` every `probeIntervalMs` (or is switched by hand). While
  *   offline, calls to **remote** upstreams (`streamable-http`, `sse`, `websocket`) fail fast with JSON-RPC error

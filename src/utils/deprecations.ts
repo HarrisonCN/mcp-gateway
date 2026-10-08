@@ -5,8 +5,9 @@
  * plugin API v1), 5.0 the 4.x ones (`version: 4`, `servers[].timeout`, plugin API v2, `normalizeV4Preview`):
  * using a removed form is a validation error naming its replacement ({@link removedConfigKeys}).
  * 6.0 removed the 5.x ones (`version: 5`, `compliance.pii`, plugin API v3), 7.0 the 6.x ones (`version: 6`, top-level
- * `admin` / `dashboard` → `controlPlane`). Current deprecations (7.9: schema v7, `plugins[].wasm`, plugin API v4; removed in 8.0) are recorded once per id with {@link deprecate}, logged as
- * warnings and listed by `GET /api/v1/admin/deprecations` and `mcp-gateway validate`.
+ * `admin` / `dashboard` → `controlPlane`), 8.0 the 7.x ones (`version: 7`, `plugins[].wasm`, plugin API v4). Nothing is
+ * deprecated in 8.0; future deprecations are recorded once per id with {@link deprecate}, logged as warnings and listed
+ * by `GET /api/v1/admin/deprecations` and `mcp-gateway validate`.
  * See docs/guides/migrating-to-v5.md.
  *
  * @module utils/deprecations
@@ -23,12 +24,8 @@ export interface Deprecation {
   replacement?: string;
 }
 
-export const DEPRECATIONS = {
-  // 7.9: schema v7, core-ABI WASM plugins (`plugins[].wasm`) and plugin API v4 are replaced in 8.0.
-  schemaV7: { id: 'schema-v7', removedIn: '8.0.0', replacement: 'version: 8', message: 'config schema v7 is deprecated; `mcp-gateway migrate --to 8` writes `version: 8`' },
-  pluginWasmCore: { id: 'plugin-wasm-core', removedIn: '8.0.0', replacement: 'plugins[].component', message: '`plugins[].wasm` (3.3 core ABI) is deprecated; rebuild the plugin against wit/mcp-gateway-plugin.wit and load it with `component:`' },
-  pluginApiV4: { id: 'plugin-api-v4', removedIn: '8.0.0', replacement: 'apiVersion: 5', message: 'plugin API v4 is deprecated; declare `apiVersion: 5` (hooks may return `{ action }` outcomes)' },
-} as const satisfies Record<string, Deprecation>;
+/** Active deprecations (8.0: none — schema v7, `plugins[].wasm` and plugin API v4 were removed). */
+export const DEPRECATIONS: Record<string, Deprecation> = {};
 
 /** Config keys removed in 3.0 → replacement. */
 export const REMOVED_IN_3: Record<string, string> = {
@@ -39,7 +36,7 @@ export const REMOVED_IN_3: Record<string, string> = {
 const GUIDE4 = 'run `mcp-gateway migrate` (see docs/guides/migrating-to-v4.md)';
 const GUIDE5 = 'run `mcp-gateway migrate` (see docs/guides/migrating-to-v5.md)';
 const GUIDE7 = 'run `mcp-gateway migrate --to 7` (see docs/guides/migrating-to-v7.md)';
-const GUIDE8 = 'see docs/guides/migrating-to-v8.md';
+const GUIDE8 = 'run `mcp-gateway migrate --to 8` (see docs/guides/migrating-to-v8.md)';
 
 /** Validation errors for removed keys / forms used in a raw config object (3.0 and 4.0 removals). */
 export function removedConfigKeys(raw: unknown): string[] {
@@ -49,16 +46,15 @@ export function removedConfigKeys(raw: unknown): string[] {
     .filter(([k]) => r[k] !== undefined)
     .map(([k, v]) => `${k}: removed in 3.0 — use \`${v}\` (see docs/guides/migrating-to-v3.md)`);
   if (r.version === 3) out.push(`version: config schema v3 was removed in 4.0 — use \`version: 4\`; ${GUIDE4}`);
-  else if (r.version === 4) out.push(`version: config schema v4 was removed in 5.0 — use \`version: 7\`; ${GUIDE7}`);
-  else if (r.version === 5) out.push(`version: config schema v5 was removed in 6.0 — use \`version: 7\`; ${GUIDE7}`);
-  else if (r.version === 6) out.push(`version: config schema v6 was removed in 7.0 — use \`version: 7\`; ${GUIDE7}`);
-  else if (r.version !== undefined && r.version !== 7 && r.version !== 8) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 7.9 reads \`version: 7\` or \`version: 8\` (see docs/guides/migrating-to-v8.md)`);
-  // 7.9: schema v8 preview — core-ABI WASM plugins are not part of v8.
-  if (r.version === 8) {
-    ((r.plugins as unknown[] | undefined) ?? []).forEach((p, i) => {
-      if (p && typeof p === 'object' && (p as Record<string, unknown>).wasm !== undefined) out.push(`plugins.${i}.wasm: not part of config schema v8 — rebuild against wit/mcp-gateway-plugin.wit and use \`component\`; ${GUIDE8}`);
-    });
-  }
+  else if (r.version === 4) out.push(`version: config schema v4 was removed in 5.0 — use \`version: 8\`; ${GUIDE8}`);
+  else if (r.version === 5) out.push(`version: config schema v5 was removed in 6.0 — use \`version: 8\`; ${GUIDE8}`);
+  else if (r.version === 6) out.push(`version: config schema v6 was removed in 7.0 — use \`version: 8\`; ${GUIDE8}`);
+  else if (r.version === 7) out.push(`version: config schema v7 was removed in 8.0 — use \`version: 8\`; ${GUIDE8}`);
+  else if (r.version !== undefined && r.version !== 8) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 8.0 reads \`version: 8\` (see docs/guides/migrating-to-v8.md)`);
+  // 8.0: core-ABI WASM plugins (`plugins[].wasm`) were removed — plugin API v5 components only.
+  ((r.plugins as unknown[] | undefined) ?? []).forEach((p, i) => {
+    if (p && typeof p === 'object' && (p as Record<string, unknown>).wasm !== undefined) out.push(`plugins.${i}.wasm: removed in 8.0 — rebuild against wit/mcp-gateway-plugin.wit (plugin API v5) and use \`component\`; ${GUIDE8}`);
+  });
   // 7.0: `admin` / `dashboard` moved under `controlPlane`.
   if (r.admin !== undefined) out.push(`admin: removed in 7.0 — use \`controlPlane.configApi\`; ${GUIDE7}`);
   if (r.dashboard !== undefined) out.push(`dashboard: removed in 7.0 — use \`controlPlane.dashboard\`; ${GUIDE7}`);
@@ -81,16 +77,10 @@ export function removedConfigKeys(raw: unknown): string[] {
   return out;
 }
 
-/** Deprecated keys used in a raw config object (7.9: schema v7, `plugins[].wasm`; removed in 8.0). */
+/** Deprecated keys used in a raw config object (8.0: none). */
 export function configDeprecations(raw: unknown): Array<Deprecation & { detail?: string }> {
   if (typeof raw !== 'object' || raw === null) return [];
-  const r = raw as Record<string, unknown>;
-  const out: Array<Deprecation & { detail?: string }> = [];
-  if (r.version === 7) out.push({ ...DEPRECATIONS.schemaV7, detail: 'version: 7' });
-  ((r.plugins as unknown[] | undefined) ?? []).forEach((p, i) => {
-    if (p && typeof p === 'object' && (p as Record<string, unknown>).wasm !== undefined) out.push({ ...DEPRECATIONS.pluginWasmCore, detail: `plugins.${i}.wasm` });
-  });
-  return out;
+  return [];
 }
 
 /** Schema v5 → internal shape: `servers[].timeoutMs` becomes the internal `timeout`. */
