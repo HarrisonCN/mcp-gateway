@@ -468,6 +468,11 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `POST` | `/admin/compliance-reports/run` | Write an evidence bundle now `{ schedule?, frameworks?, periodDays? }` (7.8) |
 | `GET` | `/admin/compliance-reports/bundles/:bundle/:file` | Download a bundle file (7.8) |
 | `GET` | `/admin/compliance-reports/preview?framework=soc2\|iso27001\|gdpr&format=md` | Evaluate a framework without writing (7.8) |
+| `GET` | `/admin/agent-identity` | Agent identity: agents, issued / active / revoked tokens, recent delegations (8.1) |
+| `POST` | `/admin/agent-identity/introspect` | Introspect an agent token `{ token }` (RFC 7662 shape) (8.1) |
+| `POST` | `/admin/agent-identity/revoke` | Revoke a delegation token `{ jti }` (8.1) |
+| `POST` | `/features/agent-identity/token` | Any client: exchange for an agent delegation token `{ agent, tools?, ttlSeconds?, subjectToken? }` (8.1) |
+| `POST` | `/features/agent-identity/call` | Agent: call a tool with a delegation token `{ token, server, tool, arguments? }` (8.1) |
 
 ## Bridges
 

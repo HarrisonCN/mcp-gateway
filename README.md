@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v8.1
+
+| Feature | |
+|---------|---|
+| **Agent identities** | Each AI agent gets its own identity, tool scope and allowed delegators |
+| **Delegated auth** | Users delegate a narrow, short-lived slice of access; sub-agent `act` chains; -32019 for agent-only tools — [guide](docs/guides/agent-identity.md) |
+
 ## What's New in v8.0
 
 | Change | |

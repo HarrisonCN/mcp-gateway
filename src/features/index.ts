@@ -27,5 +27,6 @@ import './rollouts.js';
 import './offline.js';
 import './approval-flows.js';
 import './compliance-reports.js';
+import './agent-identity.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';
