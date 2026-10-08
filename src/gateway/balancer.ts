@@ -49,6 +49,8 @@ interface MemberState {
   ejectedUntil: number;
   /** EWMA of call latency (ms). */
   latency?: number;
+  /** EWMA of failures (0..1), for `smart` (3.4). */
+  errorEwma?: number;
   calls: number;
   errors: number;
 }
@@ -62,6 +64,8 @@ export interface MemberSnapshot {
   latencyMs?: number;
   calls: number;
   errors: number;
+  /** `smart` only: the member's current score (lower is better). */
+  score?: number;
 }
 
 export interface BalancerDeps {
@@ -154,6 +158,11 @@ export class LoadBalancer {
       case 'random':
         ordered = shuffle(healthy, this.deps.random ?? Math.random);
         break;
+      case 'smart': {
+        const scores = this.scores(id, healthy);
+        ordered = [...healthy].sort((a, b) => scores.get(a)! - scores.get(b)!);
+        break;
+      }
       case 'least-latency':
         ordered = [...healthy].sort((a, b) => (this.st(a).latency ?? 0) - (this.st(b).latency ?? 0));
         break;
@@ -182,10 +191,37 @@ export class LoadBalancer {
     return [...ordered, ...rest];
   }
 
+  private cost(id: string): number {
+    const c = this.config(id)?.cost;
+    return typeof c === 'number' && c >= 0 ? c : 0;
+  }
+
+  /**
+   * `smart` scores (3.4): weighted sum of latency, error rate and cost, each normalised to the group maximum
+   * (0..1). Members without samples get the group's mean latency, so new members are tried.
+   */
+  scores(group: string, members = this.members(group)): Map<string, number> {
+    const w = { latency: 1, errorRate: 1, cost: 0, ...(this.config(group)?.loadBalancing?.score ?? {}) };
+    const lat = members.map((m) => this.st(m).latency).filter((x): x is number => x !== undefined);
+    const meanLat = lat.length ? lat.reduce((a, b) => a + b, 0) / lat.length : 0;
+    const maxLat = Math.max(1, ...lat);
+    const maxCost = Math.max(0, ...members.map((m) => this.cost(m)));
+    const out = new Map<string, number>();
+    for (const m of members) {
+      const s = this.st(m);
+      const l = (s.latency ?? meanLat) / maxLat;
+      const e = s.errorEwma ?? 0;
+      const c = maxCost > 0 ? this.cost(m) / maxCost : 0;
+      out.set(m, Math.round((w.latency * l + w.errorRate * e + w.cost * c) * 1000) / 1000);
+    }
+    return out;
+  }
+
   /** Record a call outcome on a member (failure kind undefined = success). */
   report(member: string, group: string, failure: FailureKind | undefined, durationMs: number): void {
     const s = this.st(member);
     s.calls++;
+    s.errorEwma = (s.errorEwma ?? 0) * 0.8 + (failure === undefined ? 0 : 0.2);
     if (failure === undefined) {
       s.failures = 0;
       s.latency = s.latency === undefined ? durationMs : s.latency * 0.8 + durationMs * 0.2;
@@ -203,6 +239,7 @@ export class LoadBalancer {
   snapshot(): Array<{ server: string; strategy: string; failoverOn: FailureKind[]; members: MemberSnapshot[] }> {
     return this.groups().map((g) => {
       const set = this.settings(g);
+      const scores = set.strategy === 'smart' ? this.scores(g) : undefined;
       return {
         server: g,
         strategy: set.strategy,
@@ -218,6 +255,7 @@ export class LoadBalancer {
             ...(s.latency !== undefined ? { latencyMs: Math.round(s.latency) } : {}),
             calls: s.calls,
             errors: s.errors,
+            ...(scores ? { score: scores.get(m) } : {}),
           };
         }),
       };

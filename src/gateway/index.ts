@@ -37,6 +37,7 @@ import { createStateStore, type StateStore } from '../state/index.js';
 import { createTracer, NOOP_TRACER, type Tracer } from '../observability/tracing.js';
 import { ToolInvoker } from './invoker.js';
 import { LoadBalancer, expandReplicas } from './balancer.js';
+import { SmartRouter } from './routing.js';
 import { ToolCache } from './cache.js';
 import { ReplayRecorder } from './replay.js';
 import { UsageMeter } from './usage.js';
@@ -164,6 +165,7 @@ export class Gateway {
       recorder: new ReplayRecorder(() => this.config.replay),
       usage: new UsageMeter(() => this.config.quotas),
       tenantsOf: (clientId) => (this.config.tenants?.length ? membershipsOf(this.config.tenants, clientId).map((m) => m.tenant) : []),
+      router: new SmartRouter(() => this.config.routing, { isConnected: (id) => this.proxy.isConnected(id) }),
       balancer: new LoadBalancer({
         servers: () => this.registry.getAllServers(),
         isConnected: (id) => this.proxy.isConnected(id),
@@ -552,6 +554,7 @@ export class Gateway {
         tenants: next.tenants,
         catalog: next.catalog,
         quotas: next.quotas,
+        routing: next.routing,
         // openai.path is fixed at start; other bridge settings hot reload
         openai: next.openai ? { ...next.openai, path: this.config.openai?.path } : next.openai,
         a2a: next.a2a,

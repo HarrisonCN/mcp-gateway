@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '3.3.0';
+  const VERSION = '3.4.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -276,6 +276,24 @@
       { name: 'audit-tags', apiVersion: 2, kind: 'module', hooks: ['onToolCall', 'onResponse'] },
       { name: 'pii-guard', apiVersion: 2, kind: 'wasm', hooks: ['onToolCall', 'onResponse'], isolation: 'tenant', sandboxes: demoTenants.map((t, i) => ({ key: 'tenant:' + t.id, calls: 120 + i * 37 + Math.round((Date.now() - started) / 4000), alive: true })) },
     ] });
+    // 3.4: smart routing — a canary split and a smart-scored replica group.
+    if (p === '/routing') {
+      const t = Math.round((Date.now() - started) / 1000);
+      return json({
+        splits: [{ name: 'search-canary', server: 'search', tools: ['brave_*'], sticky: 'client', variants: [
+          { server: 'search', label: 'stable', weight: 90, effectiveWeight: 90, calls: 900 + t * 3, errors: 31 + Math.floor(t / 20), errorRate: 0.034, latencyMs: 412 },
+          { server: 'search-v2', label: 'canary', weight: 10, effectiveWeight: 10, calls: 100 + Math.floor(t / 3), errors: 2, errorRate: 0.02, latencyMs: 288 },
+        ] }],
+        groups: [{ server: 'postgres', strategy: 'smart', failoverOn: ['not-connected', 'timeout'], members: [
+          { id: 'postgres', weight: 1, connected: true, healthy: true, latencyMs: 61, calls: 1200 + t, errors: 4, score: 0.71 },
+          { id: 'postgres~1', weight: 1, connected: true, healthy: true, latencyMs: 44, calls: 1630 + t * 2, errors: 2, score: 0.52 },
+        ] }],
+      });
+    }
+    if ((m = p.match(/^\/routing\/splits\/([^/]+)\/reset$/)) && method === 'POST') {
+      if (decodeURIComponent(m[1]) !== 'search-canary') return json({ error: 'Not Found', message: `No traffic split "${m[1]}"` }, 404);
+      return json({ ok: true, split: { name: 'search-canary', server: 'search', sticky: 'client', variants: [{ server: 'search', label: 'stable', weight: 90, effectiveWeight: 90, calls: 0, errors: 0, errorRate: 0 }, { server: 'search-v2', label: 'canary', weight: 10, effectiveWeight: 10, calls: 0, errors: 0, errorRate: 0 }] } });
+    }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     if (p === '/admin/deprecations') return json({ version: VERSION, deprecations: [] });
     if (p === '/tenants') return json({ clientId: 'key:demo', operator: true, tenants: demoTenants });

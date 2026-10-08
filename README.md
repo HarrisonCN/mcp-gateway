@@ -581,6 +581,16 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v3.4
+
+| Feature | Description |
+|---------|-------------|
+| **Canary / A-B splits** | `routing.splits`: weighted, sticky-per-client traffic shares between servers |
+| **Auto rollback** | Variant guards on error rate / latency; reset via API |
+| **Smart balancing** | `strategy: smart` scores replicas by latency, error rate and cost |
+
+Details: [CHANGELOG](CHANGELOG.md) · [Configuration](docs/configuration.md#smart-routing-34).
+
 ## What's New in v3.3
 
 | Feature | Description |

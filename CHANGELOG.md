@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-10-08
+
+### Added
+- **Traffic splits (canary / A-B).** `routing.splits` sends a weighted share of the calls for a server (optionally
+  only matching `tools`) to other servers that expose the same tools. Sticky per client by default (stable hash),
+  or random per call (`sticky: none`). Disconnected variants get no traffic.
+- **Automatic canary rollback:** a variant `guard` (`maxErrorRate`, `maxLatencyMs`, `minCalls`) rolls the variant
+  back to weight 0 when it trips; `POST /api/v1/routing/splits/:name/reset` re-enables it.
+- **`loadBalancing.strategy: smart`:** replicas ordered by a weighted score of EWMA latency, EWMA error rate and a
+  per-member `cost` (`loadBalancing.score`).
+- `GET /api/v1/routing`; spans carry `mcp.route.split` / `mcp.route.variant`. `SmartRouter` exported. The GitHub
+  Pages demo serves the new endpoints.
+
 ## [3.3.0] - 2026-10-08
 
 ### Added

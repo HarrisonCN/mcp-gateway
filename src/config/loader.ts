@@ -82,6 +82,7 @@ const McpServerSchema = z.object({
           env: z.record(z.string()).optional(),
           headers: z.record(z.string()).optional(),
           weight: z.number().positive().optional(),
+          cost: z.number().min(0).optional(),
           enabled: z.boolean().optional(),
         })
         .strict(),
@@ -89,7 +90,11 @@ const McpServerSchema = z.object({
     .optional(),
   loadBalancing: z
     .object({
-      strategy: z.enum(['round-robin', 'random', 'weighted', 'least-latency', 'failover']).optional(),
+      strategy: z.enum(['round-robin', 'random', 'weighted', 'least-latency', 'failover', 'smart']).optional(),
+      score: z
+        .object({ latency: z.number().min(0).optional(), errorRate: z.number().min(0).optional(), cost: z.number().min(0).optional() })
+        .strict()
+        .optional(),
       failoverOn: z.array(z.enum(['not-connected', 'timeout', 'error'])).optional(),
       retries: z.number().int().min(0).optional(),
       ejectAfter: z.number().int().min(0).optional(),
@@ -98,6 +103,7 @@ const McpServerSchema = z.object({
     .strict()
     .optional(),
   weight: z.number().positive().optional(),
+  cost: z.number().min(0).optional(),
 }).superRefine((s, ctx) => {
   if (s.id.includes('~')) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['id'], message: '"~" is reserved for replica ids' });
@@ -536,6 +542,56 @@ const GatewayConfigSchema = z.object({
       if (bad) ctx.addIssue({ code: z.ZodIssueCode.custom, message: bad });
     })
     .optional(),
+  routing: z
+    .object({
+      splits: z
+        .array(
+          z
+            .object({
+              name: z.string().min(1),
+              server: z.string().min(1),
+              tools: z.array(z.string().min(1)).optional(),
+              sticky: z.enum(['client', 'none']).optional(),
+              enabled: z.boolean().optional(),
+              variants: z
+                .array(
+                  z
+                    .object({
+                      server: z.string().min(1),
+                      weight: z.number().min(0),
+                      label: z.string().min(1).optional(),
+                      guard: z
+                        .object({
+                          maxErrorRate: z.number().min(0).max(1).optional(),
+                          maxLatencyMs: z.number().positive().optional(),
+                          minCalls: z.number().int().positive().optional(),
+                        })
+                        .strict()
+                        .optional(),
+                    })
+                    .strict(),
+                )
+                .min(1),
+            })
+            .strict(),
+        )
+        .optional(),
+    })
+    .strict()
+    .superRefine((r, ctx) => {
+      const names = new Set<string>();
+      (r.splits ?? []).forEach((sp, i) => {
+        if (names.has(sp.name)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['splits', i, 'name'], message: `duplicate split "${sp.name}"` });
+        names.add(sp.name);
+        if (!sp.variants.some((v) => v.weight > 0)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['splits', i, 'variants'], message: 'at least one variant needs a weight > 0' });
+        const seen = new Set<string>();
+        sp.variants.forEach((v, j) => {
+          if (seen.has(v.server)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['splits', i, 'variants', j, 'server'], message: `duplicate variant server "${v.server}"` });
+          seen.add(v.server);
+        });
+      });
+    })
+    .optional(),
   replay: z
     .object({
       enabled: z.boolean().optional(),
@@ -666,6 +722,13 @@ const GatewayConfigSchema = z.object({
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['servers', i, 'id'], message: `duplicate server id "${s.id}"` });
     }
     seen.add(s.id);
+  });
+  (c.routing?.splits ?? []).forEach((sp, i) => {
+    for (const [j, id] of [sp.server, ...sp.variants.map((v) => v.server)].entries()) {
+      if (!seen.has(id)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['routing', 'splits', i, ...(j === 0 ? ['server'] : ['variants', j - 1, 'server'])], message: `unknown server "${id}"` });
+      }
+    }
   });
 });
 
