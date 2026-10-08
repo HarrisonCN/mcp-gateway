@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Adaptive routing 2.0 (5.8). */
+  adaptive?: import('../features/adaptive.js').AdaptiveConfig;
   /** Data loss prevention (5.6). */
   dlp?: import('../features/dlp.js').DlpConfig;
   /** Agent session recordings (5.5). */

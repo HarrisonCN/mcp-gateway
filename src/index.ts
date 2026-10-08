@@ -141,6 +141,8 @@ export { registerCallHook, callHooks } from './gateway/hooks.js';
 export type { CallHook, HookCall } from './gateway/hooks.js';
 export { DlpSchema, applyDlp, maskValue, policyFor as dlpPolicyFor, DEFAULT_LEVELS as DLP_DEFAULT_LEVELS, ERR_DLP_BLOCKED } from './features/dlp.js';
 export type { DlpConfig, DlpFinding } from './features/dlp.js';
+export { AdaptiveSchema, AdaptiveRouter, adaptiveRouter, sampleBeta } from './features/adaptive.js';
+export type { AdaptiveConfig, CandidateStats } from './features/adaptive.js';
 export type {
   GatewayConfig,
   McpServerConfig,

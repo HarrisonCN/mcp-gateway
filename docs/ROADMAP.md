@@ -10,6 +10,6 @@ release. (The 4.x → 5.0 plan is complete; see the [CHANGELOG](../CHANGELOG.md)
 - ✅ v5.5：智能体会话录制、回放与回归评测
 - ✅ v5.6：数据防泄漏（DLP）：PII 分类与按租户脱敏策略
 - ✅ v5.7：SDK 发布到 PyPI / Go 模块标签 / Swift Package Index，补齐流式结果与 MCP 会话
-- v5.8：自适应路由 2.0：按成本与质量选择上游与模型
+- ✅ v5.8：自适应路由 2.0：按成本与质量选择上游与模型
 - v5.9：v6 弃用警告与 `migrate --to 6`
 - v6.0：（破坏性）schema v6、移除插件 API v3、Node 22+ 基线、迁移指南

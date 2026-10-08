@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.8.0] - 2026-10-08
+
+### Added
+- **Adaptive routing 2.0** — `adaptive.pools[]` of interchangeable candidates (server + tool + fixed `args`, e.g. a
+  model, + `costPerCall`) with objective weights for quality, cost and latency and an optional `maxCostPerCall`.
+  Latency / errors are learned from live traffic; quality from `POST /admin/adaptive/feedback`. Picks use Thompson
+  sampling over a Beta posterior. `GET /admin/adaptive`, `POST /admin/adaptive/pick`, `POST /admin/adaptive/call`.
+  See [docs/guides/adaptive-routing.md](docs/guides/adaptive-routing.md).
+- Library: `AdaptiveRouter`, `adaptiveRouter`, `sampleBeta`, `AdaptiveSchema`.
+- Pages demo: adaptive pools and picks.
+
 ## [5.7.0] - 2026-10-08
 
 ### Added

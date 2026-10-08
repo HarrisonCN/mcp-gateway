@@ -302,6 +302,13 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(c.value).toMatch(/•+1111$/);
     expect(c.findings[0].level).toBe('restricted');
   });
+  it('simulates adaptive routing pools and picks (5.8)', async () => {
+    const f = demoFetch();
+    const st = (await (await f('/api/v1/admin/adaptive')).json()) as any;
+    expect(st.pools[0].candidates.map((c: any) => c.id)).toEqual(['small', 'large']);
+    const pk = (await (await f('/api/v1/admin/adaptive/pick', { method: 'POST', body: '{"pool":"summarize"}' })).json()) as any;
+    expect(pk.candidate).toBe('small');
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

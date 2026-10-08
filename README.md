@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v5.8
+
+| Feature | Description |
+|---------|-------------|
+| **Adaptive pools** | Interchangeable servers / models scored by quality, cost and latency |
+| **Learns online** | Latency and errors from traffic, quality from feedback; Thompson-sampling exploration |
+
 ## What's New in v5.7
 
 | Feature | Description |

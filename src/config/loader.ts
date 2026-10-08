@@ -17,6 +17,7 @@ import { PluginTrustSchema } from '../plugins/trust.js';
 import { MarketplaceSchema } from '../features/marketplace.js';
 import { SessionsSchema } from '../features/sessions.js';
 import { DlpSchema } from '../features/dlp.js';
+import { AdaptiveSchema } from '../features/adaptive.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
@@ -484,6 +485,7 @@ const GatewayConfigSchema = z.object({
   marketplace: MarketplaceSchema.optional(),
   sessions: SessionsSchema.optional(),
   dlp: DlpSchema.optional(),
+  adaptive: AdaptiveSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   dashboard: z.object({ enabled: z.boolean().default(true) }).optional(),

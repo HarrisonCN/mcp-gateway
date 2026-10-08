@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '5.7.0';
+  const VERSION = '5.8.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -45,6 +45,7 @@
     { id: "marketplace", since: "5.4.0", summary: "Signed plugin marketplace: browse indexes, verified install" },
     { id: "sessions", since: "5.5.0", summary: "Agent session recording, replay and regression evals" },
     { id: "dlp", since: "5.6.0", summary: "Data loss prevention: sensitivity levels, per-tenant clearance and masking" },
+    { id: "adaptive", since: "5.8.0", summary: "Adaptive routing 2.0: pick upstream / model by quality, cost and latency (Thompson sampling)" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -547,6 +548,16 @@
       const out = v.replace(/\b(?:\d[ -]?){12,18}\d\b/g, (m) => { findings.push({ category: 'credit-card', level: 'restricted', path: '', action: body.tenant === 'finance' ? 'allow' : 'mask' }); return body.tenant === 'finance' ? m : '•'.repeat(m.length - 4) + m.slice(-4); });
       return json({ policy: body.tenant === 'finance' ? { clearance: 'restricted', strategy: 'mask' } : { clearance: 'internal', strategy: 'mask' }, blocked: false, findings, value: out });
     }
+    // 5.8: adaptive routing 2.0.
+    if (p === '/admin/adaptive') return json({ pools: [{ id: 'summarize', objective: { quality: 0.6, cost: 0.3, latency: 0.1 }, maxCostPerCall: 0.02, candidates: [
+      { id: 'small', server: 'llm', tool: 'complete', costPerCall: 0.001, calls: 1840, errorRate: 0.004, latencyMs: 420, quality: 0.71, feedback: 212, picks: 1302 },
+      { id: 'large', server: 'llm', tool: 'complete', costPerCall: 0.015, calls: 610, errorRate: 0.002, latencyMs: 1350, quality: 0.93, feedback: 188, picks: 538 },
+    ] }] });
+    if (p === '/admin/adaptive/pick' && method === 'POST') return json({ pool: 'summarize', candidate: 'small', server: 'llm', tool: 'complete', args: { model: 'gpt-mini' }, scores: [
+      { id: 'small', quality: 0.74, normCost: 0.07, normLatency: 0.31, errorRate: 0.004, score: 0.39 },
+      { id: 'large', quality: 0.9, normCost: 1, normLatency: 1, errorRate: 0.002, score: 0.14 },
+    ] });
+    if (p === '/admin/adaptive/feedback' && method === 'POST') return json({ pool: 'summarize', candidate: 'small', quality: 0.71 });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).
     if (p === '/admin/deprecations') return json({ runtime: [
