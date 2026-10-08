@@ -58,19 +58,14 @@ describe('LoadBalancer', () => {
     expect(lb(servers, { down: ['svc', 'svc~1', 'svc~2'] }).order('svc')).toEqual(['svc', 'svc~1', 'svc~2']);
   });
 
-  it('failover, weighted, random and least-latency strategies', () => {
-    const mk = (strategy: 'failover' | 'weighted' | 'random' | 'least-latency', o = {}) => lb(expandReplicas([base({ loadBalancing: { strategy } })]), o);
+  it('failover, weighted and random strategies (least-latency removed in 4.0)', () => {
+    const mk = (strategy: 'failover' | 'weighted' | 'random', o = {}) => lb(expandReplicas([base({ loadBalancing: { strategy } })]), o);
     expect(mk('failover', { degraded: ['svc'] }).order('svc')).toEqual(['svc~1', 'svc~2', 'svc']);
     // weights 1,1,3 → cumulative 0.2, 0.4, 1.0
     expect(mk('weighted', { random: () => 0.1 }).order('svc')[0]).toBe('svc');
     expect(mk('weighted', { random: () => 0.3 }).order('svc')[0]).toBe('svc~1');
     expect(mk('weighted', { random: () => 0.9 }).order('svc')[0]).toBe('svc~2');
     expect(mk('random', { random: () => 0 }).order('svc')).toHaveLength(3);
-    const ll = mk('least-latency');
-    ll.report('svc', 'svc', undefined, 50);
-    ll.report('svc~1', 'svc', undefined, 5);
-    ll.report('svc~2', 'svc', undefined, 20);
-    expect(ll.order('svc')).toEqual(['svc~1', 'svc~2', 'svc']);
   });
 
   it('ejects a member after consecutive failures and brings it back', () => {

@@ -15,7 +15,7 @@ plugins:
 // plugins/tenant-header.mjs
 export default (ctx) => ({
   name: 'tenant-header',
-  apiVersion: 2,
+  apiVersion: 3,
   onRequest(req, res, next, hook) {                 // Express middleware; hook = { plugin, logger, … }
     if (!req.headers[ctx.options.header]) return res.status(400).json({ error: 'missing tenant' });
     next();
@@ -60,17 +60,35 @@ upstream call ─▶ onToolCall ▶ policy rules / approval ▶ upstream server 
 | `ctx.options` | the entry's `options` |
 | `ctx.logger` | the gateway logger |
 | `ctx.gatewayVersion` | e.g. `3.0.0` |
-| `ctx.apiVersion` | plugin API implemented by the gateway (`2`) |
+| `ctx.apiVersion` | plugin API implemented by the gateway (`3`) |
 
-## Plugin API v2 (3.0)
+## Plugin API v3 (4.0)
+
+- Declare `apiVersion: 3`. The hook context gains:
+  - `ctx.secrets.get(name)` / `ctx.secrets.names()` — secrets granted to the plugin in config. Only the names listed
+    under the plugin's `secrets:` are readable; values come from the gateway's secret providers (Vault, KMS, env, file)
+    and never appear in the config:
+    ```yaml
+    plugins:
+      - module: ./plugins/notify.mjs
+        secrets:
+          SLACK_TOKEN: secret://vault/mcp/slack#token
+    ```
+  - `ctx.tenant` — `{ id, name?, role? }` of the caller's tenant on call hooks (`onToolCall`, `onResponse`, `onError`)
+    when `tenants:` are configured.
+- New `onConfigChange(change, ctx)` — runs after every applied hot reload with `{ applied: string[], servers: string[], at }`
+  (errors are logged, never fail the reload).
+- Plugin API v1 (no `apiVersion`) is **refused** since 4.0. Plugin API v2 still loads with a deprecation warning and is
+  removed in 5.0 — v2 plugins only need `apiVersion: 3` (v3 adds fields, changes nothing).
+- Embedders granting secrets to plugins passed in code: `grantSecrets(plugin, { NAME: 'secret://…' })`.
+
+## Plugin API v2 (3.0, deprecated in 4.0)
 
 - Declare `apiVersion: 2`. Every hook receives a hook context as its **last** argument:
   `{ plugin, logger, gatewayVersion, apiVersion }`.
 - New `onError(call, error, hook)`: runs for every failed call after `onResponse`; observe-only — exceptions are logged
   and never fail the call.
-- Plugins without `apiVersion` (v1) still load but log a deprecation warning (listed by
-  `GET /api/v1/admin/deprecations`); v1 support is removed in 4.0. v1 hooks work unchanged on v2 — the extra argument
-  is ignored — so migrating is adding `apiVersion: 2`.
+- Plugins without `apiVersion` (v1) were deprecated in 3.x and are refused since 4.0.
 - A plugin declaring a higher `apiVersion` than the gateway implements is refused at load.
 
 TypeScript types: `import type { GatewayPlugin, PluginFactory } from '@winstonsayno/mcp-gateway'`.

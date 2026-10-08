@@ -13,7 +13,7 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
-import { configDeprecations, normalizeV4Preview, removedConfigKeys } from '../utils/deprecations.js';
+import { configDeprecations, normalizeApiKeyScopes, removedConfigKeys } from '../utils/deprecations.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
 import { ASYMMETRIC_ALGORITHMS, HMAC_ALGORITHMS } from '../auth/middleware.js';
@@ -90,7 +90,7 @@ const McpServerSchema = z.object({
     .optional(),
   loadBalancing: z
     .object({
-      strategy: z.enum(['round-robin', 'random', 'weighted', 'least-latency', 'failover', 'smart']).optional(),
+      strategy: z.enum(['round-robin', 'random', 'weighted', 'failover', 'smart']).optional(),
       score: z
         .object({ latency: z.number().min(0).optional(), errorRate: z.number().min(0).optional(), cost: z.number().min(0).optional() })
         .strict()
@@ -439,7 +439,7 @@ const GatewayConfigSchema = z.object({
     })
     .optional(),
   servers: z.array(McpServerSchema).default([]),
-  version: z.union([z.literal(3), z.literal(4)]).optional(),
+  version: z.literal(4).optional(),
   cors: z.object({ origins: z.array(z.string()).optional() }).strict().optional(),
   health: z.object({ intervalMs: z.number().int().min(1000).optional() }).strict().optional(),
   admin: z.object({ configApi: z.boolean().optional() }).strict().optional(),
@@ -788,6 +788,7 @@ const GatewayConfigSchema = z.object({
           name: z.string().min(1).optional(),
           enabled: z.boolean().optional(),
           options: z.record(z.unknown()).optional(),
+          secrets: z.record(z.string().regex(/^secret:\/\/[A-Za-z0-9_-]+\/\S+$/, 'must be a secret://provider/path reference')).optional(),
           isolation: z.enum(['tenant', 'client', 'shared']).optional(),
           limits: z
             .object({
@@ -895,7 +896,7 @@ export function resolveConfigPath(configPath?: string): string | undefined {
 /** Validate (and apply defaults to) a raw config object; throws a readable error listing every issue. */
 export function validateConfig(raw: unknown): GatewayConfig {
   const removed = removedConfigKeys(raw);
-  const v4 = normalizeV4Preview(raw);
+  const v4 = normalizeApiKeyScopes(raw);
   removed.push(...v4.errors);
   if (removed.length > 0) throw new Error(`Invalid configuration:\n${removed.map((m) => `  - ${m}`).join('\n')}`);
   const result = GatewayConfigSchema.safeParse(v4.raw);
@@ -1016,6 +1017,7 @@ export function generateDefaultConfig(): string {
   return `# mcp-gateway configuration
 # Documentation: https://github.com/HarrisonCN/mcp-gateway/docs
 
+version: 4
 port: 4000
 host: 0.0.0.0
 logLevel: info
@@ -1027,9 +1029,10 @@ logLevel: info
 #     - your-secret-key-here          # full access
 #     - key: \${AURA_GATEWAY_KEY}      # scoped key; \${VAR} is expanded (patterns are globs)
 #       name: aura
-#       servers: ["github", "fs-*"]
-#       tools: ["read_*", "github/create_issue"]
-#       rateLimit: { limit: 30, windowSeconds: 60 }
+#       scope:
+#         servers: ["github", "fs-*"]
+#         tools: ["read_*", "github/create_issue"]
+#         rateLimit: { limit: 30, windowSeconds: 60 }
 #     - sha256:<64-hex-digest>        # a key stored as its digest: run mcp-gateway hash-key
 #     - key: \${CI_GATEWAY_KEY}
 #       name: ci

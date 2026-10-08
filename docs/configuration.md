@@ -80,11 +80,12 @@ auth:
     - "sha256:2c26b46b…"       # the SHA-256 digest of a key (mcp-gateway hash-key) — recommended
     - key: "${AURA_KEY}"       # object: optionally restricted
       name: aura               # client id "key:aura" (unique; [A-Za-z0-9._-]{1,64})
-      servers: ["github", "fs-*"]
-      tools: ["read_*", "github/create_issue"]
-      rateLimit: { limit: 30, windowSeconds: 60 }
       expiresAt: "2027-01-01"  # rejected (401) from this moment on (ISO 8601 date / date-time)
       disabled: false          # true: rejected without removing the entry
+      scope:
+        servers: ["github", "fs-*"]
+        tools: ["read_*", "github/create_issue"]
+        rateLimit: { limit: 30, windowSeconds: 60 }
   # jwtSecret: "…"             # strategy jwt: HS256/384/512, ≥ 32 characters recommended
   # jwt: { … }                 # see "JWT" below
   protect:
@@ -279,7 +280,7 @@ servers:
       - url: https://mcp-c.example.com/mcp
         weight: 2
     loadBalancing:
-      strategy: round-robin        # round-robin (default) | random | weighted | least-latency | failover
+      strategy: round-robin        # round-robin (default) | random | weighted | failover | smart
       failoverOn: [not-connected]  # also: timeout, error (may run a non-idempotent tool twice)
       retries: 2                   # extra attempts per call (default: members - 1)
       ejectAfter: 3                # consecutive failed calls before a member is skipped (0 = never)

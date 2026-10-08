@@ -1468,7 +1468,7 @@ export function createApiRouter(
     res.json({
       plugins: list.map((p) => {
         const w = p as unknown as { stats?: () => Array<{ key: string; calls: number; alive: boolean }>; isolation?: string };
-        const hooks = (['onRequest', 'onToolCall', 'onResponse', 'onError'] as const).filter((h) => typeof (p as unknown as Record<string, unknown>)[h] === 'function');
+        const hooks = (['onRequest', 'onToolCall', 'onResponse', 'onError', 'onConfigChange'] as const).filter((h) => typeof (p as unknown as Record<string, unknown>)[h] === 'function');
         return {
           name: p.name,
           apiVersion: p.apiVersion ?? 1,

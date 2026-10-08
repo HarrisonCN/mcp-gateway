@@ -33,7 +33,18 @@ export interface AdminDeps {
 /** Strip loader-set fields so a running config can be re-validated. */
 export function portableConfig(cfg: GatewayConfig): Record<string, unknown> {
   const { configDir: _d, deprecations: _x, ...rest } = cfg;
-  return JSON.parse(JSON.stringify(rest)) as Record<string, unknown>;
+  const out = JSON.parse(JSON.stringify(rest)) as Record<string, unknown>;
+  // 4.0: API-key scope is nested in the schema (internals keep it flat).
+  const auth = out.auth as { apiKeys?: unknown[] } | undefined;
+  if (auth?.apiKeys) {
+    auth.apiKeys = auth.apiKeys.map((k) => {
+      if (!k || typeof k !== 'object') return k;
+      const { servers, tools, rateLimit, ...key } = k as Record<string, unknown>;
+      const scope = Object.fromEntries(Object.entries({ servers, tools, rateLimit }).filter(([, v]) => v !== undefined));
+      return Object.keys(scope).length ? { ...key, scope } : key;
+    });
+  }
+  return out;
 }
 
 /** The running config with schema defaults applied (embedders may pass unvalidated objects), for diffs. */

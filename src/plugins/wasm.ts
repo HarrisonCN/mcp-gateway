@@ -175,7 +175,7 @@ const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 
 /** A plugin backed by a WASM module, one sandbox per isolation key. */
 export class WasmPlugin implements GatewayPlugin {
   readonly name: string;
-  readonly apiVersion = 2;
+  readonly apiVersion = 3;
   private readonly sandboxes = new Map<string, WasmSandbox>();
   private readonly limits: Required<WasmPluginLimits>;
   readonly isolation: WasmIsolation;

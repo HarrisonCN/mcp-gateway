@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-10-08
+
+### ⚠ Breaking
+- **Config schema v4 is required.** `version: 3`, `servers` / `tools` / `rateLimit` directly on an API key, and
+  `loadBalancing.strategy: least-latency` are validation errors naming the replacement — run `mcp-gateway migrate`
+  (available since 3.9). `version` may be `4` or omitted.
+- **Plugin API v1 is refused** (plugins without `apiVersion`). Declare `apiVersion: 3`.
+- `least-latency` removed from the balancer and the `LoadBalancingConfig` type (use `smart` with a latency-only score).
+
+### Added
+- **Plugin API v3**: `ctx.secrets.get(name)` for secrets granted in the plugin's new `secrets:` config
+  (`secret://` references, resolved by the secret providers), `ctx.tenant` (`{ id, name, role }`) on call hooks, and
+  the `onConfigChange(change, ctx)` hook after every applied hot reload. `grantSecrets()` for plugins passed in code.
+- The admin config API, `diff` / `apply` and the generated default config use schema v4 (nested `scope`).
+- Final [Migrating to 4.0](docs/guides/migrating-to-v4.md) guide; new [docs/ROADMAP.md](docs/ROADMAP.md) (v4.1 → v5.0).
+
+### Deprecated (removed in 5.0)
+- Plugin API v2 (`apiVersion: 2`) — loads with a warning; declare `apiVersion: 3`.
+
+The REST / `/mcp` APIs and the JS / Kotlin clients are unchanged.
+
 ## [3.9.0] - 2026-10-08
 
 ### Added

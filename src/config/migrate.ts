@@ -85,7 +85,7 @@ function migrateDoc(doc: Document, changes: string[], notes: string[]): void {
 
   const plugins = doc.get('plugins');
   if (isSeq(plugins) && plugins.items.some((p) => isMap(p) && p.has('module'))) {
-    notes.push('JS plugins: make sure each declares `apiVersion: 2` (v1 is removed in 4.0; 4.0 adds plugin API v3, v2 keeps working with a warning).');
+    notes.push('JS plugins: declare `apiVersion: 3` (v1 is refused since 4.0; v2 still loads with a warning until 5.0).');
   }
 }
 

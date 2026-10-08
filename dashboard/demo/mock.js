@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '3.9.0';
+  const VERSION = '4.0.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -265,7 +265,7 @@
     if (p === '/cache') { demoCache.hits += Math.round(rnd(0, 4)); demoCache.misses += Math.round(rnd(0, 2)); demoCache.entries = Math.min(demoCache.maxEntries, demoCache.entries + Math.round(rnd(0, 2))); return json({ enabled: true, ...demoCache }); }
     if (p === '/load-balancing') {
       const up = isUp('search');
-      return json({ groups: [{ server: 'search', strategy: 'least-latency', failoverOn: ['timeout', 'connection'], members: [
+      return json({ groups: [{ server: 'search', strategy: 'smart', failoverOn: ['timeout', 'connection'], members: [
         { id: 'search', weight: 1, connected: up, healthy: up, latencyMs: health.get('search').latencyMs || 40, calls: records.filter((r) => r.serverId === 'search').length, errors: records.filter((r) => r.serverId === 'search' && !r.success).length },
         { id: 'search@2', weight: 2, connected: true, healthy: true, latencyMs: 31, calls: 58, errors: 1 },
         { id: 'search@3', weight: 1, connected: true, healthy: false, ejectedUntil: iso(Date.now() + 25000), latencyMs: 912, calls: 12, errors: 5 },
@@ -274,7 +274,7 @@
     // 3.3: plugins, one of them a WASM sandbox per tenant.
     if (p === '/plugins') return json({ plugins: [
       { name: 'audit-tags', apiVersion: 2, kind: 'module', hooks: ['onToolCall', 'onResponse'] },
-      { name: 'pii-guard', apiVersion: 2, kind: 'wasm', hooks: ['onToolCall', 'onResponse'], isolation: 'tenant', sandboxes: demoTenants.map((t, i) => ({ key: 'tenant:' + t.id, calls: 120 + i * 37 + Math.round((Date.now() - started) / 4000), alive: true })) },
+      { name: 'pii-guard', apiVersion: 3, kind: 'wasm', hooks: ['onToolCall', 'onResponse'], isolation: 'tenant', sandboxes: demoTenants.map((t, i) => ({ key: 'tenant:' + t.id, calls: 120 + i * 37 + Math.round((Date.now() - started) / 4000), alive: true })) },
     ] });
     // 3.4: smart routing — a canary split and a smart-scored replica group.
     if (p === '/routing') {
@@ -385,10 +385,9 @@
 
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).
-    if (p === '/admin/deprecations') return json({ runtime: [], config: [
-      { id: 'config-version-3', removedIn: '4.0.0', replacement: 'version: 4', message: 'config schema v3 (`version: 3`) is deprecated; 4.0 reads `version: 4` — run `mcp-gateway migrate`', source: 'config' },
-      { id: 'api-key-flat-scope', removedIn: '4.0.0', replacement: 'auth.apiKeys[].scope: { servers, tools, rateLimit }', message: '`servers` / `tools` / `rateLimit` directly on an API key are deprecated; nest them under `scope:` — run `mcp-gateway migrate`', detail: 'keys: ci', source: 'config' },
-    ] });
+    if (p === '/admin/deprecations') return json({ runtime: [
+      { id: 'plugin-api-v2', removedIn: '5.0.0', replacement: 'apiVersion: 3', message: 'plugin API v2 is deprecated; declare `apiVersion: 3` (adds ctx.secrets, ctx.tenant and onConfigChange)', detail: 'plugin "audit-tags"', source: 'runtime' },
+    ], config: [] });
     if (p === '/tenants') return json({ clientId: 'key:demo', operator: true, tenants: demoTenants });
     if ((m = p.match(/^\/tenants\/([^/]+)\/members$/)) && method === 'PUT') {
       const tn = demoTenants.find((x) => x.id === decodeURIComponent(m[1]));

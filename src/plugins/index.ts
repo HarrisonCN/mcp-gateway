@@ -17,7 +17,12 @@
  *    exceptions are logged, never fail the call.
  *
  * Plugin API v2 (3.0): every hook receives a {@link PluginHookContext} as its last argument and plugins declare
- * `apiVersion: 2`. Plugins without `apiVersion` (v1) still load with a deprecation warning; v1 is removed in 4.0.
+ * `apiVersion: 2`. Plugin API v1 (no `apiVersion`) was removed in 4.0: such plugins are refused at load.
+ *
+ * Plugin API v3 (4.0): the hook context also carries `secrets` (resolves the plugin's own `secrets:` mapping from
+ * the config through the gateway's secret providers) and `tenant` (id / name / role of the caller's tenant), and the
+ * optional `onConfigChange(change, ctx)` hook runs after every applied hot reload. v2 plugins still load, with a
+ * deprecation warning; v2 is removed in 5.0.
  *
  * Hooks run in configuration order; the first refusal / short-circuit wins.
  * A hook that throws fails the call (`-32006`) — plugins fail closed.
@@ -34,10 +39,10 @@ import { logger, type Logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
 
 /** Version of the plugin contract implemented by this gateway. */
-export const PLUGIN_API_VERSION = 2;
+export const PLUGIN_API_VERSION = 3;
 
-/** Oldest plugin contract still loaded (with a deprecation warning). */
-export const PLUGIN_API_MIN_VERSION = 1;
+/** Oldest plugin contract still loaded (v2: with a deprecation warning until 5.0). */
+export const PLUGIN_API_MIN_VERSION = 2;
 
 /** Call refused (or failed) by a plugin hook. */
 export const ERR_PLUGIN_REJECTED = -32006;
@@ -72,6 +77,40 @@ export interface PluginHookContext {
   logger: Logger;
   gatewayVersion: string;
   apiVersion: number;
+  /** API v3: the plugin's secrets (names from its `secrets:` config mapping). */
+  secrets?: PluginSecrets;
+  /** API v3: the caller's tenant, for call hooks when tenants are configured. */
+  tenant?: PluginTenant;
+}
+
+/** API v3: access to the secret references a plugin was granted in config (`plugins[].secrets: { NAME: secret://… }`). */
+export interface PluginSecrets {
+  /** Resolve a granted secret by its name. Throws for names the plugin was not granted. */
+  get(name: string): Promise<string>;
+  /** Names granted to this plugin. */
+  names(): string[];
+}
+
+/** API v3: tenant of the client making the call. */
+export interface PluginTenant {
+  id: string;
+  name?: string;
+  role?: string;
+}
+
+/** API v3: passed to `onConfigChange` after a hot reload was applied. */
+export interface PluginConfigChange {
+  /** Areas that changed (`servers`, `auth`, `policy`, `plugins`, …). */
+  applied: string[];
+  /** Server ids after the reload. */
+  servers: string[];
+  at: string;
+}
+
+/** What the host needs from the gateway for API v3 contexts. */
+export interface PluginEnv {
+  resolveSecret?: (ref: string, plugin: string) => Promise<string>;
+  tenantOf?: (clientId: string | undefined) => PluginTenant | undefined;
 }
 
 export interface PluginCallError {
@@ -81,13 +120,15 @@ export interface PluginCallError {
 
 export interface GatewayPlugin {
   name: string;
-  /** Plugin contract version the plugin was written for (default 1 — deprecated; declare 2). */
+  /** Plugin contract version the plugin was written for: 3 (current) or 2 (deprecated, removed in 5.0). Required since 4.0. */
   apiVersion?: number;
   onRequest?: (req: Request, res: Response, next: NextFunction, ctx: PluginHookContext) => void | Promise<void>;
   onToolCall?: (call: PluginCall, ctx: PluginHookContext) => ToolCallOutcome | Promise<ToolCallOutcome>;
   onResponse?: (call: PluginCall, result: ProxyResponse, ctx: PluginHookContext) => ProxyResponse | void | Promise<ProxyResponse | void>;
   /** API v2: observe failed calls (after `onResponse`). Never changes the result. */
   onError?: (call: PluginCall, error: PluginCallError, ctx: PluginHookContext) => void | Promise<void>;
+  /** API v3: runs after every applied hot reload (errors are logged, never fail the reload). */
+  onConfigChange?: (change: PluginConfigChange, ctx: PluginHookContext) => void | Promise<void>;
   /** Called on gateway stop and when the plugin is unloaded by a config reload. */
   close?: () => void | Promise<void>;
 }
@@ -114,8 +155,11 @@ async function instantiate(src: unknown, ctx: PluginContext, label: string): Pro
   if (v > PLUGIN_API_VERSION) {
     throw new Error(`Plugin "${value.name}" needs plugin API v${v}; this gateway implements v${PLUGIN_API_VERSION}`);
   }
+  if (v === 1) {
+    throw new Error(`Plugin "${value.name}" uses plugin API v1, which was removed in 4.0 — declare \`apiVersion: 3\` (hooks receive a context argument; see docs/guides/migrating-to-v4.md)`);
+  }
   if (v < PLUGIN_API_MIN_VERSION) throw new Error(`Plugin "${value.name}" declares unsupported plugin API v${v}`);
-  if (v < 2) deprecate(DEPRECATIONS.pluginApiV1, `plugin "${value.name}"`);
+  if (v === 2) deprecate(DEPRECATIONS.pluginApiV2, `plugin "${value.name}"`);
   return value;
 }
 
@@ -132,7 +176,9 @@ export async function loadPlugin(cfg: PluginConfig, baseDir = process.cwd()): Pr
   const mod = (await import(target)) as Record<string, unknown>;
   const exported = mod.default ?? mod.plugin ?? mod;
   const plugin = await instantiate(exported, contextFor(cfg), spec);
-  return cfg.name ? { ...plugin, name: cfg.name, close: plugin.close?.bind(plugin) } : plugin;
+  const out = cfg.name ? { ...plugin, name: cfg.name, close: plugin.close?.bind(plugin) } : plugin;
+  if (cfg.secrets) grants.set(out, { ...cfg.secrets });
+  return out;
 }
 
 function contextFor(cfg: Partial<PluginConfig>): PluginContext {
@@ -149,19 +195,57 @@ export class PluginError extends Error {
   }
 }
 
-const hookCtx = new WeakMap<GatewayPlugin, PluginHookContext>();
-function ctxOf(p: GatewayPlugin): PluginHookContext {
-  let c = hookCtx.get(p);
-  if (!c) {
-    c = { plugin: p.name, logger, gatewayVersion: VERSION, apiVersion: PLUGIN_API_VERSION };
-    hookCtx.set(p, c);
-  }
-  return c;
+/** Secret grants per plugin instance (`plugins[].secrets`). */
+const grants = new WeakMap<GatewayPlugin, Record<string, string>>();
+
+/** Grant secrets to a plugin supplied in code (API v3). */
+export function grantSecrets(p: GatewayPlugin, secrets: Record<string, string>): GatewayPlugin {
+  grants.set(p, { ...secrets });
+  return p;
 }
 
 /** The ordered set of active plugins and the hook runners. */
 export class PluginHost {
   private plugins: GatewayPlugin[] = [];
+  private readonly hookCtx = new WeakMap<GatewayPlugin, PluginHookContext>();
+
+  constructor(private readonly env: PluginEnv = {}) {}
+
+  private ctxOf(p: GatewayPlugin, call?: PluginCall): PluginHookContext {
+    let c = this.hookCtx.get(p);
+    if (!c) {
+      c = { plugin: p.name, logger, gatewayVersion: VERSION, apiVersion: PLUGIN_API_VERSION };
+      if ((p.apiVersion ?? 1) >= 3) {
+        const granted = grants.get(p) ?? {};
+        const resolve = this.env.resolveSecret;
+        c.secrets = {
+          names: () => Object.keys(granted),
+          get: async (name: string) => {
+            const ref = granted[name];
+            if (!ref) throw new Error(`Plugin "${p.name}" was not granted secret "${name}"`);
+            if (!resolve) throw new Error('No secret providers are available');
+            return resolve(ref, p.name);
+          },
+        };
+      }
+      this.hookCtx.set(p, c);
+    }
+    if (!call || (p.apiVersion ?? 1) < 3) return c;
+    const tenant = this.env.tenantOf?.(call.clientId) ?? (call.tenant ? { id: call.tenant } : undefined);
+    return tenant ? { ...c, tenant } : c;
+  }
+
+  /** API v3: tell every plugin a hot reload was applied. */
+  async configChanged(change: PluginConfigChange): Promise<void> {
+    for (const p of this.plugins) {
+      if (!p.onConfigChange) continue;
+      try {
+        await p.onConfigChange(change, this.ctxOf(p));
+      } catch (err) {
+        logger.warn(`Plugin "${p.name}" onConfigChange failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
 
   /** Replace the active plugins (closes the ones that are dropped). */
   async set(next: GatewayPlugin[]): Promise<void> {
@@ -204,7 +288,7 @@ export class PluginHost {
         const p = chain[i++];
         if (!p) return next();
         try {
-          const r = p.onRequest!(req, res, step, ctxOf(p));
+          const r = p.onRequest!(req, res, step, this.ctxOf(p));
           if (r && typeof (r as Promise<void>).catch === 'function') (r as Promise<void>).catch(step);
         } catch (e) {
           step(e);
@@ -220,7 +304,7 @@ export class PluginHost {
       if (!p.onToolCall) continue;
       let out: ToolCallOutcome;
       try {
-        out = await p.onToolCall(call, ctxOf(p));
+        out = await p.onToolCall(call, this.ctxOf(p, call));
       } catch (err) {
         throw new PluginError(`Plugin "${p.name}" failed: ${err instanceof Error ? err.message : String(err)}`, p.name);
       }
@@ -238,7 +322,7 @@ export class PluginHost {
     for (const p of this.plugins) {
       if (!p.onResponse) continue;
       try {
-        const next = await p.onResponse(call, current, ctxOf(p));
+        const next = await p.onResponse(call, current, this.ctxOf(p, call));
         if (next) current = next;
       } catch (err) {
         throw new PluginError(`Plugin "${p.name}" failed: ${err instanceof Error ? err.message : String(err)}`, p.name);
@@ -249,7 +333,7 @@ export class PluginHost {
       for (const p of this.plugins) {
         if (!p.onError) continue;
         try {
-          await p.onError(call, error, ctxOf(p));
+          await p.onError(call, error, this.ctxOf(p, call));
         } catch (err) {
           logger.warn(`Plugin "${p.name}" onError failed: ${err instanceof Error ? err.message : String(err)}`);
         }

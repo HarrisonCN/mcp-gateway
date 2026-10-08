@@ -176,11 +176,11 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(((await (await f('/api/v1/portal/keys/pend0001/approve', { method: 'POST' })).json()) as any).status).toBe('active');
   });
 
-  it('lists the 4.0 deprecations (3.9)', async () => {
+  it('lists the 5.0 deprecations (4.0: plugin API v2)', async () => {
     const f = demoFetch();
     const r = (await (await f('/api/v1/admin/deprecations')).json()) as any;
-    expect(r.config.map((d: { removedIn: string }) => d.removedIn)).toEqual(['4.0.0', '4.0.0']);
-    expect(r.runtime).toEqual([]);
+    expect(r.runtime.map((d: { id: string; removedIn: string }) => `${d.id}@${d.removedIn}`)).toEqual(['plugin-api-v2@5.0.0']);
+    expect(r.config).toEqual([]);
   });
 });
 

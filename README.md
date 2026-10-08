@@ -298,10 +298,11 @@ auth:
     - "sha256:…"              # a key stored as its digest (mcp-gateway gen-key / hash-key)
     - key: "${APP_KEY}"       # scoped key (see "Per-key scopes")
       name: app
-      servers: ["github"]
-      tools: ["read_*"]
-      rateLimit: { limit: 30, windowSeconds: 60 }
       expiresAt: "2027-01-01" # optional expiry; disabled: true switches a key off
+      scope:
+        servers: ["github"]
+        tools: ["read_*"]
+        rateLimit: { limit: 30, windowSeconds: 60 }
   protect:
     health: false             # true → /api/v1/health requires auth
     metrics: false            # true → /api/v1/metrics requires auth (configure your scraper)
@@ -418,9 +419,10 @@ auth:
     - "admin-key"                       # unrestricted
     - key: ${AURA_GATEWAY_KEY}          # ${VAR} is expanded in object keys
       name: aura                        # client id "key:aura" in logs, metrics and sessions (unique)
-      servers: ["github", "fs-*"]       # server id globs
-      tools: ["read_*", "github/create_issue"]   # tool globs; "server/tool" when the pattern has a "/"
-      rateLimit: { limit: 30, windowSeconds: 60 } # own bucket instead of the global rateLimit
+      scope:
+        servers: ["github", "fs-*"]       # server id globs
+        tools: ["read_*", "github/create_issue"]   # tool globs; "server/tool" when the pattern has a "/"
+        rateLimit: { limit: 30, windowSeconds: 60 } # own bucket instead of the global rateLimit
 ```
 
 - A tool must pass the server's own `tools` filter **and** the key's `servers` **and** `tools` lists.
@@ -580,6 +582,16 @@ await gateway.start();
 // Graceful shutdown
 process.on('SIGTERM', () => gateway.stop());
 ```
+
+## What's New in v4.0
+
+| Feature | Description |
+|---------|-------------|
+| **Config schema v4** | `version: 4`, API-key `scope:`, `smart` instead of `least-latency` — `mcp-gateway migrate` does it for you |
+| **Plugin API v3** | `ctx.secrets`, `ctx.tenant`, `onConfigChange`; v1 refused, v2 deprecated until 5.0 |
+| **Roadmap to 5.0** | MCP spec updates, orchestration, cost budgets, streaming, mTLS, config editor, SDKs — see [ROADMAP](docs/ROADMAP.md) |
+
+⚠ Breaking release — read [Migrating to 4.0](docs/guides/migrating-to-v4.md).
 
 ## What's New in v3.9
 
