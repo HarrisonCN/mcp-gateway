@@ -23,7 +23,7 @@ controlPlane:
 
 - A body is a full config (JSON). Values left as `<redacted>` keep the running value, so `GET` → edit → `PUT` works
   without ever sending secrets back.
-- `port` and `host` always come from the running process. Changes to restart-only sections (`audit`, `state`,
+- `port` and `host` always come from the running process. Changes to restart-only sections (`audit`, `store`,
   `observability`, `dashboard`, `health`, …) are listed with `restart: true` and take effect after a restart.
 - `policy.files` in a body resolve against the running gateway's config directory (the CLI merges them locally).
 

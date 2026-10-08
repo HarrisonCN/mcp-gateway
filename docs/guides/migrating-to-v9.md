@@ -18,13 +18,21 @@
 | `version: 8` (or none) | `version: 9` — 9.0 refuses `version: 8` | ✓ |
 | `state: { store: memory \| redis, redis, failureMode }` | `store: { backend: memory \| redis \| eventlog, redis, failureMode }` | ✓ (`state.store` → `store.backend`) |
 
-8.9 reads both schema versions: `version: 8` with `state`, or `version: 9` with `store` (a v9 file must not use
-`state`, and `store` needs `version: 9`). 9.0 adds `backend: eventlog` — an append-only event log with snapshots that
-keeps rate-limit windows, lockouts, sessions and runtime overrides across restarts.
+8.9 reads both schema versions: `version: 8` with `state`, or `version: 9` with `store`. **9.0 reads only schema v9**:
+`version: 8` and `state` are validation errors naming `mcp-gateway migrate --to 9`. 9.0 adds `backend: eventlog` — an append-only event log with snapshots that
+keeps rate-limit windows, lockouts and MCP session metadata across restarts ([guide](event-sourced-store.md)).
 
-## Deprecations in 8.9
+## Deprecations in 8.9 (removed in 9.0)
 
 | id | Removed in | Replacement |
 |----|-----------|-------------|
 | `schema-v8` | 9.0.0 | `version: 9` |
 | `state-block` | 9.0.0 | `store` |
+
+Nothing is deprecated in 9.0 (`GET /api/v1/admin/deprecations` returns empty lists).
+
+## Other changes
+
+- Data planes always receive `version: 9`; `GET /api/v1/admin/config` returns `store`, never `state`.
+- `MCP_GATEWAY_REDIS_URL` now sets `store.backend: redis` (8.9 wrote the `state` block, which conflicted with v9 files).
+- New: `GET /api/v1/admin/store`, `POST /api/v1/admin/store/compact`.

@@ -725,11 +725,11 @@ including notifications emitted while no stream was open.
 
 ## Shared state (multi-instance)
 
-Schema v9 (8.9; `state` before — deprecated, removed in 9.0):
+Schema v9 (the 8.x `state` block was removed in 9.0; `mcp-gateway migrate --to 9` rewrites it):
 
 ```yaml
 store:
-  backend: redis               # memory (default) | redis — restart required
+  backend: redis               # memory (default) | redis | eventlog — restart required
   redis:
     url: "redis://:${REDIS_PASSWORD}@redis:6379/0"   # rediss:// for TLS; env MCP_GATEWAY_REDIS_URL also works
     keyPrefix: "mcp-gateway:"  # namespace several gateways in one Redis
@@ -745,6 +745,25 @@ With `backend: redis`, every gateway replica shares:
 - **MCP sessions** — session metadata (client id, protocol version, client info) is stored with the idle TTL, so a
   session opened on one replica is accepted by the others: no sticky sessions needed for `POST /mcp`. Open `GET`
   streams stay on the replica that holds the socket (the per-session replay buffer is per replica).
+
+### Event-sourced store (9.0)
+
+A single-instance gateway can keep its state across restarts with `backend: eventlog`:
+
+```yaml
+store:
+  backend: eventlog
+  eventlog:
+    dir: .mcp-gateway/store    # relative to the config file
+    snapshotEvery: 10000       # compact after this many events
+    fsync: false               # true: fsync every append (durable, slower)
+```
+
+Every mutation is appended to `events.log` as one JSON line with absolute expiry times; on start the gateway loads
+`snapshot.json` and replays the log, so rate-limit windows, lockouts and MCP session metadata survive a restart.
+Every `snapshotEvery` events (and on shutdown) the live state is written to a new snapshot and the log is truncated.
+A torn last line after a crash is skipped. `GET /api/v1/admin/store` reports keys, events and snapshots;
+`POST /api/v1/admin/store/compact` compacts on demand. See [the guide](guides/event-sourced-store.md).
 
 The Redis client is built in (RESP2, pipelined, `AUTH` / `SELECT` / TLS); no extra dependency. Embedders can pass any
 `StateStore` implementation: `new Gateway(config, { stateStore })`.
