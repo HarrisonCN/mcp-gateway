@@ -31,7 +31,7 @@ describe('schema v6 (6.0)', () => {
     const cfg = validateConfig({ version: 6, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 1234 }] });
     expect(cfg.version).toBe(6);
     expect(cfg.servers[0]!.timeout).toBe(1234);
-    expect(cfg.deprecations ?? []).toEqual([]);
+    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['schema-v6']); // 6.9
     expect(validateConfig({ servers: [{ id: 'b', name: 'b', transport: 'stdio', command: 'x' }] }).servers[0]!.timeout).toBe(30000);
   });
 
@@ -40,8 +40,8 @@ describe('schema v6 (6.0)', () => {
     expect(() => validateConfig({ version: 5, servers: [] })).toThrow(/config schema v5 was removed in 6.0 — use `version: 6`/);
     expect(() => validateConfig({ servers: [{ id: 'a', transport: 'stdio', command: 'x', timeout: 5 }] })).toThrow(/servers.0.timeout: removed in 5.0 — use `timeoutMs`/);
     expect(removedConfigKeys({ version: 4, servers: [{ id: 'a', timeout: 1 }] })).toHaveLength(2);
-    expect(() => validateConfig({ version: 7, servers: [] })).toThrow(/6.x reads `version: 6`/);
-    expect(configDeprecations({ version: 6, servers: [] })).toEqual([]);
+    expect(() => validateConfig({ version: 8, servers: [] })).toThrow(/6.9 reads `version: 6` or `version: 7`/);
+    expect(configDeprecations({ version: 7, servers: [] })).toEqual([]);
   });
 
   it('admin round trip uses schema v6 field names', () => {
@@ -52,10 +52,10 @@ describe('schema v6 (6.0)', () => {
     expect(validateConfig(p).servers[0]!.timeout).toBe(99);
   });
 
-  it('removed normalizeV4Preview(); 6.0 has no deprecations', async () => {
+  it('removed normalizeV4Preview(); 6.9 deprecates schema v6, admin and dashboard', async () => {
     const mod = (await import('../src/utils/deprecations.js')) as Record<string, unknown>;
     expect(mod.normalizeV4Preview).toBeUndefined();
-    expect(Object.values(DEPRECATIONS)).toEqual([]);
+    expect(Object.values(DEPRECATIONS).map((d) => `${d.id}@${d.removedIn}`)).toEqual(['schema-v6@7.0.0', 'admin-section@7.0.0', 'dashboard-section@7.0.0']);
   });
 });
 
@@ -70,7 +70,7 @@ describe('mcp-gateway migrate --to 5', () => {
     expect(() => validateConfig(parseYaml(r.text))).toThrow(/schema v5 was removed in 6.0/);
     expect(migrateConfigText(r.text, undefined, 5).changed).toBe(false);
     const v6 = validateConfig(parseYaml(migrateConfigText(V4).text));
-    expect(v6.version).toBe(6);
+    expect(v6.version).toBe(7);
     expect(v6.servers[0]!.timeout).toBe(15000);
   });
 

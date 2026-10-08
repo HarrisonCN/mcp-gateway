@@ -200,7 +200,7 @@ export interface GatewayConfig {
   /** Registered MCP servers */
   servers: McpServerConfig[];
   /** Config schema version (`5`; optional). */
-  version?: 5;
+  version?: 6 | 7;
   /** CORS: allowed browser origins (default `["*"]`). */
   cors?: { origins?: string[] };
   /** Health checks: ping interval (ms, default 30000). Restart required. */

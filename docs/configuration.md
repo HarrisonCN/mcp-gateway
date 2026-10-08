@@ -493,9 +493,14 @@ scopes, policy, quotas), then diffs the two results. Captured payloads are redac
 ## Admin API
 
 ```yaml
-admin:
+version: 7
+controlPlane:
   configApi: true   # allow PUT /api/v1/admin/config and POST /api/v1/admin/reload (default false)
+  dashboard: true   # serve /dashboard (default true)
 ```
+
+(Schema v6 spelled these `admin: { configApi }` and `dashboard: { enabled }` — deprecated in 6.9, removed in 7.0;
+`mcp-gateway migrate --to 7` moves them.)
 
 See [Declarative config](guides/declarative-config.md). 3.0 removed `corsOrigins` and `healthCheckIntervalMs` — use
 `cors.origins` and `health.intervalMs` ([migration guide](guides/migrating-to-v3.md)).

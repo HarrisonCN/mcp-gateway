@@ -625,8 +625,12 @@
       { apiVersion: 'policy/v1', kind: 'PodDisruptionBudget', metadata: { name: 'mcp-gateway', namespace: 'default' } },
     ], notes: ['auth.apiKeys are not rendered: put them in a Secret (MCP_GATEWAY_API_KEYS) and pass ?secret=<name>'] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
-    // 6.0: the 5.x deprecations were removed; nothing is deprecated yet.
-    if (p === '/admin/deprecations') return json({ runtime: [], config: [] });
+    // 6.9: the demo config is still on schema v6 with `admin` / `dashboard` (`mcp-gateway migrate --to 7`).
+    if (p === '/admin/deprecations') return json({ runtime: [], config: [
+      { id: 'schema-v6', removedIn: '7.0.0', replacement: 'version: 7', message: 'config schema v6 is deprecated; `mcp-gateway migrate --to 7` writes `version: 7`', detail: 'version: 6', source: 'config' },
+      { id: 'admin-section', removedIn: '7.0.0', replacement: 'controlPlane: { configApi }', message: '`admin.configApi` is deprecated; use `controlPlane.configApi` (`mcp-gateway migrate --to 7` moves it)', detail: 'admin', source: 'config' },
+      { id: 'dashboard-section', removedIn: '7.0.0', replacement: 'controlPlane: { dashboard }', message: '`dashboard.enabled` is deprecated; use `controlPlane.dashboard` (`mcp-gateway migrate --to 7` moves it)', detail: 'dashboard', source: 'config' },
+    ] });
     if (p === '/tenants') return json({ clientId: 'key:demo', operator: true, tenants: demoTenants });
     if ((m = p.match(/^\/tenants\/([^/]+)\/members$/)) && method === 'PUT') {
       const tn = demoTenants.find((x) => x.id === decodeURIComponent(m[1]));
