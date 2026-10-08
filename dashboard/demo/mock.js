@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '3.6.0';
+  const VERSION = '3.7.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -317,6 +317,34 @@
         { id: 'eu-west', url: 'https://eu.gateway.example', region: 'eu-west-1', priority: 1, healthy: true, lastSync: iso(Date.now() - rnd(1000, 25000)), latencyMs: 84, servers: peerServers('postgres'), forwarded: 12 + Math.round((Date.now() - started) / 30000) },
         { id: 'ap-south', url: 'https://ap.gateway.example', region: 'ap-south-1', priority: 2, healthy: !isUp('slack') ? true : Math.random() > 0.1, lastSync: iso(Date.now() - rnd(1000, 25000)), latencyMs: 211, servers: peerServers('slack'), forwarded: 3 },
       ] });
+    }
+    // 3.7: compliance — PII redaction counters, residency, SOC 2 / GDPR reports.
+    if (p === '/compliance') {
+      const k = Math.round((Date.now() - started) / 15000);
+      return json({
+        pii: { action: 'redact', scope: 'both', categories: ['email', 'phone', 'credit-card', 'ssn', 'iban', 'ipv4', 'cn-id'], servers: ['*'] },
+        residency: { rules: [{ tenants: ['research'], regions: ['eu-*'] }], allowUnknown: false, servers: [{ id: 'postgres', region: 'eu-west-1' }, { id: 'search', region: 'us-east-1' }] },
+        findings: { 'arguments:email': 14 + k, 'results:email': 31 + 2 * k, 'results:phone': 6 + k, 'results:ipv4': 3 },
+        blocked: { pii: 0, residency: 2 + Math.floor(k / 4) },
+      });
+    }
+    if (p === '/compliance/report') {
+      const fw = q.get('framework') || 'soc2';
+      if (fw !== 'soc2' && fw !== 'gdpr') return json({ error: 'Bad Request', message: '"framework" must be soc2 or gdpr' }, 400);
+      const controls = fw === 'soc2' ? [
+        { id: 'CC6.1', title: 'Logical access is authenticated', status: 'pass', evidence: 'auth.strategy = api-key' },
+        { id: 'CC6.1-b', title: 'Access is scoped per tenant / role', status: 'pass', evidence: '2 tenant(s) configured' },
+        { id: 'CC6.7', title: 'Data in transit to upstreams is encrypted', status: 'pass', evidence: '2 TLS / 0 plain-HTTP upstream(s)' },
+        { id: 'CC7.2', title: 'Activity is logged and retained', status: 'pass', evidence: 'audit log on, 30 day retention' },
+        { id: 'CC8.1', title: 'Credentials are managed and rotated', status: 'pass', evidence: '2 secret provider(s), rotation every 900s' },
+      ] : [
+        { id: 'Art.5(1)(c)', title: 'Data minimisation: personal data is redacted', status: 'pass', evidence: 'PII redact on both' },
+        { id: 'Art.30', title: 'Records of processing activities', status: 'pass', evidence: 'audit log on' },
+        { id: 'Art.44', title: 'International transfers are restricted (data residency)', status: 'pass', evidence: '1 residency rule(s)' },
+      ];
+      const rep = { framework: fw, generatedAt: iso(Date.now()), gatewayVersion: VERSION, period: { since: iso(Date.now() - 30 * 86400e3), until: iso(Date.now()) }, summary: { pass: controls.length, warn: 0, fail: 0 }, controls, activity: { calls: records.length, errors: records.filter((r) => !r.success).length, denied: 2, clients: CLIENTS.map(([c, w]) => ({ client: c, calls: w * 40 })), piiFindings: { 'results:email': 31 }, blocked: { pii: 0, residency: 2 } }, warnings: [] };
+      if (q.get('format') === 'md') return new Response(`# ${fw === 'soc2' ? 'SOC 2' : 'GDPR'} compliance report\n\n` + controls.map((c) => `- ${c.id} — ${c.title}: ${c.status}`).join('\n') + '\n', { status: 200, headers: { 'content-type': 'text/markdown' } });
+      return json(rep);
     }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     if (p === '/admin/deprecations') return json({ version: VERSION, deprecations: [] });

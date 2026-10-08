@@ -291,6 +291,35 @@ Health checks: the periodic ping (`health.intervalMs`) runs on every member; mem
 reconnects on its own with the `reconnect` policy. Tools come from the primary, or from a replica while the primary
 has none. `GET /api/v1/load-balancing` shows members, health, latency (EWMA) and ejections. Hot reloadable.
 
+## Compliance (3.7)
+
+```yaml
+compliance:
+  pii:
+    action: redact          # redact (default) | block (-32012) | tag (count only)
+    scope: both             # arguments (before the upstream) | results (before the client) | both
+    categories: [email, phone, credit-card, ssn, iban, ipv4, cn-id]   # default: all
+    servers: ["crm*", "support"]                                      # default: all
+  residency:
+    rules:                  # first matching rule wins; a rule without tenants applies to everybody
+      - { tenants: ["eu-*"], regions: ["eu-*"] }
+    allowUnknown: false     # pinned tenants may not use servers / peers without a region
+
+servers:
+  - { id: crm-eu, region: eu-west-1, ... }
+```
+
+- **PII:** strings anywhere inside tool arguments / results are scanned. Payment cards are Luhn-checked, IBANs mod-97,
+  PRC resident IDs by checksum, so random digit runs are not flagged. `redact` replaces matches with
+  `[REDACTED:<category>]`; `block` refuses the call (`-32012`, REST 403); `tag` only counts. Findings are counted per
+  direction and category (`GET /api/v1/compliance`) and set `mcp.pii.*` span attributes.
+- **Data residency:** a call from a tenant pinned to `regions` to a server whose `region` does not match is refused
+  (`-32011`, REST 403). Federation failover and `<id>@<peer>` calls apply the same rule to the peer's region.
+- **Reports:** `GET /api/v1/compliance/report?framework=soc2|gdpr[&since=&until=][&format=md]` maps the live
+  configuration and the request history (memory or audit log) to SOC 2 trust-services criteria or GDPR articles,
+  with pass / warn / fail and evidence for each control, activity totals, PII findings and security warnings. It is
+  evidence for an audit, not a certification.
+
 ## Federation (3.6)
 
 ```yaml

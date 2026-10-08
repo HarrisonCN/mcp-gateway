@@ -581,6 +581,16 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v3.7
+
+| Feature | Description |
+|---------|-------------|
+| **PII redaction** | E-mail, phone, card, SSN, IBAN, IP, PRC ID — redact, block or tag, both directions |
+| **Data residency** | Pin tenants to regions; cross-region calls and failover are refused |
+| **SOC 2 / GDPR reports** | Controls with evidence from live config and history, JSON or Markdown |
+
+Details: [CHANGELOG](CHANGELOG.md) · [Configuration](docs/configuration.md#compliance-37).
+
 ## What's New in v3.6
 
 | Feature | Description |

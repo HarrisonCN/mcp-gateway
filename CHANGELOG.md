@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-10-08
+
+### Added
+- **PII detection & redaction.** `compliance.pii` scans tool arguments (before the upstream) and/or results (before
+  the client) for e-mail, phone, payment card (Luhn), US SSN, IBAN (mod-97), IPv4 and PRC resident ID (checksum).
+  `action: redact` (default) masks matches as `[REDACTED:<category>]`, `block` refuses the call (`-32012`), `tag`
+  counts only. Per-server globs and categories.
+- **Data residency.** Servers declare a `region`; `compliance.residency.rules` pin tenants to region globs. Calls
+  (including federation failover and `<id>@<peer>` calls) that would leave the allowed regions are refused
+  (`-32011`).
+- **Compliance reports.** `GET /api/v1/compliance/report?framework=soc2|gdpr` (JSON or `format=md`) maps
+  configuration and request history to SOC 2 criteria / GDPR articles with pass / warn / fail and evidence.
+  `GET /api/v1/compliance` shows PII findings and blocks. The GitHub Pages demo serves the new endpoints.
+- `scanPii`, `ComplianceEngine`, `buildReport`, `reportMarkdown` exported.
+
 ## [3.6.0] - 2026-10-08
 
 ### Added

@@ -150,6 +150,16 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(r.peers[0].servers.length).toBeGreaterThan(0);
     expect((await f('/api/v1/federation/sync', { method: 'POST' })).status).toBe(200);
   });
+
+  it('serves compliance status and reports (3.7)', async () => {
+    const f = demoFetch();
+    expect(((await (await f('/api/v1/compliance')).json()) as any).pii.action).toBe('redact');
+    const rep = (await (await f('/api/v1/compliance/report?framework=gdpr')).json()) as any;
+    expect(rep.framework).toBe('gdpr');
+    expect(rep.controls.length).toBeGreaterThan(0);
+    expect(await (await f('/api/v1/compliance/report?framework=soc2&format=md')).text()).toMatch(/^# SOC 2/);
+    expect((await f('/api/v1/compliance/report?framework=x')).status).toBe(400);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

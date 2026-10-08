@@ -31,13 +31,14 @@ import { LLM_SCHEMA_FORMATS, toLlmToolSchemas, type LlmSchemaFormat } from '../m
 import { VERSION } from '../utils/version.js';
 import { redactArgs } from '../security/redact.js';
 import type { CatalogEntry, InstallRequest } from '../catalog/index.js';
-import { withTenantScope, canCall, highestRole, roleIn, ROLE_RANK } from '../auth/tenants.js';
+import { withTenantScope, canCall, highestRole, roleIn, ROLE_RANK, membershipsOf } from '../auth/tenants.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { ERR_QUOTA_EXCEEDED, usageCsv, type UsageGroup } from './usage.js';
 import { ToolInvoker, POLICY_ERROR_CODES, ERR_OUTPUT_BLOCKED } from './invoker.js';
 import { ApprovalError } from '../policy/approvals.js';
 import { jsonDiff } from './replay.js';
 import { FEDERATION_HEADER, verifyFederation } from './federation.js';
+import { buildReport, reportMarkdown, PII_CATEGORIES } from '../policy/compliance.js';
 
 export type ApiRouter = express.Router & {
   close(): void;
@@ -589,6 +590,11 @@ export function createApiRouter(
         return void res.status(404).json({ error: 'Not Found', message: `Server "${serverId}" is not exported by any peer gateway` });
       }
       if (!isToolInScope(scope, serverId, tool) || !canCall(scope, serverId)) return void forbidden(`Tool "${tool}" on server "${serverId}" is not allowed for this client`);
+      const tenant0 = cfg.tenants?.length ? membershipsOf(cfg.tenants, (req as AuthedRequest).clientId).map((m) => m.tenant)[0] : undefined;
+      if (invoker.compliance && !invoker.compliance.residencyAllows(tenant0, peer.region)) {
+        invoker.compliance.noteResidencyBlock();
+        return void forbidden(`Data residency: peer "${peer.id}" (${peer.region ?? 'unknown region'}) is outside the allowed regions`);
+      }
       const r = await fed.forward(peer, { server: remoteId, tool, arguments: args as Record<string, unknown>, clientId: (req as AuthedRequest).clientId });
       if (res.headersSent) return;
       if (r.success) return void res.json({ result: r.result, server: serverId, tool, durationMs: r.durationMs, peer: peer.id });
@@ -1129,6 +1135,87 @@ export function createApiRouter(
   router.get('/load-balancing', auth, (req, res) => {
     if (!operatorOnly(req, res)) return;
     res.json({ groups: invoker.balancer?.snapshot() ?? [] });
+  });
+
+  // ─── Compliance (3.7) ───────────────────────────────────────────────────────
+  router.get('/compliance', auth, (req, res) => {
+    if (!operatorOnly(req, res)) return;
+    const comp = invoker.compliance;
+    const c = cfg.compliance;
+    res.json({
+      pii: c?.pii && c.pii.enabled !== false ? { action: c.pii.action ?? 'redact', scope: c.pii.scope ?? 'both', categories: c.pii.categories ?? PII_CATEGORIES, servers: c.pii.servers ?? ['*'] } : null,
+      residency: { rules: c?.residency?.rules ?? [], allowUnknown: c?.residency?.allowUnknown === true, servers: cfg.servers.filter((s) => s.region).map((s) => ({ id: s.id, region: s.region })) },
+      findings: comp?.findings() ?? {},
+      blocked: comp ? { ...comp.blocked } : { pii: 0, residency: 0 },
+    });
+  });
+
+  router.get('/compliance/report', auth, (req, res) => {
+    if (!operatorOnly(req, res)) return;
+    const framework = String(req.query.framework ?? 'soc2');
+    if (framework !== 'soc2' && framework !== 'gdpr') return void res.status(400).json({ error: 'Bad Request', message: '"framework" must be soc2 or gdpr' });
+    const t = (v: unknown, d: number) => {
+      if (typeof v !== 'string' || !v) return d;
+      const n = /^\d+$/.test(v) ? Number(v) : Date.parse(v);
+      return Number.isFinite(n) ? n : NaN;
+    };
+    const until = t(req.query.until, Date.now());
+    const since = t(req.query.since, until - 30 * 86_400_000);
+    if (!Number.isFinite(since) || !Number.isFinite(until)) return void res.status(400).json({ error: 'Bad Request', message: '"since" / "until" must be ISO dates or epoch milliseconds' });
+    // Walk the history (memory or audit log), bounded.
+    let calls = 0, errors = 0, denied = 0;
+    const clients = new Map<string, number>();
+    let cursor: string | undefined;
+    for (let page = 0; page < 40; page++) {
+      const p = metrics.queryRequests({ limit: 500, cursor, since, until });
+      for (const r of p.requests) {
+        calls++;
+        if (!r.success) {
+          errors++;
+          if (r.durationMs === 0) denied++;
+        }
+        const c = r.clientId ?? 'anonymous';
+        clients.set(c, (clients.get(c) ?? 0) + 1);
+      }
+      if (!p.nextCursor) break;
+      cursor = p.nextCursor;
+    }
+    const comp = invoker.compliance;
+    const remote = cfg.servers.filter((s) => s.url);
+    const report = buildReport({
+      framework,
+      generatedAt: new Date().toISOString(),
+      gatewayVersion: VERSION,
+      period: { since: new Date(since).toISOString(), until: new Date(until).toISOString() },
+      config: {
+        authStrategy: cfg.auth?.strategy ?? 'none',
+        tenants: cfg.tenants?.length ?? 0,
+        auditEnabled: cfg.audit?.enabled === true,
+        auditRetentionDays: cfg.audit?.enabled ? (cfg.audit.retentionDays ?? 30) : undefined,
+        tlsUpstreams: remote.filter((s) => /^(https|wss):/.test(s.url!)).length,
+        plainUpstreams: remote.filter((s) => /^(http|ws):/.test(s.url!) && !/^(https?|wss?):\/\/(localhost|127\.0\.0\.1|\[::1\])/.test(s.url!)).length,
+        policyRules: cfg.policy?.rules?.length ?? 0,
+        approvals: (cfg.policy?.rules ?? []).some((r) => (r as { effect?: string }).effect === 'approve'),
+        outputFilter: !!cfg.policy?.outputFilter && cfg.policy.outputFilter.enabled !== false,
+        pii: cfg.compliance?.pii && cfg.compliance.pii.enabled !== false ? { action: cfg.compliance.pii.action ?? 'redact', scope: cfg.compliance.pii.scope ?? 'both', categories: cfg.compliance.pii.categories ?? PII_CATEGORIES } : undefined,
+        residencyRules: cfg.compliance?.residency?.rules?.length ?? 0,
+        secretsProviders: cfg.secrets?.providers?.length ?? 0,
+        rotationSeconds: cfg.secrets?.rotation?.intervalSeconds,
+        rateLimit: !!cfg.rateLimit,
+        authLockout: !!cfg.security?.authLockout,
+        redactPatterns: cfg.security?.redactPatterns?.length ?? 0,
+      },
+      activity: {
+        calls, errors, denied,
+        clients: [...clients.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25).map(([client, n]) => ({ client, calls: n })),
+        piiFindings: comp?.findings() ?? {},
+        blocked: comp ? { ...comp.blocked } : { pii: 0, residency: 0 },
+      },
+      warnings: securityWarnings(cfg).map((w) => ({ id: w.id, severity: w.level, message: w.message })),
+    });
+    res.set('Cache-Control', 'no-store');
+    if (req.query.format === 'md' || req.query.format === 'markdown') return void res.type('text/markdown').send(reportMarkdown(report));
+    res.json(report);
   });
 
   // ─── Federation (3.6) ───────────────────────────────────────────────────────
