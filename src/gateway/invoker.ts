@@ -9,6 +9,7 @@
  * @module gateway/invoker
  */
 
+import { callHooks, type HookCall } from './hooks.js';
 import type { McpProxy, ProgressUpdate, RelayCaller } from '../proxy/index.js';
 import type { MetricsCollector } from '../monitor/index.js';
 import type { McpServerConfig, ProxyResponse, ToolPolicyConfig } from '../utils/types.js';
@@ -82,6 +83,8 @@ export interface InvokeResult extends ProxyResponse {
 }
 
 export interface InvokerDeps {
+  /** 5.6: running config, handed to call hooks (hooks are skipped without it). */
+  config?: () => import('../utils/types.js').GatewayConfig;
   /** 4.3: cost accounting and budgets. */
   costs?: CostLedger;
   proxy: McpProxy;
@@ -238,6 +241,17 @@ export class ToolInvoker {
         ctx = { ...ctx, params: pii.value };
       }
     }
+    // 5.6: feature call hooks (before).
+    const hookCfg = this.deps.config?.();
+    const hookCall = (): HookCall => ({ serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params });
+    if (hookCfg && ctx.kind === 'tool') {
+      for (const h of callHooks()) {
+        if (!h.before) continue;
+        const out = await h.before(hookCall(), hookCfg);
+        if (out?.refuse) return this.refuse(ctx, out.refuse.code, out.refuse.message, { decision: h.id, ...(out.refuse.data ?? {}) }, span);
+        if (out?.args) ctx = { ...ctx, params: out.args };
+      }
+    }
     const usage = this.deps.usage;
     if (usage && ctx.kind === 'tool') {
       const over = usage.take({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name });
@@ -293,6 +307,14 @@ export class ToolInvoker {
       result = pii.blocked
         ? { success: false, durationMs: result.durationMs, error: { code: ERR_PII_BLOCKED, message: `Personal data in the result (${pii.categories.join(', ')})`, data: { decision: 'pii', categories: pii.categories } } }
         : { ...result, result: pii.value };
+    }
+    // 5.6: feature call hooks (after).
+    if (hookCfg && ctx.kind === 'tool') {
+      for (const h of callHooks()) {
+        if (!h.after) continue;
+        const out = await h.after(hookCall(), result, hookCfg);
+        if (out) result = out;
+      }
     }
     return this.finish(ctx, call, result, span);
   }

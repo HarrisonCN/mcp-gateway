@@ -406,6 +406,8 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `GET` / `POST` | `/admin/sessions` | Agent session recordings; `POST { name, clientId?, since?, until?, tools? }` records from captured calls (5.5) |
 | `GET` / `PUT` / `DELETE` | `/admin/sessions/:name` | Export / import `{ steps }` / delete a recording (5.5) |
 | `POST` | `/admin/sessions/:name/replay` | Replay and grade `{ mode: success\|structure\|exact, stopOnFailure? }` → eval report (5.5) |
+| `GET` | `/admin/dlp` | DLP policy (levels, default + tenant clearance / strategy) and counters (5.6) |
+| `POST` | `/admin/dlp/classify` | Classify a value `{ value, tenant? }` → findings and the masked value (5.6) |
 
 ## Bridges
 

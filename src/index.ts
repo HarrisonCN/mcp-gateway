@@ -137,6 +137,10 @@ export { MarketplaceSchema, parseIndex as parseMarketplaceIndex, installEntry as
 export type { MarketplaceConfig, MarketplaceEntry } from './features/marketplace.js';
 export { SessionsSchema, recordFrom, replayRecording, grade as gradeStep, RecordingStore } from './features/sessions.js';
 export type { SessionsConfig, Recording, RecordedStep, EvalReport, EvalMode } from './features/sessions.js';
+export { registerCallHook, callHooks } from './gateway/hooks.js';
+export type { CallHook, HookCall } from './gateway/hooks.js';
+export { DlpSchema, applyDlp, maskValue, policyFor as dlpPolicyFor, DEFAULT_LEVELS as DLP_DEFAULT_LEVELS, ERR_DLP_BLOCKED } from './features/dlp.js';
+export type { DlpConfig, DlpFinding } from './features/dlp.js';
 export type {
   GatewayConfig,
   McpServerConfig,

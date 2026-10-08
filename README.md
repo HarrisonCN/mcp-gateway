@@ -586,6 +586,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v5.6
+
+| Feature | Description |
+|---------|-------------|
+| **DLP levels** | PII + custom detectors classified public → restricted |
+| **Per-tenant masking** | Clearance per tenant; mask, redact, stable pseudonyms, or block |
+| **Call hooks** | `registerCallHook()` — your own stage in the call pipeline |
+
 ## What's New in v5.5
 
 | Feature | Description |
