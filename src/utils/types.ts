@@ -71,6 +71,11 @@ export interface McpServerConfig {
   timeout?: number;
   /** Maximum concurrent requests */
   maxConcurrency?: number;
+  /**
+   * Forward this server's sampling / elicitation / roots requests to the downstream MCP client that made the
+   * call (default true; `mcp.passthrough` sets which features). `false` keeps the server isolated.
+   */
+  passthrough?: boolean;
   /** Expose only some of this server's tools (glob patterns; deny wins) */
   tools?: ToolFilterConfig;
   /** Extra upstream endpoints for this server (load balancing + failover). Fields override the primary's. */
@@ -425,6 +430,20 @@ export interface McpEndpointConfig {
   instructions?: string;
   /** Events kept per session for `Last-Event-ID` resumability (default 256, 0 = off). */
   eventBufferSize?: number;
+  /** Server→client request passthrough (sampling, elicitation, roots) to downstream clients. */
+  passthrough?: McpPassthroughConfig;
+}
+
+/** Which upstream→client requests are relayed to the downstream client that made the call (3.1). */
+export interface McpPassthroughConfig {
+  /** `sampling/createMessage` (default true). */
+  sampling?: boolean;
+  /** `elicitation/create` (default true). */
+  elicitation?: boolean;
+  /** `roots/list` and `notifications/roots/list_changed` (default true). */
+  roots?: boolean;
+  /** How long to wait for the downstream client's answer (default 300). */
+  timeoutSeconds?: number;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────

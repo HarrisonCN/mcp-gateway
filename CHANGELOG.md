@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-10-08
+
+### Added
+- **Sampling / elicitation / roots passthrough.** Upstream servers can now ask the downstream MCP client for an LLM
+  completion (`sampling/createMessage`), user input (`elicitation/create`) and its workspace roots (`roots/list`).
+  The gateway announces these client capabilities upstream and relays each request to the MCP session whose call is
+  in flight (on the call's SSE reply, or the session's `GET` stream), then returns the client's answer unchanged.
+  `notifications/roots/list_changed` from a client is forwarded to the servers in its scope.
+- Config: `mcp.passthrough` (`sampling`, `elicitation`, `roots`, `timeoutSeconds`; all on by default) and
+  `servers[].passthrough: false` to isolate a server.
+- Proxy API: `McpProxy.setClientRequestHandler()`, `notifyAll()`, `relaysTo()`, `RequestOptions.caller`;
+  `PASSTHROUGH_METHODS`, `passthroughCapabilities()` exported.
+
+### Notes
+- Clients without the capability get `-32601`; REST calls have no client to ask (`-32001`, `roots/list` → `[]`).
+- The gateway's own upstream progress token is stripped before the request reaches the client.
+- Routing is by the gateway's upstream progress token; without it, only when all in-flight calls come from one client — a request never reaches another client.
+
 ## [3.0.1] - 2026-10-08
 
 Patch release: bug sweep of the 1.3 – 3.0 features and the dashboard demo.

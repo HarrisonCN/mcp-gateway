@@ -30,7 +30,7 @@ import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { randomUUID, createHash } from 'crypto';
 import type { McpEndpointConfig } from '../utils/types.js';
 import type { ServerRegistry } from '../registry/index.js';
-import { ERR_CANCELLED, ERR_NOT_CONNECTED, ERR_TIMEOUT, type McpProxy } from '../proxy/index.js';
+import { ERR_CANCELLED, ERR_NOT_CONNECTED, ERR_TIMEOUT, PASSTHROUGH_METHODS, type McpProxy, type PassthroughMethod, type RelayCaller } from '../proxy/index.js';
 import type { MetricsCollector } from '../monitor/index.js';
 import type { RateLimitDecision } from '../auth/ratelimit.js';
 import { setRateLimitHeaders } from '../auth/ratelimit.js';
@@ -73,7 +73,7 @@ export const ERR_RATE_LIMITED = -32029;
 /** The caller's scopes do not allow this server / tool. */
 export const ERR_FORBIDDEN = -32003;
 
-export const DEFAULT_MCP_CONFIG: Required<Omit<McpEndpointConfig, 'allowedOrigins' | 'instructions'>> = {
+export const DEFAULT_MCP_CONFIG: Required<Omit<McpEndpointConfig, 'allowedOrigins' | 'instructions' | 'passthrough'>> = {
   enabled: true,
   path: '/mcp',
   toolNaming: 'auto',
@@ -124,9 +124,31 @@ interface DownstreamSession {
   subscriptions: Set<string>;
   /** Last time the shared-store record was refreshed (ms). */
   storeTouchedAt?: number;
+  /** Client capabilities from `initialize` (sampling / elicitation / roots passthrough). */
+  capabilities: Record<string, unknown>;
+  /** Requests the gateway sent to the client, awaiting its response (by JSON-RPC id). */
+  pendingClient: Map<string, (msg: JsonRpcMessage) => void>;
+  clientSeq: number;
 }
 
+/** Reference to the downstream caller handed to the proxy with each call (passthrough routing). */
+interface CallerRef {
+  key: string;
+  sessionId: string;
+  stream?: ReplyStream;
+}
+
+/** Capability a client must announce for each relayed method. */
+const PASSTHROUGH_CAPABILITY: Record<PassthroughMethod, string> = {
+  'sampling/createMessage': 'sampling',
+  'elicitation/create': 'elicitation',
+  'roots/list': 'roots',
+};
+/** JSON-RPC error: the downstream client cannot take this request (no caller, no capability, timeout). */
+export const ERR_PASSTHROUGH_UNAVAILABLE = -32001;
+
 interface StoredSession {
+  capabilities?: Record<string, unknown>;
   clientId?: string;
   protocolVersion: string;
   clientInfo?: { name?: string; version?: string };
@@ -137,6 +159,8 @@ interface StoredSession {
 interface ReplyStream {
   started: boolean;
   send(msg: JsonRpcMessage): void;
+  /** The POST response is finished (no further messages can go out on it). */
+  closed(): boolean;
 }
 
 interface ClientIdentity {
@@ -263,6 +287,7 @@ export class McpEndpoint {
     deps.proxy.on('notification', this.onUpstreamNotification);
     deps.proxy.on('connected', this.onUpstreamConnected);
     deps.proxy.on('disconnected', this.onUpstreamDisconnected);
+    deps.proxy.setClientRequestHandler((serverId, method, params, caller) => this.relayToClient(serverId, method, params, caller), () => this.passthroughMethods());
     this.sweepTimer = setInterval(() => this.sweep(), 60_000);
     this.sweepTimer.unref();
     this.keepaliveTimer = setInterval(() => this.keepalive(), SSE_KEEPALIVE_MS);
@@ -338,6 +363,7 @@ export class McpEndpoint {
     this.deps.proxy.off('notification', this.onUpstreamNotification);
     this.deps.proxy.off('connected', this.onUpstreamConnected);
     this.deps.proxy.off('disconnected', this.onUpstreamDisconnected);
+    this.deps.proxy.setClientRequestHandler(undefined);
     for (const s of [...this.sessions.values()]) this.endSession(s);
   }
 
@@ -413,7 +439,11 @@ export class McpEndpoint {
 
     const requests: JsonRpcMessage[] = [];
     for (const m of msgs) {
-      if (m.method === undefined) continue; // a response to a server request: we send none
+      if (m.method === undefined) {
+        // A response to a request the gateway relayed (sampling / elicitation / roots).
+        if (m.id !== undefined && m.id !== null) session.pendingClient.get(idKey(m.id))?.(m);
+        continue;
+      }
       if (m.id === undefined || m.id === null) this.handleNotification(session, m);
       else requests.push(m);
     }
@@ -462,6 +492,7 @@ export class McpEndpoint {
   private replyStream(res: Response, session: DownstreamSession): ReplyStream {
     const stream: ReplyStream = {
       started: false,
+      closed: () => res.writableEnded || res.destroyed,
       send: (msg) => {
         if (res.writableEnded || res.destroyed) return;
         if (!stream.started) {
@@ -511,6 +542,9 @@ export class McpEndpoint {
       eventLog: [],
       auth: identityOf(req),
       subscriptions: new Set(),
+      capabilities: isObject(params.capabilities) ? params.capabilities : {},
+      pendingClient: new Map(),
+      clientSeq: 0,
     };
     session.toolsFingerprint = this.fingerprint(this.toolIndex(session.auth));
     session.resourcesFingerprint = this.resourcesFingerprint(session.auth);
@@ -552,6 +586,7 @@ export class McpEndpoint {
       protocolVersion: session.protocolVersion,
       clientInfo: session.clientInfo,
       createdAt: session.createdAt.toISOString(),
+      capabilities: session.capabilities,
     };
     store.set(`sess:${session.id}`, JSON.stringify(rec), this.sessionTtlMs()).catch((err: unknown) => {
       logger.warn(`Could not store MCP session: ${err instanceof Error ? err.message : String(err)}`);
@@ -594,6 +629,9 @@ export class McpEndpoint {
       auth: identityOf(req),
       subscriptions: new Set(),
       storeTouchedAt: Date.now(),
+      capabilities: isObject(rec.capabilities) ? rec.capabilities : {},
+      pendingClient: new Map(),
+      clientSeq: 0,
     };
     session.toolsFingerprint = this.fingerprint(this.toolIndex(session.auth));
     session.resourcesFingerprint = this.resourcesFingerprint(session.auth);
@@ -679,7 +717,73 @@ export class McpEndpoint {
         session.inflight.get(idKey(rid))?.abort();
       }
     }
+    if (msg.method === 'notifications/roots/list_changed' && this.passthroughMethods().includes('roots/list')) {
+      void this.deps.proxy.notifyAll('notifications/roots/list_changed', undefined, (serverId) =>
+        isServerInScope(session.auth.scope, serverId) && this.deps.proxy.relaysTo(serverId, 'roots/list'),
+      );
+    }
     // notifications/initialized and others need no action.
+  }
+
+  /** Relayed methods enabled by `mcp.passthrough` (all by default). */
+  private passthroughMethods(): PassthroughMethod[] {
+    const p = this.cfg.passthrough ?? {};
+    return PASSTHROUGH_METHODS.filter((m) => (m === 'sampling/createMessage' ? p.sampling : m === 'elicitation/create' ? p.elicitation : p.roots) !== false);
+  }
+
+  /**
+   * Answer an upstream server's sampling / elicitation / roots request by asking the downstream client that made
+   * the call (3.1). The request goes out on that call's SSE reply stream when it has one, else on the session's
+   * GET stream; the client answers with a JSON-RPC response in a POST.
+   */
+  private async relayToClient(
+    serverId: string,
+    method: PassthroughMethod,
+    params: unknown,
+    caller: RelayCaller | undefined,
+  ): Promise<{ result?: unknown; error?: JsonRpcError }> {
+    const ref = caller as CallerRef | undefined;
+    const session = ref && typeof ref.sessionId === 'string' ? this.sessions.get(ref.sessionId) : undefined;
+    const unavailable = (message: string) => ({ error: { code: ERR_PASSTHROUGH_UNAVAILABLE, message } });
+    if (!session) {
+      if (method === 'roots/list') return { result: { roots: [] } };
+      return unavailable(`No MCP client to relay ${method} to (the call did not come from an MCP session, or it ended)`);
+    }
+    if (!isServerInScope(session.auth.scope, serverId)) return unavailable(`Server "${serverId}" is outside this client's scope`);
+    if (!isObject(session.capabilities[PASSTHROUGH_CAPABILITY[method]])) {
+      if (method === 'roots/list') return { result: { roots: [] } };
+      return { error: { code: JSONRPC_METHOD_NOT_FOUND, message: `The MCP client does not support ${PASSTHROUGH_CAPABILITY[method]}` } };
+    }
+    // Drop the gateway's own progress token; the client never saw it.
+    let out = params;
+    if (isObject(params) && isObject(params._meta) && 'progressToken' in params._meta) {
+      const { progressToken: _t, ...meta } = params._meta;
+      out = { ...params, _meta: meta };
+      if (Object.keys(meta).length === 0) delete (out as Record<string, unknown>)._meta;
+    }
+    const id = `mcp-gateway-${++session.clientSeq}`;
+    const request: JsonRpcMessage = out === undefined ? { jsonrpc: '2.0', id, method } : { jsonrpc: '2.0', id, method, params: out };
+    const timeoutMs = (this.cfg.passthrough?.timeoutSeconds ?? 300) * 1000;
+    return new Promise((resolve) => {
+      const key = idKey(id);
+      const timer = setTimeout(() => {
+        session.pendingClient.delete(key);
+        resolve(unavailable(`The MCP client did not answer ${method} within ${timeoutMs / 1000}s`));
+      }, timeoutMs);
+      timer.unref?.();
+      session.pendingClient.set(key, (msg) => {
+        clearTimeout(timer);
+        session.pendingClient.delete(key);
+        resolve(msg.error ? { error: msg.error } : { result: msg.result ?? {} });
+      });
+      logger.debug(`Relaying ${method} from "${serverId}" to MCP session ${session.id.slice(0, 8)}`);
+      if (ref?.stream && !ref.stream.closed()) ref.stream.send(request);
+      else if (!this.send(session, request)) {
+        clearTimeout(timer);
+        session.pendingClient.delete(key);
+        resolve(unavailable(`The MCP client has no open stream to receive ${method} (open a GET stream or accept text/event-stream)`));
+      }
+    });
   }
 
   private async handleRequest(
@@ -982,6 +1086,7 @@ export class McpEndpoint {
       via: 'mcp',
       signal,
       onProgress,
+      caller: ({ key: session.id, sessionId: session.id, stream } satisfies CallerRef) as RelayCaller,
       traceparent: traceparentOf(req),
     });
     if (single && result.traceparent && !res.headersSent) res.set('traceparent', result.traceparent);
@@ -1303,6 +1408,9 @@ export class McpEndpoint {
     for (const key of [...session.subscriptions]) this.releaseSub(session, key);
     for (const c of session.inflight.values()) c.abort();
     session.inflight.clear();
+    for (const done of [...session.pendingClient.values()]) {
+      done({ jsonrpc: '2.0', id: null, error: { code: ERR_PASSTHROUGH_UNAVAILABLE, message: 'The MCP session ended' } });
+    }
     for (const st of session.streams) st.end();
     session.streams = [];
   }

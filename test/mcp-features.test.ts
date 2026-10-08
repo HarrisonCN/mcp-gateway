@@ -89,7 +89,8 @@ describe('/mcp: progress notifications', () => {
   });
 
   it('answers with plain JSON when the client sends no token or does not accept SSE', async () => {
-    const url = await start({ ...base, servers: [feat()] });
+    // Passthrough off: no relay progress token is sent upstream either (3.1).
+    const url = await start({ ...base, servers: [feat()], mcp: { passthrough: { sampling: false, elicitation: false, roots: false } } });
     const H = { 'content-type': 'application/json', accept: 'application/json, text/event-stream' };
     const init = await fetch(`${url}/mcp`, {
       method: 'POST',

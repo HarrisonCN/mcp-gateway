@@ -80,7 +80,29 @@ export interface RequestOptions {
    * never collide.
    */
   onProgress?: (update: ProgressUpdate) => void;
+  /**
+   * Opaque reference to the downstream caller (3.1). Sampling / elicitation / roots requests the server sends
+   * while this request is in flight are handed to the client request handler together with this value.
+   */
+  caller?: RelayCaller;
 }
+
+/** Downstream caller of a request; `key` identifies the client session (callers with equal keys are the same). */
+export interface RelayCaller {
+  key: string;
+}
+
+/** Server→client requests the gateway can relay to the downstream client (3.1). */
+export const PASSTHROUGH_METHODS = ['sampling/createMessage', 'elicitation/create', 'roots/list'] as const;
+export type PassthroughMethod = (typeof PASSTHROUGH_METHODS)[number];
+
+/** Answers an upstream server's request on behalf of the downstream client. */
+export type ClientRequestHandler = (
+  serverId: string,
+  method: PassthroughMethod,
+  params: unknown,
+  caller: RelayCaller | undefined,
+) => Promise<{ result?: unknown; error?: { code: number; message: string; data?: unknown } }>;
 
 // ── Monotonic ID counter (fix BUG-002) ──────────────────────────────────────
 let _idSeq = 0;
@@ -125,6 +147,8 @@ interface Session {
   catalog: ServerCatalog;
   /** Progress callbacks by the progress token the gateway sent upstream. */
   progress: Map<string, (update: ProgressUpdate) => void>;
+  /** Downstream callers of in-flight requests, oldest first (sampling / elicitation routing). */
+  callers: Array<{ token?: string; caller: RelayCaller }>;
 }
 
 export interface SessionInfo {
@@ -143,12 +167,47 @@ export interface ProxyOptions {
   channelFactory?: ChannelFactory;
 }
 
+/** Client capabilities the gateway announces upstream for the relayed features. */
+export function passthroughCapabilities(methods: readonly PassthroughMethod[]): Record<string, unknown> {
+  const caps: Record<string, unknown> = {};
+  if (methods.includes('sampling/createMessage')) caps.sampling = {};
+  if (methods.includes('elicitation/create')) caps.elicitation = {};
+  if (methods.includes('roots/list')) caps.roots = { listChanged: true };
+  return caps;
+}
+
 export class McpProxy extends EventEmitter {
   private sessions = new Map<string, Session>();
   // Per-server connect mutex (fix BUG-001)
   private spawnLocks = new Map<string, Mutex>();
   private readonly killGraceMs: number;
   private readonly channelFactory: ChannelFactory;
+
+  private clientRequestHandler?: ClientRequestHandler;
+  private passthroughMethods: () => readonly PassthroughMethod[] = () => [];
+
+  /** Relay sampling / elicitation / roots requests from upstream servers (3.1). */
+  setClientRequestHandler(handler: ClientRequestHandler | undefined, methods: () => readonly PassthroughMethod[] = () => PASSTHROUGH_METHODS): void {
+    this.clientRequestHandler = handler;
+    this.passthroughMethods = handler ? methods : () => [];
+  }
+
+  private relays(session: Session): readonly PassthroughMethod[] {
+    return session.config.passthrough === false ? [] : this.passthroughMethods();
+  }
+
+  /** Send a notification to every connected server (e.g. `notifications/roots/list_changed`). */
+  async notifyAll(method: string, params?: unknown, filter: (serverId: string) => boolean = () => true): Promise<void> {
+    await Promise.all(
+      [...this.sessions.values()].filter((s) => !s.closed && s.connectedAt && filter(s.config.id)).map((s) => this._notify(s, method, params)),
+    );
+  }
+
+  /** Whether the server was told it may send `method` (its passthrough capability). */
+  relaysTo(serverId: string, method: PassthroughMethod): boolean {
+    const s = this.sessions.get(serverId);
+    return !!s && this.relays(s).includes(method);
+  }
 
   constructor(options: ProxyOptions = {}) {
     super();
@@ -186,6 +245,7 @@ export class McpProxy extends EventEmitter {
         closed: false,
         catalog: { resources: [], resourceTemplates: [], prompts: [] },
         progress: new Map(),
+        callers: [],
       };
 
       channel.onmessage = (msg) => this._onMessage(session, msg);
@@ -220,7 +280,7 @@ export class McpProxy extends EventEmitter {
       'initialize',
       {
         protocolVersion: MCP_PROTOCOL_VERSION,
-        capabilities: {},
+        capabilities: passthroughCapabilities(this.relays(session)),
         clientInfo: { name: 'mcp-gateway', version: VERSION },
       },
       timeout,
@@ -431,6 +491,7 @@ export class McpProxy extends EventEmitter {
       true,
       options.signal,
       options.onProgress,
+      options.caller,
     );
   }
 
@@ -499,7 +560,11 @@ export class McpProxy extends EventEmitter {
 
     if (typeof msg.method === 'string') {
       if (msg.id !== undefined && msg.id !== null) {
-        this._answerServerRequest(session, msg.id, msg.method);
+        if ((this.relays(session) as readonly string[]).includes(msg.method) && this.clientRequestHandler) {
+          void this._relayServerRequest(session, msg.id, msg.method as PassthroughMethod, msg.params);
+        } else {
+          this._answerServerRequest(session, msg.id, msg.method);
+        }
       } else if (msg.method === 'notifications/tools/list_changed') {
         this._refreshTools(session);
       } else if (
@@ -561,6 +626,32 @@ export class McpProxy extends EventEmitter {
     );
   }
 
+  /** The downstream caller a server request belongs to: matched by progress token, else the latest call. */
+  private _callerFor(session: Session, params: unknown): RelayCaller | undefined {
+    const meta = isPlainObject(params) && isPlainObject(params._meta) ? params._meta : undefined;
+    const token = meta && (typeof meta.progressToken === 'string' || typeof meta.progressToken === 'number') ? String(meta.progressToken) : undefined;
+    if (token) {
+      const hit = session.callers.find((c) => c.token === token);
+      if (hit) return hit.caller;
+    }
+    // No token echoed: only route when every in-flight call comes from the same client, so one client's
+    // sampling / elicitation request can never reach another client.
+    const keys = new Set(session.callers.map((c) => c.caller.key));
+    return keys.size === 1 ? session.callers[session.callers.length - 1]!.caller : undefined;
+  }
+
+  private async _relayServerRequest(session: Session, id: JsonRpcId, method: PassthroughMethod, params: unknown): Promise<void> {
+    let reply: JsonRpcMessage;
+    try {
+      const r = await this.clientRequestHandler!(session.config.id, method, params, this._callerFor(session, params));
+      reply = r.error ? { jsonrpc: '2.0', id, error: r.error } : { jsonrpc: '2.0', id, result: r.result ?? {} };
+    } catch (err) {
+      reply = { jsonrpc: '2.0', id, error: { code: -32603, message: err instanceof Error ? err.message : String(err) } };
+    }
+    if (session.closed) return;
+    await session.channel.send(reply).catch(() => {});
+  }
+
   private _answerServerRequest(session: Session, id: JsonRpcId, method: string): void {
     const reply: JsonRpcMessage =
       method === 'ping'
@@ -584,6 +675,7 @@ export class McpProxy extends EventEmitter {
     limited = true,
     signal?: AbortSignal,
     onProgress?: (update: ProgressUpdate) => void,
+    caller?: RelayCaller,
   ): Promise<ProxyResponse> {
     const serverId = session.config.id;
     const startTime = Date.now();
@@ -641,10 +733,18 @@ export class McpProxy extends EventEmitter {
       return await new Promise<ProxyResponse>((resolveRaw) => {
         const id = nextId();
         const remaining = Math.max(0, deadline - Date.now());
-        const progressToken = onProgress ? `mcp-gateway-${id}` : undefined;
-        if (progressToken) session.progress.set(progressToken, onProgress!);
+        // A progress token also ties relayed sampling / elicitation requests to their caller.
+        const relayed = caller !== undefined && this.relays(session).length > 0;
+        const progressToken = onProgress || relayed ? `mcp-gateway-${id}` : undefined;
+        if (progressToken && onProgress) session.progress.set(progressToken, onProgress);
+        const callerEntry = relayed ? { token: progressToken, caller: caller! } : undefined;
+        if (callerEntry) session.callers.push(callerEntry);
         const resolve = (r: ProxyResponse) => {
           if (progressToken) session.progress.delete(progressToken);
+          if (callerEntry) {
+            const i = session.callers.indexOf(callerEntry);
+            if (i >= 0) session.callers.splice(i, 1);
+          }
           resolveRaw(r);
         };
 

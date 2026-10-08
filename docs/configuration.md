@@ -487,7 +487,20 @@ mcp:
   allowedOrigins: ["https://app.example.com"]   # default: cors.origins
   instructions: "Tools for the ACME workspace"  # returned from initialize
   eventBufferSize: 256         # events kept per session for Last-Event-ID replay (0 = off)
+  passthrough:                 # 3.1: upstream → client requests relayed to the calling MCP client
+    sampling: true             # sampling/createMessage
+    elicitation: true          # elicitation/create
+    roots: true                # roots/list + notifications/roots/list_changed
+    timeoutSeconds: 300        # how long to wait for the client's answer
 ```
+
+**Sampling / elicitation / roots passthrough (3.1):** the gateway announces `sampling`, `elicitation` and `roots`
+to upstream servers (per the features enabled above) and relays their requests to the downstream MCP client whose
+call is in flight — on that call's SSE reply when the client accepts `text/event-stream`, else on its `GET` stream.
+The client's answer goes back to the server unchanged. Matching is by the gateway's upstream progress token, else the
+only when every in-flight call to that server comes from the same client (never across clients). A client that did not announce the capability gets `-32601`; calls made over REST
+have no client to ask (`-32001`), and `roots/list` then answers an empty list. `notifications/roots/list_changed` from
+a client is forwarded to the servers in its scope. Set `passthrough: false` on a server to keep it isolated.
 
 **Resumability:** every server-to-client event on the `GET` stream carries a session-wide `id`. A client whose stream
 dropped reconnects with `Last-Event-ID: <last id>` and receives the events it missed (up to `eventBufferSize`),

@@ -3,7 +3,7 @@
 Post-3.0 plan for mcp-gateway. Every minor release stays backward compatible within 3.x; v4.0 is the next breaking
 release.
 
-- v3.1：MCP 采样（sampling）/ elicitation / roots 请求透传到下游客户端，补齐双向能力
+- ✅ v3.1：MCP 采样（sampling）/ elicitation / roots 请求透传到下游客户端，补齐双向能力
 - v3.2：请求回放与调试器：在仪表盘中按审计记录一键重放、对比上游响应
 - v3.3：WASM 插件沙箱，插件可用多语言编写并按租户隔离运行
 - v3.4：智能路由：按延迟/成本/错误率动态选择上游，支持金丝雀与 A/B 流量切分

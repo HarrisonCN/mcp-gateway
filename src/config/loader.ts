@@ -68,6 +68,7 @@ const McpServerSchema = z.object({
   enabled: z.boolean().default(true),
   timeout: z.number().positive().default(30000),
   maxConcurrency: z.number().int().positive().default(10),
+  passthrough: z.boolean().optional(),
   tools: ToolFilterSchema.optional(),
   replicas: z
     .array(
@@ -448,6 +449,15 @@ const GatewayConfigSchema = z.object({
       allowedOrigins: z.array(z.string()).optional(),
       instructions: z.string().optional(),
       eventBufferSize: z.number().int().min(0).max(100_000).default(256),
+      passthrough: z
+        .object({
+          sampling: z.boolean().optional(),
+          elicitation: z.boolean().optional(),
+          roots: z.boolean().optional(),
+          timeoutSeconds: z.number().int().positive().max(3600).optional(),
+        })
+        .strict()
+        .optional(),
     })
     .strict()
     .optional(),
