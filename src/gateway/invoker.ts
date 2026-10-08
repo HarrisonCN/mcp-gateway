@@ -9,7 +9,7 @@
  * @module gateway/invoker
  */
 
-import type { McpProxy, ProgressUpdate } from '../proxy/index.js';
+import type { McpProxy, ProgressUpdate, RelayCaller } from '../proxy/index.js';
 import type { MetricsCollector } from '../monitor/index.js';
 import type { ProxyResponse, ToolPolicyConfig } from '../utils/types.js';
 import { evaluatePolicy } from '../policy/tool-policy.js';
@@ -51,6 +51,8 @@ export interface InvokeContext {
   via: 'rest' | 'mcp';
   signal?: AbortSignal;
   onProgress?: (u: ProgressUpdate) => void;
+  /** Downstream caller (MCP session) for sampling / elicitation / roots passthrough (3.1). */
+  caller?: RelayCaller;
   /** Incoming W3C `traceparent` (parent span). */
   traceparent?: string;
 }
@@ -238,8 +240,8 @@ export class ToolInvoker {
 
   private send(ctx: InvokeContext, target: string): Promise<ProxyResponse> {
     return ctx.kind === 'tool'
-      ? this.deps.proxy.callTool(target, ctx.name, ctx.params, ctx.timeoutMs, { signal: ctx.signal, onProgress: ctx.onProgress })
-      : this.deps.proxy.request(target, ctx.method, ctx.params, ctx.timeoutMs, { signal: ctx.signal });
+      ? this.deps.proxy.callTool(target, ctx.name, ctx.params, ctx.timeoutMs, { signal: ctx.signal, onProgress: ctx.onProgress, caller: ctx.caller })
+      : this.deps.proxy.request(target, ctx.method, ctx.params, ctx.timeoutMs, { signal: ctx.signal, caller: ctx.caller });
   }
 
   /** One upstream call, spread over replicas and failed over when the server has `replicas:`. */

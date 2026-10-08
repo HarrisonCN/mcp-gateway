@@ -581,6 +581,16 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v3.1
+
+| Feature | Description |
+|---------|-------------|
+| **Sampling passthrough** | Upstream `sampling/createMessage` reaches the calling MCP client's LLM |
+| **Elicitation passthrough** | `elicitation/create` asks the calling client's user |
+| **Roots passthrough** | `roots/list` + `roots/list_changed` between clients and servers |
+
+Config: [`mcp.passthrough`](docs/configuration.md#mcp-endpoint). Details: [CHANGELOG](CHANGELOG.md).
+
 ## What's New in v3.0
 
 **Breaking:** config schema v3 (`cors.origins`, `health.intervalMs`), plugin API v2 — see the
