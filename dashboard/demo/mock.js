@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '6.6.0';
+  const VERSION = '6.7.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -52,6 +52,7 @@
     { id: "identity", since: "6.4.0", summary: "Enterprise SSO (OIDC ID tokens) and SCIM 2.0 user / group provisioning mapped to tenant roles" },
     { id: "policy-sim", since: "6.5.0", summary: "Policy simulation and dry-run: replay history against a candidate policy, shadow policies on live traffic" },
     { id: "anomaly", since: "6.6.0", summary: "Anomaly detection: traffic bursts, error spikes, tool enumeration and prompt-injection scoring with alert / quarantine" },
+    { id: "billing", since: "6.7.0", summary: "Usage billing: per-tenant metering against a price book, monthly invoices (JSON / CSV)" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -605,6 +606,16 @@
       { timestamp: iso(Date.now() - 300e3), client: 'key:ci-bot', kind: 'burst', detail: '412 calls this minute (baseline 38.2/min)' },
     ], quarantined: [{ client: 'key:trial-42', until: iso(Date.now() + 240e3) }], clients: [{ client: 'key:aura', baselinePerMinute: 12.4, windowCalls: 61, windowErrors: 1 }, { client: 'key:ci-bot', baselinePerMinute: 38.2, windowCalls: 190, windowErrors: 4 }] });
     if (p === '/admin/anomaly/score' && method === 'POST') return json({ score: 1, signals: ['ignore-instructions', 'prompt-exfiltration'], threshold: 0.6 });
+    // 6.7: usage billing and invoices.
+    if (p === '/admin/billing/invoices') return json({ period: iso(Date.now()).slice(0, 7), currency: 'USD', total: 1342.18, invoices: [
+      { number: 'INV-DEMO-ACME', account: 'acme', name: 'ACME Corp', period: iso(Date.now()).slice(0, 7), currency: 'USD', subtotal: 1180.4, discount: 118.04, minimumTopUp: 0, tax: 87.65, total: 1150.01 },
+      { number: 'INV-DEMO-GLOBEX', account: 'globex', name: 'Globex', period: iso(Date.now()).slice(0, 7), currency: 'USD', subtotal: 142.17, discount: 0, minimumTopUp: 0, tax: 0, total: 142.17 },
+      { number: 'INV-DEMO-TRIAL', account: 'trial-42', period: iso(Date.now()).slice(0, 7), currency: 'USD', subtotal: 3.1, discount: 0, minimumTopUp: 46.9, tax: 0, total: 50 },
+    ] });
+    if ((m = p.match(/^\/admin\/billing\/invoices\/([^/]+)$/))) return json({ number: 'INV-DEMO-ACME', account: decodeURIComponent(m[1]), name: 'ACME Corp', period: iso(Date.now()).slice(0, 7), currency: 'USD', lines: [
+      { target: 'llm/complete', calls: 4120, inputTokens: 3.1e6, outputTokens: 0.7e6, seconds: 5120.4, rate: '0.000002/in-token + 0.00001/out-token', amount: 13.2 },
+      { target: 'search/web', calls: 29120, inputTokens: 0, outputTokens: 0, seconds: 8220.1, rate: '0.004/call', amount: 116.48 },
+    ], subtotal: 1180.4, discount: 118.04, minimumTopUp: 0, tax: 87.65, total: 1150.01 });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 6.0: the 5.x deprecations were removed; nothing is deprecated yet.
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });

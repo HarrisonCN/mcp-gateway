@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v6.7
+
+| Feature | Description |
+|---------|-------------|
+| **Usage metering** | Calls, tokens and duration per tenant, per month, per tool |
+| **Invoices** | Price book, discounts, minimums, tax; JSON or CSV |
+
 ## What's New in v6.6
 
 | Feature | Description |

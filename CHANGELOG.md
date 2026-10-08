@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.7.0] - 2026-10-08
+
+### Added
+- **Usage billing and invoices** — `billing` meters successful calls per account (tenant, else client id) by month
+  and `server/tool` (calls, tokens, duration), prices them with a glob-matched price book (per call / input token /
+  output token / second), and builds invoices with discounts, monthly minimums and tax. `GET /admin/billing/usage`,
+  `/admin/billing/invoices`, `/admin/billing/invoices/:account` (JSON or CSV). Optional persistence. See
+  [docs/guides/billing.md](docs/guides/billing.md).
+- Library: `BillingSchema`, `BillingUsageMeter`, `priceFor`, `buildInvoice`, `invoiceCsv`.
+- Pages demo: invoices.
+
 ## [6.6.0] - 2026-10-08
 
 ### Added
