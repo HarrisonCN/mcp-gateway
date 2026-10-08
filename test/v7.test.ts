@@ -26,7 +26,7 @@ describe('7.0: schema v7', () => {
   });
 
   it('controlPlane: role defaults to all; data planes need url + token; url/token only on data planes', () => {
-    const v7 = validateConfig({ version: 8, servers: [], controlPlane: { configApi: true, dashboard: false } });
+    const v7 = validateConfig({ version: 9, servers: [], controlPlane: { configApi: true, dashboard: false } });
     expect(v7.controlPlane).toEqual({ role: 'all', configApi: true, dashboard: false, pullIntervalMs: 10000 });
     expect(v7.deprecations).toBeUndefined(); // 8.0
     expect(validateConfig({ servers: [] }).controlPlane).toBeUndefined();

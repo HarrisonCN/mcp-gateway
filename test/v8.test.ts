@@ -25,17 +25,17 @@ afterEach(async () => {
 
 describe('8.0: schema v8, plugin API v5', () => {
   it('refuses schema v7, plugins[].wasm and plugin API v4; nothing is deprecated', () => {
-    expect(DEPRECATIONS).toEqual({});
-    expect(configDeprecations({ version: 8, plugins: [{ component: './b.wasm' }] })).toEqual([]);
+    expect(Object.keys(DEPRECATIONS)).toEqual(['schemaV8', 'stateBlock']); // 8.9
+    expect(configDeprecations({ version: 9, plugins: [{ component: './b.wasm' }] })).toEqual([]);
     const v8 = validateConfig({ version: 8, servers: [], plugins: [{ component: './p.wasm', isolation: 'client' }] });
     expect(v8.version).toBe(8);
-    expect(v8.deprecations).toBeUndefined();
+    expect(v8.deprecations?.map((d) => d.id)).toEqual(['schema-v8']); // 8.9
     expect(() => validateConfig({ version: 7, servers: [] })).toThrow(/version: config schema v7 was removed in 8.0 — use `version: 8`; run `mcp-gateway migrate --to 8`/);
     expect(() => validateConfig({ servers: [], plugins: [{ wasm: './p.wasm' }] })).toThrow(/plugins.0.wasm: removed in 8.0 — rebuild against wit\/mcp-gateway-plugin.wit \(plugin API v5\) and use `component`/);
     expect(removedConfigKeys({ version: 7, plugins: [{ wasm: 'a' }, { module: 'b' }] })).toHaveLength(2);
     expect(() => validateConfig({ servers: [], plugins: [{ module: './a.mjs', component: './b.wasm' }] })).toThrow(/exactly one of "module" or "component"/);
     expect(() => validateConfig({ servers: [], plugins: [{ module: './a.mjs', limits: { timeoutMs: 5 } }] })).toThrow(/apply to WASM component plugins only/);
-    expect(() => validateConfig({ version: 9, servers: [] })).toThrow(/8.0 reads `version: 8`/);
+    expect(() => validateConfig({ version: 10, servers: [] })).toThrow(/8.9 reads `version: 8` or `version: 9`/);
     expect(removedConfigKeys({ version: 8 })).toEqual([]);
     expect(PLUGIN_API_VERSION).toBe(5);
     expect(PLUGIN_API_MIN_VERSION).toBe(5);
@@ -100,17 +100,17 @@ describe('8.0: schema v8, plugin API v5', () => {
     expect(JSON.stringify(await r.json())).toContain('from component');
   });
 
-  it('migrate --to 8 (default): version 8, notes for wasm and JS plugins, keeps comments', () => {
+  it('migrate --to 8: version 8, notes for wasm and JS plugins, keeps comments', () => {
     const src = '# gw\nversion: 7\nplugins:\n  - { wasm: ./old.wasm, name: legacy }\n  - { module: ./p.mjs }\nservers: []\n';
-    const r = migrateConfigText(src);
+    const r = migrateConfigText(src, 'yaml', 8);
     expect(r.changes).toEqual(['version: 7 → 8']);
     expect(r.text).toContain('# gw');
     expect(r.notes.join('\n')).toMatch(/plugins\[0\] \(legacy\): core-ABI WASM plugins are not part of schema v8/);
     expect(r.notes.join('\n')).toMatch(/declare `apiVersion: 5`/);
     expect(parse(r.text).version).toBe(8);
-    expect(migrateConfigText('version: 8\nservers: []\n').changed).toBe(false);
+    expect(migrateConfigText('version: 8\nservers: []\n', 'yaml', 8).changed).toBe(false);
     expect(() => migrateConfigText('version: 8\n', 'yaml', 7)).toThrow(/already on schema v8/);
-    const v6 = migrateConfigText('version: 6\nadmin: { configApi: true }\nservers: []\n');
+    const v6 = migrateConfigText('version: 6\nadmin: { configApi: true }\nservers: []\n', 'yaml', 8);
     expect(v6.changes).toEqual(['version: 6 → 8', 'admin.configApi → controlPlane.configApi']);
     expect(readFileSync(new URL('../wit/mcp-gateway-plugin.wit', import.meta.url), 'utf8')).toContain('package mcp-gateway:plugin@5.0.0;');
   });

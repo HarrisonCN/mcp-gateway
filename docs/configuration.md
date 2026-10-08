@@ -725,9 +725,11 @@ including notifications emitted while no stream was open.
 
 ## Shared state (multi-instance)
 
+Schema v9 (8.9; `state` before — deprecated, removed in 9.0):
+
 ```yaml
-state:
-  store: redis                 # memory (default) | redis — restart required
+store:
+  backend: redis               # memory (default) | redis — restart required
   redis:
     url: "redis://:${REDIS_PASSWORD}@redis:6379/0"   # rediss:// for TLS; env MCP_GATEWAY_REDIS_URL also works
     keyPrefix: "mcp-gateway:"  # namespace several gateways in one Redis
@@ -736,7 +738,7 @@ state:
   failureMode: open            # open: Redis outage lets requests through; closed: reject them
 ```
 
-With `store: redis`, every gateway replica shares:
+With `backend: redis`, every gateway replica shares:
 
 - **rate limits** — the global `rateLimit` and per-key `rateLimit` sliding windows count requests on all replicas;
 - **brute-force lockouts** — failures on any replica count towards `security.authLockout`, and a locked IP is locked everywhere;
