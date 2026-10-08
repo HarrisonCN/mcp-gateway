@@ -12,7 +12,7 @@ helm install gw ./deploy/helm/mcp-gateway \
 
 | Value | Default | |
 |-------|---------|---|
-| `config` | `{ version: 6, monitor: { prometheus: true }, servers: [] }` | The gateway config (rendered into a ConfigMap) |
+| `config` | `{ version: 7, monitor: { prometheus: true }, servers: [] }` | The gateway config (rendered into a ConfigMap) |
 | `existingSecret` | `""` | Secret with env vars — put `MCP_GATEWAY_API_KEYS` and upstream tokens here |
 | `replicaCount`, `resources`, `nodeSelector`, `tolerations`, `affinity` | | Usual knobs |
 | `autoscaling.enabled` | `false` | HPA on CPU (`minReplicas`, `maxReplicas`, `targetCPUUtilizationPercentage`) |
@@ -42,7 +42,7 @@ spec:
   autoscaling: { minReplicas: 2, maxReplicas: 8 }
   serviceMonitor: true
   config:
-    version: 6
+    version: 7
     servers:
       - { id: github, name: GitHub, transport: stdio, command: npx, args: ["-y", "@modelcontextprotocol/server-github"] }
 ```

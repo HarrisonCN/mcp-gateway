@@ -99,7 +99,7 @@ export interface EdgeSyncOptions {
   edgeId?: string;
   store?: EdgeSyncStore;
   fetch?: typeof fetch;
-  /** Ask the control plane for upstream headers too (`?secrets=true`; needs `admin.configApi: true` there). */
+  /** Ask the control plane for upstream headers too (`?secrets=true`; needs `controlPlane.configApi: true` there). */
   includeSecrets?: boolean;
   /** Outbox / queue caps (oldest dropped first). Default 1000 each. */
   maxEvents?: number;

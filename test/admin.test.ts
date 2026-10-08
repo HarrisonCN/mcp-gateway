@@ -58,7 +58,7 @@ describe('3.0 removals', () => {
   it('rejects removed keys and foreign config versions with the replacement', () => {
     expect(removedConfigKeys({ corsOrigins: [], healthCheckIntervalMs: 5000 })).toHaveLength(2);
     expect(configDeprecations({ corsOrigins: [] })).toEqual([]);
-    const cfg = validateConfig({ version: 6, servers: [], cors: { origins: ['https://a.example'] }, health: { intervalMs: 5000 } });
+    const cfg = validateConfig({ version: 7, servers: [], cors: { origins: ['https://a.example'] }, health: { intervalMs: 5000 } });
     expect(cfg.cors?.origins).toEqual(['https://a.example']);
     expect(cfg.health?.intervalMs).toBe(5000);
     expect(() => validateConfig({ servers: [], corsOrigins: ['*'] })).toThrow(/corsOrigins: removed in 3.0 — use `cors: \{ origins/);
@@ -104,7 +104,7 @@ describe('admin REST API', () => {
     expect(body.config.servers.map((s) => s.id)).toEqual(['fake']);
   });
 
-  it('validates and diffs a body; PUT needs admin.configApi', async () => {
+  it('validates and diffs a body; PUT needs controlPlane.configApi', async () => {
     const url = await start();
     const { config } = (await (await fetch(`${url}/config`, { headers: op })).json()) as { config: Record<string, unknown> };
     const v = (await (await fetch(`${url}/config/validate`, { method: 'POST', headers: op, body: JSON.stringify({ servers: [], rateLimit: { limit: -1 } }) })).json()) as { valid: boolean; errors: string[] };
@@ -119,7 +119,7 @@ describe('admin REST API', () => {
   });
 
   it('applies a config (dry run first), keeping redacted secrets', async () => {
-    const url = await start({ admin: { configApi: true } });
+    const url = await start({ controlPlane: { configApi: true } });
     const { config } = (await (await fetch(`${url}/config`, { headers: op })).json()) as { config: Record<string, unknown> };
     const desired = { ...config, rateLimit: { windowSeconds: 60, limit: 1 } };
     const dry = (await (await fetch(`${url}/config?dryRun=true`, { method: 'PUT', headers: op, body: JSON.stringify(desired) })).json()) as { applied: boolean; changes: unknown[] };
@@ -137,9 +137,9 @@ describe('admin REST API', () => {
     resetDeprecations();
     let calls = 0;
     deprecate({ id: 'test-dep', removedIn: '7.0.0', replacement: 'x', message: 'test deprecation' }, 'plugin "old"');
-    const url = await start({ admin: { configApi: true } }, async () => {
+    const url = await start({ controlPlane: { configApi: true } }, async () => {
       calls++;
-      return validateConfig({ servers: [fileServer('fake')], auth: { strategy: 'api-key', apiKeys: ['op'] }, admin: { configApi: true }, logLevel: 'error', monitor: { requestLog: false } });
+      return validateConfig({ servers: [fileServer('fake')], auth: { strategy: 'api-key', apiKeys: ['op'] }, controlPlane: { configApi: true }, logLevel: 'error', monitor: { requestLog: false } });
     });
     const r = (await (await fetch(`${url}/reload`, { method: 'POST', headers: op })).json()) as { applied: boolean; changes: Array<{ path: string }> };
     expect(calls).toBe(1);
@@ -151,7 +151,7 @@ describe('admin REST API', () => {
   });
 
   it('reload without a config source is 501', async () => {
-    const url = await start({ admin: { configApi: true } });
+    const url = await start({ controlPlane: { configApi: true } });
     expect((await fetch(`${url}/reload`, { method: 'POST', headers: op })).status).toBe(501);
   });
 });
@@ -183,11 +183,11 @@ describe('mcp-gateway diff / apply', () => {
   }, 60_000);
 
   it('diffs and applies against a running gateway', async () => {
-    const gw = new Gateway({ port: 0, host: '127.0.0.1', logLevel: 'error', monitor: { requestLog: false }, servers: [], auth: { strategy: 'api-key', apiKeys: ['op'] }, admin: { configApi: true } } as GatewayConfig);
+    const gw = new Gateway({ port: 0, host: '127.0.0.1', logLevel: 'error', monitor: { requestLog: false }, servers: [], auth: { strategy: 'api-key', apiKeys: ['op'] }, controlPlane: { configApi: true } } as GatewayConfig);
     await gw.start();
     try {
       const d = tmp();
-      writeFileSync(join(d, 'want.yml'), 'servers: []\nauth: { strategy: api-key, apiKeys: [op] }\nadmin: { configApi: true }\nlogLevel: error\nmonitor: { requestLog: false }\nrateLimit: { windowSeconds: 60, limit: 50 }\n');
+      writeFileSync(join(d, 'want.yml'), 'servers: []\nauth: { strategy: api-key, apiKeys: [op] }\ncontrolPlane: { configApi: true }\nlogLevel: error\nmonitor: { requestLog: false }\nrateLimit: { windowSeconds: 60, limit: 50 }\n');
       const url = `http://127.0.0.1:${gw.address()!.port}`;
       const diff = await runAsync(['diff', '-c', join(d, 'want.yml'), '--url', url, '--key', 'op']);
       expect(diff.out).toContain('+ rateLimit');

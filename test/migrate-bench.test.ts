@@ -43,10 +43,10 @@ describe('4.0 removals (were 3.9 deprecations)', () => {
     expect(configDeprecations(raw)).toEqual([]);
   });
 
-  it('reads nested key scope (schema v6 or version omitted)', () => {
-    const cfg = validateConfig({ version: 6, servers: [], auth: { strategy: 'api-key', apiKeys: [{ name: 'ci', key: 'k', scope: { servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } } }] } });
+  it('reads nested key scope (schema v7 or version omitted)', () => {
+    const cfg = validateConfig({ version: 7, servers: [], auth: { strategy: 'api-key', apiKeys: [{ name: 'ci', key: 'k', scope: { servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } } }] } });
     expect(cfg.auth!.apiKeys![0]).toMatchObject({ name: 'ci', servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } });
-    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['schema-v6']); // 6.9
+    expect(cfg.deprecations).toBeUndefined();
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', servers: ['a'], scope: { servers: ['b'] } }] } })).toThrow(/removed in 4.0/);
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', scope: { nope: 1 } }] } })).toThrow(/unknown key/);
     expect(() => validateConfig({ version: 8, servers: [] })).toThrow(/not supported/);

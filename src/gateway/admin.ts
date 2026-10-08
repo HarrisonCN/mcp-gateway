@@ -4,9 +4,9 @@
  * - `GET  /admin/config` — the running configuration, secrets `<redacted>`.
  * - `POST /admin/config/validate` — validate a config body; returns errors and deprecations.
  * - `POST /admin/config/diff` — structural diff between the running config and a body.
- * - `PUT  /admin/config[?dryRun=true]` — validate, diff and hot-apply a full config (`admin.configApi: true`).
+ * - `PUT  /admin/config[?dryRun=true]` — validate, diff and hot-apply a full config (`controlPlane.configApi: true`).
  *   `<redacted>` values keep the running value, so a GET → edit → PUT round trip works.
- * - `POST /admin/reload` — re-read the config file from disk (`admin.configApi: true`; CLI-started gateways).
+ * - `POST /admin/reload` — re-read the config file from disk (`controlPlane.configApi: true`; CLI-started gateways).
  * - `GET  /admin/deprecations` — deprecated config keys and runtime usages (each with its `removedIn`).
  *
  * The config is validated with the same schema as files; `policy.files` in a body resolve against the running
@@ -79,9 +79,9 @@ export function createAdminRouter(deps: AdminDeps): express.Router {
     deps.isOperator(req) ? next() : void res.status(403).json({ error: 'Forbidden', message: 'The admin API is for operators (unscoped keys)' });
   const guard = [deps.authenticate, operator];
   const writable: RequestHandler = (_req, res, next) =>
-    deps.config().admin?.configApi === true
+    deps.config().controlPlane?.configApi === true
       ? next()
-      : void res.status(403).json({ error: 'Forbidden', message: 'Config changes over the API are disabled (admin.configApi: true enables them)' });
+      : void res.status(403).json({ error: 'Forbidden', message: 'Config changes over the API are disabled (controlPlane.configApi: true enables them)' });
 
   /** Parse + validate a body against the running config; responds 400 and returns undefined on error. */
   const parse = async (req: Request, res: Response): Promise<GatewayConfig | undefined> => {

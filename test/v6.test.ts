@@ -29,10 +29,10 @@ describe('6.0: schema v6, compliance.pii removed, migrate --to 6', () => {
     expect(() => validateConfig({ version: 5, servers: [] })).toThrow(/schema v5 was removed in 6.0/);
     expect(configDeprecations({ compliance: { residency: {} } })).toEqual([]);
     expect(configDeprecations(null)).toEqual([]);
-    const v6 = validateConfig({ version: 6, servers: [], dlp: { default: { clearance: 'public' } } });
-    expect(v6.version).toBe(6);
-    expect(v6.deprecations?.map((d) => d.id)).toEqual(['schema-v6']); // 6.9
-    expect(() => validateConfig({ version: 6, servers: [], compliance: { pii: { action: 'redact' } } })).toThrow(/compliance.pii: removed in 6.0 — use `dlp`/);
+    const v7 = validateConfig({ version: 7, servers: [], dlp: { default: { clearance: 'public' } } });
+    expect(v7.version).toBe(7);
+    expect(v7.deprecations).toBeUndefined();
+    expect(() => validateConfig({ version: 7, servers: [], compliance: { pii: { action: 'redact' } } })).toThrow(/compliance.pii: removed in 6.0 — use `dlp`/);
   });
 
   it('migrate --to 6 converts compliance.pii to dlp, keeping comments and residency', () => {
@@ -42,8 +42,7 @@ describe('6.0: schema v6, compliance.pii removed, migrate --to 6', () => {
     const cfg = parse(r.text);
     expect(cfg.compliance).toEqual({ residency: { rules: [{ regions: ['eu-*'] }] } });
     expect(cfg.dlp).toEqual({ scope: 'results', servers: ['crm*'], default: { clearance: 'public', strategy: 'redact' }, levels: { phone: 'public', ssn: 'public', iban: 'public', ipv4: 'public', 'cn-id': 'public' } });
-    const v = validateConfig(cfg);
-    expect(v.deprecations?.map((d) => d.id)).toEqual(['schema-v6']); // 6.9
+    expect(() => validateConfig(cfg)).toThrow(/schema v6 was removed in 7.0/); // 7.0
     // the migrated DLP policy redacts what compliance.pii redacted, and nothing else
     const out = applyDlp({ t: 'mail a@b.co, card 4111 1111 1111 1111, ip 10.0.0.1' }, DlpSchema.parse(cfg.dlp), undefined);
     expect(out.value.t).toBe('mail [REDACTED:email], card [REDACTED:credit-card], ip 10.0.0.1');

@@ -176,12 +176,14 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(((await (await f('/api/v1/portal/keys/pend0001/approve', { method: 'POST' })).json()) as any).status).toBe('active');
   });
 
-  it('lists the 6.9 config deprecations (schema v6, admin, dashboard)', async () => {
+  it('lists no config deprecations (7.0) and the data planes of the control plane', async () => {
     const f = demoFetch();
     const r = (await (await f('/api/v1/admin/deprecations')).json()) as any;
-    expect(r.runtime).toEqual([]);
-    expect(r.config.map((d: any) => d.id)).toEqual(['schema-v6', 'admin-section', 'dashboard-section']);
-    expect(r.config.every((d: any) => d.removedIn === '7.0.0')).toBe(true);
+    expect(r).toEqual({ runtime: [], config: [] });
+    const dp = (await (await f('/api/v1/admin/data-planes')).json()) as any;
+    expect(dp.role).toBe('control');
+    expect(dp.dataPlanes.map((d: any) => `${d.nodeId}:${d.status}:${d.inSync}`)).toEqual(['dp-eu-1:online:true', 'dp-eu-2:online:true', 'dp-us-1:stale:false']);
+    expect(dp.summary).toEqual({ total: 3, online: 2, inSync: 2 });
   });
 
   it('reports MCP revisions and features (4.1)', async () => {
@@ -228,7 +230,7 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
   it('backs the config editor: get, validate, diff, dry run and apply (4.6)', async () => {
     const f = demoFetch();
     const { config } = (await (await f('/api/v1/admin/config')).json()) as any;
-    expect(config.version).toBe(5);
+    expect(config.version).toBe(7);
     const bad = { ...config, servers: [...config.servers, { id: 'x y', transport: 'sse', url: 'nope' }] };
     const v = (await (await f('/api/v1/admin/config/validate', { method: 'POST', body: JSON.stringify(bad) })).json()) as any;
     expect(v.valid).toBe(false);

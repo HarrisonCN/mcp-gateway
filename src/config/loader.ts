@@ -28,9 +28,10 @@ import { AnomalySchema } from '../features/anomaly.js';
 import { BillingSchema } from '../features/billing.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
+import { ControlPlaneSchema } from '../gateway/control-plane.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
 import { validateChains, type ChainsConfig } from '../orchestration/chains.js';
-import { configDeprecations, normalizeApiKeyScopes, normalizeControlPlane, normalizeSchemaV5, removedConfigKeys } from '../utils/deprecations.js';
+import { configDeprecations, normalizeApiKeyScopes, normalizeSchemaV5, removedConfigKeys } from '../utils/deprecations.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
 import { ASYMMETRIC_ALGORITHMS, HMAC_ALGORITHMS } from '../auth/middleware.js';
@@ -456,12 +457,11 @@ const GatewayConfigSchema = z.object({
     })
     .optional(),
   servers: z.array(McpServerSchema).default([]),
-  version: z.union([z.literal(6), z.literal(7)]).optional(),
+  version: z.literal(7).optional(),
   cors: z.object({ origins: z.array(z.string()).optional() }).strict().optional(),
   health: z.object({ intervalMs: z.number().int().min(1000).optional() }).strict().optional(),
-  admin: z.object({ configApi: z.boolean().optional() }).strict().optional(),
-  // 6.9: schema v7 preview — `controlPlane.configApi` / `.dashboard` are normalized into `admin` / `dashboard`.
-  controlPlane: z.object({}).strict().optional(),
+  // 7.0: role (all / control / data), config API, dashboard and data-plane sync.
+  controlPlane: ControlPlaneSchema.optional(),
   regions: RegionsSchema.optional(),
   edgeFleet: EdgeFleetSchema.optional(),
   pluginTrust: PluginTrustSchema.optional(),
@@ -478,7 +478,6 @@ const GatewayConfigSchema = z.object({
   billing: BillingSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
-  dashboard: z.object({ enabled: z.boolean().default(true) }).optional(),
   audit: z
     .object({
       enabled: z.boolean().default(false),
@@ -986,7 +985,7 @@ export function resolveConfigPath(configPath?: string): string | undefined {
 /** Validate (and apply defaults to) a raw config object; throws a readable error listing every issue. */
 export function validateConfig(raw: unknown): GatewayConfig {
   const removed = removedConfigKeys(raw);
-  const v4 = normalizeApiKeyScopes(normalizeSchemaV5(normalizeControlPlane(raw)));
+  const v4 = normalizeApiKeyScopes(normalizeSchemaV5(raw));
   removed.push(...v4.errors);
   if (removed.length > 0) throw new Error(`Invalid configuration:\n${removed.map((m) => `  - ${m}`).join('\n')}`);
   const result = GatewayConfigSchema.safeParse(v4.raw);
@@ -1107,7 +1106,7 @@ export function generateDefaultConfig(): string {
   return `# mcp-gateway configuration
 # Documentation: https://github.com/HarrisonCN/mcp-gateway/docs
 
-version: 6
+version: 7
 port: 4000
 host: 0.0.0.0
 logLevel: info

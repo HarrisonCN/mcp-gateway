@@ -379,7 +379,7 @@ The dashboard's **Config** tab (4.6) is a graphical client of these endpoints: i
 `PUT /admin/config?dryRun=true` to decide whether it may apply (403 → read-only), and uses `POST /admin/config/validate`,
 `POST /admin/config/diff` and `PUT /admin/config`.
 
-Operators only. Writes need `admin.configApi: true`. See [Declarative config](guides/declarative-config.md).
+Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0) the whole admin API answers 403. See [Declarative config](guides/declarative-config.md).
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -389,7 +389,7 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `PUT` | `/admin/config?dryRun=` | Hot-apply a config body |
 | `POST` | `/admin/reload` | Re-read the config file |
 | `GET` | `/admin/deprecations` | Deprecated keys / usages |
-| `GET` | `/admin/edge/snapshot?secrets=` | Edge config snapshot (`ETag` / `If-None-Match`; `secrets=true` needs `admin.configApi`) (4.8) |
+| `GET` | `/admin/edge/snapshot?secrets=` | Edge config snapshot (`ETag` / `If-None-Match`; `secrets=true` needs `controlPlane.configApi`) (4.8) |
 | `POST` | `/admin/edge/sync` | Ingest an edge's usage events `{ edgeId, events, queued }` (4.8) |
 | `GET` | `/admin/edge/nodes` | Edges seen: last sync, snapshot ETag, events / errors / queued (4.8) |
 | `GET` | `/admin/features` | Feature modules mounted under `/admin/<id>` (5.1) |
@@ -438,6 +438,10 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `GET` | `/admin/billing/invoices/:account` | One invoice with line items, discount, minimum, tax (`?format=csv`) (6.7) |
 | `GET` | `/admin/k8s/manifests` | Kubernetes manifests for this gateway (`?name=&namespace=&replicas=&image=&secret=&format=yaml`; API keys are never rendered) (6.8) |
 | `GET` | `/admin/k8s/crd` | The `McpGateway` CustomResourceDefinition (6.8) |
+| `GET` | `/admin/data-planes` | Control plane: data planes (last seen, config ETag, in sync, online / stale) and summary (7.0) |
+| `GET` | `/admin/data-planes/config` | Config for data planes (`ETag` / `If-None-Match` → 304; secrets included; `role: control` only) (7.0) |
+| `POST` | `/admin/data-planes/heartbeat` | Data-plane heartbeat `{ nodeId, configEtag?, version?, pullIntervalMs?, servers? }` (`role: control` only) (7.0) |
+| `DELETE` | `/admin/data-planes/:nodeId` | Forget a data plane (7.0) |
 
 ## Bridges
 

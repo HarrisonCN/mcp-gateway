@@ -5,10 +5,10 @@ Manage a running gateway from a config file in git: review the change, then appl
 ## Admin REST API
 
 Operators only (an API key / token without server, tool or tenant restrictions). Read-only endpoints are always on;
-changes need `admin.configApi: true`.
+changes need `controlPlane.configApi: true`.
 
 ```yaml
-admin:
+controlPlane:
   configApi: true
 ```
 
@@ -17,8 +17,8 @@ admin:
 | `GET  /api/v1/admin/config` | Running config, secrets shown as `<redacted>` |
 | `POST /api/v1/admin/config/validate` | `{ valid, errors? , deprecations? }` for a config body |
 | `POST /api/v1/admin/config/diff` | `{ changes: [{ path, change, restart?, before?, after? }] }` |
-| `PUT  /api/v1/admin/config[?dryRun=true]` | Validate, diff and hot-apply (needs `admin.configApi`) |
-| `POST /api/v1/admin/reload` | Re-read the config file (CLI-started gateways; needs `admin.configApi`) |
+| `PUT  /api/v1/admin/config[?dryRun=true]` | Validate, diff and hot-apply (needs `controlPlane.configApi`) |
+| `POST /api/v1/admin/reload` | Re-read the config file (CLI-started gateways; needs `controlPlane.configApi`) |
 | `GET  /api/v1/admin/deprecations` | Deprecated config keys and runtime usages (removed in 3.0) |
 
 - A body is a full config (JSON). Values left as `<redacted>` keep the running value, so `GET` → edit → `PUT` works

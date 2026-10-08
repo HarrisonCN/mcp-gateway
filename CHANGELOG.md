@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.0.0] - 2026-10-08
+
+### Breaking
+- **Config schema v7 only.** `version: 6` is refused with a hint to run `mcp-gateway migrate --to 7` (6.9 reads both).
+- **Top-level `admin` and `dashboard` removed** — use `controlPlane.configApi` and `controlPlane.dashboard`
+  (`migrate --to 7` moves them). For embedders: `GatewayConfig.admin` / `.dashboard`, the `AdminConfig` type and
+  `normalizeControlPlane()` are gone; `GatewayConfig.controlPlane` (`ControlPlaneConfig`) replaces them.
+
+### Added
+- **Control plane / data plane split** — `controlPlane.role: all | control | data` (default `all` = 6.x behaviour).
+  - Control plane: `GET /api/v1/admin/data-planes` (nodes, config ETag, in sync, online / stale),
+    `GET /api/v1/admin/data-planes/config` (`ETag` / `If-None-Match` → 304), `POST /api/v1/admin/data-planes/heartbeat`,
+    `DELETE /api/v1/admin/data-planes/:nodeId`.
+  - Data plane (`url`, `token`, `pullIntervalMs`, `nodeId`): pulls and hot-applies the control plane's config, sends
+    heartbeats, blocks `/api/v1/admin/*` (403) and fails closed (503) until its first config arrives;
+    `GET /api/v1/data-plane` shows the sync state.
+  - Exports: `ControlPlaneSchema`, `DataPlaneSync`, `createControlPlaneRouter`, `configEtag`, `distributedConfig`.
+- [Control plane guide](docs/guides/control-plane.md).
+
+### Changed
+- No deprecations are active in 7.0. Helm chart values and examples use `version: 7`.
+- Pages demo: control-plane data-plane list, empty deprecations, demo config on schema v7.
+- New roadmap for 7.1 → 8.0 in [docs/ROADMAP.md](docs/ROADMAP.md).
+
+See [docs/guides/migrating-to-v7.md](docs/guides/migrating-to-v7.md).
+
 ## [6.9.0] - 2026-10-08
 
 ### Added

@@ -199,22 +199,20 @@ export interface GatewayConfig {
   monitor?: MonitorConfig;
   /** Registered MCP servers */
   servers: McpServerConfig[];
-  /** Config schema version (`5`; optional). */
-  version?: 6 | 7;
+  /** Config schema version (`7`; optional). */
+  version?: 7;
   /** CORS: allowed browser origins (default `["*"]`). */
   cors?: { origins?: string[] };
   /** Health checks: ping interval (ms, default 30000). Restart required. */
   health?: { intervalMs?: number };
-  /** Admin REST API (`/api/v1/admin`). */
-  admin?: AdminConfig;
+  /** Role (all / control / data) and control-plane settings: config API, dashboard, data-plane sync (7.0). */
+  controlPlane?: import('../gateway/control-plane.js').ControlPlaneConfig;
   /** Deprecated keys found by `loadConfig` (set by the loader). */
   deprecations?: Deprecation[];
   /** Log level */
   logLevel?: 'debug' | 'info' | 'warn' | 'error';
   /** Automatic reconnect of crashed / disconnected servers */
   reconnect?: Partial<ReconnectConfig>;
-  /** Web dashboard */
-  dashboard?: { enabled?: boolean };
   /** Downstream MCP endpoint (Streamable HTTP) that aggregates every server */
   mcp?: McpEndpointConfig;
   /** Persistent audit log of requests (optional SQLite) */
@@ -255,12 +253,6 @@ export interface GatewayConfig {
   a2a?: A2ABridgeConfig;
   /** Directory of the loaded config file (set by `loadConfig`; plugin paths resolve against it). */
   configDir?: string;
-}
-
-/** `admin:` — admin REST API. */
-export interface AdminConfig {
-  /** Allow `PUT /api/v1/admin/config` and `POST /api/v1/admin/reload` (default false; read-only endpoints are always on for operators). */
-  configApi?: boolean;
 }
 
 /** `openai:` — OpenAI-compatible tools proxy. */

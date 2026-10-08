@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '6.9.0';
+  const VERSION = '7.0.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -20,11 +20,11 @@
   ];
   // One held tool call so the approvals card can be tried out.
   let demoConfig = {
-    version: 5, port: 4000, logLevel: 'info',
+    version: 7, port: 4000, logLevel: 'info',
     auth: { strategy: 'api-key', apiKeys: ['<redacted>', { key: '<redacted>', name: 'aura', scope: { servers: ['github', 'fs-*'] } }] },
     rateLimit: { limit: 120, windowSeconds: 60 },
     mcp: { toolNaming: 'auto' },
-    admin: { configApi: true },
+    controlPlane: { role: 'control', configApi: true },
     servers: [
       { id: 'github', name: 'GitHub', transport: 'streamable-http', url: 'https://api.githubcopilot.com/mcp/', timeoutMs: 30000 },
       { id: 'filesystem', name: 'Filesystem', transport: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '/data'] },
@@ -625,12 +625,19 @@
       { apiVersion: 'policy/v1', kind: 'PodDisruptionBudget', metadata: { name: 'mcp-gateway', namespace: 'default' } },
     ], notes: ['auth.apiKeys are not rendered: put them in a Secret (MCP_GATEWAY_API_KEYS) and pass ?secret=<name>'] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
-    // 6.9: the demo config is still on schema v6 with `admin` / `dashboard` (`mcp-gateway migrate --to 7`).
-    if (p === '/admin/deprecations') return json({ runtime: [], config: [
-      { id: 'schema-v6', removedIn: '7.0.0', replacement: 'version: 7', message: 'config schema v6 is deprecated; `mcp-gateway migrate --to 7` writes `version: 7`', detail: 'version: 6', source: 'config' },
-      { id: 'admin-section', removedIn: '7.0.0', replacement: 'controlPlane: { configApi }', message: '`admin.configApi` is deprecated; use `controlPlane.configApi` (`mcp-gateway migrate --to 7` moves it)', detail: 'admin', source: 'config' },
-      { id: 'dashboard-section', removedIn: '7.0.0', replacement: 'controlPlane: { dashboard }', message: '`dashboard.enabled` is deprecated; use `controlPlane.dashboard` (`mcp-gateway migrate --to 7` moves it)', detail: 'dashboard', source: 'config' },
-    ] });
+    // 7.0: nothing is deprecated (schema v6, `admin` and `dashboard` were removed).
+    if (p === '/admin/deprecations') return json({ runtime: [], config: [] });
+    // 7.0: control plane — data planes pulling config and sending heartbeats.
+    if (p === '/admin/data-planes') {
+      const seen = (s) => new Date(Date.now() - s * 1000).toISOString();
+      const etag = '"3f9a1c0d7e5b42a8c6d1e0f9b8a7c6d5"';
+      const dataPlanes = [
+        { nodeId: 'dp-eu-1', firstSeen: seen(86400), lastSeen: seen(4), configEtag: etag, inSync: true, status: 'online', version: VERSION, pullIntervalMs: 10000, servers: { online: 3, total: 3 } },
+        { nodeId: 'dp-eu-2', firstSeen: seen(86000), lastSeen: seen(7), configEtag: etag, inSync: true, status: 'online', version: VERSION, pullIntervalMs: 10000, servers: { online: 3, total: 3 } },
+        { nodeId: 'dp-us-1', firstSeen: seen(3600), lastSeen: seen(95), configEtag: '"0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e"', inSync: false, status: 'stale', version: VERSION, pullIntervalMs: 10000, servers: { online: 2, total: 3 }, lastError: 'config pull failed: connect ETIMEDOUT' },
+      ];
+      return json({ role: 'control', configEtag: etag, dataPlanes, summary: { total: 3, online: 2, inSync: 2 } });
+    }
     if (p === '/tenants') return json({ clientId: 'key:demo', operator: true, tenants: demoTenants });
     if ((m = p.match(/^\/tenants\/([^/]+)\/members$/)) && method === 'PUT') {
       const tn = demoTenants.find((x) => x.id === decodeURIComponent(m[1]));
