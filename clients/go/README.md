@@ -18,3 +18,19 @@ if errors.As(err, &ge) && ge.IsPolicyError() { /* blocked by policy */ }
 
 Also: `Health`, `Ready`, `Servers`, `ToolSchemas` + `CallLLMTool` (OpenAI / Anthropic tool calling), `Approve`, `Deny`.
 Tests: `go test ./...`.
+
+## Streaming and MCP sessions (5.7)
+
+```go
+err := client.StreamTool(ctx, "long_job", map[string]any{"n": 3}, "worker", func(ev mcpgateway.Event) error {
+	fmt.Println(ev.Name, string(ev.Data)) // progress, partial, result, error, end
+	return nil
+})
+
+s, err := client.MCP(ctx, "/mcp") // initialize + notifications/initialized
+defer s.Close(ctx)
+tools, err := s.ListTools(ctx)          // follows nextCursor
+res, err := s.CallTool(ctx, "echo", map[string]any{"hello": "world"})
+```
+
+JSON-RPC errors are `*mcpgateway.RPCError`; HTTP / network failures `*mcpgateway.Error`.
