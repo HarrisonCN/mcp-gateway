@@ -450,6 +450,8 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `POST` | `/admin/console/orgs` | Onboard an organisation `{ id, name?, plan?, owner? }` (tenant + plan; `controlPlane.configApi`) (7.2) |
 | `GET` / `PATCH` / `DELETE` | `/admin/console/orgs/:id` | One organisation / change `{ plan?, name?, suspended? }` / offboard (7.2) |
 | `POST` | `/admin/console/orgs/:id/reset-usage` | Clear today's call counter (7.2) |
+| `GET` | `/admin/sanitize` | Output sanitisation / injection defence: settings and counters (7.3) |
+| `POST` | `/admin/sanitize/preview` | Sanitise `{ value, server?, tool? }` without a call: cleaned value, report, blocked (7.3) |
 
 ## Bridges
 

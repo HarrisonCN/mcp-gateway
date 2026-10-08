@@ -165,6 +165,8 @@ export { exportHcl, toHcl, KINDS as TERRAFORM_KINDS } from './features/terraform
 export type { ResourceKind } from './features/terraform.js';
 export { ConsoleSchema, DailyCounter, admitCall, ERR_ORG_REFUSED } from './features/console.js';
 export type { ConsoleConfig } from './features/console.js';
+export { SanitizeSchema, sanitizeResult, sanitizeText, ERR_INJECTION_BLOCKED } from './features/sanitize.js';
+export type { SanitizeConfig, SanitizeReport } from './features/sanitize.js';
 export type {
   GatewayConfig,
   McpServerConfig,

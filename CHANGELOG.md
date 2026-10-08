@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.3.0] - 2026-10-08
+
+### Added
+- **Prompt-injection defence & tool-output sanitisation** (`sanitize`): removes hidden Unicode (zero-width, bidi,
+  tag characters), ANSI escapes, `<script>`-style HTML blocks and markdown images to non-allowed hosts (zero-click
+  exfiltration); optional truncation and **spotlighting** (`<<tool-output server/tool>>` delimiters). Injection scoring
+  of results with `flag` / `mark` / `block`, and `inbound: block` for arguments — refusals use JSON-RPC error **-32017**.
+- `GET /api/v1/admin/sanitize`, `POST /api/v1/admin/sanitize/preview`. [Guide](docs/guides/sanitize.md).
+
 ## [7.2.0] - 2026-10-08
 
 ### Added

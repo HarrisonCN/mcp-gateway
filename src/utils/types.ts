@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Prompt-injection defence and output sanitisation (7.3). */
+  sanitize?: import('../features/sanitize.js').SanitizeConfig;
   /** SaaS console (7.2). */
   console?: import('../features/console.js').ConsoleConfig;
   /** Usage billing and invoices (6.7). */

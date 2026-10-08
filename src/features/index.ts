@@ -21,5 +21,6 @@ import './billing.js';
 import './k8s.js';
 import './terraform.js';
 import './console.js';
+import './sanitize.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

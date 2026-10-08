@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '7.2.0';
+  const VERSION = '7.3.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -56,6 +56,7 @@
     { id: "k8s", since: "6.8.0", summary: "Kubernetes: render manifests for this gateway; McpGateway operator (server-side apply) and Helm chart" },
     { id: "terraform", since: "7.1.0", summary: "Terraform: REST resources for servers, tenants and API keys (restapi provider) and HCL export with import blocks" },
     { id: "console", since: "7.2.0", summary: "SaaS console: organisations with plans (servers, daily call limits), onboarding, suspension" },
+    { id: "sanitize", since: "7.3.0", summary: "Prompt-injection defence: tool-output sanitisation (hidden Unicode, ANSI, HTML, exfil images), spotlighting, inbound / outbound blocking" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -642,6 +643,8 @@
       ],
       totals: { orgs: 2, suspended: 0, callsToday: 5022 },
     });
+    // 7.3: output sanitisation / injection defence.
+    if (p === '/admin/sanitize') return json({ enabled: true, settings: { servers: ['*'], exempt: [], invisible: true, ansi: true, html: true, images: 'strip', allowedImageHosts: ['*.githubusercontent.com'], injection: { action: 'mark', threshold: 0.6 }, inbound: 'off', spotlight: true }, stats: { results: 1840, cleaned: 37, invisible: 112, ansi: 9, html: 4, images: 6, truncated: 0, flagged: 3, blocked: 0, inboundBlocked: 0 } });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 7.0: nothing is deprecated (schema v6, `admin` and `dashboard` were removed).
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });
