@@ -30,5 +30,6 @@ import './compliance-reports.js';
 import './agent-identity.js';
 import './a2a-federation.js';
 import './debug-sessions.js';
+import './cost-advisor.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

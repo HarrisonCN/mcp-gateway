@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '8.3.0';
+  const VERSION = '8.4.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -65,6 +65,7 @@
     { id: "agent-identity", since: "8.1.0", summary: "Agent identity & delegated auth: agent registry, on-behalf-of delegation tokens (RFC 8693 act chains), scoped agent calls" },
     { id: "a2a-federation", since: "8.2.0", summary: "Cross-gateway A2A federation: remote agent discovery (agent cards), skill catalog, task forwarding with shared audit" },
     { id: "debug-sessions", since: "8.3.0", summary: "Live collaborative debugging: shared sessions, live call stream (SSE), breakpoints, edit/resume/abort, notes, replay" },
+    { id: "cost-advisor", since: "8.4.0", summary: "Cost optimization advisor: quantified caching, failure, cheaper-upstream and budget recommendations from live traffic" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -688,6 +689,12 @@
     if (p === '/admin/debug-sessions') return json({ enabled: true, sessions: [
       { id: 'a1b2c3d4', name: 'checkout bug', createdAt: new Date(Date.now() - 600000).toISOString(), owner: 'alice', participants: ['alice', 'bob'], match: { tools: ['payments/*'] }, breakpoints: [{ tool: 'payments/charge', when: { path: 'currency', equals: 'JPY' } }],
         paused: [{ callId: 'f00dcafe', tool: 'payments/charge', client: 'key:checkout', arguments: { amount: 1200, currency: 'JPY', card: '<redacted>' }, pausedForMs: 8000 }], lastSeq: 42 },
+    ] });
+    // 8.4: cost optimization advisor.
+    if (p === '/admin/cost-advisor') return json({ enabled: true, currency: 'USD', window: { minutes: 1440, since: new Date(Date.now() - 86400000).toISOString(), calls: 18420 }, spend: 412.6, totalSavings: 131.9, recommendations: [
+      { id: 'cache:search/query', kind: 'cache', tool: 'search/query', savings: 88.4, detail: '8840 of 12100 calls repeated identical arguments (73%)', suggestion: { cache: { enabled: true, rules: [{ servers: ['search'], tools: ['query'], ttlSeconds: 300 }] } } },
+      { id: 'cheaper-upstream:search/query', kind: 'cheaper-upstream', tool: 'search/query', savings: 36.3, detail: '"query" is also served by "search-lite" at 0.007 per call (vs 0.01)' },
+      { id: 'failures:github/create_issue', kind: 'failures', tool: 'github/create_issue', savings: 7.2, detail: '144 of 610 calls failed (24%) — failed calls are still billed' },
     ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 8.0: nothing is deprecated (schema v7, `plugins[].wasm` and plugin API v4 were removed).

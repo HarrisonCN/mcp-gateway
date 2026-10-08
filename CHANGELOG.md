@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.4.0] - 2026-10-08
+
+### Added
+- **Cost optimization advisor** (`costAdvisor`): observes live tool calls (tool, argument hash, price, outcome) and
+  returns quantified recommendations at `GET /api/v1/admin/cost-advisor` — cache tools with repeated identical calls,
+  failing tools that burn money, cheaper upstreams serving the same tool (with a `rollouts` suggestion) and missing
+  budgets — each with an estimated saving and the config to apply. [Guide](docs/guides/cost-advisor.md).
+- Pages demo: cost recommendations.
+
 ## [8.3.0] - 2026-10-08
 
 ### Added
