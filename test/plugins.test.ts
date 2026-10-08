@@ -47,7 +47,7 @@ describe('PluginHost', () => {
     await expect(host.beforeCall(call)).rejects.toThrow(/Plugin "boom" failed: nope/);
     await host.set([]);
     expect(closed).toBe(1);
-    await expect(PluginHost.build(undefined, [{ name: 'x', apiVersion: 4 }, { name: 'x', apiVersion: 4 }])).rejects.toThrow(/Duplicate plugin name/);
+    await expect(PluginHost.build(undefined, [{ name: 'x', apiVersion: 5 }, { name: 'x', apiVersion: 5 }])).rejects.toThrow(/Duplicate plugin name/);
     await expect(PluginHost.build(undefined, [(() => ({})) as never])).rejects.toThrow(/must export a plugin object/);
     await expect(PluginHost.build(undefined, [{ name: 'future', apiVersion: PLUGIN_API_VERSION + 1 }])).rejects.toThrow(/needs plugin API/);
   });
@@ -57,11 +57,11 @@ describe('PluginHost', () => {
     const seen: string[] = [];
     const host = new PluginHost();
     const plugins = await PluginHost.build(undefined, [
-      { name: 'v3', apiVersion: 4, onToolCall: (_c, ctx) => void seen.push(`call:${ctx.plugin}:${ctx.apiVersion}`), onError: (_c, e, ctx) => void seen.push(`err:${ctx.plugin}:${e.message}`) },
-      { name: 'broken-observer', apiVersion: 4, onError: () => { throw new Error('ignored'); } },
+      { name: 'v3', apiVersion: 5, onToolCall: (_c, ctx) => void seen.push(`call:${ctx.plugin}:${ctx.apiVersion}`), onError: (_c, e, ctx) => void seen.push(`err:${ctx.plugin}:${e.message}`) },
+      { name: 'broken-observer', apiVersion: 5, onError: () => { throw new Error('ignored'); } },
     ]);
     await host.set(plugins);
-    expect(runtimeDeprecations().map((d) => d.id)).toEqual(['plugin-api-v4', 'plugin-api-v4']); // 7.9 (one per plugin)
+    expect(runtimeDeprecations()).toEqual([]); // 8.0
     await expect(PluginHost.build(undefined, [{ name: 'old', apiVersion: 3 }])).rejects.toThrow(/plugin API v3, which was removed in 6.0/);
     await expect(PluginHost.build(undefined, [{ name: 'legacy', onResponse: (_c, r) => r }])).rejects.toThrow(/plugin API v1, which was removed in 4.0/);
     const call = { serverId: 's', name: 't', kind: 'tool' as const, method: 'tools/call', arguments: {}, via: 'rest' as const, state: new Map() };
@@ -84,7 +84,7 @@ describe('PluginHost', () => {
     const p: GatewayPlugin = grantSecrets(
       {
         name: 'v3',
-        apiVersion: 4,
+        apiVersion: 5,
         onToolCall: async (_c, ctx) => {
           seen.push(`${ctx.tenant?.id ?? '-'}:${ctx.tenant?.role ?? '-'}:${await ctx.secrets!.get('TOKEN')}`);
           await expect(ctx.secrets!.get('OTHER')).rejects.toThrow(/not granted/);
@@ -106,7 +106,7 @@ describe('PluginHost', () => {
       'cfg:v3:policy:s', 'v2cfg',
     ]);
     const fail = new PluginHost();
-    await fail.set([{ name: 'bad', apiVersion: 4, onConfigChange: () => { throw new Error('x'); } }]);
+    await fail.set([{ name: 'bad', apiVersion: 5, onConfigChange: () => { throw new Error('x'); } }]);
     await expect(fail.configChanged({ applied: [], servers: [], at: '' })).resolves.toBeUndefined();
   });
 
@@ -119,7 +119,7 @@ describe('PluginHost', () => {
     const dir = tmp();
     writeFileSync(
       join(dir, 'tagger.mjs'),
-      'export default (ctx) => ({ name: "tagger", apiVersion: 4, onResponse: (_c, r) => ({ ...r, result: { tag: ctx.options.tag, v: ctx.apiVersion, r: r.result } }) });',
+      'export default (ctx) => ({ name: "tagger", apiVersion: 5, onResponse: (_c, r) => ({ ...r, result: { tag: ctx.options.tag, v: ctx.apiVersion, r: r.result } }) });',
     );
     const p = await loadPlugin({ module: './tagger.mjs', options: { tag: 'x' } }, dir);
     expect(p.name).toBe('tagger');
@@ -178,7 +178,7 @@ describe('plugins in the gateway', () => {
       [
         {
           name: 'hdr',
-          apiVersion: 4,
+          apiVersion: 5,
           onRequest: (req, res, next) => {
             if (req.path === '/blocked') return void res.status(418).json({ teapot: true });
             res.setHeader('x-plugin', 'hdr');
@@ -187,7 +187,7 @@ describe('plugins in the gateway', () => {
         },
         {
           name: 'rewrite',
-          apiVersion: 4,
+          apiVersion: 5,
           onToolCall: (c) => {
             order.push(`call:${JSON.stringify(c.arguments)}`);
             if (c.arguments.path === '/safe-alias') return { arguments: { ...c.arguments, path: '/' } };
@@ -228,9 +228,9 @@ describe('plugins in the gateway', () => {
 
   it('a failing hook fails the call closed; plugins reload with the config', async () => {
     const dir = tmp();
-    writeFileSync(join(dir, 'p.mjs'), 'export default (ctx) => ({ name: "cfg", apiVersion: 4, onToolCall: () => (ctx.options.deny ? { deny: "cfg deny" } : undefined) });');
+    writeFileSync(join(dir, 'p.mjs'), 'export default (ctx) => ({ name: "cfg", apiVersion: 5, onToolCall: () => (ctx.options.deny ? { deny: "cfg deny" } : undefined) });');
     const url = await start({ configDir: dir, plugins: [{ module: './p.mjs', options: { deny: false } }] }, [
-      { name: 'thrower', apiVersion: 4, onToolCall: (c) => { if (c.arguments.boom) throw new Error('kaput'); } },
+      { name: 'thrower', apiVersion: 5, onToolCall: (c) => { if (c.arguments.boom) throw new Error('kaput'); } },
     ]);
     const boom = await call(url, { boom: true });
     expect(boom.status).toBe(403);

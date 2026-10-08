@@ -26,12 +26,12 @@
  *
  * Plugin API v4 (4.9, current in 5.0): v3 plus `ctx.state`, a per-plugin key-value store with optional TTLs that
  * lives as long as the plugin instance (counters, caches, rate windows) — no more module-level globals.
- * 5.0 refuses v2 and deprecates v3 (still loads, with a warning, until 6.0).
+ * 5.0 refuses v2 and deprecates v3 (still loads, with a warning, until 6.0). 8.0 refuses v4: plugin API v5 only.
  *
  * Plugin API v5 (7.9, required in 8.0): hooks may return the outcome shape of the WIT world
  * `mcp-gateway:plugin@5.0.0` (`wit/mcp-gateway-plugin.wit`) — `{ action: 'continue' | 'rewrite' | 'deny' | 'respond' }`
  * from `onToolCall`, `{ action: 'continue' | 'replace', result }` from `onResponse` — the same contract WASM component
- * plugins (`component:`) implement. The v4 shapes keep working. v4 plugins load with a deprecation warning.
+ * plugins (`component:`) implement. The v4 return shapes keep working inside v5 plugins. 8.0 refuses `apiVersion: 4`.
  *
  * Hooks run in configuration order; the first refusal / short-circuit wins.
  * A hook that throws fails the call (`-32006`) — plugins fail closed.
@@ -39,7 +39,6 @@
  * @module plugins
  */
 
-import { DEPRECATIONS, deprecate } from '../utils/deprecations.js';
 import { isAbsolute, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { readFile } from 'fs/promises';
@@ -52,8 +51,8 @@ import { VERSION } from '../utils/version.js';
 /** Version of the plugin contract implemented by this gateway. */
 export const PLUGIN_API_VERSION = 5;
 
-/** Oldest plugin contract still loaded (7.9: v4 with a deprecation warning until 8.0). */
-export const PLUGIN_API_MIN_VERSION = 4;
+/** Oldest plugin contract still loaded (8.0: v5 only). */
+export const PLUGIN_API_MIN_VERSION = 5;
 
 /** Call refused (or failed) by a plugin hook. */
 export const ERR_PLUGIN_REJECTED = -32006;
@@ -176,7 +175,7 @@ export interface PluginCallError {
 
 export interface GatewayPlugin {
   name: string;
-  /** Plugin contract version the plugin was written for: 4 (current) or 3 (deprecated, removed in 6.0). Required since 4.0. */
+  /** Plugin contract version the plugin was written for: 5 (required since 8.0). */
   apiVersion?: number;
   onRequest?: (req: Request, res: Response, next: NextFunction, ctx: PluginHookContext) => void | Promise<void>;
   onToolCall?: (call: PluginCall, ctx: PluginHookContext) => ToolCallOutcome | Promise<ToolCallOutcome>;
@@ -212,26 +211,28 @@ async function instantiate(src: unknown, ctx: PluginContext, label: string): Pro
     throw new Error(`Plugin "${value.name}" needs plugin API v${v}; this gateway implements v${PLUGIN_API_VERSION}`);
   }
   if (v === 1) {
-    throw new Error(`Plugin "${value.name}" uses plugin API v1, which was removed in 4.0 — declare \`apiVersion: 4\` (hooks receive a context argument; see docs/guides/migrating-to-v4.md)`);
+    throw new Error(`Plugin "${value.name}" uses plugin API v1, which was removed in 4.0 — declare \`apiVersion: 5\` (hooks receive a context argument; see docs/guides/migrating-to-v4.md)`);
   }
   if (v === 2) {
-    throw new Error(`Plugin "${value.name}" uses plugin API v2, which was removed in 5.0 — declare \`apiVersion: 4\` (see docs/guides/migrating-to-v5.md)`);
+    throw new Error(`Plugin "${value.name}" uses plugin API v2, which was removed in 5.0 — declare \`apiVersion: 5\` (see docs/guides/migrating-to-v5.md)`);
   }
   if (v === 3) {
-    throw new Error(`Plugin "${value.name}" uses plugin API v3, which was removed in 6.0 — declare \`apiVersion: 4\` (adds ctx.state; see docs/guides/migrating-to-v6.md)`);
+    throw new Error(`Plugin "${value.name}" uses plugin API v3, which was removed in 6.0 — declare \`apiVersion: 5\` (adds ctx.state; see docs/guides/migrating-to-v6.md)`);
+  }
+  if (v === 4) {
+    throw new Error(`Plugin "${value.name}" uses plugin API v4, which was removed in 8.0 — declare \`apiVersion: 5\` (hooks may return \`{ action }\` outcomes; see docs/guides/migrating-to-v8.md)`);
   }
   if (v < PLUGIN_API_MIN_VERSION) throw new Error(`Plugin "${value.name}" declares unsupported plugin API v${v}`);
-  if (v === 4) deprecate(DEPRECATIONS.pluginApiV4, value.name);
   return value;
 }
 
 /** 5.4: verify a plugin's `.sig` against `pluginTrust` (throws when it must not load). */
 export async function checkSignature(cfg: PluginConfig, baseDir: string, trust?: PluginTrustConfig): Promise<string | undefined> {
   const t = PluginTrustSchema.parse(trust ?? {});
-  const spec = cfg.component ?? cfg.wasm ?? cfg.module;
+  const spec = cfg.component ?? cfg.module;
   if (!spec || (!t.keys.length && !t.requireSigned)) return undefined;
   const label = cfg.name ?? spec;
-  const isPath = !!cfg.wasm || !!cfg.component || spec.startsWith('.') || isAbsolute(spec);
+  const isPath = !!cfg.component || spec.startsWith('.') || isAbsolute(spec);
   if (!isPath) {
     if (t.requireSigned) throw new Error(`Plugin "${label}": pluginTrust.requireSigned refuses package-name modules — install a signed file (mcp-gateway plugin verify)`);
     return undefined;
@@ -287,12 +288,8 @@ export async function loadPlugin(cfg: PluginConfig, baseDir = process.cwd(), tru
     const { loadWasmPlugin } = await import('./wasm.js');
     return loadWasmPlugin({ wasm: cfg.component, name: cfg.name, isolation: cfg.isolation, limits: cfg.limits, abi: 'component' }, baseDir);
   }
-  if (cfg.wasm) {
-    const { loadWasmPlugin } = await import('./wasm.js');
-    deprecate(DEPRECATIONS.pluginWasmCore, cfg.name ?? cfg.wasm);
-    return loadWasmPlugin({ wasm: cfg.wasm, name: cfg.name, isolation: cfg.isolation, limits: cfg.limits }, baseDir);
-  }
-  if (!cfg.module) throw new Error('A plugin needs "module", "component" or "wasm"');
+  if ((cfg as { wasm?: unknown }).wasm !== undefined) throw new Error('`plugins[].wasm` was removed in 8.0 — rebuild the plugin as a plugin API v5 component and load it with `component`');
+  if (!cfg.module) throw new Error('A plugin needs "module" or "component"');
   const spec = cfg.module;
   const isPath = spec.startsWith('.') || isAbsolute(spec);
   const target = isPath ? pathToFileURL(resolve(baseDir, spec)).href : spec;

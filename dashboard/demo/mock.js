@@ -20,7 +20,7 @@
   ];
   // One held tool call so the approvals card can be tried out.
   let demoConfig = {
-    version: 7, port: 4000, logLevel: 'info',
+    version: 8, port: 4000, logLevel: 'info',
     auth: { strategy: 'api-key', apiKeys: ['<redacted>', { key: '<redacted>', name: 'aura', scope: { servers: ['github', 'fs-*'] } }] },
     rateLimit: { limit: 120, windowSeconds: 60 },
     mcp: { toolNaming: 'auto' },
@@ -667,11 +667,8 @@
       { name: 'monthly-2026-10-01T00-00-00-000Z', schedule: 'monthly', generatedAt: '2026-10-01T00:00:00.000Z', frameworks: [{ framework: 'soc2', pass: 8, warn: 1, fail: 0 }, { framework: 'iso27001', pass: 11, warn: 1, fail: 0 }, { framework: 'gdpr', pass: 5, warn: 1, fail: 0 }], verified: true },
     ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
-    // 7.0: nothing is deprecated (schema v6, `admin` and `dashboard` were removed).
-    // 7.9: the demo config is still on schema v7 (`mcp-gateway migrate --to 8`).
-    if (p === '/admin/deprecations') return json({ runtime: [], config: [
-      { id: 'schema-v7', removedIn: '8.0.0', replacement: 'version: 8', message: 'config schema v7 is deprecated; `mcp-gateway migrate --to 8` writes `version: 8`', detail: 'version: 7', source: 'config' },
-    ] });
+    // 8.0: nothing is deprecated (schema v7, `plugins[].wasm` and plugin API v4 were removed).
+    if (p === '/admin/deprecations') return json({ runtime: [], config: [] });
     // 7.0: control plane — data planes pulling config and sending heartbeats.
     if (p === '/admin/data-planes') {
       const seen = (s) => new Date(Date.now() - s * 1000).toISOString();

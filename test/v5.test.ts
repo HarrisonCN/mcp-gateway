@@ -26,38 +26,39 @@ plugins:
   - module: ./audit.mjs
 `;
 
-describe('schema v7 (7.0)', () => {
-  it('reads version 7 (or none) with servers[].timeoutMs (internally timeout)', () => {
-    const cfg = validateConfig({ version: 7, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 1234 }] });
-    expect(cfg.version).toBe(7);
+describe('schema v8 (8.0)', () => {
+  it('reads version 8 (or none) with servers[].timeoutMs (internally timeout)', () => {
+    const cfg = validateConfig({ version: 8, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 1234 }] });
+    expect(cfg.version).toBe(8);
     expect(cfg.servers[0]!.timeout).toBe(1234);
-    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['schema-v7']); // 7.9
+    expect(cfg.deprecations).toBeUndefined(); // 8.0
     expect(validateConfig({ servers: [{ id: 'b', name: 'b', transport: 'stdio', command: 'x' }] }).servers[0]!.timeout).toBe(30000);
   });
 
-  it('refuses the v4, v5 and v6 forms with the migration hint', () => {
-    expect(() => validateConfig({ version: 4, servers: [] })).toThrow(/config schema v4 was removed in 5.0 — use `version: 7`/);
-    expect(() => validateConfig({ version: 5, servers: [] })).toThrow(/config schema v5 was removed in 6.0 — use `version: 7`/);
-    expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/config schema v6 was removed in 7.0 — use `version: 7`/);
+  it('refuses the v4, v5, v6 and v7 forms with the migration hint', () => {
+    expect(() => validateConfig({ version: 4, servers: [] })).toThrow(/config schema v4 was removed in 5.0 — use `version: 8`/);
+    expect(() => validateConfig({ version: 5, servers: [] })).toThrow(/config schema v5 was removed in 6.0 — use `version: 8`/);
+    expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/config schema v6 was removed in 7.0 — use `version: 8`/);
     expect(() => validateConfig({ servers: [{ id: 'a', transport: 'stdio', command: 'x', timeout: 5 }] })).toThrow(/servers.0.timeout: removed in 5.0 — use `timeoutMs`/);
     expect(removedConfigKeys({ version: 4, servers: [{ id: 'a', timeout: 1 }] })).toHaveLength(2);
-    expect(() => validateConfig({ version: 9, servers: [] })).toThrow(/7.9 reads `version: 7` or `version: 8`/);
-    expect(configDeprecations({ version: 7, servers: [] }).map((d) => d.id)).toEqual(['schema-v7']); // 7.9
+    expect(() => validateConfig({ version: 9, servers: [] })).toThrow(/8.0 reads `version: 8`/);
+    expect(() => validateConfig({ version: 7, servers: [] })).toThrow(/config schema v7 was removed in 8.0 — use `version: 8`/);
+    expect(configDeprecations({ version: 7, servers: [] })).toEqual([]); // 8.0
   });
 
-  it('admin round trip uses schema v7 field names', () => {
-    const cfg = validateConfig({ version: 7, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 99 }] });
+  it('admin round trip uses schema v8 field names', () => {
+    const cfg = validateConfig({ version: 8, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 99 }] });
     const p = portableConfig(cfg) as { servers: Array<Record<string, unknown>> };
     expect(p.servers[0]).toMatchObject({ timeoutMs: 99 });
     expect(p.servers[0]).not.toHaveProperty('timeout');
     expect(validateConfig(p).servers[0]!.timeout).toBe(99);
   });
 
-  it('removed normalizeV4Preview() and normalizeControlPlane(); 7.9 deprecates schema v7, plugins[].wasm and plugin API v4', async () => {
+  it('removed normalizeV4Preview() and normalizeControlPlane(); nothing is deprecated in 8.0', async () => {
     const mod = (await import('../src/utils/deprecations.js')) as Record<string, unknown>;
     expect(mod.normalizeV4Preview).toBeUndefined();
     expect(mod.normalizeControlPlane).toBeUndefined();
-    expect(Object.values(DEPRECATIONS).map((d) => d.id)).toEqual(['schema-v7', 'plugin-wasm-core', 'plugin-api-v4']);
+    expect(Object.values(DEPRECATIONS)).toEqual([]);
   });
 });
 
@@ -81,7 +82,7 @@ describe('mcp-gateway migrate --to 5', () => {
     expect(r.changes).toEqual(['version: 3 → 5', 'auth.apiKeys[0]: servers → scope', 'servers[0] (a): timeout → timeoutMs']);
     const out = JSON.parse(r.text);
     expect(out.servers[0]).toEqual({ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 3 });
-    expect(validateConfig({ ...out, version: 7 }).auth!.apiKeys![0]).toMatchObject({ servers: ['a'] });
+    expect(validateConfig({ ...out, version: 8 }).auth!.apiKeys![0]).toMatchObject({ servers: ['a'] });
   });
 });
 
@@ -111,12 +112,12 @@ describe('plugin API v4 (5.0)', () => {
     expect(s.size()).toBe(0);
   });
 
-  it('gives v4 plugins ctx.state (persisting across calls)', async () => {
-    expect(PLUGIN_API_VERSION).toBe(5); // 7.9
+  it('gives v5 plugins ctx.state (persisting across calls)', async () => {
+    expect(PLUGIN_API_VERSION).toBe(5);
     const seen: Array<{ name: string; ctx: PluginHookContext }> = [];
     const counter = {
       name: 'counter',
-      apiVersion: 4,
+      apiVersion: 5,
       onToolCall: (_c: unknown, ctx: PluginHookContext) => {
         const n = (ctx.state!.get<number>('calls') ?? 0) + 1;
         ctx.state!.set('calls', n);
@@ -134,11 +135,12 @@ describe('plugin API v4 (5.0)', () => {
     expect(c[1]!.ctx.apiVersion).toBe(5);
   });
 
-  it('refuses v2 and (6.0) v3', async () => {
+  it('refuses v2, (6.0) v3 and (8.0) v4', async () => {
     resetDeprecations();
-    await expect(PluginHost.build(undefined, [{ name: 'v2', apiVersion: 2 }])).rejects.toThrow(/plugin API v2, which was removed in 5.0 — declare `apiVersion: 4`/);
-    await expect(PluginHost.build(undefined, [{ name: 'v3', apiVersion: 3 }])).rejects.toThrow(/plugin API v3, which was removed in 6.0 — declare `apiVersion: 4`/);
-    await PluginHost.build(undefined, [{ name: 'v4', apiVersion: 4 }]);
-    expect(runtimeDeprecations().map((d) => d.id)).toEqual(['plugin-api-v4']); // 7.9
+    await expect(PluginHost.build(undefined, [{ name: 'v2', apiVersion: 2 }])).rejects.toThrow(/plugin API v2, which was removed in 5.0 — declare `apiVersion: 5`/);
+    await expect(PluginHost.build(undefined, [{ name: 'v3', apiVersion: 3 }])).rejects.toThrow(/plugin API v3, which was removed in 6.0 — declare `apiVersion: 5`/);
+    await expect(PluginHost.build(undefined, [{ name: 'v4', apiVersion: 4 }])).rejects.toThrow(/plugin API v4, which was removed in 8.0 — declare `apiVersion: 5`/);
+    await PluginHost.build(undefined, [{ name: 'v5', apiVersion: 5 }]);
+    expect(runtimeDeprecations()).toEqual([]); // 8.0
   });
 });

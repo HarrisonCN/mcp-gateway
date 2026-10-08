@@ -15,7 +15,7 @@ import { startFeatureGw, type FeatureGw } from './helpers/feature-gw.js';
 const key = generateSigningKey();
 const other = generateSigningKey();
 const keys = [{ id: 'k1', publicKey: key.publicKey }];
-const PLUGIN = "export default { name: 'mp-demo', apiVersion: 4 };\n";
+const PLUGIN = "export default { name: 'mp-demo', apiVersion: 5 };\n";
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'mgw-mp-')); dirs.push(d); return d; };
 let h: FeatureGw | undefined;
@@ -95,7 +95,7 @@ describe('plugin marketplace (5.4)', () => {
     await expect(installEntry(entry({ keyId: 'zz' }), { dir: d, keys, maxBytes: 1e6, fetch: f })).rejects.toThrow(/untrusted key/);
     await expect(installEntry(entry(), { dir: d, keys, maxBytes: 1e6, fetch: (async () => new Response('', { status: 404 })) as unknown as typeof fetch })).rejects.toThrow(/HTTP 404/);
     const r = await installEntry(entry({ url: 'https://x.example/p.wasm' }), { dir: d, keys, maxBytes: 1e6, fetch: f });
-    expect(r.plugin).toEqual({ wasm: join(d, 'mp-demo-1.0.0.wasm'), name: 'mp-demo' });
+    expect(r.plugin).toEqual({ component: join(d, 'mp-demo-1.0.0.wasm'), name: 'mp-demo' });
     const idx = await fetchIndexes(['https://i.example/a.json'], (async () => new Response('x', { status: 500 })) as unknown as typeof fetch);
     expect(idx.errors['https://i.example/a.json']).toBe('HTTP 500');
   });

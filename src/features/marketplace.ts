@@ -4,7 +4,7 @@
  * A marketplace index is a JSON document `{ plugins: [{ name, version, description?, url, sha256, signature, keyId,
  * kind?: "module" | "wasm" }] }`. Installing downloads the artifact, checks its sha256 and Ed25519 signature
  * against `pluginTrust.keys`, and writes `<dir>/<name>-<version>.<mjs|wasm>` plus its `.sig`. The response carries
- * the `plugins:` entry to add to the config — nothing is loaded without an explicit config change.
+ * the `plugins:` entry (`module:` or, for WASM, `component:` — 8.0) to add to the config; nothing is loaded without an explicit config change.
  *
  * ```yaml
  * marketplace:
@@ -116,7 +116,7 @@ export async function installEntry(entry: MarketplaceEntry, opts: { dir: string;
   await writeFile(file, bytes);
   await writeFile(`${file}.sig`, JSON.stringify(sig, null, 2) + '\n');
   const rel = opts.relativeTo && file.startsWith(opts.relativeTo + '/') ? './' + file.slice(opts.relativeTo.length + 1) : file;
-  return { name: entry.name, version: entry.version, file, keyId: v.keyId, plugin: { [kind]: rel, name: entry.name } };
+  return { name: entry.name, version: entry.version, file, keyId: v.keyId, plugin: { [kind === 'wasm' ? 'component' : 'module']: rel, name: entry.name } };
 }
 
 registerFeature({
