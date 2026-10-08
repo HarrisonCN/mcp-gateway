@@ -325,12 +325,11 @@ portal:
 ## Compliance (3.7)
 
 ```yaml
+# 6.0: PII handling is configured with `dlp` (see docs/guides/dlp.md); `compliance.pii` was removed.
+dlp:
+  scope: both
+  default: { clearance: public, strategy: redact }
 compliance:
-  pii:
-    action: redact          # redact (default) | block (-32012) | tag (count only)
-    scope: both             # arguments (before the upstream) | results (before the client) | both
-    categories: [email, phone, credit-card, ssn, iban, ipv4, cn-id]   # default: all
-    servers: ["crm*", "support"]                                      # default: all
   residency:
     rules:                  # first matching rule wins; a rule without tenants applies to everybody
       - { tenants: ["eu-*"], regions: ["eu-*"] }
@@ -340,7 +339,7 @@ servers:
   - { id: crm-eu, region: eu-west-1, ... }
 ```
 
-- **PII:** strings anywhere inside tool arguments / results are scanned. Payment cards are Luhn-checked, IBANs mod-97,
+- **PII (via `dlp` since 6.0; `compliance.pii` in 3.7–5.9):** strings anywhere inside tool arguments / results are scanned. Payment cards are Luhn-checked, IBANs mod-97,
   PRC resident IDs by checksum, so random digit runs are not flagged. `redact` replaces matches with
   `[REDACTED:<category>]`; `block` refuses the call (`-32012`, REST 403); `tag` only counts. Findings are counted per
   direction and category (`GET /api/v1/compliance`) and set `mcp.pii.*` span attributes.

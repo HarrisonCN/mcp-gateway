@@ -17,6 +17,14 @@ import { VERSION } from './utils/version.js';
 import { randomBytes } from 'crypto';
 import { hashApiKey } from './auth/middleware.js';
 import { securityWarnings } from './security/posture.js';
+import { nodeVersionError } from './utils/node-check.js';
+
+// 6.0: Node.js 22+ only.
+const nodeErr = nodeVersionError();
+if (nodeErr) {
+  console.error(nodeErr);
+  process.exit(1);
+}
 
 const LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const;
 

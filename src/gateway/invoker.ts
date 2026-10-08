@@ -232,14 +232,6 @@ export class ToolInvoker {
         const message = `Data residency: ${tenant ? `tenant "${tenant}"` : 'this client'} may not send data to region ${region ?? '(unknown)'}`;
         return this.refuse(ctx, ERR_RESIDENCY, message, { decision: 'residency', region: region ?? null, allowed: comp.regionsFor(tenant) }, span);
       }
-      const pii = comp.applyPii(ctx.serverId, 'arguments', ctx.params);
-      if (pii.blocked) {
-        return this.refuse(ctx, ERR_PII_BLOCKED, `Personal data in the arguments (${pii.categories.join(', ')})`, { decision: 'pii', categories: pii.categories }, span);
-      }
-      if (pii.categories.length) {
-        span.setAttribute('mcp.pii.arguments', pii.categories.join(','));
-        ctx = { ...ctx, params: pii.value };
-      }
     }
     // 5.6: feature call hooks (before).
     const hookCfg = this.deps.config?.();
@@ -299,14 +291,6 @@ export class ToolInvoker {
             }
           : { ...result, result: out.result };
       }
-    }
-    const comp2 = this.deps.compliance;
-    if (comp2 && ctx.kind === 'tool' && result.success && comp2.piiApplies(ctx.serverId, 'results')) {
-      const pii = comp2.applyPii(ctx.serverId, 'results', result.result);
-      if (pii.categories.length) span.setAttribute('mcp.pii.results', pii.categories.join(','));
-      result = pii.blocked
-        ? { success: false, durationMs: result.durationMs, error: { code: ERR_PII_BLOCKED, message: `Personal data in the result (${pii.categories.join(', ')})`, data: { decision: 'pii', categories: pii.categories } } }
-        : { ...result, result: pii.value };
     }
     // 5.6: feature call hooks (after).
     if (hookCfg && ctx.kind === 'tool') {

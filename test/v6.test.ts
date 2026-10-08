@@ -4,6 +4,7 @@ import { migrateConfigText, migrateConfigObject } from '../src/config/migrate.js
 import { configDeprecations } from '../src/utils/deprecations.js';
 import { applyDlp, DlpSchema } from '../src/features/dlp.js';
 import { parse } from 'yaml';
+import { nodeVersionError, MIN_NODE_MAJOR } from '../src/utils/node-check.js';
 
 const V5 = `# my gateway
 version: 5
@@ -22,15 +23,16 @@ compliance:
     rules: [{ regions: ["eu-*"] }]
 `;
 
-describe('6.0 preparation (5.9)', () => {
-  it('deprecates schema v5 and compliance.pii; v6 preview validates', () => {
-    expect(configDeprecations({ version: 5, compliance: { pii: {} } }).map((d) => `${d.id}@${d.removedIn}`)).toEqual(['schema-v5@6.0.0', 'compliance-pii@6.0.0']);
+describe('6.0: schema v6, compliance.pii removed, migrate --to 6', () => {
+  it('refuses schema v5 and compliance.pii; v6 validates', () => {
+    expect(configDeprecations({ version: 5, compliance: { pii: {} } })).toEqual([]);
+    expect(() => validateConfig({ version: 5, servers: [] })).toThrow(/schema v5 was removed in 6.0/);
     expect(configDeprecations({ compliance: { residency: {} } })).toEqual([]);
     expect(configDeprecations(null)).toEqual([]);
     const v6 = validateConfig({ version: 6, servers: [], dlp: { default: { clearance: 'public' } } });
     expect(v6.version).toBe(6);
     expect(v6.deprecations).toBeUndefined();
-    expect(() => validateConfig({ version: 6, servers: [], compliance: { pii: { action: 'redact' } } })).toThrow(/compliance.pii: not part of config schema v6 — use `dlp`/);
+    expect(() => validateConfig({ version: 6, servers: [], compliance: { pii: { action: 'redact' } } })).toThrow(/compliance.pii: removed in 6.0 — use `dlp`/);
   });
 
   it('migrate --to 6 converts compliance.pii to dlp, keeping comments and residency', () => {
@@ -61,5 +63,16 @@ describe('6.0 preparation (5.9)', () => {
     expect(blockNotes.notes.join()).toMatch(/-32013/);
     expect(migrateConfigText('version: 6\nplugins: [{ module: ./p.mjs }]\n').notes.join()).toMatch(/apiVersion: 4/);
     expect(() => migrateConfigText('version: 6\n', 'yaml', 5)).toThrow(/already on schema v6/);
+  });
+});
+
+describe('Node.js 22+ (6.0)', () => {
+  it('accepts 22 and newer, refuses older runtimes with a clear message', () => {
+    expect(MIN_NODE_MAJOR).toBe(22);
+    expect(nodeVersionError('22.0.0')).toBeUndefined();
+    expect(nodeVersionError('v24.1.0')).toBeUndefined();
+    expect(nodeVersionError('20.11.1')).toMatch(/requires Node.js 22 or newer \(running v20.11.1\)/);
+    expect(nodeVersionError('v18.0.0')).toMatch(/running v18.0.0/);
+    expect(nodeVersionError()).toBeUndefined();
   });
 });

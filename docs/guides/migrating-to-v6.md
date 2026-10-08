@@ -9,7 +9,7 @@
 2. `npx @winstonsayno/mcp-gateway@5.9 migrate --write` — rewrites the config to **schema v6** in place (comments and
    layout kept, `.bak` copy written). `--check` exits 3 when a file still needs migrating (CI).
 3. Plugins: declare `apiVersion: 4`.
-4. Node.js 22 or newer (already the baseline since 5.0; 6.0 makes it a hard requirement in the CLI too).
+4. Node.js 22 or newer (the CLI refuses older runtimes with a clear message since 6.0).
 
 ## What changes
 

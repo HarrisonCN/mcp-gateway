@@ -528,17 +528,6 @@ export interface PortalConfig {
 export type PiiCategory = 'email' | 'phone' | 'credit-card' | 'ssn' | 'iban' | 'ipv4' | 'cn-id';
 
 export interface ComplianceConfig {
-  pii?: {
-    enabled?: boolean;
-    /** Default: all categories. */
-    categories?: PiiCategory[];
-    /** `redact` (default) masks matches, `block` refuses the call, `tag` only counts. */
-    action?: 'redact' | 'block' | 'tag';
-    /** Scan tool `arguments` (before the upstream), `results` (before the client), or `both` (default). */
-    scope?: 'arguments' | 'results' | 'both';
-    /** Server id globs (default all). */
-    servers?: string[];
-  };
   residency?: {
     /** First matching rule wins. A rule without `tenants` applies to everybody. */
     rules?: Array<{ tenants?: string[]; regions: string[] }>;

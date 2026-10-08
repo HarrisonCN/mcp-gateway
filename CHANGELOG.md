@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0] - 2026-10-08
+
+### Breaking
+- **Config schema v6 only.** `version: 5` is refused with a hint to run `mcp-gateway migrate --to 6` (5.9 reads both).
+- **`compliance.pii` removed** — configure PII handling with `dlp` (5.6). `GET /api/v1/compliance` and the SOC 2 /
+  GDPR reports now read their PII settings and counters from `dlp`; findings are keyed by category.
+- **Plugin API v3 refused** — declare `apiVersion: 4` (adds `ctx.state`, nothing else changes).
+- **Node.js 22+** is enforced by the CLI with a clear message (`engines.node` was already `>=22`).
+
+### Changed
+- No deprecations are active in 6.0; `GET /api/v1/admin/deprecations` is empty for a clean config.
+- Pages demo: deprecations list empty, demo plugins on API v4.
+- New roadmap for 6.1 → 7.0 in [docs/ROADMAP.md](docs/ROADMAP.md).
+
+See [docs/guides/migrating-to-v6.md](docs/guides/migrating-to-v6.md).
+
 ## [5.9.0] - 2026-10-08
 
 ### Deprecated (removed in 6.0)
