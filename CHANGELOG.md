@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.5.0] - 2026-10-08
+
+### Added
+- **Zero-downtime blue/green upgrades** (`blueGreen`): run two versions of an upstream side by side and switch all
+  traffic atomically after a health **probe** on the idle colour (`POST /api/v1/admin/blue-green/:id/switch`, 409 when
+  it fails unless `force`), drain in-flight calls on the old colour, watch a **verification window** with automatic
+  rollback on errors, and roll back by hand (`POST …/rollback`). `GET /api/v1/admin/blue-green` shows in-flight calls,
+  per-colour calls / errors and the switch history. [Guide](docs/guides/blue-green.md).
+- Pages demo: a blue/green switch under verification.
+
+### Fixed
+- Debug sessions (8.3) no longer replace the call's arguments object when nothing was edited, so call hooks that
+  track calls by their arguments (blue/green, cost advisor) keep seeing their results on the same calls.
+
 ## [8.4.0] - 2026-10-08
 
 ### Added

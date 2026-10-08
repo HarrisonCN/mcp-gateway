@@ -195,9 +195,9 @@ registerCallHook({
       tracked.push({ session: s, callId, started: Date.now() });
     }
     if (!tracked.length) return;
-    if (args === call.args) args = { ...args }; // fresh object: the after hook finds its calls by identity
+    // The after hook finds its calls by the identity of the (possibly edited) arguments object.
     debugState.pending.set(args, tracked);
-    return { args };
+    return args === call.args ? undefined : { args };
   },
   after(call, result: ProxyResponse, cfg) {
     const c = settings(cfg);

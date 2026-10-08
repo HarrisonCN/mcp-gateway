@@ -185,6 +185,8 @@ export { DebugSessionsSchema, ERR_DEBUG_ABORTED } from './features/debug-session
 export type { DebugSessionsConfig, DebugEvent, DebugBreakpoint } from './features/debug-sessions.js';
 export { CostAdvisorSchema, analyse as analyseCosts } from './features/cost-advisor.js';
 export type { CostAdvisorConfig, Recommendation as CostRecommendation } from './features/cost-advisor.js';
+export { BlueGreenSchema } from './features/blue-green.js';
+export type { BlueGreenConfig } from './features/blue-green.js';
 export type {
   GatewayConfig,
   McpServerConfig,

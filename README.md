@@ -586,6 +586,12 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v8.5
+
+| Feature | |
+|---------|---|
+| **Blue/green upgrades** | Probed atomic switch between upstream versions, in-flight drain, auto-rollback — [guide](docs/guides/blue-green.md) |
+
 ## What's New in v8.4
 
 | Feature | |

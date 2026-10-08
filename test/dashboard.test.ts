@@ -434,6 +434,11 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(a.recommendations.map((r: any) => r.kind)).toEqual(['cache', 'cheaper-upstream', 'failures']);
     expect(a.totalSavings).toBeGreaterThan(0);
   });
+  it('shows a blue/green switch being verified (8.5)', async () => {
+    const f = demoFetch();
+    const d = (await (await f('/api/v1/admin/blue-green')).json()) as any;
+    expect(d.deployments[0]).toMatchObject({ active: 'green', verifying: { color: 'green' } });
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

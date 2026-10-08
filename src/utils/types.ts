@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Zero-downtime blue/green upgrades (8.5). */
+  blueGreen?: import('../features/blue-green.js').BlueGreenConfig;
   /** Cost optimization advisor (8.4). */
   costAdvisor?: import('../features/cost-advisor.js').CostAdvisorConfig;
   /** Live collaborative debugging (8.3). */

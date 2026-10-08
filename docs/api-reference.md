@@ -486,6 +486,9 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `POST` | `/admin/debug-sessions/:id/notes` | Annotate `{ text, callId? }` (8.3) |
 | `POST` | `/admin/debug-sessions/:id/replay/:callId` | Re-run a captured call (8.3) |
 | `GET` | `/admin/cost-advisor?windowMinutes=` | Cost optimization advisor: spend in the window and recommendations (cache, failures, cheaper upstream, budget) with estimated savings (8.4) |
+| `GET` | `/admin/blue-green` | Blue/green deployments: active colour, in-flight calls, calls / errors per colour, verification, history (8.5) |
+| `POST` | `/admin/blue-green/:id/switch` | Probe the idle colour and switch all traffic `{ to?, force? }` (409 when the probe fails) (8.5) |
+| `POST` | `/admin/blue-green/:id/rollback` | Switch back to the previous colour immediately (8.5) |
 
 ## Bridges
 
