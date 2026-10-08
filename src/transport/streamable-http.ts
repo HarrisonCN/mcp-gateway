@@ -16,6 +16,7 @@
  * @module transport/streamable-http
  */
 
+import { upstreamFetch } from '../security/mtls.js';
 import type { McpServerConfig } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import {
@@ -80,7 +81,7 @@ export class StreamableHttpChannel implements UpstreamChannel {
 
     let res: Response;
     try {
-      res = await fetch(this.url, {
+      res = await upstreamFetch(this.config)(this.url, {
         method: 'POST',
         headers: this.requestHeaders({
           'Content-Type': 'application/json',
@@ -177,7 +178,7 @@ export class StreamableHttpChannel implements UpstreamChannel {
     if (!this.sessionId || this.lost) return;
     // Politely end the session; servers may answer 405 if they do not support it.
     try {
-      const res = await fetch(this.url, {
+      const res = await upstreamFetch(this.config)(this.url, {
         method: 'DELETE',
         headers: this.requestHeaders(),
         redirect: 'error',

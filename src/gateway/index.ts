@@ -48,6 +48,7 @@ import { UsageMeter } from './usage.js';
 import { membershipsOf } from '../auth/tenants.js';
 import { Catalog, InstalledServers, buildServerConfig, type InstallRequest } from '../catalog/index.js';
 import { ChainService } from '../orchestration/service.js';
+import { MtlsManager, setUpstreamTls } from '../security/mtls.js';
 import { CostLedger, costsRouter } from '../costs/index.js';
 import { PluginHost, type PluginSource } from '../plugins/index.js';
 import { PROTECTED_RESOURCE_METADATA_PATH, protectedResourceMetadata } from '../auth/oauth.js';
@@ -95,6 +96,8 @@ export class Gateway {
   private stateStore?: StateStore;
   private tracer: Tracer = NOOP_TRACER;
   private invoker?: ToolInvoker;
+  /** 4.5: upstream mTLS / SPIFFE identity. */
+  readonly mtls = new MtlsManager(() => this.config.mtls, () => this.config.configDir ?? process.cwd());
   /** 4.3: cost accounting and budgets. */
   readonly costs = new CostLedger(() => this.config.costs);
   /** 4.2: tool chains. */
@@ -162,6 +165,10 @@ export class Gateway {
     if (this.started) throw new Error('Gateway already started');
     this.started = true;
     logger.setLevel(this.config.logLevel ?? 'info');
+    if (this.config.mtls) {
+      this.mtls.start();
+      setUpstreamTls(this.mtls);
+    }
 
     this.stateStore = this.options.stateStore ?? createStateStore(this.config.state);
     const shared = this.stateStore.kind === 'memory' ? undefined : { store: this.stateStore, failureMode: this.config.state?.failureMode };
@@ -319,6 +326,13 @@ export class Gateway {
     );
     this.app.use('/api/v1', this.router);
     this.app.use('/api/v1', this.chains.router(this.router.authenticate));
+    this.app.get('/api/v1/mtls', this.router.authenticate, (req, res) => {
+      if (!this.router!.isOperator(req)) return void res.status(403).json({ error: 'Forbidden', message: 'Operator access required' });
+      res.json({
+        ...this.mtls.status(),
+        servers: this.registry.getAllServers().map((s) => ({ id: s.id, mtls: this.mtls.applies(s), spiffeId: s.tls?.spiffeId ?? null })),
+      });
+    });
     this.app.use('/api/v1', costsRouter(this.costs, () => this.config.costs, this.router.authenticate, (req) => this.router!.isOperator(req)));
 
     // Bridges: OpenAI-compatible tools proxy and A2A agent card / JSON-RPC (after the JSON parser).
@@ -522,6 +536,8 @@ export class Gateway {
     }
     this.router?.close();
     this.secrets.stopRotation();
+    this.mtls.stop();
+    setUpstreamTls(undefined);
     this.federation?.stop();
     await this.proxy.disconnectAll();
     if (this.stateStore && !this.options.stateStore) await this.stateStore.close().catch(() => undefined);
@@ -558,6 +574,7 @@ export class Gateway {
       const applied: string[] = [];
       const prevPolicy = this.config.policy;
       const prevPlugins = this.config.plugins;
+      const prevMtls = this.config.mtls;
       const prevCache = this.config.cache;
       const prevSecrets = this.config.secrets;
       const prevFederation = this.config.federation;
@@ -653,6 +670,14 @@ export class Gateway {
         this.federation?.refreshPeers();
         this.federation?.start();
         applied.push('federation');
+      }
+      if (!same(prevMtls, next.mtls)) {
+        this.mtls.stop();
+        if (next.mtls) {
+          this.mtls.start();
+          setUpstreamTls(this.mtls);
+        } else setUpstreamTls(undefined);
+        applied.push('mtls');
       }
       if (!same(prevSecrets, next.secrets)) {
         this.secrets.configure();

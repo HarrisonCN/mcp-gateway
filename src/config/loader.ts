@@ -71,6 +71,15 @@ const McpServerSchema = z.object({
   timeout: z.number().positive().default(30000),
   maxConcurrency: z.number().int().positive().default(10),
   maxQueue: z.number().int().min(0).optional(),
+  tls: z
+    .object({
+      spiffeId: z.string().regex(/^spiffe:\/\/[^/\s]+(\/\S*)?$/, 'must be a spiffe://trust-domain/path ID (globs allowed)').optional(),
+      ca: z.string().min(1).optional(),
+      servername: z.string().min(1).optional(),
+      clientCert: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
   passthrough: z.boolean().optional(),
   tools: ToolFilterSchema.optional(),
   replicas: z
@@ -801,6 +810,15 @@ const GatewayConfigSchema = z.object({
       provider: z.object({ organization: z.string().min(1), url: z.string().url().optional() }).strict().optional(),
       public: z.boolean().optional(),
       taskRetentionSeconds: z.number().int().positive().optional(),
+    })
+    .strict()
+    .optional(),
+  mtls: z
+    .object({
+      identity: z.object({ cert: z.string().min(1), key: z.string().min(1), bundle: z.string().min(1).optional() }).strict().optional(),
+      reloadIntervalSeconds: z.number().int().min(0).optional(),
+      requireForAll: z.boolean().optional(),
+      expiryWarningHours: z.number().positive().optional(),
     })
     .strict()
     .optional(),

@@ -583,6 +583,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v4.5
+
+| Feature | Description |
+|---------|-------------|
+| **Upstream mTLS** | The gateway presents its certificate and verifies upstreams against a trust bundle |
+| **SPIFFE identities** | `tls.spiffeId` checks the workload identity instead of the hostname |
+| **Hot certificate rotation** | SVID files re-read on an interval; no restart |
+
 ## What's New in v4.4
 
 | Feature | Description |

@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.5.0] - 2026-10-08
+
+### Added
+- **Zero-trust upstream mTLS** (`mtls:` + `servers[].tls`): the gateway presents its X.509 identity (e.g. a SPIRE
+  X.509-SVID written by `spiffe-helper`) to HTTPS upstreams (`streamable-http`, `sse`) and verifies them against a
+  trust bundle — with `tls.spiffeId` (globs) the peer's SPIFFE URI SAN replaces the hostname check.
+- **Certificate rotation**: identity files are re-read every `reloadIntervalSeconds`; a new certificate replaces the
+  connection pool without a restart, mismatched keys are rejected, and expiry is warned `expiryWarningHours` ahead.
+- `GET /api/v1/mtls`: identity (SPIFFE ID, expiry, rotations), observed peer identities and per-server mode; shown in
+  the GitHub Pages demo.
+- New runtime dependency: `undici` (connection pools with client certificates).
+
 ## [4.4.0] - 2026-10-08
 
 ### Added

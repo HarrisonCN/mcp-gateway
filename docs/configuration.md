@@ -864,3 +864,32 @@ servers:
     maxQueue: 50               # load shedding: the 51st waiting call gets 503 + Retry-After (-32014 on /mcp)
 ```
 
+## Zero-trust upstream mTLS (4.5)
+
+Present the gateway's X.509 identity to HTTPS upstreams and verify theirs by **SPIFFE ID** instead of hostname.
+Works with SPIRE (`spiffe-helper` writing the SVID files) or any PKI; certificates are re-read and rotated without a
+restart.
+
+```yaml
+mtls:
+  identity:
+    cert: /run/spire/svid.pem          # path (relative to the config file) or inline PEM
+    key: /run/spire/svid_key.pem
+    bundle: /run/spire/bundle.pem      # CAs trusted for upstream servers
+  reloadIntervalSeconds: 60            # rotation check (0 = load once)
+  expiryWarningHours: 24
+  requireForAll: false                 # true: every https:// upstream uses mTLS
+servers:
+  - id: search
+    transport: streamable-http
+    url: https://search.internal:8443/mcp
+    tls:
+      spiffeId: spiffe://example.org/ns/tools/*   # required peer identity (globs)
+      # ca: ./search-ca.pem      # per-server bundle
+      # servername: search.internal
+      # clientCert: false        # verify only, don't present the identity
+```
+
+A rotated certificate replaces the connection pool (new connections use it); a key that does not match its certificate
+is rejected and the current identity kept. Status: `GET /api/v1/mtls`.
+

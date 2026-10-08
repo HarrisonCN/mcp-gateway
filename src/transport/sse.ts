@@ -17,6 +17,7 @@
  * @module transport/sse
  */
 
+import { upstreamFetch } from '../security/mtls.js';
 import type { McpServerConfig } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { errMessage, expandRecord, type ChannelOptions, type JsonRpcMessage, type UpstreamChannel } from './channel.js';
@@ -58,7 +59,7 @@ export class SseChannel implements UpstreamChannel {
 
     let res: Response;
     try {
-      res = await fetch(this.url, {
+      res = await upstreamFetch(this.config)(this.url, {
         method: 'GET',
         headers: { ...this.headers, Accept: 'text/event-stream', 'Cache-Control': 'no-cache' },
         signal: this.abort.signal,
@@ -128,7 +129,7 @@ export class SseChannel implements UpstreamChannel {
 
   async send(message: JsonRpcMessage): Promise<void> {
     if (this.closed || this.lost || !this.endpoint) throw new Error('SSE channel is not connected');
-    const res = await fetch(this.endpoint, {
+    const res = await upstreamFetch(this.config)(this.endpoint, {
       method: 'POST',
       headers: { ...this.headers, 'Content-Type': 'application/json' },
       body: JSON.stringify(message),

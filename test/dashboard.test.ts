@@ -216,6 +216,13 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(t.match(/event: progress/g)).toHaveLength(3);
     expect(t).toContain('event: result');
   });
+
+  it('reports the mTLS identity and peers (4.5)', async () => {
+    const f = demoFetch();
+    const r = (await (await f('/api/v1/mtls')).json()) as any;
+    expect(r.identity.spiffeId).toMatch(/^spiffe:\/\//);
+    expect(r.servers.find((s: any) => s.id === 'search').mtls).toBe(true);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {
