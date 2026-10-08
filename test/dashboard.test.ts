@@ -422,6 +422,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(a.remotes.map((r: any) => `${r.id}:${r.status}`)).toEqual(['eu:online', 'partner:error']);
     expect(a.recent[0].state).toBe('completed');
   });
+  it('lists live debug sessions with a paused call (8.3)', async () => {
+    const f = demoFetch();
+    const d = (await (await f('/api/v1/admin/debug-sessions')).json()) as any;
+    expect(d.sessions[0].participants).toEqual(['alice', 'bob']);
+    expect(d.sessions[0].paused[0].arguments.card).toBe('<redacted>');
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

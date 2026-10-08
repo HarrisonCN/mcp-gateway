@@ -181,6 +181,8 @@ export { AgentIdentitySchema, signAgentToken, verifyAgentToken, issueAgentToken,
 export type { AgentIdentityConfig, AgentTokenClaims } from './features/agent-identity.js';
 export { A2aFederationSchema, refreshRemote, sendToRemote } from './features/a2a-federation.js';
 export type { A2aFederationConfig, RemoteState as A2aRemoteState } from './features/a2a-federation.js';
+export { DebugSessionsSchema, ERR_DEBUG_ABORTED } from './features/debug-sessions.js';
+export type { DebugSessionsConfig, DebugEvent, DebugBreakpoint } from './features/debug-sessions.js';
 export type {
   GatewayConfig,
   McpServerConfig,

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.3.0] - 2026-10-08
+
+### Added
+- **Live collaborative debugging** (`debugSessions`): operators open shared debug sessions that stream matching tool
+  calls live (Server-Sent Events or polling), pause calls at conditional **breakpoints**, **edit arguments and
+  resume** or **abort** them (JSON-RPC **-32020**), annotate calls with shared notes and replay captured calls.
+  Arguments and results are redacted. `/api/v1/admin/debug-sessions/…`. [Guide](docs/guides/debug-sessions.md).
+- Pages demo: a debug session with a paused call.
+
 ## [8.2.0] - 2026-10-08
 
 ### Added

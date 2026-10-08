@@ -586,6 +586,12 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v8.3
+
+| Feature | |
+|---------|---|
+| **Collaborative debugging** | Shared live sessions: call stream (SSE), breakpoints, edit / resume / abort, notes, replay — [guide](docs/guides/debug-sessions.md) |
+
 ## What's New in v8.2
 
 | Feature | |

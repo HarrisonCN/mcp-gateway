@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Live collaborative debugging (8.3). */
+  debugSessions?: import('../features/debug-sessions.js').DebugSessionsConfig;
   /** Cross-gateway A2A federation (8.2). */
   a2aFederation?: import('../features/a2a-federation.js').A2aFederationConfig;
   /** Agent identity & delegated auth (8.1). */
