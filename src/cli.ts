@@ -230,7 +230,7 @@ remoteOptions(
 remoteOptions(
   program
     .command('apply')
-    .description('Apply a config file to a running gateway (hot reload over the admin API; needs admin.configApi: true)')
+    .description('Apply a config file to a running gateway (hot reload over the admin API; needs controlPlane.configApi: true)')
     .option('--dry-run', 'Validate and show the diff without applying'),
 ).action(async (options) => {
   try {

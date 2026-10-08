@@ -5,7 +5,7 @@
  * - `GET  /admin/edge/snapshot[?secrets=true]` — edge config derived from the running config: enabled
  *   `streamable-http` servers (id, name, url, tool filters, timeout, known tool catalog), unscoped API keys as
  *   `sha256:` digests, tool naming and CORS origins. `ETag` / `If-None-Match` → 304. Upstream `headers` are
- *   included only with `?secrets=true`, which additionally requires `admin.configApi: true`.
+ *   included only with `?secrets=true`, which additionally requires `controlPlane.configApi: true`.
  * - `POST /admin/edge/sync` — `{ edgeId, events: EdgeEvent[], queued }`: events land in the metrics / request
  *   log (client `edge:<edgeId>`); the edge is tracked in the node list.
  * - `GET  /admin/edge/nodes` — known edges: last seen, snapshot ETag served, event / error / queued counts.
@@ -120,8 +120,8 @@ export function createEdgeControlRouter(deps: EdgeControlDeps): express.Router &
 
   router.get('/admin/edge/snapshot', ...guard, (req, res) => {
     const secrets = req.query.secrets === 'true' || req.query.secrets === '1';
-    if (secrets && deps.config().admin?.configApi !== true) {
-      return void res.status(403).json({ error: 'Forbidden', message: 'Snapshots with upstream headers need admin.configApi: true' });
+    if (secrets && deps.config().controlPlane?.configApi !== true) {
+      return void res.status(403).json({ error: 'Forbidden', message: 'Snapshots with upstream headers need controlPlane.configApi: true' });
     }
     const snap = buildEdgeSnapshot(deps.config(), deps.tools(), secrets);
     const edgeId = req.get('x-edge-id');

@@ -55,6 +55,9 @@ import { MtlsManager, setUpstreamTls } from '../security/mtls.js';
 import { CostLedger, costsRouter } from '../costs/index.js';
 import { PluginHost, type PluginSource } from '../plugins/index.js';
 import { PROTECTED_RESOURCE_METADATA_PATH, protectedResourceMetadata } from '../auth/oauth.js';
+import { createControlPlaneRouter, DataPlaneSync, roleOf } from './control-plane.js';
+import { portableConfig } from './admin.js';
+import { validateConfig } from '../config/loader.js';
 
 function findDashboard(): string | undefined {
   // src/gateway → ../../dashboard (tsx) and dist/gateway → ../../dashboard (built)
@@ -84,6 +87,8 @@ export class Gateway {
   private router?: ApiRouter;
   private mcp?: McpEndpoint;
   private live?: LiveRouter;
+  /** Data-plane config sync (7.0, `controlPlane.role: data`). */
+  dataPlane?: DataPlaneSync;
   private cors: express.RequestHandler;
   private ipFilter?: express.RequestHandler;
   private jsonParser: express.RequestHandler;
@@ -273,6 +278,26 @@ export class Gateway {
     // a disallowed client address or Host header.
     this.app.use((req, res, next) => (this.ipFilter ? this.ipFilter(req, res, next) : next()));
     this.app.use(hostCheckMiddleware(() => this.allowedHosts()));
+    // 7.0 data plane: the admin API lives on the control plane; nothing is served before the first config arrives.
+    if (roleOf(this.config) === 'data') {
+      const cp = this.config.controlPlane!;
+      this.dataPlane = new DataPlaneSync({
+        config: cp,
+        apply: (raw) => this.applyPulledConfig(raw),
+        servers: () => {
+          const all = this.registry.getAllServers();
+          return { total: all.length, online: all.filter((s) => this.registry.getHealth(s.id)?.status === 'online').length };
+        },
+      });
+      const dp = this.dataPlane;
+      this.app.use((req, res, next) => {
+        if (req.path === '/api/v1/admin' || req.path.startsWith('/api/v1/admin/')) {
+          return void res.status(403).json({ error: 'Forbidden', message: `This gateway is a data plane; the admin API is served by the control plane (${cp.url})`, controlPlane: cp.url });
+        }
+        if (dp.ready || req.path === '/' || req.path === '/api/v1/health' || req.path === '/api/v1/data-plane') return next();
+        res.status(503).set('Retry-After', '5').json({ error: 'Service Unavailable', message: 'Data plane is waiting for its first config from the control plane', controlPlane: cp.url });
+      });
+    }
     // Plugin onRequest hooks: after the network guards, before CORS, auth and routes.
     const pluginMiddleware = this.plugins.middleware();
     this.app.use((req, res, next) => (this.plugins.size > 0 ? pluginMiddleware(req, res, next) : next()));
@@ -330,6 +355,21 @@ export class Gateway {
         isOperator: (req) => this.router!.isOperator(req),
       }),
     );
+    // 7.0: control plane — data-plane list, config distribution (role: control) and heartbeats.
+    this.app.use(
+      '/api/v1',
+      createControlPlaneRouter({
+        config: () => this.config,
+        portable: () => portableConfig(this.config),
+        authenticate: this.router.authenticate,
+        isOperator: (req) => this.router!.isOperator(req),
+      }),
+    );
+    this.app.get('/api/v1/data-plane', this.router.authenticate, (req, res) => {
+      if (!this.router!.isOperator(req)) return void res.status(403).json({ error: 'Forbidden', message: 'Operator access required' });
+      if (!this.dataPlane) return void res.status(404).json({ error: 'Not Found', message: 'Not a data plane (controlPlane.role: data)' });
+      res.set('Cache-Control', 'no-store').json(this.dataPlane.status());
+    });
     const edgeControl = createEdgeControlRouter({
       config: () => this.config,
       tools: () => this.registry.getAllTools(),
@@ -401,7 +441,7 @@ export class Gateway {
       send();
     });
 
-    const dashboard = this.config.dashboard?.enabled === false ? undefined : findDashboard();
+    const dashboard = this.config.controlPlane?.dashboard === false ? undefined : findDashboard();
     // 3.8: developer portal page (same CSP as the dashboard).
     const portalPage = dashboard ? resolve(dirname(dashboard), 'portal.html') : undefined;
     this.app.get('/portal', (_req, res, next) => {
@@ -429,7 +469,7 @@ export class Gateway {
         mcp: this.mcp ? this.mcp.path : 'disabled',
         dashboard: dashboard
           ? '/dashboard'
-          : this.config.dashboard?.enabled === false
+          : this.config.controlPlane?.dashboard === false
             ? 'disabled'
             : 'not available (dashboard/index.html missing)',
       });
@@ -497,6 +537,17 @@ export class Gateway {
     });
 
     this.server.on('error', (err) => logger.error(`HTTP server error: ${err.message}`));
+    if (this.dataPlane) {
+      logger.info(`Data plane ${this.dataPlane.nodeId}: pulling config from ${this.config.controlPlane!.url}`);
+      this.dataPlane.start();
+    }
+  }
+
+  /** Data plane (7.0): validate a config pulled from the control plane and hot-apply it (own controlPlane/port/host kept). */
+  private async applyPulledConfig(raw: Record<string, unknown>): Promise<void> {
+    const { controlPlane: _c, port: _p, host: _h, ...rest } = raw;
+    const next = validateConfig({ ...rest, controlPlane: this.config.controlPlane });
+    await this.reload({ ...next, port: this.config.port, host: this.config.host, controlPlane: this.config.controlPlane, configDir: this.config.configDir });
   }
 
   /** Bound address (useful when listening on port 0). */
@@ -513,6 +564,7 @@ export class Gateway {
 
   private async _stop(): Promise<void> {
     logger.info('Shutting down mcp-gateway...');
+    await this.dataPlane?.stop();
     for (const fn of this.featureStops.splice(0)) await Promise.resolve(fn()).catch(() => {});
     const closed = this.server.listening
       ? new Promise<void>((res, rej) => this.server.close((err) => (err ? rej(err) : res())))
@@ -593,7 +645,7 @@ export class Gateway {
    *    `security` (headers, trustProxy, ipAllowlist, allowedHosts,
    *    dnsRebindingProtection, body / argument limits, lockout, redaction)
    *    take effect immediately.
-   * port, host, monitor.retentionHours, health and dashboard
+   * port, host, monitor.retentionHours, health and controlPlane
    * still require a restart.
    */
   async reload(next: GatewayConfig): Promise<void> {
@@ -621,7 +673,7 @@ export class Gateway {
       const prevFederation = this.config.federation;
       const prevTenants = this.config.tenants;
       const prevCatalog = this.config.catalog;
-      for (const field of ['port', 'host', 'health', 'dashboard', 'audit', 'state', 'observability'] as const) {
+      for (const field of ['port', 'host', 'health', 'controlPlane', 'audit', 'state', 'observability'] as const) {
         if (!same(this.config[field], next[field])) {
           logger.warn(`Config "${field}" changed — restart required for it to take effect`);
         }
