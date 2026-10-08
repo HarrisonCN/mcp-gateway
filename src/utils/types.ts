@@ -147,6 +147,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Cost accounting per LLM call and budget alerts (4.3). */
+  costs?: import('../costs/index.js').CostsConfig;
   /** Tool chains / multi-agent orchestration (4.2). */
   chains?: import('../orchestration/chains.js').ChainsConfig;
   /** Gateway HTTP port */

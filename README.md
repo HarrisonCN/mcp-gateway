@@ -583,6 +583,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v4.3
+
+| Feature | Description |
+|---------|-------------|
+| **Per-call LLM cost** | Token usage from `_meta.usage` × model prices, plus flat per-tool prices |
+| **Budgets** | Per pool / client / tenant, daily or monthly; alerts + webhook, optional hard block |
+| **`GET /api/v1/costs`** | Spend by client, tenant, server, tool or model |
+
 ## What's New in v4.2
 
 | Feature | Description |

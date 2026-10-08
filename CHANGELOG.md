@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.0] - 2026-10-08
+
+### Added
+- **Cost accounting per LLM call** (`costs:`): flat per-call prices by `server/tool` glob plus per-token model prices
+  applied to the usage an upstream reports in `_meta.usage` (gateway, OpenAI and Anthropic field names). Costs accrue
+  per client, tenant, server, tool and model; spans get `mcp.cost` and `gen_ai.usage.*` attributes.
+- **Budgets and alerts**: per pool, per client (`perClient`) or per tenant, per UTC day or month; `alertAt` thresholds
+  fire once per period (log, `GET /api/v1/costs`, optional webhook); `action: block` refuses calls with `-32013`
+  until the period resets.
+- `GET /api/v1/costs?by=client|tenant|server|model|tool&period=day|month|all` (operators); costs panel data in the
+  GitHub Pages demo.
+
 ## [4.2.0] - 2026-10-08
 
 ### Added
