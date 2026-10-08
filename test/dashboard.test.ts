@@ -279,6 +279,14 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(html).toContain('id="edgeCard"');
     expect(i18n().zh!.pushConfig).toBe('推送配置');
   });
+  it('simulates the signed plugin marketplace (5.4)', async () => {
+    const f = demoFetch();
+    const l = (await (await f('/api/v1/admin/marketplace')).json()) as any;
+    expect(l.plugins.filter((x: any) => !x.trusted).map((x: any) => x.name)).toEqual(['unknown-vendor']);
+    expect((await f('/api/v1/admin/marketplace/install', { method: 'POST', body: JSON.stringify({ name: 'unknown-vendor' }) })).status).toBe(422);
+    const ok = (await (await f('/api/v1/admin/marketplace/install', { method: 'POST', body: JSON.stringify({ name: 'pii-guard' }) })).json()) as any;
+    expect(ok.plugin.module).toBe('./plugins/pii-guard-1.2.0.mjs');
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

@@ -165,3 +165,47 @@ Minimal Rust sketch:
 }
 ```
 
+
+## Signed plugins and the marketplace (5.4)
+
+### Signing
+
+```bash
+mcp-gateway plugin keygen -o acme            # acme.key (secret) + acme.pub
+mcp-gateway plugin sign ./plugins/guard.mjs -k acme.key --key-id acme-2026   # writes guard.mjs.sig
+mcp-gateway plugin verify ./plugins/guard.mjs -p acme.pub --key-id acme-2026
+```
+
+A `.sig` file is JSON `{ keyId, sha256, signature }`: an Ed25519 signature over
+`mcp-gateway-plugin:v1:<sha256 of the file>`. It sits next to the plugin (or set `plugins[].signature`).
+
+### Trust policy
+
+```yaml
+pluginTrust:
+  requireSigned: true            # refuse unsigned plugins and package-name modules
+  keys:
+    - id: acme-2026
+      publicKey: |
+        -----BEGIN PUBLIC KEY-----
+        MCowBQYDK2VwAyEA…
+        -----END PUBLIC KEY-----
+```
+
+With `keys` set, every plugin that ships a `.sig` must verify (a mismatched hash, unknown key or bad signature
+stops the gateway from loading it). With `requireSigned`, unsigned plugins are refused too. Applies to JS and WASM
+plugins; hot reloads.
+
+### Marketplace
+
+```yaml
+marketplace:
+  dir: ./plugins                                   # relative to the config file
+  indexes: [https://plugins.example.com/index.json]
+```
+
+An index is `{ "plugins": [{ name, version, description?, url, sha256, signature, keyId, kind? }] }`.
+`GET /api/v1/admin/marketplace` lists entries (`trusted`: signed by one of your keys).
+`POST /api/v1/admin/marketplace/install` `{ "name": "guard", "version"?: "1.2.0" }` downloads the artifact, checks
+size, sha256 and signature, writes `plugins/guard-1.2.0.mjs` + `.sig`, and returns the `plugins:` entry to add.
+Installing never changes the running config by itself, and refuses to run without `pluginTrust.keys`.

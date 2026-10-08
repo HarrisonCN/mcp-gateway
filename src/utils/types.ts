@@ -151,6 +151,10 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Signed plugins: trusted keys, require signatures (5.4). */
+  pluginTrust?: import('../plugins/trust.js').PluginTrustConfig;
+  /** Plugin marketplace indexes (5.4). */
+  marketplace?: import('../features/marketplace.js').MarketplaceConfig;
   /** Managed edge nodes (5.3). */
   edgeFleet?: import('../features/edge-fleet.js').EdgeFleetConfig;
   /** Multi-region active-active (5.2). */
@@ -291,6 +295,8 @@ export interface PluginConfig {
   enabled?: boolean;
   /** Passed to a factory export as `ctx.options`. */
   options?: Record<string, unknown>;
+  /** 5.4: signature file (default `<module or wasm>.sig`), checked against `pluginTrust`. */
+  signature?: string;
   /** Plugin API v3 (4.0): secrets the plugin may read via `ctx.secrets.get(name)` — name → `secret://provider/path`. */
   secrets?: Record<string, string>;
 }

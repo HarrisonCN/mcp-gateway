@@ -190,7 +190,7 @@ export class Gateway {
     }
 
     try {
-      await this.plugins.set(await PluginHost.build(this.config.plugins, this.options.plugins, this.config.configDir));
+      await this.plugins.set(await PluginHost.build(this.config.plugins, this.options.plugins, this.config.configDir, this.config.pluginTrust));
     } catch (err) {
       this.started = false;
       if (!this.options.stateStore) await this.stateStore.close().catch(() => undefined);
@@ -612,6 +612,7 @@ export class Gateway {
       const applied: string[] = [];
       const prevPolicy = this.config.policy;
       const prevPlugins = this.config.plugins;
+      const prevTrust = this.config.pluginTrust;
       const prevMtls = this.config.mtls;
       const prevCache = this.config.cache;
       const prevSecrets = this.config.secrets;
@@ -727,9 +728,9 @@ export class Gateway {
         this.invoker?.cache?.purge();
         applied.push('cache');
       }
-      if (!same(prevPlugins, next.plugins)) {
+      if (!same(prevPlugins, next.plugins) || !same(prevTrust, next.pluginTrust)) {
         try {
-          await this.plugins.set(await PluginHost.build(next.plugins, this.options.plugins, this.config.configDir));
+          await this.plugins.set(await PluginHost.build(next.plugins, this.options.plugins, this.config.configDir, next.pluginTrust));
           applied.push('plugins');
         } catch (err) {
           logger.error(`Plugins not reloaded (keeping the current ones): ${err instanceof Error ? err.message : String(err)}`);

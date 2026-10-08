@@ -401,6 +401,8 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `GET` | `/admin/regions/route/:serverId` | Where a call should run: `local`, a peer, or `none` (5.2) |
 | `GET` | `/admin/edge-fleet` | Managed edge nodes with config drift (`in-sync` / `stale` / `never-synced` / `unmanaged` / `offline`) (5.3) |
 | `POST` | `/admin/edge-fleet/push` | Ask edges to sync now `{ nodes?, labels?, onlyDrifted? }` → per-node results (5.3) |
+| `GET` | `/admin/marketplace` | Plugin marketplace entries from `marketplace.indexes` (`trusted` = signed by a `pluginTrust` key) (5.4) |
+| `POST` | `/admin/marketplace/install` | Download + verify (sha256, Ed25519) + write a plugin `{ name, version? }` → `plugins:` entry (5.4) |
 
 ## Bridges
 

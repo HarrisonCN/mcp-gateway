@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '5.3.0';
+  const VERSION = '5.4.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -42,6 +42,7 @@
     { id: 'conformance', since: '5.1.0', summary: "MCP conformance self-test of this gateway's /mcp endpoint" },
     { id: "regions", since: "5.2.0", summary: "Multi-region active-active: replicated state, peer health, cross-region failover routing" },
     { id: "edge-fleet", since: "5.3.0", summary: "Managed edge nodes: fleet view with config drift, push config to edges" },
+    { id: "marketplace", since: "5.4.0", summary: "Signed plugin marketplace: browse indexes, verified install" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -501,6 +502,20 @@
     if (p === '/admin/edge-fleet/push' && method === 'POST') {
       await sleep(120);
       return json({ pushed: 1, failed: 0, results: [{ id: 'deno-fra', ok: true, status: 200, config: 'updated', durationMs: 118 }] });
+    }
+    // 5.4: signed plugin marketplace.
+    if (p === '/admin/marketplace') return json({ dir: 'plugins', errors: {}, plugins: [
+      { name: 'pii-guard', version: '1.2.0', description: 'Block tool calls that carry national ID numbers', url: 'https://plugins.example.com/pii-guard-1.2.0.mjs', sha256: 'a'.repeat(64), signature: 'ZGVtbw==', keyId: 'acme-2026', kind: 'module', index: 'https://plugins.example.com/index.json', trusted: true },
+      { name: 'rate-shaper', version: '0.4.1', description: 'Token-bucket shaping per tenant (WASM)', url: 'https://plugins.example.com/rate-shaper-0.4.1.wasm', sha256: 'b'.repeat(64), signature: 'ZGVtbw==', keyId: 'acme-2026', kind: 'wasm', index: 'https://plugins.example.com/index.json', trusted: true },
+      { name: 'unknown-vendor', version: '2.0.0', url: 'https://other.example/x.mjs', sha256: 'c'.repeat(64), signature: 'ZGVtbw==', keyId: 'someone', index: 'https://plugins.example.com/index.json', trusted: false },
+    ] });
+    if (p === '/admin/marketplace/install' && method === 'POST') {
+      await sleep(150);
+      let body = {};
+      try { body = JSON.parse(init?.body || '{}'); } catch { return json({ error: 'Bad Request', message: 'Invalid JSON' }, 400); }
+      if (!body.name) return json({ error: 'Bad Request', message: '"name" is required' }, 400);
+      if (body.name === 'unknown-vendor') return json({ error: 'Unprocessable Entity', message: 'signature check failed: untrusted key "someone"' }, 422);
+      return json({ name: body.name, version: '1.2.0', file: '/srv/gw/plugins/' + body.name + '-1.2.0.mjs', keyId: 'acme-2026', plugin: { module: './plugins/' + body.name + '-1.2.0.mjs', name: body.name } });
     }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 3.9: the demo config still uses two v3 forms that 4.0 removes (see `mcp-gateway migrate`).
