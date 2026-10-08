@@ -149,6 +149,8 @@ export { WorkflowsSchema, runWorkflow, topoLayers, WorkflowRuns } from './featur
 export type { WorkflowsConfig, WorkflowRun, NodeRun } from './features/workflows.js';
 export { GenaiTelemetrySchema, GenaiRecorder, genaiRecorder, genaiAttributes, extractUsage, GENAI_DURATION_BUCKETS, GENAI_TOKEN_BUCKETS } from './features/genai-otel.js';
 export type { GenaiTelemetryConfig, GenaiSpan } from './features/genai-otel.js';
+export { IdentitySchema, ScimDirectory, scimFilter, resolveMemberships, verifyIdToken, authorizeUrl } from './features/identity.js';
+export type { IdentityConfig, ScimUser, ScimGroup } from './features/identity.js';
 export type {
   GatewayConfig,
   McpServerConfig,

@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '6.3.0';
+  const VERSION = '6.4.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -49,6 +49,7 @@
     { id: "api-upstreams", since: "6.1.0", summary: "GraphQL and gRPC (Connect / JSON transcoding) upstreams exposed as tools" },
     { id: "workflows", since: "6.2.0", summary: "Workflow engine: multi-tool DAGs with dependencies, parallelism, conditions and retries" },
     { id: "genai-otel", since: "6.3.0", summary: "OpenTelemetry GenAI semantic conventions: execute_tool spans, operation duration and token usage metrics, OTLP export" },
+    { id: "identity", since: "6.4.0", summary: "Enterprise SSO (OIDC ID tokens) and SCIM 2.0 user / group provisioning mapped to tenant roles" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -583,6 +584,13 @@
       'gen_ai.client.operation.duration': [{ attributes: { 'gen_ai.operation.name': 'chat', 'gen_ai.provider.name': 'openai', 'gen_ai.request.model': 'gpt-mini', 'gen_ai.tool.name': 'complete' }, count: 128, sum: 61.4, min: 0.21, max: 2.9 }, { attributes: { 'gen_ai.operation.name': 'execute_tool', 'gen_ai.tool.name': 'search_issues' }, count: 284, sum: 34.1, min: 0.03, max: 0.8 }],
       'gen_ai.client.token.usage': [{ attributes: { 'gen_ai.operation.name': 'chat', 'gen_ai.request.model': 'gpt-mini', 'gen_ai.token.type': 'input' }, count: 128, sum: 96500, min: 40, max: 3100 }, { attributes: { 'gen_ai.operation.name': 'chat', 'gen_ai.request.model': 'gpt-mini', 'gen_ai.token.type': 'output' }, count: 128, sum: 21400, min: 5, max: 900 }] });
     if (p === '/admin/genai-otel/spans') return json({ spans: [{ traceId: 'a'.repeat(32), spanId: 'b'.repeat(16), name: 'chat gpt-mini', startMs: Date.now() - 480, endMs: Date.now(), attributes: { 'gen_ai.operation.name': 'chat', 'gen_ai.provider.name': 'openai', 'gen_ai.request.model': 'gpt-mini', 'gen_ai.usage.input_tokens': 812, 'gen_ai.usage.output_tokens': 140, 'gen_ai.tool.name': 'complete' } }] });
+    // 6.4: enterprise SSO and SCIM.
+    if (p === '/admin/identity') return json({ oidc: { issuer: 'https://acme.okta.com', clientId: '0oa1example', groupsClaim: 'groups' }, groupRoles: [{ group: 'Platform', tenant: 'acme', role: 'owner' }, { group: 'Engineering', tenant: 'acme', role: 'admin' }, { group: 'Support', tenant: 'globex', role: 'viewer' }], users: 148, activeUsers: 141, groups: 9, scimBase: '/api/v1/admin/identity/scim/v2' });
+    if (p === '/admin/identity/scim/v2/Users') return json({ schemas: ['urn:ietf:params:scim:api:messages:2.0:ListResponse'], totalResults: 2, startIndex: 1, itemsPerPage: 2, Resources: [
+      { schemas: ['urn:ietf:params:scim:schemas:core:2.0:User'], id: 'u-1', userName: 'ada@acme.example', displayName: 'Ada Lovelace', active: true, meta: { resourceType: 'User', created: iso(Date.now() - 864e5 * 30), lastModified: iso(Date.now() - 864e5), version: 'W/"3"' } },
+      { schemas: ['urn:ietf:params:scim:schemas:core:2.0:User'], id: 'u-2', userName: 'grace@acme.example', displayName: 'Grace Hopper', active: false, meta: { resourceType: 'User', created: iso(Date.now() - 864e5 * 60), lastModified: iso(Date.now() - 864e5 * 2), version: 'W/"5"' } },
+    ] }, 200);
+    if (p === '/admin/identity/memberships') return json({ user: 'ada@acme.example', active: true, groups: ['Engineering'], memberships: [{ tenant: 'acme', role: 'admin', via: 'Engineering' }] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 6.0: the 5.x deprecations were removed; nothing is deprecated yet.
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });

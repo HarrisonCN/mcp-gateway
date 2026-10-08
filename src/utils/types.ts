@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Enterprise SSO (OIDC) and SCIM 2.0 (6.4). */
+  identity?: import('../features/identity.js').IdentityConfig;
   /** OpenTelemetry GenAI semantic conventions (6.3). */
   genaiTelemetry?: import('../features/genai-otel.js').GenaiTelemetryConfig;
   /** Workflow engine (multi-tool DAG) (6.2). */

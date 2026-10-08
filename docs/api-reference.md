@@ -421,6 +421,11 @@ Operators only. Writes need `admin.configApi: true`. See [Declarative config](gu
 | `GET` | `/admin/genai-otel` | GenAI telemetry settings and metric summaries (`gen_ai.client.operation.duration`, `gen_ai.client.token.usage`) (6.3) |
 | `GET` | `/admin/genai-otel/spans` | Recent GenAI spans with semconv attributes, newest first (`?limit=`) (6.3) |
 | `GET` | `/admin/genai-otel/otlp` | Current GenAI metrics as an OTLP/JSON `resourceMetrics` payload (6.3) |
+| `GET` | `/admin/identity` | SSO / SCIM status: OIDC issuer, group → tenant role mappings, user and group counts (6.4) |
+| `*` | `/admin/identity/scim/v2/{Users,Groups}[/:id]` | SCIM 2.0 provisioning (RFC 7644): create, list with `filter`, read, `PUT`, `PATCH`, delete; plus `ServiceProviderConfig`, `ResourceTypes`, `Schemas` (6.4) |
+| `GET` | `/admin/identity/memberships?user=` | A SCIM user's groups and effective tenant memberships (6.4) |
+| `POST` | `/admin/identity/sso/verify` | Verify an OIDC ID token `{ idToken }` → user, groups, tenant memberships (6.4) |
+| `GET` | `/admin/identity/sso/authorize-url` | Authorization-code + PKCE (S256) login URL (6.4) |
 
 ## Bridges
 
