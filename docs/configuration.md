@@ -291,6 +291,35 @@ Health checks: the periodic ping (`health.intervalMs`) runs on every member; mem
 reconnects on its own with the `reconnect` policy. Tools come from the primary, or from a replica while the primary
 has none. `GET /api/v1/load-balancing` shows members, health, latency (EWMA) and ejections. Hot reloadable.
 
+## Developer portal (3.8)
+
+```yaml
+auth:
+  strategy: api-key                  # required: the portal issues API keys
+  apiKeys: [{ name: ops, key: "${OPS_KEY}" }]
+portal:
+  enabled: true
+  title: Acme MCP APIs
+  signup: approval                   # open | approval (default) | closed
+  allowedEmailDomains: [acme.io]     # optional
+  maxKeysPerEmail: 3
+  defaults:                          # scope of every issued key
+    servers: ["public-*"]
+    tools: ["*"]
+    rateLimit: { limit: 60, windowSeconds: 60 }
+    keyTtlDays: 90
+  keysFile: portal-keys.json         # hashed keys survive restarts (relative to this file)
+  publicUrl: https://mcp.acme.io     # used in snippets (default: request origin)
+```
+
+- **`/portal`** (same CSP as the dashboard, English / 中文): sign up with a name and e-mail, get a key (shown once),
+  see 7-day usage, rotate or revoke the key, and browse the tools in its scope — input schema, generated example
+  arguments, curl / JavaScript / Python snippets and a live **Try it**.
+- Keys are stored as SHA-256 digests and join `auth.apiKeys` as `portal-<id>` (client id `key:portal-<id>`), so
+  every existing control — scopes, quotas, policy, audit, compliance — applies to them. Pending, denied, revoked and
+  expired keys do not authenticate. Signups are throttled to 10 per IP per hour.
+- Operators review keys with `GET /api/v1/portal/keys` and `POST /api/v1/portal/keys/:id/approve|deny|revoke`.
+
 ## Compliance (3.7)
 
 ```yaml

@@ -197,6 +197,8 @@ export interface GatewayConfig {
   cache?: CacheConfig;
   /** Request capture + replay / debugger (3.2). Off by default. */
   replay?: ReplayConfig;
+  /** Developer portal: self-serve keys, usage, tool docs (3.8). */
+  portal?: PortalConfig;
   /** PII detection / redaction, data residency, compliance reports (3.7). */
   compliance?: ComplianceConfig;
   /** Peering with gateways in other regions: catalog sync and failover (3.6). */
@@ -471,6 +473,25 @@ export interface McpEndpointConfig {
 }
 
 /** Which upstream→client requests are relayed to the downstream client that made the call (3.1). */
+/** Developer portal (3.8). Requires `auth.strategy: api-key`. */
+export interface PortalConfig {
+  enabled?: boolean;
+  /** `open`: keys work immediately; `approval` (default): an operator approves; `closed`: no self-service. */
+  signup?: 'open' | 'approval' | 'closed';
+  /** Only these e-mail domains may sign up. */
+  allowedEmailDomains?: string[];
+  /** Active + pending keys per e-mail address (default 3). */
+  maxKeysPerEmail?: number;
+  /** Scope of issued keys. */
+  defaults?: { servers?: string[]; tools?: string[]; rateLimit?: { limit: number; windowSeconds: number }; keyTtlDays?: number };
+  /** JSON file for issued keys (hashed), relative to the config file. Absent = in memory. */
+  keysFile?: string;
+  /** Shown on the portal page. */
+  title?: string;
+  /** Public base URL used in snippets (default: the request's origin). */
+  publicUrl?: string;
+}
+
 /** Compliance suite (3.7). */
 export type PiiCategory = 'email' | 'phone' | 'credit-card' | 'ssn' | 'iban' | 'ipv4' | 'cn-id';
 

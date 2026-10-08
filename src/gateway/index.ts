@@ -41,6 +41,7 @@ import { SmartRouter } from './routing.js';
 import { SecretManager } from '../secrets/index.js';
 import { Federation } from './federation.js';
 import { ComplianceEngine } from '../policy/compliance.js';
+import { PortalStore } from '../portal/index.js';
 import { ToolCache } from './cache.js';
 import { ReplayRecorder } from './replay.js';
 import { UsageMeter } from './usage.js';
@@ -81,6 +82,8 @@ export class Gateway {
   private ipFilter?: express.RequestHandler;
   private jsonParser: express.RequestHandler;
   private readonly reloadLock = new Mutex();
+  /** Developer portal keys (3.8). */
+  readonly portal: PortalStore;
   /** Peer gateways (3.6). */
   federation?: Federation;
   /** Secret providers, resolution and rotation (3.5). */
@@ -104,6 +107,10 @@ export class Gateway {
     this.registry = new ServerRegistry(config.health?.intervalMs ?? 30_000);
     this.proxy = new McpProxy();
     this.metrics = new MetricsCollector(config.monitor);
+    this.portal = new PortalStore(() => this.config.portal, {
+      baseDir: () => this.config.configDir,
+      onChange: () => this.router?.update(this.withPortalKeys(this.config)),
+    });
     this.secrets = new SecretManager(() => this.config.secrets, { baseDir: () => this.config.configDir });
     this.supervisor = new ServerSupervisor(this.proxy, this.registry, {
       reconnect: config.reconnect,
@@ -202,7 +209,8 @@ export class Gateway {
     });
 
     // Builds auth/rate-limit; throws on insecure misconfiguration (fail closed)
-    this.router = createApiRouter(this.config, this.registry, this.proxy, this.metrics, {
+    this.router = createApiRouter(this.withPortalKeys(this.config), this.registry, this.proxy, this.metrics, {
+      portal: this.portal,
       supervisor: this.supervisor,
       isShuttingDown: () => this.stopping !== undefined,
       shared,
@@ -321,6 +329,15 @@ export class Gateway {
     });
 
     const dashboard = this.config.dashboard?.enabled === false ? undefined : findDashboard();
+    // 3.8: developer portal page (same CSP as the dashboard).
+    const portalPage = dashboard ? resolve(dirname(dashboard), 'portal.html') : undefined;
+    this.app.get('/portal', (_req, res, next) => {
+      if (!this.config.portal?.enabled || !portalPage || !existsSync(portalPage)) return next();
+      readFile(portalPage, 'utf8').then((html) => {
+        if (this.config.security?.headers !== false) res.setHeader('Content-Security-Policy', dashboardCsp(html));
+        res.type('html').set('Cache-Control', 'no-cache').send(html);
+      }, next);
+    });
     if (dashboard) {
       this.app.get('/dashboard', (_req, res, next) => {
         // Read per request (small file) so the CSP hash always matches the served script.
@@ -536,7 +553,7 @@ export class Gateway {
       }
 
       // Router-level settings (auth may be rejected and kept; the router logs that).
-      this.router?.update(next);
+      this.router?.update(this.withPortalKeys(next));
       if (!same(this.config.auth, next.auth)) {
         applied.push('auth');
         this.mcp?.refreshClients();
@@ -598,6 +615,7 @@ export class Gateway {
         secrets: next.secrets,
         federation: next.federation,
         compliance: next.compliance,
+        portal: next.portal,
         // openai.path is fixed at start; other bridge settings hot reload
         openai: next.openai ? { ...next.openai, path: this.config.openai?.path } : next.openai,
         a2a: next.a2a,
@@ -651,6 +669,12 @@ export class Gateway {
           (applied.length ? `; updated ${applied.join(', ')}` : ''),
       );
     });
+  }
+
+  /** `auth.apiKeys` plus the active developer-portal keys (3.8). */
+  private withPortalKeys(cfg: GatewayConfig): GatewayConfig {
+    if (!cfg.portal?.enabled || cfg.auth?.strategy !== 'api-key') return cfg;
+    return { ...cfg, auth: { ...cfg.auth, apiKeys: [...(cfg.auth.apiKeys ?? []), ...this.portal.apiKeys()] } };
   }
 
   private startSecretRotation(): void {

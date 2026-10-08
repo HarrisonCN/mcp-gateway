@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '3.7.0';
+  const VERSION = '3.8.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -345,6 +345,42 @@
       const rep = { framework: fw, generatedAt: iso(Date.now()), gatewayVersion: VERSION, period: { since: iso(Date.now() - 30 * 86400e3), until: iso(Date.now()) }, summary: { pass: controls.length, warn: 0, fail: 0 }, controls, activity: { calls: records.length, errors: records.filter((r) => !r.success).length, denied: 2, clients: CLIENTS.map(([c, w]) => ({ client: c, calls: w * 40 })), piiFindings: { 'results:email': 31 }, blocked: { pii: 0, residency: 2 } }, warnings: [] };
       if (q.get('format') === 'md') return new Response(`# ${fw === 'soc2' ? 'SOC 2' : 'GDPR'} compliance report\n\n` + controls.map((c) => `- ${c.id} — ${c.title}: ${c.status}`).join('\n') + '\n', { status: 200, headers: { 'content-type': 'text/markdown' } });
       return json(rep);
+    }
+    // 3.8: developer portal (also served as portal.html on GitHub Pages).
+    if (p.startsWith('/portal/')) {
+      const demoKey = { id: 'demo1234', name: 'Demo app', email: 'you@example.com', prefix: 'mgw_demo00', status: 'active', createdAt: iso(started - 86400e3 * 3), servers: ['filesystem', 'search'], rateLimit: { limit: 60, windowSeconds: 60 }, expiresAt: iso(started + 86400e3 * 87), clientId: 'key:portal-demo1234' };
+      if (p === '/portal/info') return json({ title: 'MCP Gateway developer portal (demo)', signup: 'open', allowedEmailDomains: [], version: VERSION, defaults: { servers: ['filesystem', 'search'], rateLimit: { limit: 60, windowSeconds: 60 }, keyTtlDays: 90 } });
+      if (p === '/portal/signup' && method === 'POST') {
+        let b = {};
+        try { b = JSON.parse(init?.body || '{}'); } catch {}
+        if (!b.name || !/^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(b.email || '')) return json({ error: 'Bad Request', message: '"name" and a valid "email" are required' }, 400);
+        return json({ ...demoKey, id: uuid().slice(0, 8), name: b.name, email: b.email, key: 'mgw_demo_' + uuid().replace(/-/g, '').slice(0, 24), message: 'Your key is active. It is shown only once — store it now. (Demo: any key works here.)' }, 201);
+      }
+      if (p === '/portal/me' && method === 'GET') {
+        const mine = records.filter((r) => r.serverId === 'filesystem' || r.serverId === 'search');
+        const byDay = Array.from({ length: 7 }, (_, i) => ({ day: iso(Date.now() - (6 - i) * 86400e3).slice(0, 10), calls: Math.round(20 + 15 * Math.sin(i) + i * 4) + (i === 6 ? Math.min(mine.length, 25) : 0) }));
+        const byTool = {};
+        for (const r of mine) byTool[r.serverId + '/' + r.toolName] = (byTool[r.serverId + '/' + r.toolName] || 0) + 1;
+        return json({ key: demoKey, usage: { since: iso(Date.now() - 7 * 86400e3), calls: byDay.reduce((n, d) => n + d.calls, 0), errors: mine.filter((r) => !r.success).length + 3, avgLatencyMs: 186, byDay, byTool: Object.entries(byTool).map(([tool, calls]) => ({ tool, calls })) } });
+      }
+      if (p === '/portal/me/rotate' && method === 'POST') return json({ ...demoKey, key: 'mgw_demo_' + uuid().replace(/-/g, '').slice(0, 24), message: 'New key issued; the previous one no longer works.' });
+      if (p === '/portal/me' && method === 'DELETE') return json({ ...demoKey, status: 'revoked' });
+      if (p === '/portal/tools') {
+        const ex = (schema) => Object.fromEntries((schema.required || []).map((k) => [k, schema.properties[k].default ?? (schema.properties[k].type === 'number' ? 1 : k === 'path' ? '/srv/projects/README.md' : 'mcp gateway')]));
+        const base = new URL('.', location.href).href.replace(/\/$/, '');
+        const tools = SERVERS.filter((s) => s.id === 'filesystem' || s.id === 'search').flatMap((s) => s.tools.map((t) => {
+          const example = ex(t.inputSchema);
+          const body = JSON.stringify({ server: s.id, tool: t.name, arguments: example });
+          return { server: s.id, name: t.name, description: t.description, inputSchema: t.inputSchema, example, snippets: {
+            curl: `curl -s ${base}/api/v1/tools/call \\\n  -H "Authorization: Bearer $MCP_GATEWAY_KEY" -H "Content-Type: application/json" \\\n  -d '${body}'`,
+            javascript: `const res = await fetch('${base}/api/v1/tools/call', {\n  method: 'POST',\n  headers: { Authorization: \`Bearer \${process.env.MCP_GATEWAY_KEY}\`, 'Content-Type': 'application/json' },\n  body: JSON.stringify(${body}),\n});\nconsole.log((await res.json()).result);`,
+            python: `import os, requests\nr = requests.post("${base}/api/v1/tools/call",\n    headers={"Authorization": f"Bearer {os.environ['MCP_GATEWAY_KEY']}"},\n    json=${body})\nprint(r.json()["result"])`,
+          } };
+        }));
+        return json({ tools, total: tools.length, tryIt: base + '/api/v1/tools/call' });
+      }
+      if (p === '/portal/keys') return json({ keys: [demoKey, { ...demoKey, id: 'pend0001', name: 'Data team notebook', email: 'data@example.com', status: 'pending', prefix: 'mgw_pend00', clientId: 'key:portal-pend0001' }] });
+      if ((m = p.match(/^\/portal\/keys\/([^/]+)\/(approve|deny|revoke)$/)) && method === 'POST') return json({ ...demoKey, id: decodeURIComponent(m[1]), status: m[2] === 'approve' ? 'active' : m[2] === 'deny' ? 'denied' : 'revoked' });
     }
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     if (p === '/admin/deprecations') return json({ version: VERSION, deprecations: [] });

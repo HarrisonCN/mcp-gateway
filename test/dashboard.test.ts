@@ -160,6 +160,21 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(await (await f('/api/v1/compliance/report?framework=soc2&format=md')).text()).toMatch(/^# SOC 2/);
     expect((await f('/api/v1/compliance/report?framework=x')).status).toBe(400);
   });
+
+  it('serves the developer portal (3.8)', async () => {
+    const f = demoFetch();
+    expect(((await (await f('/api/v1/portal/info')).json()) as any).signup).toBe('open');
+    const su = await f('/api/v1/portal/signup', { method: 'POST', body: JSON.stringify({ name: 'x', email: 'x@example.com' }) });
+    expect(su.status).toBe(201);
+    expect(((await su.json()) as any).key).toMatch(/^mgw_demo_/);
+    expect((await f('/api/v1/portal/signup', { method: 'POST', body: '{}' })).status).toBe(400);
+    const me = (await (await f('/api/v1/portal/me')).json()) as any;
+    expect(me.usage.byDay).toHaveLength(7);
+    const tools = (await (await f('/api/v1/portal/tools')).json()) as any;
+    expect(tools.tools.length).toBeGreaterThan(0);
+    expect(tools.tools[0].snippets.curl).toContain('/api/v1/tools/call');
+    expect(((await (await f('/api/v1/portal/keys/pend0001/approve', { method: 'POST' })).json()) as any).status).toBe('active');
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

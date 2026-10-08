@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-10-08
+
+### Added
+- **Developer portal** at `/portal` (`portal.enabled`, needs `auth.strategy: api-key`): self-service API keys
+  (`signup: open | approval | closed`, allowed e-mail domains, keys per e-mail, default scope / rate limit / TTL),
+  shown once and stored as SHA-256 digests (`portal.keysFile` to persist).
+- **Usage view:** a key holder sees 7-day calls, errors, latency, calls per tool and per day; can rotate or revoke
+  the key.
+- **Interactive tool docs:** every tool in the key's scope with its input schema, generated example arguments,
+  curl / JavaScript / Python snippets and a live **Try it**.
+- Portal keys join `auth.apiKeys` as `portal-<id>`, so scopes, quotas, policy, audit and compliance apply unchanged.
+  Operators approve / deny / revoke via `/api/v1/portal/keys`.
+- The GitHub Pages demo publishes `portal.html` with a simulated backend; `dashboard/portal.html` ships in the npm
+  package and the Docker image.
+
+### Security
+- Self-contained page with a hash-based CSP (no inline handlers, no CDN); signups throttled per IP; key records
+  never expose digests.
+
 ## [3.7.0] - 2026-10-08
 
 ### Added
