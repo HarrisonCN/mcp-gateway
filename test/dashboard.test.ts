@@ -428,6 +428,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(d.sessions[0].participants).toEqual(['alice', 'bob']);
     expect(d.sessions[0].paused[0].arguments.card).toBe('<redacted>');
   });
+  it('shows cost optimization recommendations (8.4)', async () => {
+    const f = demoFetch();
+    const a = (await (await f('/api/v1/admin/cost-advisor')).json()) as any;
+    expect(a.recommendations.map((r: any) => r.kind)).toEqual(['cache', 'cheaper-upstream', 'failures']);
+    expect(a.totalSavings).toBeGreaterThan(0);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

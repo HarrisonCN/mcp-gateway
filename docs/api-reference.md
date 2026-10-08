@@ -485,6 +485,7 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `POST` / `DELETE` | `/admin/debug-sessions/:id/breakpoints[/:n]` | Add `{ tool, when? }` / remove a breakpoint (8.3) |
 | `POST` | `/admin/debug-sessions/:id/notes` | Annotate `{ text, callId? }` (8.3) |
 | `POST` | `/admin/debug-sessions/:id/replay/:callId` | Re-run a captured call (8.3) |
+| `GET` | `/admin/cost-advisor?windowMinutes=` | Cost optimization advisor: spend in the window and recommendations (cache, failures, cheaper upstream, budget) with estimated savings (8.4) |
 
 ## Bridges
 

@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Cost optimization advisor (8.4). */
+  costAdvisor?: import('../features/cost-advisor.js').CostAdvisorConfig;
   /** Live collaborative debugging (8.3). */
   debugSessions?: import('../features/debug-sessions.js').DebugSessionsConfig;
   /** Cross-gateway A2A federation (8.2). */

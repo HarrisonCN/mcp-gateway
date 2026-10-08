@@ -183,6 +183,8 @@ export { A2aFederationSchema, refreshRemote, sendToRemote } from './features/a2a
 export type { A2aFederationConfig, RemoteState as A2aRemoteState } from './features/a2a-federation.js';
 export { DebugSessionsSchema, ERR_DEBUG_ABORTED } from './features/debug-sessions.js';
 export type { DebugSessionsConfig, DebugEvent, DebugBreakpoint } from './features/debug-sessions.js';
+export { CostAdvisorSchema, analyse as analyseCosts } from './features/cost-advisor.js';
+export type { CostAdvisorConfig, Recommendation as CostRecommendation } from './features/cost-advisor.js';
 export type {
   GatewayConfig,
   McpServerConfig,

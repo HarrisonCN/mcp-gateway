@@ -586,6 +586,12 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v8.4
+
+| Feature | |
+|---------|---|
+| **Cost advisor** | Quantified savings from live traffic: caching, failing tools, cheaper upstreams, budgets — [guide](docs/guides/cost-advisor.md) |
+
 ## What's New in v8.3
 
 | Feature | |
