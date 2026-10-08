@@ -39,19 +39,10 @@ describe('PII detection', () => {
     expect(t.findings.map((f) => f.category)).toEqual(['ipv4']);
   });
 
-  it('applies scope, servers, and actions, counting findings', () => {
-    let cfg: GatewayConfig['compliance'] = { pii: { action: 'redact', scope: 'arguments', servers: ['crm*'] } };
-    const e = new ComplianceEngine(() => cfg);
-    expect(e.applyPii('crm', 'arguments', { q: 'a@b.com' }).value).toEqual({ q: '[REDACTED:email]' });
-    expect(e.applyPii('crm', 'results', { q: 'a@b.com' }).categories).toEqual([]);
-    expect(e.applyPii('other', 'arguments', { q: 'a@b.com' }).categories).toEqual([]);
-    cfg = { pii: { action: 'block' } };
-    expect(e.applyPii('x', 'results', 'call 13800138000').blocked).toBe(true);
-    cfg = { pii: { action: 'tag' } };
-    const tag = e.applyPii('x', 'results', 'a@b.com');
-    expect(tag).toMatchObject({ value: 'a@b.com', categories: ['email'], blocked: false });
-    expect(e.findings()).toMatchObject({ 'arguments:email': 1, 'results:phone': 1, 'results:email': 1 });
-    expect(e.blocked.pii).toBe(1);
+  it('6.0: ComplianceEngine no longer applies PII (moved to dlp)', () => {
+    const e = new ComplianceEngine(() => ({}));
+    expect((e as unknown as Record<string, unknown>).applyPii).toBeUndefined();
+    expect(e.blocked).toEqual({ pii: 0, residency: 0 });
   });
 });
 
@@ -104,7 +95,8 @@ describe('compliance in the gateway', () => {
       port: 0, host: '127.0.0.1', logLevel: 'error', monitor: { requestLog: true },
       auth: { strategy: 'api-key', apiKeys: [{ name: 'eu', key: 'key-eu' }, { name: 'ops', key: 'key-ops' }] },
       tenants: [{ id: 'eu-acme', servers: ['*'], members: [{ client: 'key:eu', role: 'admin' }] }],
-      compliance: { pii: { action: 'redact', categories: ['email', 'credit-card'] }, residency: { rules: [{ tenants: ['eu-*'], regions: ['eu-*'] }] } },
+      dlp: { scope: 'both', default: { clearance: 'public', strategy: 'redact' }, levels: { phone: 'public', ssn: 'public', iban: 'public', ipv4: 'public', 'cn-id': 'public' } },
+      compliance: { residency: { rules: [{ tenants: ['eu-*'], regions: ['eu-*'] }] } },
       servers: [srv('eu-crm', 'eu-west-1'), srv('us-crm', 'us-east-1')],
     } as GatewayConfig);
     await gw.start();
@@ -128,7 +120,8 @@ describe('compliance in the gateway', () => {
 
     const st = (await (await fetch(`${api}/compliance`, { headers: { authorization: 'Bearer key-ops' } })).json()) as any;
     expect(st.blocked.residency).toBe(1);
-    expect(st.findings['arguments:email']).toBe(1);
+    expect(st.findings.email).toBeGreaterThanOrEqual(1);
+    expect(st.pii.action).toBe('redact');
     expect(st.residency.servers).toEqual([{ id: 'eu-crm', region: 'eu-west-1' }, { id: 'us-crm', region: 'us-east-1' }]);
     const rep = (await (await fetch(`${api}/compliance/report?framework=soc2`, { headers: { authorization: 'Bearer key-ops' } })).json()) as any;
     expect(rep.framework).toBe('soc2');
@@ -143,8 +136,8 @@ describe('compliance in the gateway', () => {
   });
 
   it('validates compliance config', () => {
-    expect(() => validateConfig({ servers: [], compliance: { pii: { action: 'redact', categories: ['email'] }, residency: { rules: [{ regions: ['eu-*'] }] } } })).not.toThrow();
-    expect(() => validateConfig({ servers: [], compliance: { pii: { categories: ['dna'] } } })).toThrow();
+    expect(() => validateConfig({ servers: [], compliance: { residency: { rules: [{ regions: ['eu-*'] }] } } })).not.toThrow();
+    expect(() => validateConfig({ servers: [], compliance: { pii: { categories: ['email'] } } })).toThrow(/compliance.pii: removed in 6.0 — use `dlp`/);
     expect(() => validateConfig({ servers: [], compliance: { residency: { rules: [{ regions: [] }] } } })).toThrow();
   });
 });

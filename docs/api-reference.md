@@ -283,7 +283,7 @@ Operators: `GET /portal/keys[?status=]`, `POST /portal/keys/:id/approve|deny|rev
 
 ### Compliance (3.7)
 
-`GET /compliance` (operators): `{ pii: { action, scope, categories, servers } | null, residency: { rules, allowUnknown, servers: [{ id, region }] }, findings: { "<direction>:<category>": n }, blocked: { pii, residency } }`.
+`GET /compliance` (operators): `{ pii: { action, scope, categories, servers } | null, residency: { rules, allowUnknown, servers: [{ id, region }] }, findings: { "<category>": n }, blocked: { pii, residency } }` — 6.0: `pii` and the counters come from `dlp`.
 `GET /compliance/report?framework=soc2|gdpr&since=&until=&format=json|md` (operators): `{ framework, generatedAt, gatewayVersion, period, summary: { pass, warn, fail }, controls: [{ id, title, status, evidence }], activity, warnings }`, or Markdown.
 Refusals: JSON-RPC `-32011` (data residency), `-32012` (PII with `action: block`); REST `403`.
 

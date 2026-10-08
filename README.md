@@ -586,6 +586,15 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v6.0
+
+| Change | What to do |
+|--------|------------|
+| **Config schema v6** | `version: 6` only — `mcp-gateway migrate --to 6` (5.9) rewrites your file |
+| **`compliance.pii` → `dlp`** | Converted by `migrate --to 6`; compliance reports read DLP |
+| **Plugin API v3 removed** | Declare `apiVersion: 4` |
+| **Node.js 22+** | Enforced by the CLI |
+
 ## What's New in v5.9
 
 Getting ready for 6.0: `npx @winstonsayno/mcp-gateway@5.9 migrate --write` — see [Migrating to 6.0](docs/guides/migrating-to-v6.md).

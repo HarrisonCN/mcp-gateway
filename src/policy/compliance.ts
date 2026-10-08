@@ -1,7 +1,7 @@
 /**
  * Compliance suite (3.7): PII detection and redaction, data residency, SOC 2 / GDPR reports.
  *
- * - **PII:** `compliance.pii` scans tool arguments (before they leave for the upstream) and/or results (before they
+ * - **PII (3.7–5.9; 6.0: use `dlp`):** the detectors below (`scanPii`) scan tool arguments (before they leave for the upstream) and/or results (before they
  *   reach the client) for e-mail addresses, phone numbers, payment cards (Luhn-checked), US SSNs, IBANs (mod-97),
  *   IPv4 addresses and PRC resident ID numbers (checksum). `action: redact` (default) masks matches
  *   (`[REDACTED:email]`), `block` refuses the call (`-32012`), `tag` only counts them.
@@ -119,38 +119,12 @@ export function scanPii<T>(value: T, opts: { categories?: PiiCategory[]; redact?
 
 export type PiiDirection = 'arguments' | 'results';
 
-/** Applies `compliance.pii` and `compliance.residency`; keeps counters for the reports. */
+/** Applies `compliance.residency` and keeps counters for the reports (6.0: PII handling moved to `dlp`). */
 export class ComplianceEngine {
   readonly piiCounts = new Map<string, number>();
   readonly blocked = { pii: 0, residency: 0 };
 
   constructor(private readonly config: () => ComplianceConfig | undefined) {}
-
-  private piiCfg() {
-    const p = this.config()?.pii;
-    return p && p.enabled !== false ? p : undefined;
-  }
-
-  piiApplies(serverId: string, dir: PiiDirection): boolean {
-    const p = this.piiCfg();
-    if (!p) return false;
-    const scope = p.scope ?? 'both';
-    if (scope !== 'both' && scope !== dir) return false;
-    return !p.servers?.length || p.servers.some((g) => globToRegExp(g).test(serverId));
-  }
-
-  /** Scan a payload; returns the (possibly redacted) value, or `blocked` with the categories found. */
-  applyPii<T>(serverId: string, dir: PiiDirection, value: T): { value: T; categories: PiiCategory[]; blocked: boolean } {
-    const p = this.piiCfg();
-    if (!p || !this.piiApplies(serverId, dir)) return { value, categories: [], blocked: false };
-    const action = p.action ?? 'redact';
-    const r = scanPii(value, { categories: p.categories, redact: action === 'redact' });
-    const categories = [...new Set(r.findings.map((f) => f.category))];
-    for (const f of r.findings) this.piiCounts.set(`${dir}:${f.category}`, (this.piiCounts.get(`${dir}:${f.category}`) ?? 0) + 1);
-    const blocked = action === 'block' && categories.length > 0;
-    if (blocked) this.blocked.pii++;
-    return { value: r.value, categories, blocked };
-  }
 
   /** Allowed region globs for a tenant (undefined = unrestricted). */
   regionsFor(tenant: string | undefined): string[] | undefined {

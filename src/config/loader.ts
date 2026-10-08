@@ -475,7 +475,7 @@ const GatewayConfigSchema = z.object({
     })
     .optional(),
   servers: z.array(McpServerSchema).default([]),
-  version: z.union([z.literal(5), z.literal(6)]).optional(),
+  version: z.literal(6).optional(),
   cors: z.object({ origins: z.array(z.string()).optional() }).strict().optional(),
   health: z.object({ intervalMs: z.number().int().min(1000).optional() }).strict().optional(),
   admin: z.object({ configApi: z.boolean().optional() }).strict().optional(),
@@ -628,16 +628,6 @@ const GatewayConfigSchema = z.object({
     .optional(),
   compliance: z
     .object({
-      pii: z
-        .object({
-          enabled: z.boolean().optional(),
-          categories: z.array(z.enum(['email', 'phone', 'credit-card', 'ssn', 'iban', 'ipv4', 'cn-id'])).min(1).optional(),
-          action: z.enum(['redact', 'block', 'tag']).optional(),
-          scope: z.enum(['arguments', 'results', 'both']).optional(),
-          servers: z.array(z.string().min(1)).optional(),
-        })
-        .strict()
-        .optional(),
       residency: z
         .object({
           rules: z.array(z.object({ tenants: z.array(z.string().min(1)).optional(), regions: z.array(z.string().min(1)).min(1) }).strict()).optional(),

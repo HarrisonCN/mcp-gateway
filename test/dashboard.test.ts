@@ -176,11 +176,11 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(((await (await f('/api/v1/portal/keys/pend0001/approve', { method: 'POST' })).json()) as any).status).toBe('active');
   });
 
-  it('lists the 6.0 deprecations (5.0: plugin API v3)', async () => {
+  it('lists no deprecations after 6.0 removed the 5.x ones', async () => {
     const f = demoFetch();
     const r = (await (await f('/api/v1/admin/deprecations')).json()) as any;
-    expect(r.runtime.map((d: { id: string; removedIn: string }) => `${d.id}@${d.removedIn}`)).toEqual(['plugin-api-v3@6.0.0']);
-    expect(r.config).toHaveLength(2); // 5.9
+    expect(r.runtime).toEqual([]);
+    expect(r.config).toEqual([]);
   });
 
   it('reports MCP revisions and features (4.1)', async () => {
@@ -308,12 +308,6 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(st.pools[0].candidates.map((c: any) => c.id)).toEqual(['small', 'large']);
     const pk = (await (await f('/api/v1/admin/adaptive/pick', { method: 'POST', body: '{"pool":"summarize"}' })).json()) as any;
     expect(pk.candidate).toBe('small');
-  });
-  it('lists the 5.9 config deprecations (schema v5, compliance.pii)', async () => {
-    const f = demoFetch();
-    const r = (await (await f('/api/v1/admin/deprecations')).json()) as any;
-    expect(r.config.map((d: any) => d.id)).toEqual(['schema-v5', 'compliance-pii']);
-    expect(r.config.every((d: any) => d.removedIn === '6.0.0')).toBe(true);
   });
 });
 

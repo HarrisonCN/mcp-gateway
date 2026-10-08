@@ -3,6 +3,7 @@
  * Exposes REST endpoints for tool invocation, server management, and monitoring
  */
 
+import { DlpSchema, dlpStats, policyFor as dlpPolicyFor } from '../features/dlp.js';
 import { SseWriter } from './stream.js';
 import { ERR_SERVER_BUSY } from '../proxy/index.js';
 import { PROTOCOL_VERSIONS, featuresOf } from '../mcp/compat.js';
@@ -43,6 +44,16 @@ import { jsonDiff } from './replay.js';
 import { FEDERATION_HEADER, verifyFederation } from './federation.js';
 import { buildReport, reportMarkdown, PII_CATEGORIES } from '../policy/compliance.js';
 import { PortalError, exampleArgs, publicKey, toolSnippets, type PortalStore } from '../portal/index.js';
+
+
+/** 6.0: the compliance view of PII handling comes from `dlp` (compliance.pii was removed). */
+function dlpSummary(cfg: GatewayConfig): { action: string; scope: string; categories: string[]; servers: string[] } | undefined {
+  if (!cfg.dlp) return undefined;
+  const d = DlpSchema.parse(cfg.dlp);
+  if (!d.enabled) return undefined;
+  const pol = dlpPolicyFor(d, undefined);
+  return { action: pol.clearance === 'restricted' ? 'tag' : pol.strategy, scope: d.scope, categories: PII_CATEGORIES.filter((c) => (d.levels[c] ?? 'x') !== 'public'), servers: d.servers ?? ['*'] };
+}
 
 export type ApiRouter = express.Router & {
   close(): void;
@@ -1328,10 +1339,10 @@ export function createApiRouter(
     const comp = invoker.compliance;
     const c = cfg.compliance;
     res.json({
-      pii: c?.pii && c.pii.enabled !== false ? { action: c.pii.action ?? 'redact', scope: c.pii.scope ?? 'both', categories: c.pii.categories ?? PII_CATEGORIES, servers: c.pii.servers ?? ['*'] } : null,
+      pii: dlpSummary(cfg) ?? null,
       residency: { rules: c?.residency?.rules ?? [], allowUnknown: c?.residency?.allowUnknown === true, servers: cfg.servers.filter((s) => s.region).map((s) => ({ id: s.id, region: s.region })) },
-      findings: comp?.findings() ?? {},
-      blocked: comp ? { ...comp.blocked } : { pii: 0, residency: 0 },
+      findings: { ...dlpStats.byCategory },
+      blocked: { pii: dlpStats.byAction.block ?? 0, residency: comp?.blocked.residency ?? 0 },
     });
   });
 
@@ -1382,7 +1393,7 @@ export function createApiRouter(
         policyRules: cfg.policy?.rules?.length ?? 0,
         approvals: (cfg.policy?.rules ?? []).some((r) => (r as { effect?: string }).effect === 'approve'),
         outputFilter: !!cfg.policy?.outputFilter && cfg.policy.outputFilter.enabled !== false,
-        pii: cfg.compliance?.pii && cfg.compliance.pii.enabled !== false ? { action: cfg.compliance.pii.action ?? 'redact', scope: cfg.compliance.pii.scope ?? 'both', categories: cfg.compliance.pii.categories ?? PII_CATEGORIES } : undefined,
+        pii: dlpSummary(cfg),
         residencyRules: cfg.compliance?.residency?.rules?.length ?? 0,
         secretsProviders: cfg.secrets?.providers?.length ?? 0,
         rotationSeconds: cfg.secrets?.rotation?.intervalSeconds,
@@ -1393,8 +1404,8 @@ export function createApiRouter(
       activity: {
         calls, errors, denied,
         clients: [...clients.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25).map(([client, n]) => ({ client, calls: n })),
-        piiFindings: comp?.findings() ?? {},
-        blocked: comp ? { ...comp.blocked } : { pii: 0, residency: 0 },
+        piiFindings: { ...dlpStats.byCategory },
+        blocked: { pii: dlpStats.byAction.block ?? 0, residency: comp?.blocked.residency ?? 0 },
       },
       warnings: securityWarnings(cfg).map((w) => ({ id: w.id, severity: w.level, message: w.message })),
     });

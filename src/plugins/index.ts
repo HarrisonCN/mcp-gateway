@@ -48,7 +48,7 @@ import { VERSION } from '../utils/version.js';
 export const PLUGIN_API_VERSION = 4;
 
 /** Oldest plugin contract still loaded (v3: with a deprecation warning until 6.0). */
-export const PLUGIN_API_MIN_VERSION = 3;
+export const PLUGIN_API_MIN_VERSION = 4;
 
 /** Call refused (or failed) by a plugin hook. */
 export const ERR_PLUGIN_REJECTED = -32006;
@@ -212,8 +212,10 @@ async function instantiate(src: unknown, ctx: PluginContext, label: string): Pro
   if (v === 2) {
     throw new Error(`Plugin "${value.name}" uses plugin API v2, which was removed in 5.0 — declare \`apiVersion: 4\` (see docs/guides/migrating-to-v5.md)`);
   }
+  if (v === 3) {
+    throw new Error(`Plugin "${value.name}" uses plugin API v3, which was removed in 6.0 — declare \`apiVersion: 4\` (adds ctx.state; see docs/guides/migrating-to-v6.md)`);
+  }
   if (v < PLUGIN_API_MIN_VERSION) throw new Error(`Plugin "${value.name}" declares unsupported plugin API v${v}`);
-  if (v === 3) deprecate(DEPRECATIONS.pluginApiV3, `plugin "${value.name}"`);
   return value;
 }
 
