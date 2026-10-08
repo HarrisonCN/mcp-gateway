@@ -163,9 +163,6 @@ export class LoadBalancer {
         ordered = [...healthy].sort((a, b) => scores.get(a)! - scores.get(b)!);
         break;
       }
-      case 'least-latency':
-        ordered = [...healthy].sort((a, b) => (this.st(a).latency ?? 0) - (this.st(b).latency ?? 0));
-        break;
       case 'weighted': {
         const rnd = (this.deps.random ?? Math.random)();
         const total = healthy.reduce((n, m) => n + this.weight(m), 0);

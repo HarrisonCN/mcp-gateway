@@ -110,8 +110,8 @@ export interface ReplicaConfig {
 }
 
 export interface LoadBalancingConfig {
-  /** `round-robin` (default), `random`, `weighted`, `least-latency`, `failover` (primary first) or `smart` (3.4). */
-  strategy?: 'round-robin' | 'random' | 'weighted' | 'least-latency' | 'failover' | 'smart';
+  /** `round-robin` (default), `random`, `weighted`, `failover` (primary first) or `smart` (3.4). `least-latency` was removed in 4.0. */
+  strategy?: 'round-robin' | 'random' | 'weighted' | 'failover' | 'smart';
   /** `smart` only: weights of the score terms (defaults latency 1, errorRate 1, cost 0). */
   score?: { latency?: number; errorRate?: number; cost?: number };
   /** Failure kinds retried on the next member (default `[not-connected]`; `timeout` / `error` may re-run a tool). */
@@ -275,6 +275,8 @@ export interface PluginConfig {
   enabled?: boolean;
   /** Passed to a factory export as `ctx.options`. */
   options?: Record<string, unknown>;
+  /** Plugin API v3 (4.0): secrets the plugin may read via `ctx.secrets.get(name)` — name → `secret://provider/path`. */
+  secrets?: Record<string, string>;
 }
 
 /** Limits of one WASM plugin sandbox (3.3). */

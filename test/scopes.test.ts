@@ -123,7 +123,7 @@ describe('config: api key objects', () => {
     process.env.TEST_SCOPED_KEY = 'from-env';
     const c = await loadConfig(
       file(
-        'auth:\n  strategy: api-key\n  apiKeys:\n    - plain\n    - key: ${TEST_SCOPED_KEY}\n      name: aura\n      servers: [gh]\n      tools: ["read_*"]\n      rateLimit: {limit: 5, windowSeconds: 10}\n',
+        'auth:\n  strategy: api-key\n  apiKeys:\n    - plain\n    - key: ${TEST_SCOPED_KEY}\n      name: aura\n      scope:\n        servers: [gh]\n        tools: ["read_*"]\n        rateLimit: {limit: 5, windowSeconds: 10}\n',
       ),
     );
     expect(c.auth!.apiKeys).toEqual([
@@ -138,7 +138,8 @@ describe('config: api key objects', () => {
       'auth: {strategy: api-key, apiKeys: [{key: a, name: x}, {key: b, name: x}]}',
       'auth: {strategy: api-key, apiKeys: [{key: a, name: "has space"}]}',
       'auth: {strategy: api-key, apiKeys: [{key: "${UNSET_VAR_FOR_TEST}"}]}',
-      'auth: {strategy: api-key, apiKeys: [{key: a, servers: [""]}]}',
+      'auth: {strategy: api-key, apiKeys: [{key: a, scope: {servers: [""]}}]}',
+      'auth: {strategy: api-key, apiKeys: [{key: a, servers: [x]}]}',
     ];
     for (const b of bad) await expect(loadConfig(file(b + '\n')), b).rejects.toThrow(/apiKeys/);
   });

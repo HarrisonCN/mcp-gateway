@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { migrateConfigText, migrateConfigObject } from '../src/config/migrate.js';
 import { validateConfig } from '../src/config/loader.js';
-import { configDeprecations } from '../src/utils/deprecations.js';
+import { configDeprecations, removedConfigKeys } from '../src/utils/deprecations.js';
 import { runBenchmark, summarize, percentile, benchMarkdown } from '../src/bench/index.js';
 import { logger } from '../src/utils/logger.js';
 
@@ -31,22 +31,26 @@ plugins:
   - module: ./audit.mjs
 `;
 
-describe('config deprecations (3.9)', () => {
-  it('flags the v3 forms 4.0 removes', () => {
+describe('4.0 removals (were 3.9 deprecations)', () => {
+  it('rejects the v3 forms with the migration hint', () => {
     const raw = { version: 3, auth: { strategy: 'api-key', apiKeys: [{ name: 'ci', key: 'k', servers: ['x'] }, 'plain'] }, servers: [{ id: 's', loadBalancing: { strategy: 'least-latency' } }] };
-    expect(configDeprecations(raw).map((d) => d.id)).toEqual(['config-version-3', 'api-key-flat-scope', 'least-latency-strategy']);
-    expect(configDeprecations(raw)[1]!.detail).toBe('keys: ci');
-    expect(configDeprecations({ version: 4 })).toEqual([]);
+    const errs = removedConfigKeys(raw);
+    expect(errs).toHaveLength(3);
+    expect(errs[0]).toMatch(/version: config schema v3 was removed in 4.0/);
+    expect(errs[1]).toMatch(/auth.apiKeys.0: servers directly on an API key was removed in 4.0/);
+    expect(errs[2]).toMatch(/servers.0.loadBalancing.strategy: least-latency was removed/);
+    expect(() => validateConfig(raw)).toThrow(/mcp-gateway migrate/);
+    expect(configDeprecations(raw)).toEqual([]);
   });
 
-  it('accepts the v4 forms already (version 4, nested key scope)', () => {
+  it('reads schema v4 (version 4 or omitted, nested key scope)', () => {
     const cfg = validateConfig({ version: 4, servers: [], auth: { strategy: 'api-key', apiKeys: [{ name: 'ci', key: 'k', scope: { servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } } }] } });
     expect(cfg.auth!.apiKeys![0]).toMatchObject({ name: 'ci', servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } });
     expect(cfg.deprecations).toBeUndefined();
-    expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', servers: ['a'], scope: { servers: ['b'] } }] } })).toThrow(/both directly and under scope/);
+    expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', servers: ['a'], scope: { servers: ['b'] } }] } })).toThrow(/removed in 4.0/);
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', scope: { nope: 1 } }] } })).toThrow(/unknown key/);
     expect(() => validateConfig({ version: 5, servers: [] })).toThrow(/not supported/);
-    expect(validateConfig({ version: 3, servers: [] }).deprecations!.map((d) => d.id)).toEqual(['config-version-3']);
+    expect(validateConfig({ servers: [] }).deprecations).toBeUndefined();
   });
 });
 
@@ -59,7 +63,7 @@ describe('mcp-gateway migrate', () => {
       'auth.apiKeys[0] (ci): servers, rateLimit → scope',
       'servers[0] (search): loadBalancing.strategy least-latency → smart (latency-only score)',
     ]);
-    expect(r.notes[0]).toMatch(/apiVersion: 2/);
+    expect(r.notes[0]).toMatch(/apiVersion: 3/);
     expect(r.text).toContain('# my gateway');
     expect(r.text).toContain('# the CI bot');
     expect(r.text).toContain('version: 4');

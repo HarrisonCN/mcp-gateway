@@ -93,7 +93,13 @@ export class Gateway {
   private stateStore?: StateStore;
   private tracer: Tracer = NOOP_TRACER;
   private invoker?: ToolInvoker;
-  private readonly plugins = new PluginHost();
+  private readonly plugins = new PluginHost({
+    resolveSecret: (ref, plugin) => this.secrets.get(ref, { user: `plugin:${plugin}` }),
+    tenantOf: (clientId) => {
+      const m = this.config.tenants?.length ? membershipsOf(this.config.tenants, clientId)[0] : undefined;
+      return m ? { id: m.tenant, name: m.name, role: m.role } : undefined;
+    },
+  });
   private readonly catalog = new Catalog(() => this.config.catalog, () => this.config.configDir);
   private readonly installed = new InstalledServers(() => {
     const f = this.config.catalog?.serversFile;
@@ -668,6 +674,7 @@ export class Gateway {
         `Hot reload applied: ${toConnect.length} (re)connected, ${toRemove.length} removed` +
           (applied.length ? `; updated ${applied.join(', ')}` : ''),
       );
+      await this.plugins.configChanged({ applied, servers: (next.servers ?? []).map((x) => x.id), at: new Date().toISOString() });
     });
   }
 

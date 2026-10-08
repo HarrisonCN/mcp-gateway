@@ -209,9 +209,10 @@ auth:
     - "admin-key"                       # 不受限
     - key: ${AURA_GATEWAY_KEY}          # 对象形式的 key 支持 ${VAR} 展开
       name: aura                        # 日志、指标、会话中的 client id 为 "key:aura"（需唯一）
-      servers: ["github", "fs-*"]       # 服务器 id 通配
-      tools: ["read_*", "github/create_issue"]   # 工具名通配；含 "/" 时匹配 "server/tool"
-      rateLimit: { limit: 30, windowSeconds: 60 } # 独立限流桶，替代全局 rateLimit
+      scope:
+        servers: ["github", "fs-*"]       # 服务器 id 通配
+        tools: ["read_*", "github/create_issue"]   # 工具名通配；含 "/" 时匹配 "server/tool"
+        rateLimit: { limit: 30, windowSeconds: 60 } # 独立限流桶，替代全局 rateLimit
 ```
 
 - 工具必须同时通过服务器自身的 `tools` 过滤、Key 的 `servers` 和 `tools` 列表。未配置列表表示不限制；空列表表示全部禁止。
