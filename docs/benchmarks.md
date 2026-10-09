@@ -49,3 +49,17 @@ Notes:
 npx autocannon -c 64 -d 30 -m POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
   -b '{"server":"echo","tool":"echo","arguments":{}}' https://gateway.example.com/api/v1/tools/call
 ```
+
+## Kernel benchmark (12.0)
+
+`node bench/kernel.mjs` measures the **built** gateway (`npm run build` first) in fresh processes: import time,
+start time, RSS / heap after GC and the number of `dist/features/*` modules evaluated (module-load tracing). Profiles:
+`minimal` (no feature configured) and `all` (every feature section that validates empty). CI runs it on every push
+and compares with the recorded `bench/baseline.json`, failing only on a gross regression (> 2× time, > 1.5× memory).
+
+Baseline recorded for 12.0 (= the 11.x kernel; 2-vCPU arm64 sandbox, Node 22.23, median of 3):
+
+| profile | import ms | start ms | RSS MiB | heap MiB | feature modules evaluated |
+|---|---:|---:|---:|---:|---:|
+| minimal | 1067 | 16 | 58.7 | 23.3 | 47 / 47 |
+| all | 1080 | 46 | 63.4 | 24.0 | 47 / 47 |

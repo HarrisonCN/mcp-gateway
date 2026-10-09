@@ -68,6 +68,8 @@ jobs:
           done
       - name: Package contents
         run: npm pack --dry-run
+      - name: Kernel benchmark (startup time, memory, evaluated feature modules vs bench/baseline.json)
+        run: node bench/kernel.mjs --runs 5 --compare bench/baseline.json | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload coverage report
         if: matrix.node == 22 && always()
         uses: actions/upload-artifact@v6

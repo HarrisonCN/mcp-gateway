@@ -9,7 +9,7 @@ version: 11
 features:
   multimodal:
     allowedTypes: ["image/*", "audio/mpeg", "audio/wav"] # MIME globs; default image/* and audio/*
-    maxItemBytes: 10485760 # decoded bytes per item
+    maxItemBytes: 4194304  # decoded bytes per item (12.0: default 4 MiB, was 10 MiB)
     maxTotalBytes: 33554432 # decoded bytes per tool result
     onViolation: refuse # or strip
     offloadAboveBytes: 262144 # hold larger items and return a link
