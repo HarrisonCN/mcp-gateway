@@ -504,6 +504,9 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/edge-runtime` | Edge WASM tools: pin status, pool (idle / busy / started), calls, errors, cold starts, latency (9.2) |
 | `POST` | `/admin/edge-runtime/reload` | Re-read and re-pin every module; drops the pool (9.2) |
 | `GET` · `POST` | `/features/edge-runtime/tools` · `/features/edge-runtime/tools/:name/call` | List / call edge WASM tools `{ arguments }` (any authenticated client) (9.2) |
+| `GET` | `/admin/confidential` | TEE-protected servers: attested, platform, measurement, expiry, last rejection (9.3) |
+| `POST` | `/admin/confidential/:server/nonce` · `/admin/confidential/:server/attest` | Issue an attestation nonce / submit signed evidence `{ report, signature }` (9.3) |
+| `DELETE` | `/admin/confidential/:server` | Revoke a server's attestation (9.3) |
 
 ## Bridges
 

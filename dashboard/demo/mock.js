@@ -72,6 +72,7 @@
     { id: "chaos", since: "8.8.0", summary: "Chaos testing: scheduled or on-demand latency / error / timeout / corruption injection with a steady-state guard" },
     { id: "multimodal", since: "9.1.0", summary: "Multimodal tools: content-type policy and size limits for image / audio / blob results, offloaded and streamed in chunks" },
     { id: "edge-runtime", since: "9.2.0", summary: "Edge WASM runtime 2.0: WebAssembly tools with a warm instance pool, SHA-256 pins and per-tool time / memory / concurrency quotas" },
+    { id: "confidential", since: "9.3.0", summary: "Confidential computing: sensitive servers get calls only from inside a remotely attested TEE (SEV-SNP, TDX, Nitro, SGX)" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -733,6 +734,11 @@
     if (p === '/admin/edge-runtime') return json({ enabled: true, tools: [
       { name: 'geo-lookup', wasm: './tools/geo.wasm', export: 'run', sha256: '9f2c41d0b7e3a8c5f1e6d2b49a07c3e8d5f1a2b6c9e0d4f7a3b8c1e5d2f6a90b', pinned: true, loaded: true, error: null, limits: { timeoutMs: 50, memoryMb: 8, maxConcurrent: 4 }, pool: { warm: 2, idle: 2, busy: 0, started: 3 }, calls: 18422, errors: 2, coldStarts: 1, latencyMs: { p50: 1, max: 21 } },
       { name: 'markdown-to-html', wasm: './tools/md.wasm', export: 'run', sha256: '1c7e9a2f4b8d0e6c3a5f7b9d1e2c4a6f8b0d2e4c6a8f0b2d4e6c8a0f2b4d6e8c', pinned: false, loaded: true, error: null, limits: { timeoutMs: 100, memoryMb: 16, maxConcurrent: 4 }, pool: { warm: 1, idle: 1, busy: 0, started: 1 }, calls: 640, errors: 0, coldStarts: 0, latencyMs: { p50: 2, max: 9 } },
+    ] });
+    // 9.3: confidential computing / TEE.
+    if (p === '/admin/confidential') return json({ enabled: true, servers: [
+      { id: 'postgres', match: 'postgres', platforms: ['sev-snp', 'tdx'], attested: true, platform: 'sev-snp', measurement: '5f1c9a0e7b2d4c6f8a1e3b5d7f9c0a2e4b6d8f0a1c3e5b7d', attestedAt: new Date(Date.now() - 900000).toISOString(), expiresAt: new Date(Date.now() + 2700000).toISOString(), lastFailure: null },
+      { id: 'payroll', match: 'payroll*', platforms: ['nitro'], attested: false, platform: null, measurement: null, attestedAt: null, expiresAt: null, lastFailure: { at: new Date(Date.now() - 60000).toISOString(), reason: 'measurement is not in the allowlist' } },
     ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 9.0: nothing is deprecated (schema v8 and the `state` block were removed).

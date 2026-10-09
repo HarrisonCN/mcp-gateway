@@ -471,6 +471,11 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const e = (await (await f('/api/v1/admin/edge-runtime')).json()) as any;
     expect(e.tools.map((t: any) => `${t.name}:${t.pinned}`)).toEqual(['geo-lookup:true', 'markdown-to-html:false']);
   });
+  it('shows TEE attestation state (9.3)', async () => {
+    const f = demoFetch();
+    const c = (await (await f('/api/v1/admin/confidential')).json()) as any;
+    expect(c.servers.map((s: any) => `${s.id}:${s.attested}`)).toEqual(['postgres:true', 'payroll:false']);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

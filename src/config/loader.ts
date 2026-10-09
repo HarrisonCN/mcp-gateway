@@ -43,6 +43,7 @@ import { ConfigAssistantSchema } from '../features/config-assistant.js';
 import { ChaosSchema } from '../features/chaos.js';
 import { MultimodalSchema } from '../features/multimodal.js';
 import { EdgeRuntimeSchema } from '../features/edge-runtime.js';
+import { ConfidentialSchema } from '../features/confidential.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
@@ -510,6 +511,7 @@ const GatewayConfigSchema = z.object({
   chaos: ChaosSchema.optional(),
   multimodal: MultimodalSchema.optional(),
   edgeRuntime: EdgeRuntimeSchema.optional(),
+  confidential: ConfidentialSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   audit: z
