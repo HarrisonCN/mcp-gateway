@@ -1,7 +1,7 @@
 # Basic mcp-gateway configuration
 # Manages two MCP servers: filesystem and GitHub
 
-version: 10
+version: 11
 port: 4000
 # Loopback only: this example has no auth. Use 0.0.0.0 only together with auth (10.3 refuses otherwise).
 host: 127.0.0.1

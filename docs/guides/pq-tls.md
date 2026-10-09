@@ -5,7 +5,7 @@ post-quantum key exchange protects it now. 9.7 makes the gateway's upstream HTTP
 **X25519MLKEM768** (X25519 combined with ML-KEM-768, FIPS 203 — the hybrid used by browsers and major CDNs).
 
 ```yaml
-version: 10
+version: 11
 features:
   postQuantumTls:
     mode: prefer # prefer | require | off

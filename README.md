@@ -53,7 +53,7 @@ npx @winstonsayno/mcp-gateway gen-key   # prints a key for clients + its sha256 
 Edit `mcp-gateway.yml` — a minimal, authenticated setup:
 
 ```yaml
-version: 10
+version: 11
 host: 127.0.0.1
 port: 4000
 

@@ -4,7 +4,7 @@ Define service-level objectives for the tools you offer — per upstream server 
 measure them on every call, track the error budget and compute service credits when an objective is missed.
 
 ```yaml
-version: 10
+version: 11
 features:
   sla:
     targets:

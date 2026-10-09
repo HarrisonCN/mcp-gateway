@@ -1,5 +1,9 @@
 # Workflow engine (6.2)
 
+> **Deprecated in 10.9, removed in 11.0.** Use [task graphs](task-graphs.md) (`features.taskGraphs`, 10.7):
+> `mcp-gateway migrate --to 11` converts each workflow into a task graph with the same nodes. See
+> [Migrating to 11.0](migrating-to-v11.md).
+
 A workflow is a DAG of tool calls that runs inside the gateway. Each node lists the nodes it `needs`; every node whose
 dependencies have settled starts immediately, up to `concurrency` at a time.
 

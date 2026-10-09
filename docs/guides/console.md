@@ -5,7 +5,7 @@ plus a **plan**: the plan decides which upstream servers the organisation's tena
 members may make per UTC day.
 
 ```yaml
-version: 10
+version: 11
 controlPlane: {configApi: true} # needed for onboarding / plan changes over the API
 tenants:
   - {id: acme, name: ACME, servers: ["*"], members: [{client: "key:acme-*", role: owner}]}

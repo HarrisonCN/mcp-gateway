@@ -27,8 +27,9 @@ hot reload is rejected and the running configuration kept.
 | `port` | `4000` | restart | HTTP port |
 | `host` | `0.0.0.0` | restart | bind address |
 | `logLevel` | `info` | ✓ | `debug` \| `info` \| `warn` \| `error` |
-| `version` | — | | config schema version; optional, `10` when set (10.0 refuses `9` — run `mcp-gateway migrate --to 10`) |
-| `features` | — | ✓ | schema v10: every feature-module section (`chaos`, `sla`, `dlp`, …) nested here — see [Migrating to 10.0](guides/migrating-to-v10.md) |
+| `version` | — | | config schema version: `11` (recommended) or `10` (deprecated in 10.9; 11.0 reads `11` only — run `mcp-gateway migrate --to 11`) |
+| `kernel.modules` | `lazy` on v11, `eager` on v10 | ✓ | `lazy`: only feature modules whose `features.*` section is configured are mounted (others answer 404); `eager`: every module mounted, as in 10.x — see [Migrating to 11.0](guides/migrating-to-v11.md) |
+| `features` | — | ✓ | schema v10 / v11: every feature-module section (`chaos`, `sla`, `dlp`, …) nested here — see [Migrating to 10.0](guides/migrating-to-v10.md) |
 | `cors.origins` | `["*"]` | ✓ | allowed browser origins: exact values, `*`, or `/regex/` |
 | `health.intervalMs` | `30000` | restart | MCP `ping` interval (min 1000) |
 | `controlPlane` | role `all` | restart | role (`all` / `control` / `data`), config API, dashboard, data-plane sync — see [Admin API](#admin-api) |
@@ -496,7 +497,7 @@ scopes, policy, quotas), then diffs the two results. Captured payloads are redac
 ## Admin API
 
 ```yaml
-version: 10
+version: 11
 controlPlane:
   configApi: true # allow PUT /api/v1/admin/config and POST /api/v1/admin/reload (default false)
   dashboard: true # serve /dashboard (default true)
@@ -519,7 +520,7 @@ controlPlane:
 
 ```yaml
 # data plane
-version: 10
+version: 11
 port: 4000
 controlPlane:
   role: data

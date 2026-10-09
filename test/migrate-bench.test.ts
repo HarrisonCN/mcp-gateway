@@ -40,7 +40,7 @@ describe('4.0 removals (were 3.9 deprecations)', () => {
     expect(errs[1]).toMatch(/auth.apiKeys.0: servers directly on an API key was removed in 4.0/);
     expect(errs[2]).toMatch(/servers.0.loadBalancing.strategy: least-latency was removed/);
     expect(() => validateConfig(raw)).toThrow(/mcp-gateway migrate/);
-    expect(configDeprecations(raw).map((d) => d.id)).toEqual(['config-schema-v10']); // 10.9: v10 / versionless is deprecated
+    expect(configDeprecations(raw).map((d) => d.id)).toEqual([]); // version 3 is an error, not a deprecation
   });
 
   it('reads nested key scope (schema v7 or version omitted)', () => {

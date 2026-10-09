@@ -16,7 +16,7 @@ helm install gw ./deploy/helm/mcp-gateway \
 
 | Value | Default | |
 |-------|---------|---|
-| `config` | `{ version: 10, monitor: { prometheus: true }, servers: [] }` | The gateway config (rendered into a ConfigMap) |
+| `config` | `{ version: 11, monitor: { prometheus: true }, servers: [] }` | The gateway config (rendered into a ConfigMap) |
 | `existingSecret` | `""` | Secret with env vars — put `MCP_GATEWAY_API_KEYS` and upstream tokens here (required unless one of the next rows applies) |
 | `apiKeys` | `[]` | Alternative: keys rendered into a chart-managed Secret (prefer `sha256:` digests) |
 | `security.insecure` | `false` | Opt out: start with `--insecure`, **no auth** — trusted networks only; NOTES print a warning |
@@ -48,7 +48,7 @@ spec:
   autoscaling: { minReplicas: 2, maxReplicas: 8 }
   serviceMonitor: true
   config:
-    version: 10
+    version: 11
     servers:
       - { id: github, name: GitHub, transport: stdio, command: npx, args: ["-y", "@modelcontextprotocol/server-github"] }
 ```
