@@ -20,7 +20,8 @@
  *   "field": "salary", "op": "mean", "bounds": [0, 300000], "epsilon": 0.5 }
  * ```
  *
- * The gateway calls the tool (full pipeline, as the caller), takes the row array at `rows`, clamps `field` to
+ * The gateway calls the tool (full pipeline, as the caller), takes the row array at `rows` (a path into the result:
+ * `structuredContent.*`, or `json.*` for text content that is JSON), clamps `field` to
  * `bounds`, and answers **only** the noisy aggregate: `count` (sensitivity 1), `sum` (sensitivity max(|min|, |max|)),
  * `mean` (ε split between a noisy sum and a noisy count) or `histogram` (`bins` edges; sensitivity 1 per bin,
  * parallel composition). Noise is Laplace(sensitivity / ε) from a cryptographic RNG. ε is charged to the caller's
@@ -43,7 +44,7 @@ import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { registerFeature, objectBody, badRequest, clientIdOf } from '../gateway/features.js';
 import { registerCallHook } from '../gateway/hooks.js';
-import { readPath } from '../orchestration/chains.js';
+import { readPath, stepValue } from '../orchestration/chains.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { isToolInScope } from '../auth/scopes.js';
 import type { AuthedRequest } from '../auth/middleware.js';
@@ -216,7 +217,16 @@ async function runLocal(ctx: Ctx, req: import('express').Request, c: Parsed, tar
   internal.add(args);
   const res = await ctx.invoke(target.server, target.tool, args, clientIdOf(req));
   if (!res.success) return { status: 502, body: { error: 'Tool Execution Failed', message: res.error?.message ?? 'failed', code: res.error?.code } };
-  const rows = readPath({ ...((res.result as Record<string, unknown>) ?? {}) }, q.rows);
+  const v = stepValue(res.result);
+  let json: unknown;
+  if (typeof v.text === 'string') {
+    try {
+      json = JSON.parse(v.text);
+    } catch {
+      /* not JSON */
+    }
+  }
+  const rows = readPath({ ...v, json }, q.rows);
   if (!Array.isArray(rows)) return { status: 422, body: { error: 'Unprocessable Entity', message: `"${q.rows}" in the tool result is not an array of rows` } };
   if (rows.length > c.maxRows) return { status: 422, body: { error: 'Unprocessable Entity', message: `more than ${c.maxRows} rows` } };
   return { status: 200, body: { server: target.server, tool: target.tool, ...dpAggregate(rows, q) } };
