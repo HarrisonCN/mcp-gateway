@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.6.0] - 2026-10-09
+
+Second release of the 10.5 – 10.8 feature line: **full-chain replay / time-travel debugging** and **real-time cost and
+carbon budgets**. Both are opt-in under `features:`; config schema v10 is unchanged apart from the new optional
+`features.timeTravel` and `features.realtimeBudgets` sections.
+
+### Added
+- **Time-travel journal** (`features.timeTravel`, [guide](docs/guides/time-travel.md)): an append-only journal of
+  applied configurations (redacted, content-hashed) and tool calls — including refused ones — in memory and optionally
+  as daily JSONL files with retention. Admin API `/api/v1/admin/time-travel`: state at any instant (`/state?at=`),
+  call search (`/calls`), an agent's call chain around a call (`/chain/:id`), configuration diff between two instants
+  (`/config-diff`) and **replay** (`POST /replay`): the `policy.rules` decision then vs now for each journaled call,
+  and with `execute: true` a re-execution through the full pipeline with a diff against the recorded result.
+- **Real-time budgets** (`features.realtimeBudgets`, [guide](docs/guides/realtime-budgets.md)): sliding-window
+  budgets per client / tenant / global on `cost` (priced with the `costs` table) or `carbon` (an **estimate** in
+  gCO2e from configurable energy-per-call / per-token factors × grid intensity — not a measurement). Alerts at
+  `warnAt` fractions (log, webhook, `GET /admin/realtime-budgets/alerts`); at the limit `reject`, `downgrade`
+  (override arguments such as `model` and / or reroute to a cheaper server) or `warn`. `POST /estimate` prices a call.
+- Call hooks can observe refused calls (`refused` callback, 10.6), used by the journal.
+
+### Changed
+- Budget refusals on REST now answer **`429 Too Many Requests`** with `Retry-After` and a `budget` object, for both
+  real-time budgets and the calendar budgets of `costs.budgets` (`action: block`), which previously surfaced as `502
+  Tool Execution Failed`. The JSON-RPC error on `/mcp` is unchanged: code `-32013` with `data.decision: "budget"`.
+
+### Notes
+- Both features keep state per process (in memory); with several replicas each enforces / journals its own traffic.
+
 ## [10.5.0] - 2026-10-09
 
 First release of the 10.5 – 10.8 feature line: the **kernel plugin SDK** and **policy-as-code 2.0**. Both are
