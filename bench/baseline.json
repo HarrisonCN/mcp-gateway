@@ -2,7 +2,8 @@
   "node": "v22.23.3",
   "platform": "linux-arm64",
   "runs": 15,
-  "method": "median of 3 interleaved 12.0/13.0 bench runs \u00d7 5 samples each (shared, noisy sandbox)",
+  "method": "median of 3 interleaved 12.0/13.0 bench runs × 5 samples each (shared, noisy sandbox)",
+  "note": "Top-level profiles = linux-arm64 sandbox (kept for older readers). `--compare` uses platforms[<platform>] when present; on a platform without a recorded baseline memory deltas are report-only.",
   "profiles": {
     "minimal": {
       "importMs": 657.9,
@@ -19,6 +20,55 @@
       "rssMb": 56.1,
       "heapMb": 21.7,
       "featureModules": 31
+    }
+  },
+  "platforms": {
+    "linux-arm64": {
+      "node": "v22.23.3",
+      "method": "median of 3 interleaved 12.0/13.0 bench runs × 5 samples each (shared, noisy sandbox)",
+      "profiles": {
+        "minimal": {
+          "importMs": 657.9,
+          "startMs": 21.9,
+          "totalMs": 685.7,
+          "rssMb": 53.8,
+          "heapMb": 19.5,
+          "featureModules": 0
+        },
+        "all": {
+          "importMs": 675.7,
+          "startMs": 152.4,
+          "totalMs": 824.8,
+          "rssMb": 56.1,
+          "heapMb": 21.7,
+          "featureModules": 31
+        }
+      },
+      "recordedAt": "2026-10-09T20:50:00Z"
+    },
+    "linux-x64": {
+      "node": "v22.23.3 / v24.21.0",
+      "runner": "GitHub Actions ubuntu-latest",
+      "method": "median of the three CI job medians (5 samples each): Node 22 ×2, Node 24 ×1, 13.0.0 PR #137 run 37989480264",
+      "profiles": {
+        "minimal": {
+          "importMs": 231.5,
+          "startMs": 20.9,
+          "totalMs": 253.5,
+          "rssMb": 97.2,
+          "heapMb": 19.8,
+          "featureModules": 0
+        },
+        "all": {
+          "importMs": 231.6,
+          "startMs": 74.7,
+          "totalMs": 307.2,
+          "rssMb": 102.6,
+          "heapMb": 21.9,
+          "featureModules": 31
+        }
+      },
+      "recordedAt": "2026-10-09"
     }
   },
   "before": {

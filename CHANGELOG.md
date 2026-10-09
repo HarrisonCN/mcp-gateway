@@ -50,6 +50,13 @@ needed). Guide: [Migrating to 13.0](docs/guides/migrating-to-v13.md). 10.x stays
 - `undici` is required on first use (mTLS / post-quantum TLS upstreams only): ~95 fewer modules at start.
 - `bench/kernel.mjs` imports the `./gateway` entry, counts only feature modules (not schemas / the manifest) and
   fails CI if a profile evaluates more modules than recorded. `bench/baseline.json` records 13.0 and the 12.0 run.
+- Baselines in `bench/baseline.json` are keyed by platform (`platforms["linux-arm64"]`, `platforms["linux-x64"]` =
+  GitHub Actions runners, recorded from the 13.0 CI runs); memory is only checked against a same-platform baseline.
+  The CI benchmark step runs with `set -o pipefail`, so the guard is no longer masked by `tee`.
+- CI / release builds no longer pull from Docker Hub (unauthenticated pull rate limits blocked releases): the
+  Dockerfile base image (`ARG NODE_IMAGE`, default `public.ecr.aws/docker/library/node:22-alpine`, same tag and
+  digest as `node:22-alpine`), the Redis service container, the Swift SDK container, BuildKit and QEMU binfmt come from
+  the Amazon ECR Public mirror of the Docker Official Images.
 
 ### Benchmark (minimal profile, median of 3 interleaved runs × 5, same machine)
 | | 12.0.0 | 13.0.0 |

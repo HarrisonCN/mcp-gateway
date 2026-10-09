@@ -12,6 +12,8 @@
  *
  * --compare prints the delta against a recorded baseline and exits 1 only on a gross regression (> 2× the baseline
  * median for time, > 1.5× for memory) — CI runners are noisy, so the numbers are recorded, not tightly asserted.
+ * Baselines are per platform (`platforms["linux-x64"]` = GitHub Actions runners); memory is only checked against a
+ * baseline recorded on the same platform.
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -81,16 +83,22 @@ let failed = false;
 if (process.argv.includes('--json')) console.log(JSON.stringify(result, null, 2));
 else {
   const base = cmp ? JSON.parse(readFileSync(join(root, cmp), 'utf8')) : undefined;
+  // 13.0: baselines are keyed by platform (bench/baseline.json `platforms`); fall back to the top-level profiles
+  const platformBase = base?.platforms?.[result.platform];
+  const samePlatform = !!platformBase || base?.platform === result.platform;
+  const baseProfiles = platformBase?.profiles ?? base?.profiles;
   console.log(`Node ${result.node} · ${result.platform} · median of ${runs}`);
+  if (base && !samePlatform) console.log(`(no ${result.platform} baseline recorded: comparing with ${base.platform}; memory is report-only)`);
   console.log('| profile | metric | value | baseline | Δ |');
   console.log('|---|---|---:|---:|---:|');
   for (const [p, v] of Object.entries(result.profiles)) {
     for (const [k, x] of Object.entries(v)) {
-      const b = base?.profiles?.[p]?.[k];
+      const b = baseProfiles?.[p]?.[k];
       const d = b ? `${(((x - b) / b) * 100).toFixed(0)}%` : '';
       console.log(`| ${p} | ${k} | ${x} | ${b ?? ''} | ${d} |`);
       if (b && /Ms$/.test(k) && x > 2 * b + 50) failed = true;
-      if (b && /Mb$/.test(k) && x > 1.5 * b + 10) failed = true;
+      // memory differs a lot between platforms: only enforced against a baseline recorded on this platform
+      if (b && /Mb$/.test(k) && samePlatform && x > 1.5 * b + 10) failed = true;
       // 13.0: a profile must never evaluate more feature modules than recorded (minimal: none)
       if (b !== undefined && k === 'featureModules' && x > b) failed = true;
     }
