@@ -3,7 +3,8 @@
  * Exposes REST endpoints for tool invocation, server management, and monitoring
  */
 
-import { DlpSchema, dlpStats, policyFor as dlpPolicyFor } from '../features/dlp.js';
+import { DlpSchema, policyFor as dlpPolicyFor } from '../features/schemas/dlp.js';
+import { dlpStats } from '../policy/dlp-stats.js';
 import { SseWriter } from './stream.js';
 import { ERR_SERVER_BUSY } from '../proxy/index.js';
 import { PROTOCOL_VERSIONS, featuresOf } from '../mcp/compat.js';

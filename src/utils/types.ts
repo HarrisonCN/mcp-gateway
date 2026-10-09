@@ -160,91 +160,91 @@ export interface GatewayConfig {
   /** Feature-module activation (10.9; `lazy` = only configured modules — the 11.0 default; `eager` = all, as in 10.x). */
   kernel?: { modules?: 'eager' | 'lazy' };
   /** Ecosystem marketplace GA (9.8). */
-  ecosystem?: import('../features/ecosystem.js').EcosystemConfig;
+  ecosystem?: import('../features/schemas/ecosystem.js').EcosystemConfig;
   /** Policy-as-code 2.0: Cedar / OPA (10.5). */
-  policyEngine?: import('../features/policy-engine.js').PolicyEngineConfig;
+  policyEngine?: import('../features/schemas/policy-engine.js').PolicyEngineConfig;
   /** Full-chain replay / time-travel journal (10.6). */
-  timeTravel?: import('../features/time-travel.js').TimeTravelConfig;
+  timeTravel?: import('../features/schemas/time-travel.js').TimeTravelConfig;
   /** Real-time (sliding-window) cost and carbon budgets (10.6). */
-  realtimeBudgets?: import('../features/realtime-budgets.js').RealtimeBudgetsConfig;
+  realtimeBudgets?: import('../features/schemas/realtime-budgets.js').RealtimeBudgetsConfig;
   /** Multi-agent orchestration 2.0: durable task graphs (10.7). */
-  taskGraphs?: import('../features/task-graphs.js').TaskGraphsConfig;
+  taskGraphs?: import('../features/schemas/task-graphs.js').TaskGraphsConfig;
   /** Edge autonomy, EXPERIMENTAL (10.7). */
-  edgeAutonomy?: import('../features/edge-autonomy.js').EdgeAutonomyConfig;
+  edgeAutonomy?: import('../features/schemas/edge-autonomy.js').EdgeAutonomyConfig;
   /** Privacy computing, EXPERIMENTAL (10.8). */
-  privacy?: import('../features/privacy.js').PrivacyConfig;
+  privacy?: import('../features/schemas/privacy.js').PrivacyConfig;
   /** Post-quantum identity, EXPERIMENTAL (10.8). */
-  pqIdentity?: import('../features/pq-identity.js').PqIdentityConfig;
+  pqIdentity?: import('../features/schemas/pq-identity.js').PqIdentityConfig;
   /** Post-quantum TLS (9.7). */
-  postQuantumTls?: import('../features/pq-tls.js').PqTlsConfig;
+  postQuantumTls?: import('../features/schemas/pq-tls.js').PqTlsConfig;
   /** Self-healing (9.6). */
-  selfHealing?: import('../features/self-healing.js').SelfHealingConfig;
+  selfHealing?: import('../features/schemas/self-healing.js').SelfHealingConfig;
   /** SLA monitoring & credit reports (9.5). */
-  sla?: import('../features/sla.js').SlaConfig;
+  sla?: import('../features/schemas/sla.js').SlaConfig;
   /** Global tool registry (9.4). */
-  toolRegistry?: import('../features/tool-registry.js').ToolRegistryConfig;
+  toolRegistry?: import('../features/schemas/tool-registry.js').ToolRegistryConfig;
   /** Confidential computing / TEE (9.3). */
-  confidential?: import('../features/confidential.js').ConfidentialConfig;
+  confidential?: import('../features/schemas/confidential.js').ConfidentialConfig;
   /** Edge WASM runtime 2.0 (9.2). */
-  edgeRuntime?: import('../features/edge-runtime.js').EdgeRuntimeConfig;
+  edgeRuntime?: import('../features/schemas/edge-runtime.js').EdgeRuntimeConfig;
   /** Multimodal tools (9.1). */
-  multimodal?: import('../features/multimodal.js').MultimodalConfig;
+  multimodal?: import('../features/schemas/multimodal.js').MultimodalConfig;
   /** Chaos testing (8.8). */
-  chaos?: import('../features/chaos.js').ChaosConfig;
+  chaos?: import('../features/schemas/chaos.js').ChaosConfig;
   /** Natural-language config assistant (8.7). */
-  configAssistant?: import('../features/config-assistant.js').ConfigAssistantConfig;
+  configAssistant?: import('../features/schemas/config-assistant.js').ConfigAssistantConfig;
   /** Data lineage (8.6). */
-  dataLineage?: import('../features/data-lineage.js').DataLineageConfig;
+  dataLineage?: import('../features/schemas/data-lineage.js').DataLineageConfig;
   /** Zero-downtime blue/green upgrades (8.5). */
-  blueGreen?: import('../features/blue-green.js').BlueGreenConfig;
+  blueGreen?: import('../features/schemas/blue-green.js').BlueGreenConfig;
   /** Cost optimization advisor (8.4). */
-  costAdvisor?: import('../features/cost-advisor.js').CostAdvisorConfig;
+  costAdvisor?: import('../features/schemas/cost-advisor.js').CostAdvisorConfig;
   /** Live collaborative debugging (8.3). */
-  debugSessions?: import('../features/debug-sessions.js').DebugSessionsConfig;
+  debugSessions?: import('../features/schemas/debug-sessions.js').DebugSessionsConfig;
   /** Cross-gateway A2A federation (8.2). */
-  a2aFederation?: import('../features/a2a-federation.js').A2aFederationConfig;
+  a2aFederation?: import('../features/schemas/a2a-federation.js').A2aFederationConfig;
   /** Agent identity & delegated auth (8.1). */
-  agentIdentity?: import('../features/agent-identity.js').AgentIdentityConfig;
+  agentIdentity?: import('../features/schemas/agent-identity.js').AgentIdentityConfig;
   /** Automated compliance reports (7.8). */
-  complianceReports?: import('../features/compliance-reports.js').ComplianceReportsConfig;
+  complianceReports?: import('../features/schemas/compliance-reports.js').ComplianceReportsConfig;
   /** Approvals 2.0 (7.7). */
-  approvalFlows?: import('../features/approval-flows.js').ApprovalFlowsConfig;
+  approvalFlows?: import('../features/schemas/approval-flows.js').ApprovalFlowsConfig;
   /** Offline desktop gateway (7.6). */
-  offline?: import('../features/offline.js').OfflineConfig;
+  offline?: import('../features/schemas/offline.js').OfflineConfig;
   /** Tool versioning and gradual rollout (7.5). */
-  rollouts?: import('../features/rollouts.js').RolloutsConfig;
+  rollouts?: import('../features/schemas/rollouts.js').RolloutsConfig;
   /** Semantic cache (7.4). */
-  semanticCache?: import('../features/semantic-cache.js').SemanticCacheConfig;
+  semanticCache?: import('../features/schemas/semantic-cache.js').SemanticCacheConfig;
   /** Prompt-injection defence and output sanitisation (7.3). */
-  sanitize?: import('../features/sanitize.js').SanitizeConfig;
+  sanitize?: import('../features/schemas/sanitize.js').SanitizeConfig;
   /** SaaS console (7.2). */
-  console?: import('../features/console.js').ConsoleConfig;
+  console?: import('../features/schemas/console.js').ConsoleConfig;
   /** Usage billing and invoices (6.7). */
-  billing?: import('../features/billing.js').BillingConfig;
+  billing?: import('../features/schemas/billing.js').BillingConfig;
   /** Anomaly detection (6.6). */
-  anomaly?: import('../features/anomaly.js').AnomalyConfig;
+  anomaly?: import('../features/schemas/anomaly.js').AnomalyConfig;
   /** Policy simulation: shadow policy (6.5). */
-  policyShadow?: import('../features/policy-sim.js').PolicyShadowConfig;
+  policyShadow?: import('../features/schemas/policy-sim.js').PolicyShadowConfig;
   /** Enterprise SSO (OIDC) and SCIM 2.0 (6.4). */
-  identity?: import('../features/identity.js').IdentityConfig;
+  identity?: import('../features/schemas/identity.js').IdentityConfig;
   /** OpenTelemetry GenAI semantic conventions (6.3). */
-  genaiTelemetry?: import('../features/genai-otel.js').GenaiTelemetryConfig;
+  genaiTelemetry?: import('../features/schemas/genai-otel.js').GenaiTelemetryConfig;
   /** GraphQL / gRPC upstreams (6.1). */
-  apiUpstreams?: import('../features/api-upstreams.js').ApiUpstreamsConfig;
+  apiUpstreams?: import('../features/schemas/api-upstreams.js').ApiUpstreamsConfig;
   /** Adaptive routing 2.0 (5.8). */
-  adaptive?: import('../features/adaptive.js').AdaptiveConfig;
+  adaptive?: import('../features/schemas/adaptive.js').AdaptiveConfig;
   /** Data loss prevention (5.6). */
-  dlp?: import('../features/dlp.js').DlpConfig;
+  dlp?: import('../features/schemas/dlp.js').DlpConfig;
   /** Agent session recordings (5.5). */
-  sessions?: import('../features/sessions.js').SessionsConfig;
+  sessions?: import('../features/schemas/sessions.js').SessionsConfig;
   /** Signed plugins: trusted keys, require signatures (5.4). */
   pluginTrust?: import('../plugins/trust.js').PluginTrustConfig;
   /** Plugin marketplace indexes (5.4). */
-  marketplace?: import('../features/marketplace.js').MarketplaceConfig;
+  marketplace?: import('../features/schemas/marketplace.js').MarketplaceConfig;
   /** Managed edge nodes (5.3). */
-  edgeFleet?: import('../features/edge-fleet.js').EdgeFleetConfig;
+  edgeFleet?: import('../features/schemas/edge-fleet.js').EdgeFleetConfig;
   /** Multi-region active-active (5.2). */
-  regions?: import('../features/regions.js').RegionsConfig;
+  regions?: import('../features/schemas/regions.js').RegionsConfig;
   /** Zero-trust upstream mTLS (SPIFFE, certificate rotation) (4.5). */
   mtls?: import('../security/mtls.js').MtlsConfig;
   /** Streaming tool results: SSE backpressure limits (4.4). */

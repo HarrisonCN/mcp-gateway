@@ -33,7 +33,7 @@ import { portableConfig, withFeatureSection } from '../gateway/admin.js';
 import { redactConfig } from '../config/diff.js';
 import { buildReport, reportMarkdown, type ControlResult, type ReportInput } from '../policy/compliance.js';
 import { securityWarnings } from '../security/posture.js';
-import { dlpStats } from './dlp.js';
+import { dlpStats } from '../policy/dlp-stats.js';
 import { VERSION } from '../utils/version.js';
 import { logger } from '../utils/logger.js';
 import type { GatewayConfig, RequestMetric } from '../utils/types.js';

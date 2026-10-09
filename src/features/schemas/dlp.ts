@@ -35,3 +35,11 @@ export const DlpSchema = z
   })
   .strict();
 export type DlpConfig = z.input<typeof DlpSchema>;
+
+type Resolved = z.output<typeof DlpSchema>;
+
+/** Effective DLP policy of a tenant (13.0: lives with the schema so the core can read it without loading the module). */
+export function policyFor(cfg: Resolved, tenant: string | undefined): { clearance: Level; strategy: Strategy; salt: string } {
+  const t = (tenant && cfg.tenants[tenant]) || {};
+  return { clearance: t.clearance ?? cfg.default.clearance ?? 'internal', strategy: t.strategy ?? cfg.default.strategy ?? 'mask', salt: t.salt ?? cfg.default.salt ?? `mcp-gateway:${tenant ?? '-'}` };
+}
