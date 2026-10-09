@@ -153,6 +153,8 @@ export interface ServerHealth {
 export interface GatewayConfig {
   /** Ecosystem marketplace GA (9.8). */
   ecosystem?: import('../features/ecosystem.js').EcosystemConfig;
+  /** Policy-as-code 2.0: Cedar / OPA (10.5). */
+  policyEngine?: import('../features/policy-engine.js').PolicyEngineConfig;
   /** Post-quantum TLS (9.7). */
   postQuantumTls?: import('../features/pq-tls.js').PqTlsConfig;
   /** Self-healing (9.6). */
@@ -357,6 +359,8 @@ export interface PluginConfig {
   signature?: string;
   /** Plugin API v3 (4.0): secrets the plugin may read via `ctx.secrets.get(name)` — name → `secret://provider/path`. */
   secrets?: Record<string, string>;
+  /** 10.5: JS module plugins — time limit per `onToolCall` / `onResponse` call; a timeout fails the call closed. */
+  timeoutMs?: number;
 }
 
 /** Limits of one WASM plugin sandbox (3.3). */

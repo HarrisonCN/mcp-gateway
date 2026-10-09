@@ -57,10 +57,10 @@ export { Federation, signFederation, verifyFederation, FEDERATION_HEADER } from 
 export type { PeerCatalog, PeerState, ExportedServer } from './gateway/federation.js';
 export { SmartRouter, stableFraction } from './gateway/routing.js';
 export type { RouteDecision, SplitSnapshot, SplitVariantStats } from './gateway/routing.js';
-export { PluginHost, PluginError, loadPlugin, grantSecrets, PLUGIN_API_VERSION, PLUGIN_API_MIN_VERSION } from './plugins/index.js';
+export { PluginHost, PluginError, loadPlugin, grantSecrets, definePlugin, validatePluginOptions, PLUGIN_API_VERSION, PLUGIN_API_MIN_VERSION } from './plugins/index.js';
 export { WasmPlugin, WasmSandbox, loadWasmPlugin, DEFAULT_WASM_LIMITS } from './plugins/wasm.js';
 export type { WasmIsolation, WasmPluginOptions } from './plugins/wasm.js';
-export type { GatewayPlugin, PluginCall, PluginContext, PluginFactory, PluginSource, ToolCallOutcome, PluginHookContext, PluginSecrets, PluginTenant, PluginConfigChange, PluginEnv } from './plugins/index.js';
+export type { GatewayPlugin, PluginCall, PluginContext, PluginFactory, PluginSource, ToolCallOutcome, PluginHookContext, PluginSecrets, PluginTenant, PluginConfigChange, PluginEnv, PluginConfigSchema, PluginRouteContext, PluginRouteEnv } from './plugins/index.js';
 export { evaluatePolicy, argMatches, isUnder } from './policy/tool-policy.js';
 export type { PolicyDecision, PolicyRequest, PolicyEffect } from './policy/tool-policy.js';
 export { ApprovalQueue, ApprovalError } from './policy/approvals.js';

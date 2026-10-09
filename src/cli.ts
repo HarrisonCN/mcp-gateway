@@ -324,7 +324,11 @@ program
   .action(async (options) => {
     try {
       const config = await loadConfig(options.config);
-      const results = runPolicyTests(config.policy);
+      const results: Array<{ name: string; passed: boolean; expected: string; actual: string }> = runPolicyTests(config.policy);
+      // 10.5: features.policyEngine tests (Cedar in-process; OPA is queried when configured)
+      const { engineOf, runEngineTests } = await import('./features/policy-engine.js');
+      const engine = engineOf(config);
+      if (engine?.tests?.length) for (const r of await runEngineTests(engine, engine.tests, { configDir: config.configDir })) results.push({ ...r, name: `[policyEngine] ${r.name}` });
       const failed = results.filter((r) => !r.passed);
       if (options.json) console.log(JSON.stringify({ total: results.length, failed: failed.length, results }, null, 2));
       else {

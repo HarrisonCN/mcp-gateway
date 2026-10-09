@@ -43,7 +43,7 @@ import { isAbsolute, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { readFile } from 'fs/promises';
 import { PluginTrustSchema, verifyArtifact, type PluginTrustConfig } from './trust.js';
-import type { NextFunction, Request, Response } from 'express';
+import express, { type NextFunction, type Request, type Response, type Router } from 'express';
 import type { PluginConfig, ProxyResponse } from '../utils/types.js';
 import { logger, type Logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
@@ -186,6 +186,104 @@ export interface GatewayPlugin {
   onConfigChange?: (change: PluginConfigChange, ctx: PluginHookContext) => void | Promise<void>;
   /** Called on gateway stop and when the plugin is unloaded by a config reload. */
   close?: () => void | Promise<void>;
+  /**
+   * Kernel plugin SDK (10.5): validates `plugins[].options` when the plugin loads — a zod schema (anything with
+   * `safeParse`) or a function returning error messages. A failure refuses the plugin (startup / reload fails).
+   * The parsed value is what route handlers see as `ctx.options`.
+   */
+  configSchema?: PluginConfigSchema;
+  /**
+   * Kernel plugin SDK (10.5): HTTP routes, mounted like a built-in feature module — `admin` under
+   * `/api/v1/admin/plugins/<name>` (operators only), `client` under `/api/v1/features/plugins/<name>` (any
+   * authenticated client). Rebuilt whenever the plugin set changes (hot reload).
+   */
+  routes?: {
+    admin?: (router: Router, ctx: PluginRouteContext) => void;
+    client?: (router: Router, ctx: PluginRouteContext) => void;
+  };
+}
+
+/** 10.5: what a plugin's `configSchema` may be. */
+export type PluginConfigSchema =
+  | { safeParse: (value: unknown) => { success: boolean; data?: unknown; error?: { issues?: Array<{ path?: Array<string | number>; message: string }>; message?: string } } }
+  | ((options: Record<string, unknown>) => string[] | void);
+
+/** 10.5: context handed to a plugin's route builders. */
+export interface PluginRouteContext {
+  plugin: string;
+  /** `plugins[].options` after `configSchema` (as configured when there is none). */
+  options: Record<string, unknown>;
+  logger: Logger;
+  gatewayVersion: string;
+  /** The plugin's key-value store (shared with its hooks). */
+  state?: PluginState;
+  /** Tools the gateway currently serves. */
+  tools: () => Array<{ serverId: string; name: string; description?: string }>;
+  /** Call a tool through the full pipeline (scopes are not applied: the route decides who may call it). */
+  invoke: (serverId: string, tool: string, args: Record<string, unknown>, clientId?: string) => Promise<ProxyResponse>;
+  /** Client id of the request (`key:<name>`, `jwt:<sub>`, …). */
+  clientOf: (req: Request) => string | undefined;
+}
+
+/** What the gateway provides to plugin routes (10.5). */
+export interface PluginRouteEnv {
+  tools: PluginRouteContext['tools'];
+  invoke: PluginRouteContext['invoke'];
+}
+
+/**
+ * 10.5: typed helper for writing a kernel plugin (hooks, config schema and routes in one object). Sets
+ * `apiVersion: 5` unless given.
+ *
+ * ```ts
+ * import { definePlugin } from '@winstonsayno/mcp-gateway';
+ * import { z } from 'zod';
+ * export default definePlugin({
+ *   name: 'quota-notes',
+ *   configSchema: z.object({ maxNotes: z.number().int().positive().default(100) }),
+ *   routes: { admin: (r, ctx) => r.get('/', (_req, res) => res.json({ options: ctx.options })) },
+ *   onToolCall: (call) => (call.tool === 'rm' ? { action: 'deny', reason: 'no rm' } : { action: 'continue' }),
+ * });
+ * ```
+ */
+export function definePlugin<T extends GatewayPlugin>(plugin: T): T & { apiVersion: number } {
+  return { ...plugin, apiVersion: plugin.apiVersion ?? PLUGIN_API_VERSION };
+}
+
+/** 10.5: validate options against a plugin's `configSchema`; returns the parsed options or throws. */
+export function validatePluginOptions(p: GatewayPlugin, options: Record<string, unknown> = {}): Record<string, unknown> {
+  const schema = p.configSchema;
+  if (!schema) return options;
+  if (typeof schema === 'function') {
+    const errors = schema(options) ?? [];
+    if (errors.length) throw new Error(`Plugin "${p.name}" options are invalid: ${errors.join('; ')}`);
+    return options;
+  }
+  if (typeof schema.safeParse !== 'function') throw new Error(`Plugin "${p.name}": configSchema must be a zod schema (safeParse) or a function`);
+  const r = schema.safeParse(options);
+  if (!r.success) {
+    const issues = r.error?.issues?.map((i) => `${(i.path ?? []).join('.') || '(options)'}: ${i.message}`).join('; ') ?? r.error?.message ?? 'invalid';
+    throw new Error(`Plugin "${p.name}" options are invalid: ${issues}`);
+  }
+  const d = r.data;
+  return d && typeof d === 'object' && !Array.isArray(d) ? (d as Record<string, unknown>) : options;
+}
+
+/** 10.5: run a hook with an optional time limit (`plugins[].timeoutMs`). */
+async function withTimeout<T>(p: GatewayPlugin, hook: string, ms: number | undefined, run: () => T | Promise<T>): Promise<T> {
+  if (!ms) return run();
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(run),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${hook} timed out after ${ms} ms`)), ms);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export interface PluginContext {
@@ -298,8 +396,15 @@ export async function loadPlugin(cfg: PluginConfig, baseDir = process.cwd(), tru
   const plugin = await instantiate(exported, contextFor(cfg), spec);
   const out = cfg.name ? { ...plugin, name: cfg.name, close: plugin.close?.bind(plugin) } : plugin;
   if (cfg.secrets) grants.set(out, { ...cfg.secrets });
+  parsedOptions.set(out, validatePluginOptions(out, cfg.options ?? {}));
+  if (cfg.timeoutMs) hookTimeouts.set(out, cfg.timeoutMs);
   return out;
 }
+
+/** 10.5: options after `configSchema`, per plugin instance. */
+const parsedOptions = new WeakMap<GatewayPlugin, Record<string, unknown>>();
+/** 10.5: `plugins[].timeoutMs`, per plugin instance. */
+const hookTimeouts = new WeakMap<GatewayPlugin, number>();
 
 function contextFor(cfg: Partial<PluginConfig>): PluginContext {
   return { options: cfg.options ?? {}, logger, gatewayVersion: VERSION, apiVersion: PLUGIN_API_VERSION };
@@ -329,7 +434,66 @@ export class PluginHost {
   private plugins: GatewayPlugin[] = [];
   private readonly hookCtx = new WeakMap<GatewayPlugin, PluginHookContext>();
 
+  private adminRouters = new Map<string, Router>();
+  private clientRouters = new Map<string, Router>();
+  private routeEnv?: PluginRouteEnv;
+
   constructor(private readonly env: PluginEnv = {}) {}
+
+  /** 10.5: what plugin routes may use; (re)builds the routers. */
+  setRouteEnv(env: PluginRouteEnv): void {
+    this.routeEnv = env;
+    this.buildRouters();
+  }
+
+  private buildRouters(): void {
+    const admin = new Map<string, Router>();
+    const client = new Map<string, Router>();
+    const env = this.routeEnv;
+    if (env) {
+      for (const p of this.plugins) {
+        if (!p.routes) continue;
+        const ctx: PluginRouteContext = {
+          plugin: p.name,
+          options: parsedOptions.get(p) ?? {},
+          logger,
+          gatewayVersion: VERSION,
+          state: this.ctxOf(p).state,
+          tools: env.tools,
+          invoke: env.invoke,
+          clientOf: (req) => (req as Request & { clientId?: string }).clientId,
+        };
+        for (const [kind, build, map] of [['admin', p.routes.admin, admin], ['client', p.routes.client, client]] as const) {
+          if (!build) continue;
+          const r = express.Router();
+          r.use(express.json({ limit: '1mb' }));
+          try {
+            build(r, ctx);
+            map.set(p.name, r);
+          } catch (err) {
+            logger.error(`Plugin "${p.name}" ${kind} routes failed to build: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+      }
+    }
+    this.adminRouters = admin;
+    this.clientRouters = client;
+  }
+
+  /** 10.5: Express handler dispatching `/<plugin>/...` to that plugin's admin or client router. */
+  routeHandler(kind: 'admin' | 'client') {
+    return (req: Request, res: Response, next: NextFunction): void => {
+      const name = req.params.plugin ?? '';
+      const r = (kind === 'admin' ? this.adminRouters : this.clientRouters).get(name);
+      if (!r) return void res.status(404).json({ error: 'Not Found', message: `No ${kind} routes for plugin "${name}"` });
+      r(req, res, (err?: unknown) => (err ? next(err) : res.headersSent ? undefined : void res.status(404).json({ error: 'Not Found', message: `Plugin "${name}" has no route ${req.method} ${req.path}` })));
+    };
+  }
+
+  /** 10.5: names of plugins with admin / client routes. */
+  routeNames(): { admin: string[]; client: string[] } {
+    return { admin: [...this.adminRouters.keys()], client: [...this.clientRouters.keys()] };
+  }
 
   private ctxOf(p: GatewayPlugin, call?: PluginCall): PluginHookContext {
     let c = this.hookCtx.get(p);
@@ -372,13 +536,18 @@ export class PluginHost {
   async set(next: GatewayPlugin[]): Promise<void> {
     const old = this.plugins;
     this.plugins = next;
+    this.buildRouters();
     await Promise.all(old.filter((p) => !next.includes(p)).map((p) => closeQuietly(p)));
   }
 
   /** Build plugin instances from config entries plus embedder-supplied sources. */
   static async build(configs: PluginConfig[] | undefined, extra: PluginSource[] = [], baseDir?: string, trust?: PluginTrustConfig): Promise<GatewayPlugin[]> {
     const out: GatewayPlugin[] = [];
-    for (const src of extra) out.push(await instantiate(src, contextFor({}), 'option'));
+    for (const src of extra) {
+      const p = await instantiate(src, contextFor({}), 'option');
+      parsedOptions.set(p, validatePluginOptions(p, {}));
+      out.push(p);
+    }
     for (const cfg of configs ?? []) {
       if (cfg.enabled === false) continue;
       out.push(await loadPlugin(cfg, baseDir, trust));
@@ -425,7 +594,7 @@ export class PluginHost {
       if (!p.onToolCall) continue;
       let out: ToolCallOutcome;
       try {
-        out = await p.onToolCall(call, this.ctxOf(p, call));
+        out = await withTimeout(p, 'onToolCall', hookTimeouts.get(p), () => p.onToolCall!(call, this.ctxOf(p, call)));
       } catch (err) {
         throw new PluginError(`Plugin "${p.name}" failed: ${err instanceof Error ? err.message : String(err)}`, p.name);
       }
@@ -444,7 +613,7 @@ export class PluginHost {
     for (const p of this.plugins) {
       if (!p.onResponse) continue;
       try {
-        const next = normalizeResponseOutcome(await p.onResponse(call, current, this.ctxOf(p, call)), current);
+        const next = normalizeResponseOutcome(await withTimeout(p, 'onResponse', hookTimeouts.get(p), () => p.onResponse!(call, current, this.ctxOf(p, call))), current);
         if (next) current = next;
       } catch (err) {
         throw new PluginError(`Plugin "${p.name}" failed: ${err instanceof Error ? err.message : String(err)}`, p.name);
@@ -467,6 +636,7 @@ export class PluginHost {
   async close(): Promise<void> {
     const old = this.plugins;
     this.plugins = [];
+    this.buildRouters();
     await Promise.all(old.map((p) => closeQuietly(p)));
   }
 }

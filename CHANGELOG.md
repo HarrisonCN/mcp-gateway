@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.5.0] - 2026-10-09
+
+First release of the 10.5 – 10.8 feature line: the **kernel plugin SDK** and **policy-as-code 2.0**. Both are
+opt-in and backward compatible — config schema v10 is unchanged apart from the new optional `features.policyEngine`
+section and `plugins[].timeoutMs`.
+
+### Added
+- **Kernel plugin SDK** ([guide](docs/guides/plugin-sdk.md)): plugins can now declare
+  - `configSchema` — a zod schema or a validator function for `plugins[].options`, checked at load (invalid options
+    refuse the plugin, so startup / hot reload fails instead of misbehaving later);
+  - `routes.admin` / `routes.client` — Express routers mounted like built-in feature modules at
+    `/api/v1/admin/plugins/<name>` (operators) and `/api/v1/features/plugins/<name>` (any authenticated client), with
+    a context offering the parsed options, the plugin's state store, the tool list, `invoke()` through the full
+    pipeline and the caller's client id; rebuilt on every plugin hot reload;
+  - `plugins[].timeoutMs` — time limit per `onToolCall` / `onResponse` for module plugins (fails closed, `-32006`).
+  - `definePlugin()` typed helper and `validatePluginOptions()` exported from the package.
+- **Policy-as-code 2.0** (`features.policyEngine`, [guide](docs/guides/policy-engine.md)):
+  - **Cedar** policies (inline `cedar` and `cedarFiles`) evaluated in-process by a built-in parser / evaluator for a
+    documented Cedar subset (scopes with `==` / `in` / `is`, `when` / `unless`, `like`, `has`, sets, records,
+    `if-then-else`, `contains*`; extension functions and templates are rejected at validation). Cedar semantics:
+    default deny, forbid overrides permit, erroring policies do not apply. Request model: `Client::"<id>"` in
+    `Tenant::"<t>"`, `Action::"callTool"`, `Tool::"<server>/<tool>"` in `Server::"<server>"`, `context.args` etc.
+  - **Rego via OPA**: the gateway queries an OPA server's data API (`POST /v1/data/<path>`), with timeout and
+    `onError: deny | allow`. Rego itself is evaluated by OPA, not by the gateway.
+  - `mode: shadow` (record would-be denials, never block), policy unit tests (`tests:`; run by
+    `mcp-gateway policy test`, `POST /admin/policy-engine/test`), `POST /admin/policy-engine/evaluate`, and
+    `POST /admin/policy-engine/impact` — replays captured calls (or recent metrics, or given calls) under the
+    current and a candidate Cedar policy set and lists every changed decision.
+  - Runs after `policy.rules`; both must allow. Denials use the policy error code (`403` / `-32003`).
+
+### Fixed
+- Docker image workflow: the post-release Trivy scan used the mixed-case `github.repository_owner` in the image
+  reference (invalid), so the 10.4.0 run ended in failure after the image had been pushed, signed and verified. The
+  reference is now lowercased.
+
 ## [10.4.0] - 2026-10-09
 
 Supply chain and incident response — the last hardening release of the 10.1 → 10.4 series. No new features and no

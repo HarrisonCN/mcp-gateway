@@ -638,6 +638,22 @@ lower, not remove, injection risk.
 Policy rules can also live in version-controlled files (`policy.files`) with unit tests run by
 `mcp-gateway policy test` — see [Policy as code](guides/policy-as-code.md).
 
+### Policy engine: Cedar / OPA (10.5)
+
+```yaml
+features:
+  policyEngine:
+    mode: enforce                # enforce | shadow
+    cedar: |                     # Cedar subset, evaluated in-process (default deny once configured)
+      permit(principal, action, resource) when { resource.tool like "read_*" };
+    cedarFiles: [policies/a.cedar]
+    opa: { url: http://opa:8181, path: mcp/gateway/allow, timeoutMs: 500, onError: deny }
+    tests: [{ name: reads, request: { server: fs, tool: read_file }, expect: allow }]
+```
+
+Runs after `policy.rules` (both must allow). Admin API `/api/v1/admin/policy-engine` (`/evaluate`, `/test`,
+`/impact`); `mcp-gateway policy test` runs the tests. See [Policy-as-code 2.0](guides/policy-engine.md).
+
 ## Plugins
 
 ```yaml
@@ -651,6 +667,11 @@ plugins:
 Hooks: `onRequest` (Express middleware after the network guards), `onToolCall` (before policy; rewrite arguments,
 `deny`, or `respond`), `onResponse` (after the output filter). Hook failures refuse the call (`-32006`). Hot
 reloadable (file change or `SIGHUP`). See [Plugins](guides/plugins.md).
+
+10.5 (kernel plugin SDK): `timeoutMs` (module plugins: time limit per `onToolCall` / `onResponse`, fails closed);
+plugins may declare `configSchema` (validates `options` at load) and `routes` (admin routes under
+`/api/v1/admin/plugins/<name>`, client routes under `/api/v1/features/plugins/<name>`) — see
+[Kernel plugin SDK](guides/plugin-sdk.md).
 
 ### WASM plugins (3.3; 8.0: plugin API v5 components)
 

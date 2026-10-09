@@ -169,9 +169,12 @@ describe('multi-instance gateways sharing Redis', () => {
     const bad = { authorization: 'Bearer wrong' };
     expect((await fetch(`${a}/api/v1/tools`, { headers: bad })).status).toBe(401);
     expect((await fetch(`${b}/api/v1/tools`, { headers: bad })).status).toBe(401);
-    // allow the async failure bookkeeping to land
-    await new Promise((r) => setTimeout(r, 50));
-    const locked = await fetch(`${a}/api/v1/tools`, { headers: key });
+    // the failure bookkeeping is asynchronous (Redis round trips): poll instead of a fixed 50 ms wait (flaky on CI, 10.5)
+    let locked = await fetch(`${a}/api/v1/tools`, { headers: key });
+    for (let i = 0; i < 40 && locked.status !== 429; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+      locked = await fetch(`${a}/api/v1/tools`, { headers: key });
+    }
     expect(locked.status).toBe(429);
   });
 

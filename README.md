@@ -255,7 +255,9 @@ Server-side API keys can also carry scopes (`servers`, `tools`), their own `rate
 - Embeddable as a library (`import { Gateway, loadConfig } from '@winstonsayno/mcp-gateway'`).
 
 **Extended modules** — opt-in under `features:` in the config, each documented in [`docs/guides`](docs/guides):
-policy as code and approvals, DLP and prompt-injection sanitising, result and semantic caching, plugins (signed, WASM),
+policy as code and approvals, [Cedar / OPA policies](docs/guides/policy-engine.md) with tests and impact analysis,
+DLP and prompt-injection sanitising, result and semantic caching, plugins (signed, WASM, and the
+[kernel plugin SDK](docs/guides/plugin-sdk.md) for hooks + config + routes),
 OpenAI / A2A bridges, control plane / data plane, multi-region, workflows, SLA and cost reporting, and more. These
 are compact implementations with unit tests, but they have seen far less real-world use than the core; read the guide
 and test in your environment before depending on one.
@@ -314,14 +316,14 @@ behaviour, config schema v10, CLI commands and flags, root library exports and P
 in backward-compatible ways. Deep imports, log format, the dashboard and the audit database schema are not covered —
 see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
-## What's New in v10.4
+## What's New in v10.5
 
-Supply chain and incident response, no new features: container images are **signed with cosign (keyless)** and carry
-SLSA provenance + SBOM attestations, every GitHub Release ships CycloneDX / SPDX SBOMs and checksums, CI runs **Trivy**
-on lockfiles and the built image, and Dependabot covers every ecosystem in the repository. See
-[supply chain](docs/security/supply-chain.md) and [incident response](docs/security/incident-response.md). Earlier in
-10.x: a gateway without auth refuses to start on a non-loopback address and the Helm chart requires an API key (10.3).
-Full history: [CHANGELOG.md](CHANGELOG.md).
+Feature line begins (opt-in, schema v10 compatible): the **kernel plugin SDK** lets a plugin ship hooks, a validated
+config (`configSchema`) and admin / client HTTP routes in one object (`definePlugin`), with per-hook time limits; and
+**policy-as-code 2.0** adds Cedar policies (a built-in evaluator for a documented Cedar subset) and Rego via an
+external OPA server, with shadow mode, policy unit tests and change-impact analysis against past calls. See the
+[plugin SDK](docs/guides/plugin-sdk.md) and [policy engine](docs/guides/policy-engine.md) guides. Earlier in 10.x:
+signed images and SBOMs (10.4), secure defaults (10.3). Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 

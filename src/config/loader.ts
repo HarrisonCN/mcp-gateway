@@ -49,6 +49,7 @@ import { SlaSchema } from '../features/sla.js';
 import { SelfHealingSchema } from '../features/self-healing.js';
 import { PqTlsSchema } from '../features/pq-tls.js';
 import { EcosystemSchema } from '../features/ecosystem.js';
+import { PolicyEngineSchema } from '../features/policy-engine.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
@@ -525,6 +526,8 @@ const GatewayConfigSchema = z.object({
   selfHealing: SelfHealingSchema.optional(),
   postQuantumTls: PqTlsSchema.optional(),
   ecosystem: EcosystemSchema.optional(),
+  // 10.5: policy-as-code 2.0 (Cedar, OPA / Rego)
+  policyEngine: PolicyEngineSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   audit: z
@@ -928,6 +931,8 @@ const GatewayConfigSchema = z.object({
           options: z.record(z.unknown()).optional(),
           secrets: z.record(z.string().regex(/^secret:\/\/[A-Za-z0-9_-]+\/\S+$/, 'must be a secret://provider/path reference')).optional(),
           isolation: z.enum(['tenant', 'client', 'shared']).optional(),
+          // 10.5: JS module plugins — time limit per onToolCall / onResponse (fails closed).
+          timeoutMs: z.number().int().positive().max(60_000).optional(),
           limits: z
             .object({
               timeoutMs: z.number().int().positive().max(60_000).optional(),
@@ -939,7 +944,8 @@ const GatewayConfigSchema = z.object({
         })
         .strict()
         .refine((p) => (p.module ? 1 : 0) + (p.component ? 1 : 0) === 1, 'a plugin needs exactly one of "module" or "component"')
-        .refine((p) => p.component || (p.isolation === undefined && p.limits === undefined), '"isolation" / "limits" apply to WASM component plugins only'),
+        .refine((p) => p.component || (p.isolation === undefined && p.limits === undefined), '"isolation" / "limits" apply to WASM component plugins only')
+        .refine((p) => !p.component || p.timeoutMs === undefined, '"timeoutMs" applies to module plugins — use limits.timeoutMs for WASM components'),
     )
     .optional(),
   observability: z
