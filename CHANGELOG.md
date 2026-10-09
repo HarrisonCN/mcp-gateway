@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.5.0] - 2026-10-09
+
+### Added
+- **SLA monitoring & credit reports** (`sla`): availability and p95-latency objectives per target (server and tenant
+  globs, rolling `windowDays`), measured on every tool call in hourly buckets (bounded memory, log-scale latency
+  histogram). `GET /api/v1/admin/sla` reports calls, availability, p95, error budget, `met` and breaches; credit tiers
+  (`credits: [{ below, percent }]`, `monthlyFee`, `currency`) turn breaches into service credits;
+  `GET /api/v1/admin/sla/report?format=json|csv` exports the credit report per target and tenant.
+  `excludeErrorCodes` keeps client-caused refusals out of the numbers. [Guide](docs/guides/sla.md).
+- Pages demo: SLA targets.
+
 ## [9.4.0] - 2026-10-09
 
 ### Added

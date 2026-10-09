@@ -586,6 +586,12 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v9.5
+
+| Feature | |
+|---------|---|
+| **SLA monitoring** | Availability / p95 objectives per server and tenant, error budgets, breaches and credit reports (JSON / CSV) — [guide](docs/guides/sla.md) |
+
 ## What's New in v9.4
 
 | Feature | |

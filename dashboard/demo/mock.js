@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '9.4.0';
+  const VERSION = '9.5.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -74,6 +74,7 @@
     { id: "edge-runtime", since: "9.2.0", summary: "Edge WASM runtime 2.0: WebAssembly tools with a warm instance pool, SHA-256 pins and per-tool time / memory / concurrency quotas" },
     { id: "confidential", since: "9.3.0", summary: "Confidential computing: sensitive servers get calls only from inside a remotely attested TEE (SEV-SNP, TDX, Nitro, SGX)" },
     { id: "tool-registry", since: "9.4.0", summary: "Global tool registry: signed tool manifests, search, cross-gateway mirrors, immutable versions and version pins" },
+    { id: "sla", since: "9.5.0", summary: "SLA monitoring: availability / p95 latency objectives per server and tenant, error budgets, breaches and service-credit reports" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -747,6 +748,11 @@
       { id: 'globex/crm', publisher: 'globex', name: 'crm', version: '4.1.2', description: 'CRM contacts and deals', tools: ['find_contact', 'create_deal'], verified: true, origin: 'https://registry.globex.example/api/v1/features/tool-registry/index.json' },
       { id: 'initech/tickets', publisher: 'initech', name: 'tickets', version: '0.9.0', description: 'Ticketing', tools: ['open_ticket'], verified: true, origin: 'local' },
     ], mirrors: [{ url: 'https://registry.globex.example/api/v1/features/tool-registry/index.json', lastSyncAt: new Date(Date.now() - 1200000).toISOString(), ok: true, added: 2, error: null }], pins: { 'acme/search': '~1.2.0' } });
+    // 9.5: SLA monitoring.
+    if (p === '/admin/sla') return json({ enabled: true, generatedAt: new Date().toISOString(), targets: [
+      { id: 'search-gold', windowDays: 30, from: new Date(Date.now() - 30 * 86400000).toISOString(), calls: 182440, failures: 91, availability: 99.9501, objective: { availability: 99.9, latencyP95Ms: 800 }, latencyP95Ms: 500, errorBudget: { allowedFailures: 182.44, remaining: 91.44, remainingPercent: 50.12 }, met: true, breaches: [], credit: { percent: 0, amount: 0, currency: 'EUR' }, tenants: [{ tenant: 'acme', calls: 120000, failures: 60, availability: 99.95 }, { tenant: 'globex', calls: 62440, failures: 31, availability: 99.9504 }] },
+      { id: 'github-silver', windowDays: 30, from: new Date(Date.now() - 30 * 86400000).toISOString(), calls: 40210, failures: 610, availability: 98.483, objective: { availability: 99.5, latencyP95Ms: null }, latencyP95Ms: 750, errorBudget: { allowedFailures: 201.05, remaining: -408.95, remainingPercent: -203.41 }, met: false, breaches: ['availability 98.483% < 99.5%'], credit: { percent: 10, amount: 50, currency: 'EUR' }, tenants: [] },
+    ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 9.0: nothing is deprecated (schema v8 and the `state` block were removed).
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });

@@ -482,6 +482,11 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(r.entries.map((e: any) => `${e.id}@${e.version}`)).toEqual(['acme/search@1.3.0', 'globex/crm@4.1.2', 'initech/tickets@0.9.0']);
     expect(r.mirrors[0].ok).toBe(true);
   });
+  it('reports SLA targets and credits (9.5)', async () => {
+    const f = demoFetch();
+    const s = (await (await f('/api/v1/admin/sla')).json()) as any;
+    expect(s.targets.map((t: any) => `${t.id}:${t.met}:${t.credit.percent}`)).toEqual(['search-gold:true:0', 'github-silver:false:10']);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

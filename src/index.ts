@@ -202,6 +202,8 @@ export { ConfidentialSchema, ERR_ATTESTATION_REQUIRED, verifyEvidence } from './
 export type { ConfidentialConfig } from './features/confidential.js';
 export { ToolRegistrySchema, satisfies, resolveVersion } from './features/tool-registry.js';
 export type { ToolRegistryConfig, ToolManifest } from './features/tool-registry.js';
+export { SlaSchema, recordSla } from './features/sla.js';
+export type { SlaConfig } from './features/sla.js';
 export type {
   GatewayConfig,
   McpServerConfig,
