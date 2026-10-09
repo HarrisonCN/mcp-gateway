@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.1.0] - 2026-10-09
+
+### Added
+- **Multimodal tools** (`multimodal`): content-type policy (`allowedTypes` MIME globs, default `image/*` and `audio/*`)
+  and size limits (`maxItemBytes`, `maxTotalBytes`) for `image`, `audio` and embedded `resource` blobs in tool results;
+  violations are refused with JSON-RPC **-32022** or stripped (`onViolation: strip`). Items above `offloadAboveBytes`
+  are held by the gateway and replaced by a `resource_link` to `/api/v1/features/multimodal/blobs/:id`, streamed in
+  64 KiB chunks with `Range` support. `GET /api/v1/admin/multimodal` reports counters and held blobs.
+  [Guide](docs/guides/multimodal.md).
+- Pages demo: multimodal policy and held blobs.
+
 ## [9.0.0] - 2026-10-09
 
 ### Breaking

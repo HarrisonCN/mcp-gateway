@@ -586,6 +586,12 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v9.1
+
+| Feature | |
+|---------|---|
+| **Multimodal tools** | MIME policy, size limits and chunked streaming (with `Range`) for image / audio / blob results — [guide](docs/guides/multimodal.md) |
+
 ## What's New in v9.0
 
 | Change | |
