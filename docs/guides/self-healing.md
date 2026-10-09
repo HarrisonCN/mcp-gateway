@@ -4,7 +4,7 @@ The gateway already sees every call's outcome and latency. Self-healing rules tu
 in the loop — and undo it again once the cool-down is over.
 
 ```yaml
-version: 10
+version: 11
 features:
   selfHealing:
     windowSeconds: 60

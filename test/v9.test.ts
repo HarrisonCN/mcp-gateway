@@ -24,21 +24,21 @@ afterEach(async () => {
 
 describe('9.0: schema v9', () => {
   it('reads only schema v9; `state` and v8 are refused with the migration hint; nothing deprecated', () => {
-    expect(Object.keys(DEPRECATIONS)).toEqual([]); // 10.0
-    expect(configDeprecations({ version: 8, state: {} })).toEqual([]);
+    expect(Object.keys(DEPRECATIONS)).toEqual(['config-schema-v10', 'features-workflows']); // 10.9
+    expect(configDeprecations({ version: 11, state: {} })).toEqual([]);
     expect(() => validateConfig({ version: 8, servers: [] })).toThrow(/version: config schema v8 was removed in 9.0 — use `version: 10`; run `mcp-gateway migrate --to 10`/);
     expect(() => validateConfig({ version: 10, servers: [], state: { store: 'memory' } })).toThrow(/state: removed in 9.0 — use `store: \{ backend, … \}` \(`state.store` → `store.backend`\)/);
     expect(() => validateConfig({ servers: [], state: {} })).toThrow(/state: removed in 9.0/);
-    expect(() => validateConfig({ version: 11, servers: [] })).toThrow(/10.0 reads `version: 10`/);
+    expect(() => validateConfig({ version: 12, servers: [] })).toThrow(/reads `version: 10` and `version: 11`/);
     const v9 = validateConfig({ version: 10, servers: [], store: { backend: 'redis', redis: { url: 'redis://r:6379' }, failureMode: 'closed' } });
     expect(v9.state).toEqual({ store: 'redis', redis: { url: 'redis://r:6379' }, failureMode: 'closed' });
-    expect(v9.deprecations?.map((d) => d.id)).toBeUndefined(); // 10.0: nothing deprecated
+    expect(v9.deprecations?.map((d) => d.id)).toEqual(['config-schema-v10']); // 10.9
     expect(validateConfig({ servers: [], store: { backend: 'memory' } }).state?.store).toBe('memory'); // version optional
     expect(() => validateConfig({ version: 10, servers: [], store: { backend: 'redis' } })).toThrow(/store.redis.url is required/);
     expect(() => validateConfig({ version: 10, servers: [], store: { backend: 'sqlite' } })).toThrow();
     expect(removedConfigKeys({ version: 10 })).toEqual([]);
     expect(normalizeStoreV9({ a: 1 })).toEqual({ a: 1 });
-    expect(parse(generateDefaultConfig()).version).toBe(10);
+    expect(parse(generateDefaultConfig()).version).toBe(11);
   });
 
   it('eventlog backend: defaults, validation, round trip through portableConfig; data planes get v10 (10.0)', () => {

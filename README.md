@@ -53,7 +53,7 @@ npx @winstonsayno/mcp-gateway gen-key   # prints a key for clients + its sha256 
 Edit `mcp-gateway.yml` — a minimal, authenticated setup:
 
 ```yaml
-version: 10
+version: 11
 host: 127.0.0.1
 port: 4000
 
@@ -327,15 +327,15 @@ behaviour, config schema v10, CLI commands and flags, root library exports and P
 in backward-compatible ways. Deep imports, log format, the dashboard and the audit database schema are not covered —
 see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
-## What's New in v10.8
+## What's New in v10.9
 
-Feature line completes (opt-in, schema v10 compatible, both EXPERIMENTAL): **privacy computing** lets agents query
-differentially private aggregates of sensitive tools — and federate them across gateways — without raw rows leaving
-their domain; **post-quantum identity** signs the gateway's identity, its tool manifest, a hash-chained audit log and
-plugin artifacts with Ed25519 + ML-DSA hybrid signatures. See the [privacy](docs/guides/privacy.md) and
-[post-quantum identity](docs/guides/pq-identity.md) guides for exactly what is and is not guaranteed. Earlier in 10.x:
-task graphs and edge autonomy (10.7), time-travel replay and real-time budgets (10.6), plugin SDK and Cedar / OPA
-(10.5), signed images and SBOMs (10.4), secure defaults (10.3). Full history: [CHANGELOG.md](CHANGELOG.md).
+Bridge to 11.0. **Config schema v11** and the **lazy modular kernel** (`kernel.modules: lazy` — only configured
+feature modules are mounted) are available now, and what 11.0 removes is deprecated: schema v10 and the 6.2
+workflow engine (task graphs replace it). `mcp-gateway migrate --to 11` rewrites a config — including workflows →
+task graphs — keeping comments. Existing `version: 10` configs keep working on 10.x (LTS). See
+[Migrating to 11.0](docs/guides/migrating-to-v11.md). Earlier in 10.x: privacy computing and post-quantum identity
+(10.8), task graphs and edge autonomy (10.7), time-travel replay and real-time budgets (10.6), plugin SDK and Cedar /
+OPA (10.5), signed images and SBOMs (10.4), secure defaults (10.3). Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 

@@ -151,6 +151,10 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Config schema version (10.9: 10 or 11). */
+  version?: 10 | 11;
+  /** 10.9: feature-module activation (`lazy` = only configured modules; default lazy on schema v11, eager on v10). */
+  kernel?: { modules?: 'eager' | 'lazy' };
   /** Ecosystem marketplace GA (9.8). */
   ecosystem?: import('../features/ecosystem.js').EcosystemConfig;
   /** Policy-as-code 2.0: Cedar / OPA (10.5). */
@@ -259,8 +263,6 @@ export interface GatewayConfig {
   monitor?: MonitorConfig;
   /** Registered MCP servers */
   servers: McpServerConfig[];
-  /** Config schema version (`7`; optional). */
-  version?: 7 | 8;
   /** CORS: allowed browser origins (default `["*"]`). */
   cors?: { origins?: string[] };
   /** Health checks: ping interval (ms, default 30000). Restart required. */

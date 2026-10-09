@@ -4,7 +4,7 @@ A registry of MCP tool packages that works across organisations: publishers sign
 and search a registry, mirror others, and pin the versions it deploys.
 
 ```yaml
-version: 10
+version: 11
 features:
   toolRegistry:
     file: ./data/registry.json

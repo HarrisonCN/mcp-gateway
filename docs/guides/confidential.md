@@ -5,7 +5,7 @@ Run those MCP servers inside a trusted execution environment (AMD SEV-SNP, Intel
 and let the gateway send them calls **only after remote attestation** has proven what is running and where.
 
 ```yaml
-version: 10
+version: 11
 features:
   confidential:
     nonceTtlSeconds: 120

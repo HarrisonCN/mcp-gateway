@@ -5,7 +5,7 @@ JSON-RPC result (`image`, `audio`, or an embedded `resource` with a `blob`). The
 around that content and keeps huge payloads out of the JSON stream.
 
 ```yaml
-version: 10
+version: 11
 features:
   multimodal:
     allowedTypes: ["image/*", "audio/mpeg", "audio/wav"] # MIME globs; default image/* and audio/*

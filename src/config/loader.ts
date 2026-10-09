@@ -490,7 +490,10 @@ const GatewayConfigSchema = z.object({
     })
     .optional(),
   servers: z.array(McpServerSchema).default([]),
-  version: z.literal(10).optional(),
+  version: z.union([z.literal(10), z.literal(11)]).optional(),
+  // 10.9: how feature modules are activated. v11 default: lazy (only modules whose section is configured);
+  // v10 default: eager (every module mounted, as before).
+  kernel: z.object({ modules: z.enum(['eager', 'lazy']).optional() }).strict().optional(),
   cors: z.object({ origins: z.array(z.string()).optional() }).strict().optional(),
   health: z.object({ intervalMs: z.number().int().min(1000).optional() }).strict().optional(),
   // 7.0: role (all / control / data), config API, dashboard and data-plane sync.
@@ -1187,7 +1190,7 @@ export function generateDefaultConfig(): string {
   return `# mcp-gateway configuration
 # Documentation: https://github.com/HarrisonCN/mcp-gateway/docs
 
-version: 10
+version: 11
 port: 4000
 # Loopback only. To listen on every interface (0.0.0.0) configure auth first: since 10.3 the gateway refuses to
 # start without auth on a non-loopback address unless started with --insecure.

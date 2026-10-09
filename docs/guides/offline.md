@@ -15,7 +15,7 @@ npx @winstonsayno/mcp-gateway start -c mcp-gateway.yml
 (file mode `0600`):
 
 ```yaml
-version: 10
+version: 11
 host: 127.0.0.1 # loopback only
 port: 4000
 auth: {strategy: api-key, apiKeys: [mgw_…]} # generated

@@ -40,7 +40,7 @@ To run WITHOUT authentication on a trusted network only: --set security.insecure
 
 | Value | Default | |
 |-------|---------|---|
-| `config` | `{ version: 10, monitor: { prometheus: true }, servers: [] }` | Gateway config, rendered into a ConfigMap (`host` / `port` are set by the chart). Never put API keys here. |
+| `config` | `{ version: 11, monitor: { prometheus: true }, servers: [] }` | Gateway config, rendered into a ConfigMap (`host` / `port` are set by the chart). Never put API keys here. |
 | `existingSecret` | `""` | Secret with env vars: `MCP_GATEWAY_API_KEYS`, upstream tokens |
 | `apiKeys` | `[]` | Keys for a chart-managed Secret (`MCP_GATEWAY_API_KEYS`) |
 | `security.insecure` | `false` | Run without auth (`--insecure`) |

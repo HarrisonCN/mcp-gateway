@@ -1,6 +1,6 @@
 # Gateway for examples/llm-tools/agent.mjs. Start with:
 #   MCP_GATEWAY_API_KEYS=$(npx @winstonsayno/mcp-gateway gen-key) npx @winstonsayno/mcp-gateway start -c mcp-gateway.yml
-version: 10
+version: 11
 port: 4000
 host: 127.0.0.1
 logLevel: info

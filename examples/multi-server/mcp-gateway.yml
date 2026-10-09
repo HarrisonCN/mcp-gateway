@@ -1,6 +1,6 @@
 # Multi-server configuration with auth and rate limiting
 
-version: 10
+version: 11
 port: 4000
 host: 0.0.0.0
 logLevel: info
