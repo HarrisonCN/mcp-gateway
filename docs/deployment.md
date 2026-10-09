@@ -137,10 +137,12 @@ Notes:
 Run several replicas behind a load balancer and point them at one Redis:
 
 ```yaml
-state:
-  store: redis
+store:
+  backend: redis
   redis: { url: "redis://redis:6379" }
 ```
+
+A single instance can keep the same state across restarts without Redis: `store: { backend: eventlog }` (9.0).
 
 Rate limits, auth lockouts and MCP session metadata are then shared (see *Shared state* in the configuration
 reference). Each replica connects to the upstream MCP servers itself. The `GET /mcp` notification stream is served by

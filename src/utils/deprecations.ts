@@ -5,8 +5,8 @@
  * plugin API v1), 5.0 the 4.x ones (`version: 4`, `servers[].timeout`, plugin API v2, `normalizeV4Preview`):
  * using a removed form is a validation error naming its replacement ({@link removedConfigKeys}).
  * 6.0 removed the 5.x ones (`version: 5`, `compliance.pii`, plugin API v3), 7.0 the 6.x ones (`version: 6`, top-level
- * `admin` / `dashboard` → `controlPlane`), 8.0 the 7.x ones (`version: 7`, `plugins[].wasm`, plugin API v4). 8.9 deprecates
- * schema v8 and the `state` block (→ `store`, removed in 9.0); deprecations are recorded once per id with {@link deprecate}, logged as warnings and listed
+ * `admin` / `dashboard` → `controlPlane`), 8.0 the 7.x ones (`version: 7`, `plugins[].wasm`, plugin API v4). 9.0 the 8.x ones (`version: 8`,
+ * the `state` block → `store`). Nothing is deprecated in 9.0; future deprecations are recorded once per id with {@link deprecate}, logged as warnings and listed
  * by `GET /api/v1/admin/deprecations` and `mcp-gateway validate`.
  * See docs/guides/migrating-to-v5.md.
  *
@@ -24,11 +24,8 @@ export interface Deprecation {
   replacement?: string;
 }
 
-/** Active deprecations (8.9: schema v8 and the `state` block; removed in 9.0). */
-export const DEPRECATIONS = {
-  schemaV8: { id: 'schema-v8', removedIn: '9.0.0', replacement: 'version: 9', message: 'config schema v8 is deprecated; `mcp-gateway migrate --to 9` writes `version: 9`' },
-  stateBlock: { id: 'state-block', removedIn: '9.0.0', replacement: 'store', message: '`state` is deprecated; schema v9 configures the shared store as `store: { backend: memory | redis | eventlog, … }`' },
-} as const satisfies Record<string, Deprecation>;
+/** Active deprecations (9.0: none — schema v8 and the `state` block were removed). */
+export const DEPRECATIONS: Record<string, Deprecation> = {};
 
 /** Config keys removed in 3.0 → replacement. */
 export const REMOVED_IN_3: Record<string, string> = {
@@ -40,7 +37,7 @@ const GUIDE4 = 'run `mcp-gateway migrate` (see docs/guides/migrating-to-v4.md)';
 const GUIDE5 = 'run `mcp-gateway migrate` (see docs/guides/migrating-to-v5.md)';
 const GUIDE7 = 'run `mcp-gateway migrate --to 7` (see docs/guides/migrating-to-v7.md)';
 const GUIDE8 = 'run `mcp-gateway migrate --to 8` (see docs/guides/migrating-to-v8.md)';
-const GUIDE9 = 'see docs/guides/migrating-to-v9.md';
+const GUIDE9 = 'run `mcp-gateway migrate --to 9` (see docs/guides/migrating-to-v9.md)';
 
 /** Validation errors for removed keys / forms used in a raw config object (3.0 and 4.0 removals). */
 export function removedConfigKeys(raw: unknown): string[] {
@@ -50,15 +47,14 @@ export function removedConfigKeys(raw: unknown): string[] {
     .filter(([k]) => r[k] !== undefined)
     .map(([k, v]) => `${k}: removed in 3.0 — use \`${v}\` (see docs/guides/migrating-to-v3.md)`);
   if (r.version === 3) out.push(`version: config schema v3 was removed in 4.0 — use \`version: 4\`; ${GUIDE4}`);
-  else if (r.version === 4) out.push(`version: config schema v4 was removed in 5.0 — use \`version: 8\`; ${GUIDE8}`);
-  else if (r.version === 5) out.push(`version: config schema v5 was removed in 6.0 — use \`version: 8\`; ${GUIDE8}`);
-  else if (r.version === 6) out.push(`version: config schema v6 was removed in 7.0 — use \`version: 8\`; ${GUIDE8}`);
-  else if (r.version === 7) out.push(`version: config schema v7 was removed in 8.0 — use \`version: 8\`; ${GUIDE8}`);
-  else if (r.version !== undefined && r.version !== 8 && r.version !== 9) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 8.9 reads \`version: 8\` or \`version: 9\` (see docs/guides/migrating-to-v9.md)`);
-  // 8.9: schema v9 preview — the shared store is `store`, not `state`.
-  if (r.version === 9 && r.state !== undefined) out.push(`state: not part of config schema v9 — use \`store: { backend, … }\`; ${GUIDE9}`);
-  if (r.store !== undefined && r.state !== undefined) out.push(`store: \`store\` and \`state\` cannot both be set — keep \`store\`; ${GUIDE9}`);
-  if (r.store !== undefined && r.version !== 9) out.push(`store: \`store\` is part of config schema v9 — set \`version: 9\` (or use \`state\`); ${GUIDE9}`);
+  else if (r.version === 4) out.push(`version: config schema v4 was removed in 5.0 — use \`version: 9\`; ${GUIDE9}`);
+  else if (r.version === 5) out.push(`version: config schema v5 was removed in 6.0 — use \`version: 9\`; ${GUIDE9}`);
+  else if (r.version === 6) out.push(`version: config schema v6 was removed in 7.0 — use \`version: 9\`; ${GUIDE9}`);
+  else if (r.version === 7) out.push(`version: config schema v7 was removed in 8.0 — use \`version: 9\`; ${GUIDE9}`);
+  else if (r.version === 8) out.push(`version: config schema v8 was removed in 9.0 — use \`version: 9\`; ${GUIDE9}`);
+  else if (r.version !== undefined && r.version !== 9) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 9.0 reads \`version: 9\` (see docs/guides/migrating-to-v9.md)`);
+  // 9.0: the shared store is `store: { backend, … }`; the 8.x `state` block was removed.
+  if (r.state !== undefined) out.push(`state: removed in 9.0 — use \`store: { backend, … }\` (\`state.store\` → \`store.backend\`); ${GUIDE9}`);
   // 8.0: core-ABI WASM plugins (`plugins[].wasm`) were removed — plugin API v5 components only.
   ((r.plugins as unknown[] | undefined) ?? []).forEach((p, i) => {
     if (p && typeof p === 'object' && (p as Record<string, unknown>).wasm !== undefined) out.push(`plugins.${i}.wasm: removed in 8.0 — rebuild against wit/mcp-gateway-plugin.wit (plugin API v5) and use \`component\`; ${GUIDE8}`);
@@ -85,17 +81,13 @@ export function removedConfigKeys(raw: unknown): string[] {
   return out;
 }
 
-/** Deprecated keys used in a raw config object (8.9: schema v8 and `state`; removed in 9.0). */
+/** Deprecated keys used in a raw config object (9.0: none). */
 export function configDeprecations(raw: unknown): Array<Deprecation & { detail?: string }> {
   if (typeof raw !== 'object' || raw === null) return [];
-  const r = raw as Record<string, unknown>;
-  const out: Array<Deprecation & { detail?: string }> = [];
-  if (r.version === 8) out.push({ ...DEPRECATIONS.schemaV8, detail: 'version: 8' });
-  if (r.state !== undefined && r.version !== 9) out.push({ ...DEPRECATIONS.stateBlock, detail: 'state' });
-  return out;
+  return [];
 }
 
-/** Schema v9 (8.9 preview): `store: { backend, redis, failureMode }` → the internal `state` shape. */
+/** Schema v9: `store: { backend, redis, failureMode }` → the internal `state` shape. */
 export function normalizeStoreV9(raw: unknown): unknown {
   if (typeof raw !== 'object' || raw === null || (raw as { store?: unknown }).store === undefined) return raw;
   const { store, ...rest } = raw as Record<string, unknown>;

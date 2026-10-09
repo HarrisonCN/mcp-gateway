@@ -176,11 +176,14 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(((await (await f('/api/v1/portal/keys/pend0001/approve', { method: 'POST' })).json()) as any).status).toBe('active');
   });
 
-  it('lists the 8.9 config deprecations and the data planes of the control plane', async () => {
+  it('lists no config deprecations (9.0), the event-sourced store and the data planes of the control plane', async () => {
     const f = demoFetch();
     const r = (await (await f('/api/v1/admin/deprecations')).json()) as any;
-    expect(r.runtime).toEqual([]);
-    expect(r.config.map((d: any) => `${d.id}@${d.removedIn}`)).toEqual(['schema-v8@9.0.0']); // 8.9
+    expect(r).toEqual({ runtime: [], config: [] });
+    const st = (await (await f('/api/v1/admin/store')).json()) as any;
+    expect(st.backend).toBe('eventlog');
+    expect(st.eventlog.keys).toBe(38);
+    expect(((await (await f('/api/v1/admin/store/compact', { method: 'POST' })).json()) as any).eventlog.eventsSinceSnapshot).toBe(0);
     const dp = (await (await f('/api/v1/admin/data-planes')).json()) as any;
     expect(dp.role).toBe('control');
     expect(dp.dataPlanes.map((d: any) => `${d.nodeId}:${d.status}:${d.inSync}`)).toEqual(['dp-eu-1:online:true', 'dp-eu-2:online:true', 'dp-us-1:stale:false']);
@@ -231,7 +234,7 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
   it('backs the config editor: get, validate, diff, dry run and apply (4.6)', async () => {
     const f = demoFetch();
     const { config } = (await (await f('/api/v1/admin/config')).json()) as any;
-    expect(config.version).toBe(8);
+    expect(config.version).toBe(9);
     const bad = { ...config, servers: [...config.servers, { id: 'x y', transport: 'sse', url: 'nope' }] };
     const v = (await (await f('/api/v1/admin/config/validate', { method: 'POST', body: JSON.stringify(bad) })).json()) as any;
     expect(v.valid).toBe(false);

@@ -586,6 +586,14 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v9.0
+
+| Change | |
+|--------|---|
+| **Schema v9** | `version: 9` only; `store: { backend, … }` replaces `state` — run `mcp-gateway migrate --to 9` ([guide](docs/guides/migrating-to-v9.md)) |
+| **Event-sourced store** | `store.backend: eventlog` — append-only log + snapshots; rate limits, lockouts and sessions survive restarts ([guide](docs/guides/event-sourced-store.md)) |
+| **Roadmap** | 9.1 → 10.0 in [docs/ROADMAP.md](docs/ROADMAP.md) |
+
 ## What's New in v8.9
 
 | Change | |

@@ -54,7 +54,7 @@ controlPlane:
   `/api/v1/health/live` and `/api/v1/data-plane` answers `503` (`/api/v1/health/ready` too, so Kubernetes keeps the
   pod out of the Service).
 - **Hot apply:** a changed config (new `ETag`) is validated and applied like `PUT /admin/config` — restart-only
-  fields (`health`, `audit`, `state`, `observability`) are reported, not applied. An invalid config or an
+  fields (`health`, `audit`, `store`, `observability`) are reported, not applied. An invalid config or an
   unreachable control plane keeps the current config; the error is shown on both sides.
 - **No admin API:** `/api/v1/admin/*` answers `403` with the control plane URL.
 - `GET /api/v1/data-plane` (operators) shows the sync state: `ready`, `configEtag`, `lastPullAt`, `lastAppliedAt`,

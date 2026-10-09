@@ -180,7 +180,7 @@ export class Gateway {
       setUpstreamTls(this.mtls);
     }
 
-    this.stateStore = this.options.stateStore ?? createStateStore(this.config.state);
+    this.stateStore = this.options.stateStore ?? createStateStore(this.config.state, this.config.configDir ?? process.cwd());
     const shared = this.stateStore.kind === 'memory' ? undefined : { store: this.stateStore, failureMode: this.config.state?.failureMode };
     if (shared) {
       try {
@@ -353,6 +353,7 @@ export class Gateway {
         reloadFromDisk: this.options.reloadFromDisk,
         authenticate: this.router.authenticate,
         isOperator: (req) => this.router!.isOperator(req),
+        store: () => this.stateStore as unknown as { kind: string; stats?: () => unknown; compact?: () => void } | undefined,
       }),
     );
     // 7.0: control plane — data-plane list, config distribution (role: control) and heartbeats.

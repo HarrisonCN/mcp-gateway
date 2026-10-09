@@ -18,7 +18,7 @@ describe('agent identity (8.1)', () => {
   it('validates config: signing key length, duplicate agent ids', () => {
     expect(() => validateConfig({ servers: [], agentIdentity: { signingKey: 'short', agents: [] } })).toThrow(/at least 32 characters/);
     expect(() => validateConfig({ servers: [], agentIdentity: { signingKey: KEY, agents: [{ id: 'a', tools: ['*'] }, { id: 'a', tools: ['*'] }] } })).toThrow(/duplicate agent id/);
-    expect(validateConfig({ version: 8, servers: [], agentIdentity: { signingKey: KEY } }).agentIdentity).toBeDefined();
+    expect(validateConfig({ version: 9, servers: [], agentIdentity: { signingKey: KEY } }).agentIdentity).toBeDefined();
     expect(ERR_AGENT_REQUIRED).toBe(-32019);
   });
 

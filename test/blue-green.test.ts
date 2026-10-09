@@ -24,7 +24,7 @@ describe('blue/green (8.5)', () => {
     expect(() => validateConfig({ servers: [], blueGreen: [{ id: 'a', blue: 'x', green: 'x' }] })).toThrow(/must be different servers/);
     expect(() => validateConfig({ servers: [], blueGreen: [{ id: 'a', blue: 'x', green: 'y' }, { id: 'a', blue: 'z', green: 'w' }] })).toThrow(/duplicate blue\/green id/);
     expect(() => validateConfig({ servers: [], blueGreen: [{ id: 'a', blue: 'x', green: 'y' }, { id: 'b', blue: 'x', green: 'w' }] })).toThrow(/already the blue side/);
-    expect(validateConfig({ version: 8, servers: [], blueGreen: [{ id: 'a', blue: 'x', green: 'y', active: 'green' }] }).blueGreen).toBeDefined();
+    expect(validateConfig({ version: 9, servers: [], blueGreen: [{ id: 'a', blue: 'x', green: 'y', active: 'green' }] }).blueGreen).toBeDefined();
   });
 
   it('probed switch, routing, rollback', async () => {

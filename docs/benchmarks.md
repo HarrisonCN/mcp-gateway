@@ -37,7 +37,7 @@ Notes:
 - `rest` vs `rest-auth`: API-key checks are a constant-time digest comparison and do not show up at this scale (the
   difference is run-to-run noise).
 - `cache` is the gateway's own ceiling for one process: every other scenario adds the upstream round trip.
-- Scale out with several instances behind a load balancer and `state: { backend: redis }` so rate limits, quotas and
+- Scale out with several instances behind a load balancer and `store: { backend: redis }` so rate limits, quotas and
   lockouts are shared.
 
 ## Load testing a deployed gateway

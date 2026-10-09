@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '8.9.0';
+  const VERSION = '9.0.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -20,7 +20,7 @@
   ];
   // One held tool call so the approvals card can be tried out.
   let demoConfig = {
-    version: 8, port: 4000, logLevel: 'info',
+    version: 9, port: 4000, logLevel: 'info',
     auth: { strategy: 'api-key', apiKeys: ['<redacted>', { key: '<redacted>', name: 'aura', scope: { servers: ['github', 'fs-*'] } }] },
     rateLimit: { limit: 120, windowSeconds: 60 },
     mcp: { toolNaming: 'auto' },
@@ -723,10 +723,11 @@
       { id: 'github-flaky', servers: ['github'], tools: ['*'], clients: ['*'], percent: 10, fault: { errorRate: 0.5, timeoutMs: 30000 }, every: null, state: 'aborted', reason: 'steady-state guard: error rate 0.31 > 0.3', startedAt: new Date(Date.now() - 86400000).toISOString(), remainingSeconds: 0, injected: { latency: 0, error: 19, timeout: 0, corrupt: 0 }, calls: 61, errors: 19 },
     ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
-    // 8.9: the demo config is still on schema v8 (`mcp-gateway migrate --to 9`).
-    if (p === '/admin/deprecations') return json({ runtime: [], config: [
-      { id: 'schema-v8', removedIn: '9.0.0', replacement: 'version: 9', message: 'config schema v8 is deprecated; `mcp-gateway migrate --to 9` writes `version: 9`', detail: 'version: 8', source: 'config' },
-    ] });
+    // 9.0: nothing is deprecated (schema v8 and the `state` block were removed).
+    if (p === '/admin/deprecations') return json({ runtime: [], config: [] });
+    // 9.0: event-sourced store.
+    if (p === '/admin/store/compact' && method === 'POST') return json({ compacted: true, eventlog: { kind: 'eventlog', dir: '/data/store', keys: 38, eventsSinceSnapshot: 0, totalEvents: 4212, snapshots: 3, lastSnapshotAt: new Date().toISOString(), replayed: 117 } });
+    if (p === '/admin/store') return json({ backend: 'eventlog', failureMode: 'open', eventlog: { kind: 'eventlog', dir: '/data/store', keys: 38, eventsSinceSnapshot: 212, totalEvents: 4212, snapshots: 2, lastSnapshotAt: new Date(Date.now() - 3600000).toISOString(), replayed: 117 } });
     // 7.0: control plane — data planes pulling config and sending heartbeats.
     if (p === '/admin/data-planes') {
       const seen = (s) => new Date(Date.now() - s * 1000).toISOString();

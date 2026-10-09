@@ -42,7 +42,7 @@ describe('control plane (7.0)', () => {
     const etag = r.headers.get('etag')!;
     const body = (await r.json()) as { etag: string; config: Record<string, unknown> };
     expect(body.etag).toBe(etag);
-    expect(body.config).toMatchObject({ version: 8, servers: [{ id: 'fake' }] });
+    expect(body.config).toMatchObject({ version: 9, servers: [{ id: 'fake' }] });
     expect(body.config).not.toHaveProperty('controlPlane');
     expect(body.config).not.toHaveProperty('port');
     expect((body.config.auth as { apiKeys: unknown[] }).apiKeys[0]).toBe('op'); // secrets included for data planes

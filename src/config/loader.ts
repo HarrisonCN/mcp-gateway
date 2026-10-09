@@ -472,7 +472,7 @@ const GatewayConfigSchema = z.object({
     })
     .optional(),
   servers: z.array(McpServerSchema).default([]),
-  version: z.union([z.literal(8), z.literal(9)]).optional(),
+  version: z.literal(9).optional(),
   cors: z.object({ origins: z.array(z.string()).optional() }).strict().optional(),
   health: z.object({ intervalMs: z.number().int().min(1000).optional() }).strict().optional(),
   // 7.0: role (all / control / data), config API, dashboard and data-plane sync.
@@ -943,7 +943,16 @@ const GatewayConfigSchema = z.object({
     .optional(),
   state: z
     .object({
-      store: z.enum(['memory', 'redis']).default('memory'),
+      store: z.enum(['memory', 'redis', 'eventlog']).default('memory'),
+      // 9.0: event-sourced store (append-only log + snapshots).
+      eventlog: z
+        .object({
+          dir: z.string().min(1).default('.mcp-gateway/store'),
+          snapshotEvery: z.number().int().min(1).default(10_000),
+          fsync: z.boolean().default(false),
+        })
+        .strict()
+        .optional(),
       redis: z
         .object({
           url: z.string().regex(/^rediss?:\/\//, 'must start with redis:// or rediss://'),
@@ -957,7 +966,7 @@ const GatewayConfigSchema = z.object({
     })
     .strict()
     .superRefine((st, ctx) => {
-      if (st.store === 'redis' && !st.redis) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['redis'], message: 'state.redis.url is required for store "redis"' });
+      if (st.store === 'redis' && !st.redis) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['redis'], message: 'store.redis.url is required for backend "redis"' });
     })
     .optional(),
 }).superRefine((c, ctx) => {
@@ -1114,10 +1123,12 @@ function applyEnvOverrides(config: Record<string, unknown>): Record<string, unkn
     overrides.logLevel = process.env.MCP_GATEWAY_LOG_LEVEL;
   }
   if (process.env.MCP_GATEWAY_REDIS_URL) {
-    overrides.state = {
-      ...((overrides.state as Record<string, unknown>) ?? {}),
-      store: 'redis',
-      redis: { ...(((overrides.state as Record<string, unknown>)?.redis as Record<string, unknown>) ?? {}), url: process.env.MCP_GATEWAY_REDIS_URL },
+    // Schema v9: `store: { backend: redis, redis: { url } }` (8.9 wrote the removed `state` block here).
+    const st = (overrides.store as Record<string, unknown> | undefined) ?? {};
+    overrides.store = {
+      ...st,
+      backend: 'redis',
+      redis: { ...((st.redis as Record<string, unknown>) ?? {}), url: process.env.MCP_GATEWAY_REDIS_URL },
     };
   }
   if (process.env.MCP_GATEWAY_API_KEYS) {

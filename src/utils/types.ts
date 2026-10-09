@@ -448,8 +448,10 @@ export interface ObservabilityConfig {
 
 /** `state` — where rate-limit windows, lockouts and MCP session metadata live. */
 export interface StateConfig {
-  /** `memory` (default, single instance) or `redis` (shared between instances). */
-  store?: 'memory' | 'redis';
+  /** `memory` (default, single instance), `redis` (shared between instances) or `eventlog` (9.0, durable, single instance). */
+  store?: 'memory' | 'redis' | 'eventlog';
+  /** Event-sourced store (9.0): append-only `events.log` + `snapshot.json` in `dir` (relative to the config file). */
+  eventlog?: { dir?: string; snapshotEvery?: number; fsync?: boolean };
   redis?: {
     /** `redis://[user:password@]host:port/db` or `rediss://…` (TLS). */
     url: string;

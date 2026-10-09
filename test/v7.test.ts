@@ -17,11 +17,11 @@ servers: []
 
 describe('7.0: schema v7', () => {
   it('refuses schema v6 and the top-level admin / dashboard sections with the migration hint', () => {
-    expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/config schema v6 was removed in 7.0 — use `version: 8`; run `mcp-gateway migrate --to 8`/);
+    expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/config schema v6 was removed in 7.0 — use `version: 9`; run `mcp-gateway migrate --to 9`/);
     expect(() => validateConfig({ servers: [], admin: { configApi: true } })).toThrow(/admin: removed in 7.0 — use `controlPlane.configApi`/);
-    expect(() => validateConfig({ version: 8, servers: [], dashboard: { enabled: true } })).toThrow(/dashboard: removed in 7.0 — use `controlPlane.dashboard`/);
+    expect(() => validateConfig({ version: 9, servers: [], dashboard: { enabled: true } })).toThrow(/dashboard: removed in 7.0 — use `controlPlane.dashboard`/);
     expect(removedConfigKeys({ version: 6, admin: {}, dashboard: {} })).toHaveLength(3);
-    expect(removedConfigKeys({ version: 8 })).toEqual([]);
+    expect(removedConfigKeys({ version: 9 })).toEqual([]);
     expect(configDeprecations({ version: 6, admin: {} })).toEqual([]);
   });
 
@@ -40,8 +40,8 @@ describe('7.0: schema v7', () => {
   });
 
   it('distributed config drops controlPlane / port / host; ETag is order independent', () => {
-    const d = distributedConfig({ version: 8, port: 1, host: 'h', controlPlane: { role: 'control' }, servers: [], logLevel: 'info' });
-    expect(d).toEqual({ version: 8, servers: [], logLevel: 'info' });
+    const d = distributedConfig({ version: 9, port: 1, host: 'h', controlPlane: { role: 'control' }, servers: [], logLevel: 'info' });
+    expect(d).toEqual({ version: 9, servers: [], logLevel: 'info' });
     expect(configEtag({ a: 1, b: [1, { c: 2, d: 3 }] })).toBe(configEtag({ b: [1, { d: 3, c: 2 }], a: 1 }));
     expect(configEtag({ a: 1 })).not.toBe(configEtag({ a: 2 }));
     expect(configEtag({ a: 1 })).toMatch(/^"[0-9a-f]{32}"$/);
@@ -61,7 +61,7 @@ describe('7.0: schema v7', () => {
     expect(migrateConfigText(r.text, undefined, 7).changed).toBe(false);
     const old = migrateConfigObject({ version: 5, compliance: { pii: { action: 'redact' } }, dashboard: {}, servers: [] }, 7);
     expect(old.changes).toEqual(['version: 5 → 7', 'compliance.pii (action redact) → dlp', 'dashboard.enabled → controlPlane.dashboard']);
-    expect(() => validateConfig({ ...old.config, version: 8 })).not.toThrow();
+    expect(() => validateConfig({ ...old.config, version: 9 })).not.toThrow();
     expect(migrateConfigObject({ admin: 1, servers: [] }).changes).toContain('admin (empty) removed');
     expect(migrateConfigText(JSON.stringify({ admin: { configApi: true, extra: 1 }, servers: [] }), 'json').notes.join()).toMatch(/admin: keys other than configApi/);
   });
