@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.9.0] - 2026-10-09
+
+Bridge release to 11.0: **config schema v11** and the **lazy modular kernel** are available now, and everything 11.0
+removes is deprecated. No behaviour change for existing `version: 10` configs apart from the deprecation warnings.
+Guide: [Migrating to 11.0](docs/guides/migrating-to-v11.md).
+
+### Added
+- **Config schema v11** (`version: 11`): same layout as v10 without `features.workflows`. 10.9 reads v10 and v11.
+- **`kernel.modules: eager | lazy`** (hot reload): in `lazy` mode only feature modules whose `features.*` section is
+  configured are mounted — routes, timers and call hooks; unconfigured modules answer `404` naming the section, and a
+  section added by hot reload mounts its module. Default: `lazy` on schema v11, `eager` on v10 (10.x behaviour).
+  `GET /api/v1/admin/features` reports `modules` and each module's `active` flag.
+- **`mcp-gateway migrate --to 11`** (now the default target): sets `version: 11`, converts each `features.workflows`
+  entry into a `features.taskGraphs` graph (same nodes; retry keeps doubling backoff), keeps comments, and notes the
+  API / identity / activation changes. Idempotent; `--check` for CI.
+
+### Deprecated (removed in 11.0)
+- `config-schema-v10`: `version: 10` or no `version` — use `version: 11`.
+- `features-workflows`: `features.workflows` and `/api/v1/admin/workflows` — use task graphs (10.7).
+
+### Changed
+- `mcp-gateway init`, the desktop config, examples, Helm chart values and docs now use `version: 11`.
+- Data planes receive the control plane's schema version (10 or 11).
+
 ## [10.8.0] - 2026-10-09
 
 Last release of the 10.5 – 10.8 feature line: **privacy computing** and **post-quantum identity**, both EXPERIMENTAL
