@@ -506,6 +506,13 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(e.queue.map((l: any) => l.id)).toEqual(['acme.pii-guard@2.0.0', 'indie.weather@0.3.1']);
     expect(e.publishers.filter((p: any) => p.verified).map((p: any) => p.id)).toEqual(['acme']);
   });
+  it('shows the unified kernel (10.0)', async () => {
+    const f = demoFetch();
+    const k = (await (await f('/api/v1/admin/kernel')).json()) as any;
+    expect(k.schema).toBe(10);
+    expect(k.lts.line).toBe('10.x');
+    expect(k.modules.map((m: any) => m.id)).toContain('kernel');
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

@@ -210,6 +210,7 @@ export { PqTlsSchema, groupsSupported, effectiveGroups } from './features/pq-tls
 export type { PqTlsConfig } from './features/pq-tls.js';
 export { EcosystemSchema, verifyPublisher } from './features/ecosystem.js';
 export type { EcosystemConfig } from './features/ecosystem.js';
+export { CONFIG_SCHEMA_VERSION, LTS, ltsStatus } from './features/kernel.js';
 export type {
   GatewayConfig,
   McpServerConfig,

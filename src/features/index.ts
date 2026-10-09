@@ -43,5 +43,6 @@ import './sla.js';
 import './self-healing.js';
 import './pq-tls.js';
 import './ecosystem.js';
+import './kernel.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

@@ -6,8 +6,8 @@
  * using a removed form is a validation error naming its replacement ({@link removedConfigKeys}).
  * 6.0 removed the 5.x ones (`version: 5`, `compliance.pii`, plugin API v3), 7.0 the 6.x ones (`version: 6`, top-level
  * `admin` / `dashboard` → `controlPlane`), 8.0 the 7.x ones (`version: 7`, `plugins[].wasm`, plugin API v4). 9.0 the 8.x ones (`version: 8`,
- * the `state` block → `store`). 9.9 deprecates schema v9 and top-level feature sections (→ `features: { … }`, removed in 10.0);
- * deprecations are recorded once per id with {@link deprecate}, logged as warnings and listed
+ * the `state` block → `store`), 10.0 the 9.x ones (`version: 9`, top-level feature sections → `features: { … }`).
+ * Nothing is deprecated in 10.0; future deprecations are recorded once per id with {@link deprecate}, logged as warnings and listed
  * by `GET /api/v1/admin/deprecations` and `mcp-gateway validate`.
  * See docs/guides/migrating-to-v5.md.
  *
@@ -26,11 +26,8 @@ export interface Deprecation {
   replacement?: string;
 }
 
-/** Active deprecations (9.9: schema v9 and top-level feature sections; removed in 10.0). */
-export const DEPRECATIONS = {
-  schemaV9: { id: 'schema-v9', removedIn: '10.0.0', replacement: 'version: 10', message: 'config schema v9 is deprecated; `mcp-gateway migrate --to 10` writes `version: 10`' },
-  topLevelFeatures: { id: 'top-level-features', removedIn: '10.0.0', replacement: 'features: { … }', message: 'top-level feature sections are deprecated; schema v10 nests every feature module under `features`' },
-} as const satisfies Record<string, Deprecation>;
+/** Active deprecations (10.0: none — schema v9 and top-level feature sections were removed). */
+export const DEPRECATIONS: Record<string, Deprecation> = {};
 
 /** Feature sections (config keys owned by feature modules) present at the top level of a raw config. */
 export const topLevelFeatureKeys = (r: Record<string, unknown>): string[] => FEATURE_CONFIG_KEYS.filter((k) => r[k] !== undefined);
@@ -46,7 +43,7 @@ const GUIDE5 = 'run `mcp-gateway migrate` (see docs/guides/migrating-to-v5.md)';
 const GUIDE7 = 'run `mcp-gateway migrate --to 7` (see docs/guides/migrating-to-v7.md)';
 const GUIDE8 = 'run `mcp-gateway migrate --to 8` (see docs/guides/migrating-to-v8.md)';
 const GUIDE9 = 'run `mcp-gateway migrate --to 9` (see docs/guides/migrating-to-v9.md)';
-const GUIDE10 = 'see docs/guides/migrating-to-v10.md';
+const GUIDE10 = 'run `mcp-gateway migrate --to 10` (see docs/guides/migrating-to-v10.md)';
 
 /** Validation errors for removed keys / forms used in a raw config object (3.0 and 4.0 removals). */
 export function removedConfigKeys(raw: unknown): string[] {
@@ -56,18 +53,17 @@ export function removedConfigKeys(raw: unknown): string[] {
     .filter(([k]) => r[k] !== undefined)
     .map(([k, v]) => `${k}: removed in 3.0 — use \`${v}\` (see docs/guides/migrating-to-v3.md)`);
   if (r.version === 3) out.push(`version: config schema v3 was removed in 4.0 — use \`version: 4\`; ${GUIDE4}`);
-  else if (r.version === 4) out.push(`version: config schema v4 was removed in 5.0 — use \`version: 9\`; ${GUIDE9}`);
-  else if (r.version === 5) out.push(`version: config schema v5 was removed in 6.0 — use \`version: 9\`; ${GUIDE9}`);
-  else if (r.version === 6) out.push(`version: config schema v6 was removed in 7.0 — use \`version: 9\`; ${GUIDE9}`);
-  else if (r.version === 7) out.push(`version: config schema v7 was removed in 8.0 — use \`version: 9\`; ${GUIDE9}`);
-  else if (r.version === 8) out.push(`version: config schema v8 was removed in 9.0 — use \`version: 9\`; ${GUIDE9}`);
-  else if (r.version !== undefined && r.version !== 9 && r.version !== 10) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 9.9 reads \`version: 9\` or \`version: 10\` (see docs/guides/migrating-to-v10.md)`);
-  // 9.9: schema v10 preview — feature modules live under `features`.
-  const top = topLevelFeatureKeys(r);
-  if (r.version === 10 && top.length) out.push(`${top.join(', ')}: not part of config schema v10 — move under \`features: { … }\`; ${GUIDE10}`);
+  else if (r.version === 4) out.push(`version: config schema v4 was removed in 5.0 — use \`version: 10\`; ${GUIDE10}`);
+  else if (r.version === 5) out.push(`version: config schema v5 was removed in 6.0 — use \`version: 10\`; ${GUIDE10}`);
+  else if (r.version === 6) out.push(`version: config schema v6 was removed in 7.0 — use \`version: 10\`; ${GUIDE10}`);
+  else if (r.version === 7) out.push(`version: config schema v7 was removed in 8.0 — use \`version: 10\`; ${GUIDE10}`);
+  else if (r.version === 8) out.push(`version: config schema v8 was removed in 9.0 — use \`version: 10\`; ${GUIDE10}`);
+  else if (r.version === 9) out.push(`version: config schema v9 was removed in 10.0 — use \`version: 10\`; ${GUIDE10}`);
+  else if (r.version !== undefined && r.version !== 10) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 10.0 reads \`version: 10\` (see docs/guides/migrating-to-v10.md)`);
+  // 10.0: feature modules live under `features`; top-level feature sections were removed.
+  for (const k of topLevelFeatureKeys(r)) out.push(`${k}: removed in 10.0 — move under \`features: { … }\` (\`features.${k}\`); ${GUIDE10}`);
   if (r.features !== undefined) {
-    if (r.version !== 10) out.push(`features: \`features\` is part of config schema v10 — set \`version: 10\` (or keep the sections at the top level); ${GUIDE10}`);
-    else if (!r.features || typeof r.features !== 'object' || Array.isArray(r.features)) out.push('features: must be an object');
+    if (!r.features || typeof r.features !== 'object' || Array.isArray(r.features)) out.push('features: must be an object');
     else {
       const unknown = Object.keys(r.features as object).filter((k) => !(FEATURE_CONFIG_KEYS as readonly string[]).includes(k));
       if (unknown.length) out.push(`features: unknown feature section(s) ${unknown.join(', ')} — known: ${FEATURE_CONFIG_KEYS.join(', ')}`);
@@ -101,18 +97,13 @@ export function removedConfigKeys(raw: unknown): string[] {
   return out;
 }
 
-/** Deprecated keys used in a raw config object (9.9: schema v9 and top-level feature sections; removed in 10.0). */
+/** Deprecated keys used in a raw config object (10.0: none). */
 export function configDeprecations(raw: unknown): Array<Deprecation & { detail?: string }> {
   if (typeof raw !== 'object' || raw === null) return [];
-  const r = raw as Record<string, unknown>;
-  const out: Array<Deprecation & { detail?: string }> = [];
-  if (r.version === 9) out.push({ ...DEPRECATIONS.schemaV9, detail: 'version: 9' });
-  const top = r.version === 10 ? [] : topLevelFeatureKeys(r);
-  if (top.length) out.push({ ...DEPRECATIONS.topLevelFeatures, detail: top.join(', ') });
-  return out;
+  return [];
 }
 
-/** Schema v10 (9.9 preview): `features: { chaos, sla, … }` → the internal top-level sections. */
+/** Schema v10: `features: { chaos, sla, … }` → the internal top-level sections. */
 export function normalizeFeaturesV10(raw: unknown): unknown {
   if (typeof raw !== 'object' || raw === null) return raw;
   const { features, ...rest } = raw as Record<string, unknown>;

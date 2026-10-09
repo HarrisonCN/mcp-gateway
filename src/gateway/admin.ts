@@ -55,8 +55,8 @@ export function portableConfig(cfg: GatewayConfig): Record<string, unknown> {
     out.store = { ...(store !== undefined ? { backend: store } : {}), ...st };
     delete out.state;
   }
-  // 9.9: schema v10 nests the feature sections under `features` (internals keep them top-level).
-  if (out.version === 10) {
+  // Schema v10 (10.0) nests the feature sections under `features` (internals keep them top-level).
+  {
     const features: Record<string, unknown> = {};
     for (const k of FEATURE_CONFIG_KEYS) {
       if (out[k] === undefined) continue;

@@ -78,6 +78,7 @@
     { id: "self-healing", since: "9.6.0", summary: "Self-healing: eject / fail over, roll back or throttle unhealthy upstreams automatically, lifted after a cool-down" },
     { id: "pq-tls", since: "9.7.0", summary: "Post-quantum TLS: hybrid X25519MLKEM768 key exchange for upstream HTTPS, PQ handshake probes and a certificate policy" },
     { id: "ecosystem", since: "9.8.0", summary: "Ecosystem marketplace GA: moderated catalogue of plugins and tools, ratings and reviews, verified publishers" },
+    { id: "kernel", since: "10.0.0", summary: "Unified gateway kernel: config schema v10, feature modules, call-hook pipeline and LTS status in one view" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -779,6 +780,11 @@
       { id: 'acme', name: 'ACME Corp', domain: 'acme.example', keyIds: ['acme-2026'], verified: true, verifiedAt: new Date(Date.now() - 86400000 * 12).toISOString() },
       { id: 'globex', name: 'Globex', domain: 'globex.example', keyIds: ['gx-1'], verified: false, verifiedAt: null },
     ], listings: [] });
+    // 10.0: unified kernel.
+    if (p === '/admin/kernel') return json({ version: VERSION, schema: 10, lts: { line: '10.x', codename: 'Kernel', lts: true, activeUntil: '2027-10-31', maintenanceUntil: '2028-10-31', status: 'active' },
+      modules: DEMO_FEATURES.map((m) => ({ ...m, path: `/api/v1/admin/${m.id}` })),
+      hooks: ['chaos', 'multimodal', 'confidential', 'sla', 'self-healing'].map((id, i) => ({ order: i + 1, id, before: id !== 'multimodal' && id !== 'sla', after: id !== 'confidential' })),
+      features: [{ section: 'features.sla', configured: true }, { section: 'features.selfHealing', configured: true }, { section: 'features.chaos', configured: false }] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 9.9: the demo config is still on schema v9 (`mcp-gateway migrate --to 10`).
     if (p === '/admin/deprecations') return json({ runtime: [], config: [

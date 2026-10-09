@@ -522,6 +522,7 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `POST` | `/admin/ecosystem/listings/:id/approve` · `/admin/ecosystem/listings/:id/reject` | Approve / reject a listing `{ reason }` (9.8) |
 | `POST` | `/admin/ecosystem/reviews/:listing/:client/hide` · `/admin/ecosystem/publishers/:id/verify` | Hide a review / verify a publisher's domain (9.8) |
 | `GET` · `POST` | `/features/ecosystem/catalog` · `/features/ecosystem/submissions` · `/features/ecosystem/listings/:id[/ratings]` | Catalogue, submit, listing details, rate (any authenticated client) (9.8) |
+| `GET` | `/admin/kernel` | Unified kernel: config schema, LTS status, feature modules, call-hook pipeline, configured `features.*` sections (10.0) |
 
 ## Bridges
 
