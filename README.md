@@ -322,12 +322,14 @@ Report vulnerabilities privately via
 
 | Version | Status |
 |---|---|
-| 11.x (current) | New features, bug and security fixes |
+| 12.x (current) | New features, bug and security fixes |
+| 11.x | Superseded — upgrade to 12.x ([12.0 guide](docs/guides/migrating-to-v12.md)) |
 | 10.x (LTS) | Bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |
 | < 10.0 | Unsupported — upgrade with `mcp-gateway migrate` ([10.0 guide](docs/guides/migrating-to-v10.md), [11.0 guide](docs/guides/migrating-to-v11.md)) |
 
-Upgrading from 10.x: `npx @winstonsayno/mcp-gateway@11 migrate --write` rewrites the config to schema v11 — see
-[Migrating to 11.0](docs/guides/migrating-to-v11.md).
+Upgrading from 10.x: `npx @winstonsayno/mcp-gateway@12 migrate --write` rewrites the config to schema v11 — see
+[Migrating to 11.0](docs/guides/migrating-to-v11.md). From 11.x: no config migration; stdio servers get an
+environment allowlist — see [Migrating to 12.0](docs/guides/migrating-to-v12.md).
 
 The project follows [Semantic Versioning](https://semver.org/). Within a major line the REST API under `/api/v1`,
 `/mcp` behaviour, the config schema (v11 for 11.x, v10 for 10.x), CLI commands and flags, root library exports and

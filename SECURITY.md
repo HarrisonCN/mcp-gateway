@@ -4,11 +4,12 @@
 
 | Version | Supported |
 |---|---|
-| 11.x (current) | ✅ new features, bug and security fixes |
+| 12.x (current) | ✅ new features, bug and security fixes |
+| 11.x | ⚠️ superseded — 11.2.0 carries the 11.1 / 11.2 security fixes; upgrade to 12.x ([Migrating to 12.0](docs/guides/migrating-to-v12.md)) |
 | 10.x (LTS) | ✅ bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |
 | < 10.0 | ❌ — please upgrade (`mcp-gateway migrate`, see [Migrating to 10.0](docs/guides/migrating-to-v10.md) and [Migrating to 11.0](docs/guides/migrating-to-v11.md)) |
 
-11.x is the current line (config schema v11, lazily loaded feature modules). 10.x is the long-term-support line:
+12.x is the current line (config schema v11, central authorizer, isolated stdio servers). 10.x is the long-term-support line:
 config schema v10 stays stable across every 10.x minor release, and its LTS dates are unchanged by 11.0.
 `ltsStatus()` / `GET /api/v1/admin/kernel` report the running line and the 10.x support window. Security fixes for
 10.x ship as 10.x patch releases.
