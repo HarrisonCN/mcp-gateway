@@ -233,10 +233,27 @@ export async function localDecision(c: Parsed, cfg: GatewayConfig, call: HookCal
 }
 
 /** Replay queued calls whose server is connected again. */
-export async function reconcile(cfg: GatewayConfig, invoke: FeatureContext['invoke'], principalFor: (clientId: string | undefined) => Principal = deniedPrincipal): Promise<{ applied: number; failed: number; conflicts: number; pending: number }> {
-  const c = edgeAutonomyOf(cfg);
+type ReconcileResult = { applied: number; failed: number; conflicts: number; pending: number };
+let inflight: Promise<ReconcileResult> | undefined;
+
+/**
+ * Replay queued outbox entries whose server is reachable again. Runs are serialized: a call made while a reconcile is
+ * already running (e.g. the background loop) joins it and returns that run's result instead of reporting zeros.
+ */
+export async function reconcile(cfg: GatewayConfig, invoke: FeatureContext['invoke'], principalFor: (clientId: string | undefined) => Principal = deniedPrincipal): Promise<ReconcileResult> {
+  if (!edgeAutonomyOf(cfg)) return { applied: 0, failed: 0, conflicts: 0, pending: 0 };
+  if (inflight) return inflight;
+  inflight = reconcileOnce(cfg, invoke, principalFor);
+  try {
+    return await inflight;
+  } finally {
+    inflight = undefined;
+  }
+}
+
+async function reconcileOnce(cfg: GatewayConfig, invoke: FeatureContext['invoke'], principalFor: (clientId: string | undefined) => Principal): Promise<ReconcileResult> {
+  const c = edgeAutonomyOf(cfg)!;
   const out = { applied: 0, failed: 0, conflicts: 0, pending: 0 };
-  if (!c || edgeState.reconciling) return out;
   edgeState.reconciling = true;
   try {
     for (const e of edgeState.outbox) {

@@ -53,6 +53,8 @@ needed). Guide: [Migrating to 13.0](docs/guides/migrating-to-v13.md). 10.x stays
 - Baselines in `bench/baseline.json` are keyed by platform (`platforms["linux-arm64"]`, `platforms["linux-x64"]` =
   GitHub Actions runners, recorded from the 13.0 CI runs); memory is only checked against a same-platform baseline.
   The CI benchmark step runs with `set -o pipefail`, so the guard is no longer masked by `tee`.
+- Edge autonomy: `reconcile` runs are serialized — `POST /admin/edge-autonomy/reconcile` made while the background loop
+  is replaying joins that run and returns its counts (it used to answer all zeros).
 - CI / release builds no longer pull from Docker Hub (unauthenticated pull rate limits blocked releases): the
   Dockerfile base image (`ARG NODE_IMAGE`, default `public.ecr.aws/docker/library/node:22-alpine`, same tag and
   digest as `node:22-alpine`), the Redis service container, the Swift SDK container, BuildKit and QEMU binfmt come from
