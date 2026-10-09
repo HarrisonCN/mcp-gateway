@@ -78,6 +78,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     case 'tools/call': {
       const { name, arguments: args } = msg.params;
       if (name === 'crash') process.exit(3);
+      if (name === 'env') return send({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: JSON.stringify({ env: process.env, cwd: process.cwd() }) }] } });
       if (name === 'progress') {
         const token = msg.params._meta?.progressToken;
         let i = 0;
