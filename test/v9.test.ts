@@ -26,25 +26,25 @@ describe('9.0: schema v9', () => {
   it('reads only schema v9; `state` and v8 are refused with the migration hint; nothing deprecated', () => {
     expect(Object.keys(DEPRECATIONS)).toEqual(['schemaV9', 'topLevelFeatures']); // 9.9
     expect(configDeprecations({ version: 8, state: {} })).toEqual([]);
-    expect(() => validateConfig({ version: 8, servers: [] })).toThrow(/version: config schema v8 was removed in 9.0 — use `version: 9`; run `mcp-gateway migrate --to 9`/);
-    expect(() => validateConfig({ version: 9, servers: [], state: { store: 'memory' } })).toThrow(/state: removed in 9.0 — use `store: \{ backend, … \}` \(`state.store` → `store.backend`\)/);
+    expect(() => validateConfig({ version: 8, servers: [] })).toThrow(/version: config schema v8 was removed in 9.0 — use `version: 10`; run `mcp-gateway migrate --to 10`/);
+    expect(() => validateConfig({ version: 10, servers: [], state: { store: 'memory' } })).toThrow(/state: removed in 9.0 — use `store: \{ backend, … \}` \(`state.store` → `store.backend`\)/);
     expect(() => validateConfig({ servers: [], state: {} })).toThrow(/state: removed in 9.0/);
-    expect(() => validateConfig({ version: 11, servers: [] })).toThrow(/9.9 reads `version: 9` or `version: 10`/);
-    const v9 = validateConfig({ version: 9, servers: [], store: { backend: 'redis', redis: { url: 'redis://r:6379' }, failureMode: 'closed' } });
+    expect(() => validateConfig({ version: 11, servers: [] })).toThrow(/10.0 reads `version: 10`/);
+    const v9 = validateConfig({ version: 10, servers: [], store: { backend: 'redis', redis: { url: 'redis://r:6379' }, failureMode: 'closed' } });
     expect(v9.state).toEqual({ store: 'redis', redis: { url: 'redis://r:6379' }, failureMode: 'closed' });
     expect(v9.deprecations?.map((d) => d.id)).toEqual(['schema-v9']); // 9.9
     expect(validateConfig({ servers: [], store: { backend: 'memory' } }).state?.store).toBe('memory'); // version optional
-    expect(() => validateConfig({ version: 9, servers: [], store: { backend: 'redis' } })).toThrow(/store.redis.url is required/);
-    expect(() => validateConfig({ version: 9, servers: [], store: { backend: 'sqlite' } })).toThrow();
+    expect(() => validateConfig({ version: 10, servers: [], store: { backend: 'redis' } })).toThrow(/store.redis.url is required/);
+    expect(() => validateConfig({ version: 10, servers: [], store: { backend: 'sqlite' } })).toThrow();
     expect(removedConfigKeys({ version: 9 })).toEqual([]);
     expect(normalizeStoreV9({ a: 1 })).toEqual({ a: 1 });
     expect(parse(generateDefaultConfig()).version).toBe(9);
   });
 
   it('eventlog backend: defaults, validation, round trip through portableConfig; data planes get v9', () => {
-    const c = validateConfig({ version: 9, servers: [], store: { backend: 'eventlog' } });
+    const c = validateConfig({ version: 10, servers: [], store: { backend: 'eventlog' } });
     expect(c.state).toEqual({ store: 'eventlog', failureMode: 'open' });
-    const e = validateConfig({ version: 9, servers: [], store: { backend: 'eventlog', eventlog: { dir: '/data/s', fsync: true } } });
+    const e = validateConfig({ version: 10, servers: [], store: { backend: 'eventlog', eventlog: { dir: '/data/s', fsync: true } } });
     expect(e.state?.eventlog).toEqual({ dir: '/data/s', snapshotEvery: 10000, fsync: true });
     expect(() => validateConfig({ servers: [], store: { backend: 'eventlog', eventlog: { snapshotEvery: 0 } } })).toThrow();
     expect(() => validateConfig({ servers: [], store: { backend: 'eventlog', eventlog: { extra: 1 } } })).toThrow();

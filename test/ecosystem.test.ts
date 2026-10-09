@@ -31,8 +31,8 @@ const wellKnown = (doc: unknown) =>
 
 describe('ecosystem marketplace GA (9.8)', () => {
   it('validates publishers', () => {
-    expect(() => validateConfig({ version: 9, servers: [], ecosystem: { publishers: [{ id: 'a', name: 'A' }, { id: 'a', name: 'B' }] } })).toThrow(/duplicate publisher/);
-    expect(() => validateConfig({ version: 9, servers: [], ecosystem: { publishers: [{ id: 'A B', name: 'x' }] } })).toThrow();
+    expect(() => validateConfig({ version: 10, servers: [], features: { ecosystem: { publishers: [{ id: 'a', name: 'A' }, { id: 'a', name: 'B' }] } } })).toThrow(/duplicate publisher/);
+    expect(() => validateConfig({ version: 10, servers: [], features: { ecosystem: { publishers: [{ id: 'A B', name: 'x' }] } } })).toThrow();
   });
 
   it('submission → review queue → approve / reject → catalogue with ratings; persistence', async () => {

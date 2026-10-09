@@ -44,7 +44,7 @@ describe('4.0 removals (were 3.9 deprecations)', () => {
   });
 
   it('reads nested key scope (schema v7 or version omitted)', () => {
-    const cfg = validateConfig({ version: 9, servers: [], auth: { strategy: 'api-key', apiKeys: [{ name: 'ci', key: 'k', scope: { servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } } }] } });
+    const cfg = validateConfig({ version: 10, servers: [], auth: { strategy: 'api-key', apiKeys: [{ name: 'ci', key: 'k', scope: { servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } } }] } });
     expect(cfg.auth!.apiKeys![0]).toMatchObject({ name: 'ci', servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } });
     expect(cfg.deprecations?.map((d) => d.id)).toEqual(['schema-v9']); // 9.9
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', servers: ['a'], scope: { servers: ['b'] } }] } })).toThrow(/removed in 4.0/);

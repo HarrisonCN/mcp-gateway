@@ -23,7 +23,7 @@ describe('sanitize (7.3)', () => {
     const t = emptyReport();
     expect(sanitizeText('y'.repeat(150), cfg({ maxChars: 100 }), t)).toBe(`${'y'.repeat(100)}… [truncated 50 chars]`);
     expect(t.truncated).toBe(1);
-    expect(() => validateConfig({ servers: [], sanitize: { injection: { action: 'nuke' } } })).toThrow();
+    expect(() => validateConfig({ servers: [], features: { sanitize: { injection: { action: 'nuke' } } } })).toThrow();
   });
 
   it('flags, marks, spotlights or blocks injected tool output', () => {

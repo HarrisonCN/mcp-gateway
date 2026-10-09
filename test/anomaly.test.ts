@@ -51,8 +51,8 @@ describe('anomaly detection (6.6)', () => {
   });
 
   it('validates config', () => {
-    expect(() => validateConfig({ servers: [], anomaly: { action: 'quarantine', injection: { threshold: 0.5 } } })).not.toThrow();
-    expect(() => validateConfig({ servers: [], anomaly: { action: 'ban' } })).toThrow();
+    expect(() => validateConfig({ servers: [], features: { anomaly: { action: 'quarantine', injection: { threshold: 0.5 } } } })).not.toThrow();
+    expect(() => validateConfig({ servers: [], features: { anomaly: { action: 'ban' } } })).toThrow();
   });
 
   it('gateway: refuses injected arguments, quarantines bursts, flags results; admin API', async () => {

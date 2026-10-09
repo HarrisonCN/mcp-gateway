@@ -46,7 +46,7 @@ describe('compliance reports (7.8)', () => {
     expect(verifyBundle(join(dir, m.bundle))).toEqual({ ok: true, problems: [] });
     writeFileSync(join(dir, m.bundle, 'soc2.md'), 'edited');
     expect(verifyBundle(join(dir, m.bundle)).problems).toEqual(['soc2.md: sha256 mismatch']);
-    expect(() => validateConfig({ servers: [], complianceReports: { schedules: [{ id: 'x', frameworks: ['hipaa'] }] } })).toThrow();
+    expect(() => validateConfig({ servers: [], features: { complianceReports: { schedules: [{ id: 'x', frameworks: ['hipaa'] }] } } })).toThrow();
   });
 
   it('gateway: run now, list with verification, download, preview, prune', async () => {

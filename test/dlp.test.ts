@@ -42,7 +42,7 @@ describe('DLP (5.6)', () => {
     expect(maskValue('short', 'mask', 'x', '')).toBe('•••••');
     expect(maskValue('123456789', 'mask', 'x', '')).toBe('•••••6789');
     expect(policyFor(DlpSchema.parse({}), 'nobody')).toMatchObject({ clearance: 'internal', strategy: 'mask' });
-    expect(() => validateConfig({ servers: [], dlp: { detectors: [{ name: 'x', pattern: '(' }] } })).toThrow(/invalid regular expression/);
+    expect(() => validateConfig({ servers: [], features: { dlp: { detectors: [{ name: 'x', pattern: '(' }] } } })).toThrow(/invalid regular expression/);
     expect(applyDlp(42, cfg, undefined).findings).toEqual([]);
   });
 

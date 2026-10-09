@@ -27,15 +27,15 @@ describe('8.0: schema v8, plugin API v5', () => {
   it('refuses schema v7, plugins[].wasm and plugin API v4; nothing is deprecated', () => {
     expect(Object.keys(DEPRECATIONS)).toEqual(['schemaV9', 'topLevelFeatures']); // 9.9
     expect(configDeprecations({ version: 10, plugins: [{ component: './b.wasm' }] })).toEqual([]);
-    const v8 = validateConfig({ version: 9, servers: [], plugins: [{ component: './p.wasm', isolation: 'client' }] });
+    const v8 = validateConfig({ version: 10, servers: [], plugins: [{ component: './p.wasm', isolation: 'client' }] });
     expect(v8.version).toBe(9);
     expect(v8.deprecations?.map((d) => d.id)).toEqual(['schema-v9']); // 9.9
-    expect(() => validateConfig({ version: 7, servers: [] })).toThrow(/version: config schema v7 was removed in 8.0 — use `version: 9`; run `mcp-gateway migrate --to 9`/);
+    expect(() => validateConfig({ version: 7, servers: [] })).toThrow(/version: config schema v7 was removed in 8.0 — use `version: 10`; run `mcp-gateway migrate --to 10`/);
     expect(() => validateConfig({ servers: [], plugins: [{ wasm: './p.wasm' }] })).toThrow(/plugins.0.wasm: removed in 8.0 — rebuild against wit\/mcp-gateway-plugin.wit \(plugin API v5\) and use `component`/);
     expect(removedConfigKeys({ version: 7, plugins: [{ wasm: 'a' }, { module: 'b' }] })).toHaveLength(2);
     expect(() => validateConfig({ servers: [], plugins: [{ module: './a.mjs', component: './b.wasm' }] })).toThrow(/exactly one of "module" or "component"/);
     expect(() => validateConfig({ servers: [], plugins: [{ module: './a.mjs', limits: { timeoutMs: 5 } }] })).toThrow(/apply to WASM component plugins only/);
-    expect(() => validateConfig({ version: 11, servers: [] })).toThrow(/9.9 reads `version: 9` or `version: 10`/);
+    expect(() => validateConfig({ version: 11, servers: [] })).toThrow(/10.0 reads `version: 10`/);
     expect(removedConfigKeys({ version: 9 })).toEqual([]);
     expect(PLUGIN_API_VERSION).toBe(5);
     expect(PLUGIN_API_MIN_VERSION).toBe(5);

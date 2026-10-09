@@ -24,9 +24,9 @@ async function startRemote(): Promise<string> {
 
 describe('A2A federation (8.2)', () => {
   it('validates config', () => {
-    expect(() => validateConfig({ servers: [], a2aFederation: { remotes: [{ id: 'a', url: 'not a url' }] } })).toThrow();
-    expect(() => validateConfig({ servers: [], a2aFederation: { remotes: [{ id: 'a', url: 'https://a.example' }, { id: 'a', url: 'https://b.example' }] } })).toThrow(/duplicate remote id/);
-    expect(validateConfig({ version: 9, servers: [], a2aFederation: { remotes: [{ id: 'eu', url: 'https://eu.example' }] } }).a2aFederation).toBeDefined();
+    expect(() => validateConfig({ servers: [], features: { a2aFederation: { remotes: [{ id: 'a', url: 'not a url' }] } } })).toThrow();
+    expect(() => validateConfig({ servers: [], features: { a2aFederation: { remotes: [{ id: 'a', url: 'https://a.example' }, { id: 'a', url: 'https://b.example' }] } } })).toThrow(/duplicate remote id/);
+    expect(validateConfig({ version: 10, servers: [], features: { a2aFederation: { remotes: [{ id: 'eu', url: 'https://eu.example' }] } } }).a2aFederation).toBeDefined();
   });
 
   it('reads remote agent cards (auth, skill filter) and forwards tasks', async () => {

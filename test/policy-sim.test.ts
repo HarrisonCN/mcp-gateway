@@ -35,8 +35,8 @@ describe('policy simulation and dry-run (6.5)', () => {
   it('validates candidate and shadow policies', () => {
     expect(() => CandidatePolicySchema.parse({ rules: [{ effect: 'maybe' }] })).toThrow();
     expect(() => CandidatePolicySchema.parse({ rules: [{ effect: 'deny', args: [{ path: 'a', regex: '(' }] }] })).toThrow(/invalid regex/);
-    expect(() => validateConfig({ servers: [], policyShadow: { default: 'deny', rules: [{ effect: 'allow', tools: ['read_*'] }] } })).not.toThrow();
-    expect(() => validateConfig({ servers: [], policyShadow: { nope: 1 } })).toThrow();
+    expect(() => validateConfig({ servers: [], features: { policyShadow: { default: 'deny', rules: [{ effect: 'allow', tools: ['read_*'] }] } } })).not.toThrow();
+    expect(() => validateConfig({ servers: [], features: { policyShadow: { nope: 1 } } })).toThrow();
   });
 
   it('shadow recorder counts agreement and keeps bounded divergences', () => {

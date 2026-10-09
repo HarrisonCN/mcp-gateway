@@ -14,9 +14,9 @@ const plans = { free: { servers: ['fake'], callsPerDay: 2 }, pro: { name: 'Pro',
 
 describe('SaaS console (7.2)', () => {
   it('schema: plans must exist; counter rolls over by UTC day', () => {
-    expect(() => validateConfig({ servers: [], console: { plans, orgs: { a: { plan: 'gold' } } } })).toThrow(/unknown plan "gold"/);
-    expect(() => validateConfig({ servers: [], console: { plans, defaultPlan: 'x' } })).toThrow(/unknown plan "x"/);
-    expect(() => validateConfig({ servers: [], console: { plans: { p: { servers: [] } } } })).toThrow();
+    expect(() => validateConfig({ servers: [], features: { console: { plans, orgs: { a: { plan: 'gold' } } } } })).toThrow(/unknown plan "gold"/);
+    expect(() => validateConfig({ servers: [], features: { console: { plans, defaultPlan: 'x' } } })).toThrow(/unknown plan "x"/);
+    expect(() => validateConfig({ servers: [], features: { console: { plans: { p: { servers: [] } } } } })).toThrow();
     let now = new Date('2026-01-01T23:59:00Z');
     const c = new DailyCounter(() => now);
     const cfg = ConsoleSchema.parse({ plans, orgs: { a: { plan: 'free' }, s: { plan: 'pro', suspended: true } } });

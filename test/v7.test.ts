@@ -17,16 +17,16 @@ servers: []
 
 describe('7.0: schema v7', () => {
   it('refuses schema v6 and the top-level admin / dashboard sections with the migration hint', () => {
-    expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/config schema v6 was removed in 7.0 — use `version: 9`; run `mcp-gateway migrate --to 9`/);
+    expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/config schema v6 was removed in 7.0 — use `version: 10`; run `mcp-gateway migrate --to 10`/);
     expect(() => validateConfig({ servers: [], admin: { configApi: true } })).toThrow(/admin: removed in 7.0 — use `controlPlane.configApi`/);
-    expect(() => validateConfig({ version: 9, servers: [], dashboard: { enabled: true } })).toThrow(/dashboard: removed in 7.0 — use `controlPlane.dashboard`/);
+    expect(() => validateConfig({ version: 10, servers: [], dashboard: { enabled: true } })).toThrow(/dashboard: removed in 7.0 — use `controlPlane.dashboard`/);
     expect(removedConfigKeys({ version: 6, admin: {}, dashboard: {} })).toHaveLength(3);
     expect(removedConfigKeys({ version: 9 })).toEqual([]);
     expect(configDeprecations({ version: 6, admin: {} })).toEqual([]);
   });
 
   it('controlPlane: role defaults to all; data planes need url + token; url/token only on data planes', () => {
-    const v7 = validateConfig({ version: 9, servers: [], controlPlane: { configApi: true, dashboard: false } });
+    const v7 = validateConfig({ version: 10, servers: [], controlPlane: { configApi: true, dashboard: false } });
     expect(v7.controlPlane).toEqual({ role: 'all', configApi: true, dashboard: false, pullIntervalMs: 10000 });
     expect(v7.deprecations?.map((d) => d.id)).toEqual(['schema-v9']); // 9.9
     expect(validateConfig({ servers: [] }).controlPlane).toBeUndefined();
@@ -61,7 +61,7 @@ describe('7.0: schema v7', () => {
     expect(migrateConfigText(r.text, undefined, 7).changed).toBe(false);
     const old = migrateConfigObject({ version: 5, compliance: { pii: { action: 'redact' } }, dashboard: {}, servers: [] }, 7);
     expect(old.changes).toEqual(['version: 5 → 7', 'compliance.pii (action redact) → dlp', 'dashboard.enabled → controlPlane.dashboard']);
-    expect(() => validateConfig({ ...old.config, version: 9 })).not.toThrow();
+    expect(() => validateConfig({ ...old.config, version: 10 })).not.toThrow();
     expect(migrateConfigObject({ admin: 1, servers: [] }).changes).toContain('admin (empty) removed');
     expect(migrateConfigText(JSON.stringify({ admin: { configApi: true, extra: 1 }, servers: [] }), 'json').notes.join()).toMatch(/admin: keys other than configApi/);
   });

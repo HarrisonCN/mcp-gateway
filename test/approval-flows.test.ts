@@ -37,8 +37,8 @@ describe('approvals 2.0 (7.7)', () => {
     expect(matchFlow(c, { serverId: 'fake', tool: 'echo', args: { amount: 10 } })).toBeUndefined();
     expect(matchFlow(c, { serverId: 'fake', tool: 'echo', args: { amount: 5000 } })!.steps.map((s) => s.name)).toEqual(['lead']);
     expect(matchFlow(c, { serverId: 'fake', tool: 'echo', args: { amount: 50000 } })!.steps.map((s) => s.name)).toEqual(['lead', 'finance']);
-    expect(() => validateConfig({ servers: [], approvalFlows: { flows: [{ id: 'a', tools: ['*'], steps: [] }] } })).toThrow();
-    expect(() => validateConfig({ servers: [], approvalFlows: { flows: [{ id: 'a', tools: ['*'], steps: [{ name: 's', approvers: ['x'], when: [{ path: 'p', op: 'matches', value: '(' }] }] }] } })).toThrow(/invalid regular expression/);
+    expect(() => validateConfig({ servers: [], features: { approvalFlows: { flows: [{ id: 'a', tools: ['*'], steps: [] }] } } })).toThrow();
+    expect(() => validateConfig({ servers: [], features: { approvalFlows: { flows: [{ id: 'a', tools: ['*'], steps: [{ name: 's', approvers: ['x'], when: [{ path: 'p', op: 'matches', value: '(' }] }] }] } } })).toThrow(/invalid regular expression/);
   });
 
   it('queue: steps, required counts, self-approval, escalation, expiry', async () => {

@@ -12,9 +12,9 @@ afterEach(async () => {
 
 describe('rollouts (7.5)', () => {
   it('schema, sticky buckets and automatic rollback', () => {
-    expect(() => validateConfig({ servers: [], rollouts: [{ id: 'a', stable: 'x', canary: 'x' }] })).toThrow(/different servers/);
-    expect(() => validateConfig({ servers: [], rollouts: [{ id: 'a', stable: 'x', canary: 'y' }, { id: 'a', stable: 'z', canary: 'y' }] })).toThrow(/duplicate rollout id/);
-    expect(() => validateConfig({ servers: [], rollouts: [{ id: 'a', stable: 'x', canary: 'y' }, { id: 'b', stable: 'x', canary: 'z' }] })).toThrow(/more than one rollout/);
+    expect(() => validateConfig({ servers: [], features: { rollouts: [{ id: 'a', stable: 'x', canary: 'x' }] } })).toThrow(/different servers/);
+    expect(() => validateConfig({ servers: [], features: { rollouts: [{ id: 'a', stable: 'x', canary: 'y' }, { id: 'a', stable: 'z', canary: 'y' }] } })).toThrow(/duplicate rollout id/);
+    expect(() => validateConfig({ servers: [], features: { rollouts: [{ id: 'a', stable: 'x', canary: 'y' }, { id: 'b', stable: 'x', canary: 'z' }] } })).toThrow(/more than one rollout/);
     expect(bucketOf('r', 'key:a')).toBe(bucketOf('r', 'key:a'));
     const [r] = RolloutsSchema.parse([{ id: 'r', stable: 's', canary: 'c', percent: 30, clients: ['key:beta-*'], exclude: ['key:vip'], autoRollback: { maxErrorRate: 0.5, minCalls: 4 } }]);
     const m = new RolloutManager();
