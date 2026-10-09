@@ -38,6 +38,7 @@ import { effectiveRebindingProtection } from '../security/network.js';
 import type { CatalogEntry, InstallRequest } from '../catalog/index.js';
 import { withTenantScope, canCall, highestRole, roleIn, ROLE_RANK, membershipsOf, memberGrantError } from '../auth/tenants.js';
 import { globToRegExp } from '../utils/tool-filter.js';
+import { ERR_BUDGET_EXCEEDED } from '../costs/index.js';
 import { ERR_QUOTA_EXCEEDED, usageCsv, type UsageGroup } from './usage.js';
 import { ToolInvoker, POLICY_ERROR_CODES, ERR_OUTPUT_BLOCKED } from './invoker.js';
 import { ApprovalError } from '../policy/approvals.js';
@@ -724,6 +725,16 @@ export function createApiRouter(
       const reset = data?.resetsAt ? Date.parse(data.resetsAt) : NaN;
       if (Number.isFinite(reset)) res.set('Retry-After', String(Math.max(1, Math.ceil((reset - Date.now()) / 1000))));
       res.status(429).json({ error: 'Too Many Requests', message: result.error.message, code: result.error.code, quota: result.error.data });
+      return;
+    }
+    // Budget refusals (4.3 calendar budgets with action: block, 10.6 real-time budgets) share -32013 with DLP blocks;
+    // `data.decision === 'budget'` tells them apart. Before 10.6 these surfaced as 502.
+    const budget = !result.success && result.error?.code === ERR_BUDGET_EXCEEDED ? (result.error.data as { decision?: string; resetsAt?: string; retryAfterSeconds?: number } | undefined) : undefined;
+    if (budget?.decision === 'budget') {
+      const reset = budget.resetsAt ? Date.parse(budget.resetsAt) : NaN;
+      const wait = typeof budget.retryAfterSeconds === 'number' ? budget.retryAfterSeconds : Number.isFinite(reset) ? Math.ceil((reset - Date.now()) / 1000) : undefined;
+      if (wait !== undefined) res.set('Retry-After', String(Math.max(1, wait)));
+      res.status(429).json({ error: 'Too Many Requests', message: result.error!.message, code: result.error!.code, budget: budget });
       return;
     }
     if (!result.success && result.error && POLICY_ERROR_CODES.has(result.error.code)) {

@@ -153,6 +153,17 @@ export class ToolInvoker {
       via: ctx.via,
     });
     if (this.deps.requestLog?.() !== false) logger.info(`${ctx.name} → ${ctx.serverId} refused: ${message}`);
+    const hookCfg = ctx.kind === 'tool' ? this.deps.config?.() : undefined;
+    if (hookCfg) {
+      const call: HookCall = { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params };
+      for (const h of callHooks()) {
+        try {
+          h.refused?.(call, { code, message, data }, hookCfg);
+        } catch (err) {
+          logger.warn(`call hook ${h.id} (refused) failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
     span.setAttribute('mcp.policy.decision', String(data.decision ?? 'deny'));
     span.setError(message);
     span.end();

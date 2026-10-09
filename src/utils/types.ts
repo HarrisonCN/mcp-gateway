@@ -155,6 +155,10 @@ export interface GatewayConfig {
   ecosystem?: import('../features/ecosystem.js').EcosystemConfig;
   /** Policy-as-code 2.0: Cedar / OPA (10.5). */
   policyEngine?: import('../features/policy-engine.js').PolicyEngineConfig;
+  /** Full-chain replay / time-travel journal (10.6). */
+  timeTravel?: import('../features/time-travel.js').TimeTravelConfig;
+  /** Real-time (sliding-window) cost and carbon budgets (10.6). */
+  realtimeBudgets?: import('../features/realtime-budgets.js').RealtimeBudgetsConfig;
   /** Post-quantum TLS (9.7). */
   postQuantumTls?: import('../features/pq-tls.js').PqTlsConfig;
   /** Self-healing (9.6). */

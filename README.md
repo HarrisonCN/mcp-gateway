@@ -256,6 +256,7 @@ Server-side API keys can also carry scopes (`servers`, `tools`), their own `rate
 
 **Extended modules** — opt-in under `features:` in the config, each documented in [`docs/guides`](docs/guides):
 policy as code and approvals, [Cedar / OPA policies](docs/guides/policy-engine.md) with tests and impact analysis,
+[time-travel replay](docs/guides/time-travel.md), [real-time cost / carbon budgets](docs/guides/realtime-budgets.md),
 DLP and prompt-injection sanitising, result and semantic caching, plugins (signed, WASM, and the
 [kernel plugin SDK](docs/guides/plugin-sdk.md) for hooks + config + routes),
 OpenAI / A2A bridges, control plane / data plane, multi-region, workflows, SLA and cost reporting, and more. These
@@ -316,13 +317,14 @@ behaviour, config schema v10, CLI commands and flags, root library exports and P
 in backward-compatible ways. Deep imports, log format, the dashboard and the audit database schema are not covered —
 see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
-## What's New in v10.5
+## What's New in v10.6
 
-Feature line begins (opt-in, schema v10 compatible): the **kernel plugin SDK** lets a plugin ship hooks, a validated
-config (`configSchema`) and admin / client HTTP routes in one object (`definePlugin`), with per-hook time limits; and
-**policy-as-code 2.0** adds Cedar policies (a built-in evaluator for a documented Cedar subset) and Rego via an
-external OPA server, with shadow mode, policy unit tests and change-impact analysis against past calls. See the
-[plugin SDK](docs/guides/plugin-sdk.md) and [policy engine](docs/guides/policy-engine.md) guides. Earlier in 10.x:
+Feature line continues (opt-in, schema v10 compatible): a **time-travel journal** records configs and calls so you can
+see the gateway's configuration and traffic at any instant, follow an agent's call chain, diff configs and replay past
+calls under today's policy (optionally re-executing them and diffing results); **real-time budgets** cap cost or
+estimated carbon over sliding windows per client / tenant, warning first and then rejecting (REST `429` +
+`Retry-After`, JSON-RPC `-32013`) or downgrading the call. See the [time-travel](docs/guides/time-travel.md) and
+[real-time budgets](docs/guides/realtime-budgets.md) guides. Earlier in 10.x: plugin SDK and Cedar / OPA (10.5),
 signed images and SBOMs (10.4), secure defaults (10.3). Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation

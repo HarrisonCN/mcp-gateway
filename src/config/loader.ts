@@ -50,6 +50,8 @@ import { SelfHealingSchema } from '../features/self-healing.js';
 import { PqTlsSchema } from '../features/pq-tls.js';
 import { EcosystemSchema } from '../features/ecosystem.js';
 import { PolicyEngineSchema } from '../features/policy-engine.js';
+import { TimeTravelSchema } from '../features/time-travel.js';
+import { RealtimeBudgetsSchema } from '../features/realtime-budgets.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
@@ -528,6 +530,9 @@ const GatewayConfigSchema = z.object({
   ecosystem: EcosystemSchema.optional(),
   // 10.5: policy-as-code 2.0 (Cedar, OPA / Rego)
   policyEngine: PolicyEngineSchema.optional(),
+  // 10.6: journal + time-travel debugging; sliding-window cost / carbon budgets
+  timeTravel: TimeTravelSchema.optional(),
+  realtimeBudgets: RealtimeBudgetsSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   audit: z
