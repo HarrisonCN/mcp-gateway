@@ -338,15 +338,15 @@ The project follows [Semantic Versioning](https://semver.org/). Within a major l
 Prometheus metric names change only in backward-compatible ways. Deep imports, log format, the dashboard and the
 audit database schema are not covered — see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
-## What's New in v12.0
+## What's New in v13.0
 
-**Breaking security release.** stdio MCP servers — third-party code — no longer inherit the gateway's environment:
-only an allowlist (`PATH`, `HOME`, locale, `TMPDIR` …) plus what you pass explicitly (`env`, `envPassthrough`). They
-can also run as another uid/gid, in a fixed working directory and inside bubblewrap, firejail or a container with the
-network off ([guide](docs/security/stdio-isolation.md)). Multimodal per-item limits are lower, hot reload rolls back
-on failure, and a kernel benchmark (startup time, memory, loaded modules) runs in CI. Builds on 11.1 / 11.2: one
-central authorizer for every tool call, owner-bound multimodal blobs, persistent agent-token revocation. Config schema
-stays v11. [Migrating to 12.0](docs/guides/migrating-to-v12.md).
+**Breaking: true modular kernel.** Feature modules are now loaded with `import()` only when you enable them — a
+gateway with no feature sections evaluates none of the 47 modules (12.0 evaluated all of them): import −28 %, RSS
+60 → 54 MiB in the minimal profile. Modules get a lifecycle contract (`init` / `reconfigure` / `disable` / `dispose` /
+`health`) with declared dependencies, dependency ordering and failure isolation (a broken module answers 503 instead
+of stopping the gateway), visible in `GET /api/v1/admin/kernel`. New lean entry `@winstonsayno/mcp-gateway/gateway`.
+Every tool call still goes through the one central authorizer. Config schema stays v11.
+[Migrating to 13.0](docs/guides/migrating-to-v13.md).
 
 ## Documentation
 

@@ -28,7 +28,7 @@ v10.0 之后的计划。10.x 是长期支持（LTS）版本线：10.x 内每个�
 - ✅ v11.2：（安全）多模态 blob 绑定所有者与租户、读取时重新鉴权、全局与租户字节预算；智能体令牌吊销写入共享状态存储（Redis / SQLite / 事件日志），存储不可用时默认拒绝（fail-closed）；新增 SQLite 状态存储
 - ✅ v12.0：（破坏性）stdio 子进程环境变量改为白名单，支持独立 uid/gid、工作目录与沙箱包装（bubblewrap / firejail / 容器 / 自定义模板，可禁用网络）；多模态单项上限下调；热重载失败自动回滚；内核基准（启动时间、内存、已加载模块数）与负载 / 内存压力测试进入 CI
 - v12.x：按需修复
-- v13.0：（破坏性）真正的模块化内核：功能模块仅在启用时通过 `import()` 清单加载（未配置任何功能时 0/47 个模块被执行），配置 schema 拆分到 `src/features/schemas/`，配置加载器与管理接口不再导入任何功能模块；模块生命周期契约（init / reconfigure / disable / dispose / health）、显式依赖声明（billing→genai-otel、sanitize→anomaly、edge-autonomy→edge-runtime+offline、task-graphs→a2a-federation）、按依赖排序与故障隔离（失败模块返回 503，其余照常运行）；新增精简入口 `./gateway`；模块加载追踪测试保证未启用模块从不被执行；中央授权器保持唯一且不可绕过
+- ✅ v13.0：（破坏性）真正的模块化内核：功能模块仅在启用时通过 `import()` 清单加载（未配置任何功能时 0/47 个模块被执行），配置 schema 拆分到 `src/features/schemas/`，配置加载器与管理接口不再导入任何功能模块；模块生命周期契约（init / reconfigure / disable / dispose / health）、显式依赖声明（billing→genai-otel、sanitize→anomaly、edge-autonomy→edge-runtime+offline、task-graphs→a2a-federation）、按依赖排序与故障隔离（失败模块返回 503，其余照常运行）；新增精简入口 `./gateway`；模块加载追踪测试保证未启用模块从不被执行；中央授权器保持唯一且不可绕过
 
 13.0 之后：
 
