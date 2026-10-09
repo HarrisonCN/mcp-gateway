@@ -334,15 +334,16 @@ The project follows [Semantic Versioning](https://semver.org/). Within a major l
 Prometheus metric names change only in backward-compatible ways. Deep imports, log format, the dashboard and the
 audit database schema are not covered — see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
-## What's New in v10.9
+## What's New in v11.0
 
-Bridge to 11.0. **Config schema v11** and the **lazy modular kernel** (`kernel.modules: lazy` — only configured
-feature modules are mounted) are available now, and what 11.0 removes is deprecated: schema v10 and the 6.2
-workflow engine (task graphs replace it). `mcp-gateway migrate --to 11` rewrites a config — including workflows →
-task graphs — keeping comments. Existing `version: 10` configs keep working on 10.x (LTS). See
-[Migrating to 11.0](docs/guides/migrating-to-v11.md). Earlier in 10.x: privacy computing and post-quantum identity
-(10.8), task graphs and edge autonomy (10.7), time-travel replay and real-time budgets (10.6), plugin SDK and Cedar /
-OPA (10.5), signed images and SBOMs (10.4), secure defaults (10.3). Full history: [CHANGELOG.md](CHANGELOG.md).
+Breaking release on top of the 10.x LTS line: **config schema v11** is the only schema, the modular kernel loads a
+feature module only when its `features.*` section is configured (`kernel: { modules: eager }` keeps the 10.x
+behaviour), and the 6.2 workflow engine is gone — durable task graphs replace it. Upgrade a config with
+`npx @winstonsayno/mcp-gateway@11 migrate --write` (workflows become task graphs, comments are kept); the
+[migration guide](docs/guides/migrating-to-v11.md) lists every change. 10.x keeps its LTS dates. The 10.x line
+brought secure defaults and supply-chain signing (10.1 – 10.4), the plugin SDK and Cedar / OPA (10.5), time-travel
+replay and real-time budgets (10.6), task graphs and edge autonomy (10.7), privacy computing and post-quantum
+identity (10.8). Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 
