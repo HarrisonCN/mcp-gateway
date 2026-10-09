@@ -206,6 +206,8 @@ export { SlaSchema, recordSla } from './features/sla.js';
 export type { SlaConfig } from './features/sla.js';
 export { SelfHealingSchema, ERR_SELF_HEALING } from './features/self-healing.js';
 export type { SelfHealingConfig } from './features/self-healing.js';
+export { PqTlsSchema, groupsSupported, effectiveGroups } from './features/pq-tls.js';
+export type { PqTlsConfig } from './features/pq-tls.js';
 export type {
   GatewayConfig,
   McpServerConfig,

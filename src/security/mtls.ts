@@ -169,9 +169,10 @@ export class MtlsManager {
     return !!server.tls || (!!this.config()?.requireForAll && this.enabled);
   }
 
-  private agentFor(server: { id: string; tls?: ServerTlsConfig }): Agent {
+  private agentFor(server: { id: string; url?: string; tls?: ServerTlsConfig }): Agent {
     const tls = server.tls ?? {};
-    const key = `${server.id}\u0000${JSON.stringify(tls)}`;
+    const groups = upstreamTlsGroups(server);
+    const key = `${server.id}\u0000${JSON.stringify(tls)}\u0000${groups ?? ''}`;
     let agent = this.agents.get(key);
     if (agent) return agent;
     if (!this.material && this.enabled) this.reload();
@@ -183,6 +184,7 @@ export class MtlsManager {
         ...(ca ? { ca } : {}),
         ...(presentCert ? { cert: m.cert, key: m.key } : {}),
         ...(tls.servername ? { servername: tls.servername } : {}),
+        ...(groups ? { ecdhCurve: groups } : {}),
         rejectUnauthorized: true,
         ...(tls.spiffeId
           ? {
@@ -241,5 +243,23 @@ export function setUpstreamTls(m: MtlsManager | undefined): void {
   current = m;
 }
 export function upstreamFetch(server: { id: string; url?: string; tls?: ServerTlsConfig }): FetchLike {
-  return current ? current.fetchFor(server) : globalThis.fetch;
+  if (current?.applies(server)) return current.fetchFor(server);
+  const groups = upstreamTlsGroups(server);
+  if (!groups) return globalThis.fetch;
+  let agent = groupAgents.get(groups);
+  if (!agent) groupAgents.set(groups, (agent = new Agent({ connect: { ecdhCurve: groups } })));
+  const dispatcher = agent;
+  return ((input: string | URL, init?: RequestInit) => undiciFetch(input as string, { ...(init as object), dispatcher } as never)) as unknown as FetchLike;
+}
+
+/** TLS key-exchange groups for upstream HTTPS connections (9.7 post-quantum TLS), e.g. `X25519MLKEM768:X25519`. */
+let groupsFor: ((server: { id: string; url?: string }) => string | undefined) | undefined;
+const groupAgents = new Map<string, Agent>();
+export function setUpstreamTlsGroups(fn: ((server: { id: string; url?: string }) => string | undefined) | undefined): void {
+  groupsFor = fn;
+  for (const a of groupAgents.values()) void a.close().catch(() => {});
+  groupAgents.clear();
+}
+export function upstreamTlsGroups(server: { id: string; url?: string }): string | undefined {
+  return server.url?.startsWith('https:') ? groupsFor?.(server) : undefined;
 }

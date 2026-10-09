@@ -493,6 +493,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(s.active.map((a: any) => `${a.rule}:${a.action}`)).toEqual(['github-slow:throttle']);
     expect(s.history).toHaveLength(2);
   });
+  it('reports post-quantum TLS probes (9.7)', async () => {
+    const f = demoFetch();
+    const q = (await (await f('/api/v1/admin/pq-tls')).json()) as any;
+    expect(q.groups).toBe('X25519MLKEM768:X25519:P-256');
+    expect(q.servers.map((s: any) => `${s.id}:${s.lastProbe.pq}`)).toEqual(['search:true', 'postgres:false']);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

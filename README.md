@@ -608,7 +608,7 @@ process.on('SIGTERM', () => gateway.stop());
 
 | Feature | |
 |---------|---|
-| **Confidential computing** | Sensitive servers get calls only from a remotely attested TEE (SEV-SNP, TDX, Nitro, SGX) — [guide](docs/guides/confidential-computing.md) |
+| **Confidential computing** | Sensitive servers get calls only from a remotely attested TEE (SEV-SNP, TDX, Nitro, SGX) — [guide](docs/guides/confidential.md) |
 
 ## What's New in v9.2
 
