@@ -234,7 +234,7 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
   it('backs the config editor: get, validate, diff, dry run and apply (4.6)', async () => {
     const f = demoFetch();
     const { config } = (await (await f('/api/v1/admin/config')).json()) as any;
-    expect(config.version).toBe(8);
+    expect(config.version).toBe(9);
     const bad = { ...config, servers: [...config.servers, { id: 'x y', transport: 'sse', url: 'nope' }] };
     const v = (await (await f('/api/v1/admin/config/validate', { method: 'POST', body: JSON.stringify(bad) })).json()) as any;
     expect(v.valid).toBe(false);
