@@ -17,6 +17,20 @@ Please **do not** open a public issue. Use
 with steps to reproduce and the affected version. You will get an answer within a few days; fixes are released as
 patch versions and credited in the CHANGELOG unless you prefer otherwise.
 
+## Incident response and supply chain
+
+- [docs/security/incident-response.md](docs/security/incident-response.md) — triage targets by severity, fix and
+  disclosure process, and what happens when a release artifact is compromised.
+- [docs/security/supply-chain.md](docs/security/supply-chain.md) — cosign keyless signatures, SLSA provenance and
+  SBOM attestations on the container image, CycloneDX / SPDX SBOMs and checksums on each GitHub Release, Trivy
+  scanning and Dependabot. Verify an image with:
+
+  ```bash
+  cosign verify ghcr.io/harrisoncn/mcp-gateway:10 \
+    --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com
+  ```
+
 ## Threat model
 
 [docs/security/threat-model.md](docs/security/threat-model.md) describes the data flow (client → auth → policy →
@@ -30,7 +44,7 @@ it like any other privileged service. The full checklist is in
 
 | Risk | Setting |
 |---|---|
-| Unauthenticated access | `auth.strategy: api-key` or `jwt`; the gateway warns at startup when auth is off on a non-loopback address |
+| Unauthenticated access | `auth.strategy: api-key` or `jwt`; since 10.3 the gateway refuses to start without auth on a non-loopback address (`--insecure` opts out) and the Helm chart requires an API key |
 | Leaked config file | store keys as `sha256:` digests (`mcp-gateway gen-key`, `hash-key`); `expiresAt` / `disabled` per key |
 | Key guessing | `security.authLockout: true` (429 after repeated failures per IP) plus `rateLimit` |
 | Forged / confused JWTs | `auth.jwt.issuer`, `audience`, `requireExp`, `algorithms`; HMAC and asymmetric algorithms are never mixed |

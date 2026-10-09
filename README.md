@@ -110,7 +110,8 @@ stdio-only clients can bridge with [`mcp-remote`](https://www.npmjs.com/package/
 ### Docker
 
 Multi-arch images (`linux/amd64`, `linux/arm64`) are published to GHCR with tags `<version>`, `<major>.<minor>`,
-`<major>` and `latest`. The image runs as the unprivileged `node` user and looks for `/app/mcp-gateway.yml`.
+`<major>` and `latest`, signed with cosign (keyless) and carrying SLSA provenance and SBOM attestations — see
+[supply chain](docs/security/supply-chain.md) for `cosign verify`. The image runs as the unprivileged `node` user and looks for `/app/mcp-gateway.yml`.
 
 ```bash
 docker run -d -p 4000:4000 \
@@ -292,6 +293,9 @@ Things to know before deploying:
 - **No auth means loopback only.** Turn auth on (`auth.strategy`, or `MCP_GATEWAY_API_KEYS`); without it the
   gateway refuses to start on a non-loopback address unless you pass `--insecure`. The Helm chart requires an API key.
 - `mcp-gateway validate --strict` fails on security warnings; `GET /api/v1/security` reports the running posture.
+- Releases: signed container images, CycloneDX / SPDX SBOMs and checksums on each GitHub Release, Trivy and
+  `npm audit` in CI, Dependabot — [supply chain](docs/security/supply-chain.md),
+  [incident response](docs/security/incident-response.md).
 - stdio servers do not inherit `MCP_GATEWAY_*` variables, so third-party servers can't read the gateway's own keys.
 
 Hardening checklist: [SECURITY.md](SECURITY.md) and [docs/deployment.md](docs/deployment.md#security-checklist).
@@ -310,15 +314,14 @@ behaviour, config schema v10, CLI commands and flags, root library exports and P
 in backward-compatible ways. Deep imports, log format, the dashboard and the audit database schema are not covered —
 see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
-## What's New in v10.3
+## What's New in v10.4
 
-Honest labelling and secure defaults, no new features. Without authentication the gateway now **refuses to start on a
-non-loopback address** (`--insecure` / `security.insecure: true` is the explicit opt-out), `init` writes
-`host: 127.0.0.1`, and the **Helm chart requires an API key** (`existingSecret` with `MCP_GATEWAY_API_KEYS`) — it
-fails at install time with instructions otherwise. TEE attestation and post-quantum TLS print an EXPERIMENTAL notice
-saying what is and isn't verified. This is a deliberate behaviour change inside the LTS line; the
-[upgrade notes](CHANGELOG.md) explain the migration. Also new: guides for [any LLM](#use-with-any-llm) and for
-[web pages and apps](#use-from-web-pages-and-apps). Full history: [CHANGELOG.md](CHANGELOG.md).
+Supply chain and incident response, no new features: container images are **signed with cosign (keyless)** and carry
+SLSA provenance + SBOM attestations, every GitHub Release ships CycloneDX / SPDX SBOMs and checksums, CI runs **Trivy**
+on lockfiles and the built image, and Dependabot covers every ecosystem in the repository. See
+[supply chain](docs/security/supply-chain.md) and [incident response](docs/security/incident-response.md). Earlier in
+10.x: a gateway without auth refuses to start on a non-loopback address and the Helm chart requires an API key (10.3).
+Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 
