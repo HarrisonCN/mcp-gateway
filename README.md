@@ -1,114 +1,61 @@
-<div align="center">
-
-<img src="https://raw.githubusercontent.com/HarrisonCN/mcp-gateway/main/docs/assets/logo.svg" alt="mcp-gateway" width="120" />
-
 # mcp-gateway
 
-**A lightweight, open-source gateway for your MCP servers.**
+**One authenticated, observable endpoint in front of all your MCP servers.**
 
-Route · Authenticate · Rate-limit · Monitor — all your [Model Context Protocol](https://modelcontextprotocol.io) servers from a single endpoint.
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue.svg)](https://www.typescriptlang.org)
-[![npm version](https://img.shields.io/npm/v/@winstonsayno/mcp-gateway.svg)](https://www.npmjs.com/package/@winstonsayno/mcp-gateway)
+[![npm](https://img.shields.io/npm/v/@winstonsayno/mcp-gateway.svg)](https://www.npmjs.com/package/@winstonsayno/mcp-gateway)
 [![CI](https://github.com/HarrisonCN/mcp-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/HarrisonCN/mcp-gateway/actions/workflows/ci.yml)
-[![Docker](https://img.shields.io/badge/docker-ghcr.io-blue.svg)](https://github.com/HarrisonCN/mcp-gateway/pkgs/container/mcp-gateway)
+[![CodeQL](https://github.com/HarrisonCN/mcp-gateway/actions/workflows/codeql.yml/badge.svg)](https://github.com/HarrisonCN/mcp-gateway/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/HarrisonCN/mcp-gateway/badge)](https://securityscorecards.dev/viewer/?uri=github.com/HarrisonCN/mcp-gateway)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[English](#) · [中文](docs/README.zh-CN.md) · [API reference](docs/api-reference.md) · [Configuration](docs/configuration.md) · [Deployment](docs/deployment.md) · [Examples](examples/)
+[Docs](docs/README.md) · [Configuration](docs/configuration.md) · [API reference](docs/api-reference.md) ·
+[Deployment](docs/deployment.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md) · [中文](docs/README.zh-CN.md)
 
-</div>
-
----
-
-> **Live demo:** try the dashboard with simulated traffic — <https://harrisoncn.github.io/mcp-gateway/> (runs entirely in your browser).
-
-## The Problem
-
-As [MCP](https://modelcontextprotocol.io) becomes the standard protocol for AI agents to interact with tools, teams are running **dozens of MCP servers** — filesystem, GitHub, databases, Slack, search, and more. Managing them is chaos:
-
-- Every AI client connects to every server independently
-- No central authentication or access control
-- No visibility into which tools are being called, by whom, and how often
-- No rate limiting to prevent runaway agents from hammering your APIs
-
-**mcp-gateway solves this.** It sits between your AI clients and your MCP servers, acting as a single, observable, secure entry point.
+mcp-gateway sits between AI clients (Claude Code, Cursor, your own agents) and the
+[Model Context Protocol](https://modelcontextprotocol.io) servers they use. Instead of every client launching and
+authenticating to every server, clients connect once — over MCP Streamable HTTP at `/mcp` or a plain REST API — and
+the gateway routes each call to the right upstream with one place for keys, scopes, rate limits, logs and metrics.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      AI Clients                         │
-│   Claude Code · Cursor · Copilot · Your App · Scripts   │
-└─────────────────────┬───────────────────────────────────┘
-                      │  HTTP / REST
-                      ▼
-┌─────────────────────────────────────────────────────────┐
-│                   mcp-gateway                           │
-│                                                         │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐  │
-│  │   Auth   │  │  Router  │  │  Metrics / Monitor   │  │
-│  │ API Key  │  │ Tool →   │  │  Prometheus · Logs   │  │
-│  │   JWT    │  │ Server   │  │  Dashboard           │  │
-│  └──────────┘  └──────────┘  └──────────────────────┘  │
-│                                                         │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
-│  │Rate Limit│  │ Registry │  │  Health  │              │
-│  └──────────┘  └──────────┘  └──────────┘              │
-└──────┬──────────────┬──────────────┬────────────────────┘
-       │              │              │  stdio / SSE / WS
-       ▼              ▼              ▼
-┌──────────┐  ┌──────────┐  ┌──────────┐
-│Filesystem│  │  GitHub  │  │PostgreSQL│  ... more
-│  Server  │  │  Server  │  │  Server  │
-└──────────┘  └──────────┘  └──────────┘
+ Claude Code · Cursor · agents · scripts
+                 │  /mcp (Streamable HTTP)  ·  /api/v1 (REST)
+                 ▼
+ ┌──────────────── mcp-gateway ────────────────┐
+ │ auth · scopes · rate limits · policy        │
+ │ routing · reconnect · health · metrics · log│
+ └──────┬───────────────┬──────────────┬───────┘
+        │ stdio         │ HTTP / SSE   │ WebSocket
+        ▼               ▼              ▼
+   local servers   remote servers   …
 ```
 
-## Features
+Try the dashboard with simulated traffic (runs in your browser, no backend): <https://harrisoncn.github.io/mcp-gateway/>
 
-- **Unified API endpoint** — one URL for all your MCP tools, auto-routed by tool name
-- **MCP endpoint for clients** — `/mcp` speaks MCP Streamable HTTP (2025-06-18 / 2025-03-26), so Claude Code, Cursor or any MCP client sees every upstream tool through one server, with the same auth, limits and metrics — including progress notifications, cancellation, logging, completions and resource subscriptions
-- **Every MCP transport** — `stdio`, `streamable-http` (current spec), legacy `sse` (HTTP+SSE) and `websocket` upstream servers, with per-server headers for upstream auth
-- **Automatic reconnect** — crashed or disconnected servers are reconnected with exponential backoff + jitter; state is visible in `/servers`, `/health`, the dashboard and Prometheus
-- **Authentication** — API keys (constant-time compare, storable as `sha256:` digests, with expiry), JWT (HMAC secret, PEM public key or JWKS URL; issuer / audience / exp checks), or no-auth; misconfiguration fails closed
-- **Hardening** — security headers + hash-based CSP, IP allowlist, Host / Origin checks against DNS rebinding, body and argument size limits, brute-force lockout, secret redaction in logs and history, startup security warnings (`mcp-gateway validate --strict`)
-- **Rate limiting** — per-key sliding-window counter, with standard `X-RateLimit-*` headers
-- **Per-key scopes** — restrict an API key (or a JWT via claims) to some servers / tools and give it its own rate limit; enforced on REST and `/mcp`
-- **Concurrency limits** — per-server `maxConcurrency`, queued requests count against `timeout`
-- **Health monitoring** — periodic MCP `ping` health checks with latency (every 30 s, configurable)
-- **Metrics** — Prometheus-compatible `/metrics` endpoint (monotonic counters) + JSON aggregation
-- **Config hot reload** — servers, API keys / auth, rate limits, CORS and reconnect policy apply without a restart (disable with `--no-watch`)
-- **Optional auth for health & metrics** — keep `/health` and `/metrics` public (default) or put them behind auth; the dashboard asks for a key
-- **Tool discovery** — `GET /api/v1/tools` lists all tools across all servers
-- **Resources & prompts** — `resources/*` and `prompts/*` from every server, aggregated on REST and `/mcp`
-- **Persistent audit log** — optional SQLite history (built-in `node:sqlite`, no dependency) queryable via `GET /api/v1/requests` and the dashboard
-- **Tool filtering** — per-server `tools.allow` / `tools.deny` glob patterns hide tools you don't want exposed (and block calls to them)
-- **YAML/JSON config** — simple, declarative configuration with env var overrides
-- **Docker-ready** — official Docker image, Compose examples included
-- **TypeScript SDK** — embed the gateway as a library in your own project
-- **Client libraries** — a dependency-free TypeScript client ([`clients/js`](clients/js), browser + Node) a Kotlin/JVM/Android client ([`clients/kotlin`](clients/kotlin)), and Python, Go and Swift SDKs ([`clients/python`](clients/python), [`clients/go`](clients/go), [`clients/swift`](clients/swift))
-- **LLM tool schemas** — `GET /api/v1/tools?format=openai|anthropic` returns ready-to-use function-calling definitions
+## Quick start
 
-## Quick Start
-
-### Install
+Requires Node.js 22 or newer.
 
 ```bash
-npm install -g @winstonsayno/mcp-gateway
-# or
-npx @winstonsayno/mcp-gateway init
+npx @winstonsayno/mcp-gateway init      # writes mcp-gateway.yml (two example stdio servers)
+npx @winstonsayno/mcp-gateway gen-key   # prints a key for clients + its sha256 digest for the config
 ```
 
-### Configure
-
-```bash
-# Generate a default config file
-mcp-gateway init
-
-# Edit mcp-gateway.yml to add your servers
-```
+Edit `mcp-gateway.yml` — a minimal, authenticated setup:
 
 ```yaml
-# mcp-gateway.yml
+version: 10
+host: 127.0.0.1
 port: 4000
+
+auth:
+  strategy: api-key
+  apiKeys:
+    - sha256:<digest printed by gen-key>
+
+security:
+  dnsRebindingProtection: true   # Host / Origin checks on /mcp and the API
+  authLockout: true              # lock out IPs after repeated failed keys
 
 servers:
   - id: filesystem
@@ -116,1252 +63,186 @@ servers:
     transport: stdio
     command: npx
     args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
-
-  - id: github
-    name: GitHub
-    transport: stdio
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-github"]
-    env:
-      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
 ```
 
-### Run
-
 ```bash
-mcp-gateway start
-# → mcp-gateway listening on http://0.0.0.0:4000
-# → ✓ Filesystem — 8 tools available
-# → ✓ GitHub — 26 tools available
+npx @winstonsayno/mcp-gateway validate --strict   # schema check; exits 2 if there are security warnings
+npx @winstonsayno/mcp-gateway start               # or: npm i -g @winstonsayno/mcp-gateway && mcp-gateway start
 ```
 
-### Call a Tool
+Call it over REST:
 
 ```bash
-# List all available tools
-curl http://localhost:4000/api/v1/tools
-
-# Call a tool (auto-routes to the right server)
+curl -H "Authorization: Bearer $KEY" http://localhost:4000/api/v1/tools
 curl -X POST http://localhost:4000/api/v1/tools/call \
-  -H "Content-Type: application/json" \
-  -d '{"tool": "read_file", "arguments": {"path": "/tmp/hello.txt"}}'
-
-# With authentication
-curl -X POST http://localhost:4000/api/v1/tools/call \
-  -H "Authorization: Bearer your-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{"tool": "create_issue", "server": "github", "arguments": {"title": "Bug report", "body": "..."}}'
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"tool": "read_text_file", "arguments": {"path": "/tmp/hello.txt"}}'
 ```
 
-## Use the gateway as an MCP server (`/mcp`)
-
-The gateway is itself an MCP server: `http://<host>:4000/mcp` implements the
-[Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)
-(protocol `2025-06-18`, `2025-03-26` accepted). Clients get one aggregated, filtered tool list; calls are
-routed to the right upstream server with the gateway's auth, rate limit, `maxConcurrency`, timeouts,
-metrics and request log.
-
-**Claude Code**
+…or point an MCP client at it:
 
 ```bash
-claude mcp add --transport http gateway http://localhost:4000/mcp \
-  --header "Authorization: Bearer your-secret-key"
+claude mcp add --transport http gateway http://localhost:4000/mcp --header "Authorization: Bearer $KEY"
 ```
 
-**Cursor** (`~/.cursor/mcp.json` or `.cursor/mcp.json`)
-
-```json
-{
-  "mcpServers": {
-    "gateway": {
-      "url": "http://localhost:4000/mcp",
-      "headers": { "Authorization": "Bearer your-secret-key" }
-    }
-  }
-}
+```jsonc
+// Cursor: ~/.cursor/mcp.json
+{ "mcpServers": { "gateway": { "url": "http://localhost:4000/mcp", "headers": { "Authorization": "Bearer <key>" } } } }
 ```
 
-**Clients that only speak stdio** (e.g. older Claude Desktop builds) can bridge with
-[`mcp-remote`](https://www.npmjs.com/package/mcp-remote):
-`npx mcp-remote http://localhost:4000/mcp --header "Authorization: Bearer your-secret-key"`.
+stdio-only clients can bridge with [`mcp-remote`](https://www.npmjs.com/package/mcp-remote):
+`npx mcp-remote http://localhost:4000/mcp --header "Authorization: Bearer <key>"`. The dashboard is at
+`http://localhost:4000/dashboard`.
 
-**Any SDK client**
+> `init` writes `host: 0.0.0.0` with auth commented out. Either enable auth or bind to `127.0.0.1` before exposing
+> the port — `validate` and `start` warn when auth is off on a non-loopback address.
 
-```ts
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+### Docker
 
-const client = new Client({ name: 'my-app', version: '1.0.0' });
-await client.connect(new StreamableHTTPClientTransport(new URL('http://localhost:4000/mcp'), {
-  requestInit: { headers: { Authorization: 'Bearer your-secret-key' } },
-}));
-const { tools } = await client.listTools();
+Multi-arch images (`linux/amd64`, `linux/arm64`) are published to GHCR with tags `<version>`, `<major>.<minor>`,
+`<major>` and `latest`. The image runs as the unprivileged `node` user and looks for `/app/mcp-gateway.yml`.
+
+```bash
+docker run -d -p 4000:4000 \
+  -v "$PWD/mcp-gateway.yml:/app/mcp-gateway.yml:ro" \
+  -v mcp-gateway-data:/app/data \
+  -e MCP_GATEWAY_API_KEYS=change-me \
+  ghcr.io/harrisoncn/mcp-gateway:10
 ```
 
-What the endpoint does:
+`MCP_GATEWAY_API_KEYS` (comma-separated, plain or `sha256:<hex>`) turns on API-key auth without editing the file.
+stdio servers run inside the container, which ships Node.js/npm; install anything else (Python, `uvx`, …) in a derived
+image. A Compose example with Prometheus is in [`examples/docker`](examples/docker).
 
-| | |
+### Kubernetes (Helm)
+
+The chart lives in this repository (it is not published to a chart registry):
+
+```bash
+git clone https://github.com/HarrisonCN/mcp-gateway.git && cd mcp-gateway
+kubectl create secret generic gw-secrets --from-literal=MCP_GATEWAY_API_KEYS=change-me
+helm install gw ./deploy/helm/mcp-gateway --set existingSecret=gw-secrets
+```
+
+Gateway config goes in the chart's `config:` value. Pods run non-root with a read-only root filesystem; HPA, PDB,
+`ServiceMonitor` and an optional operator (`McpGateway` CRD) are off by default. Liveness / readiness probes use
+`/api/v1/health/live` and `/api/v1/health/ready`. See the [Kubernetes guide](docs/guides/kubernetes.md).
+
+## Features
+
+**Core gateway**
+- MCP endpoint at `/mcp` (Streamable HTTP; protocol revisions `2025-11-25` back to `2024-11-05`) that aggregates tools,
+  resources and prompts from every upstream, including progress, cancellation, logging, completions and subscriptions.
+- Upstream transports: `stdio`, `streamable-http`, legacy `sse` and `websocket`, with per-server headers / env.
+- REST API under `/api/v1`: tool discovery and calls, resources, prompts, request history, live stats (SSE).
+  `GET /api/v1/tools?format=openai|openai-responses|anthropic` returns function-calling schemas for LLM APIs.
+- Automatic reconnect with backoff and jitter, MCP `ping` health checks, per-server concurrency limits and timeouts,
+  tool allow / deny filters per server.
+- Hot reload of servers, keys, limits and CORS when the config file changes (`start --no-watch` to disable).
+
+**Access control**
+- Auth: API keys (constant-time compare, `sha256:` digests, expiry / disable), JWT (HMAC, PEM or JWKS; issuer /
+  audience / exp checks), OAuth 2.1 resource server per the MCP authorization spec. Misconfiguration fails closed.
+- Per-key scopes (server and tool globs, own rate limit) for keys and JWT claims, enforced on REST and `/mcp`;
+  tenants with roles; sliding-window rate limits; brute-force lockout.
+- Network guards: IP allowlist, Host / Origin checks against DNS rebinding (on by default for a loopback gateway
+  without auth), body and argument size limits, security headers with a hash-based CSP.
+
+**Operations**
+- Prometheus `/api/v1/metrics`, OpenTelemetry tracing, optional SQLite audit log, secret redaction in logs, history
+  and API output.
+- Web dashboard: guided setup, live traffic, latency and errors, server health, tool playground, request history.
+- Liveness / readiness probes, Docker image, Helm chart, Kubernetes operator.
+- CLI: `init`, `validate`, `diff` / `apply` (config against a running gateway), `gen-key` / `hash-key`, `migrate`,
+  `bench`, `conformance` (MCP conformance suite against any Streamable HTTP endpoint), `desktop`, `plugin`, `operator`.
+- Embeddable as a library (`import { Gateway, loadConfig } from '@winstonsayno/mcp-gateway'`).
+
+**Extended modules** — opt-in under `features:` in the config, each documented in [`docs/guides`](docs/guides):
+policy as code and approvals, DLP and prompt-injection sanitising, result and semantic caching, plugins (signed, WASM),
+OpenAI / A2A bridges, control plane / data plane, multi-region, workflows, SLA and cost reporting, and more. These
+are compact implementations with unit tests, but they have seen far less real-world use than the core; read the guide
+and test in your environment before depending on one.
+
+**Experimental (interface-level)**
+- **Confidential computing / TEE attestation** ([guide](docs/guides/confidential.md)): the gateway checks a signed
+  JSON attestation report from a key you trust, plus measurement allowlists and single-use nonces. It does **not**
+  verify native SEV-SNP / TDX / Nitro / SGX evidence or vendor certificate chains, and the report is not bound to the
+  upstream connection — treat it as a hook for an external attestation verifier.
+- **Post-quantum TLS** ([guide](docs/guides/pq-tls.md)): offers hybrid `X25519MLKEM768` key exchange on upstream
+  HTTPS (Streamable HTTP / SSE) connections and can probe what an upstream negotiates. It does not cover the gateway's
+  own listener or WebSocket upstreams, and ML-KEM needs OpenSSL 3.5+.
+
+**Client libraries** — TypeScript ([`clients/js`](clients/js), published as `@winstonsayno/mcp-gateway-client`),
+Kotlin / JVM / Android ([`clients/kotlin`](clients/kotlin)), Python ([`clients/python`](clients/python)),
+Go ([`clients/go`](clients/go)) and Swift ([`clients/swift`](clients/swift)); the non-JS clients are used from source.
+
+## Security posture
+
+The gateway runs tool calls that can read files, call APIs and spend money, so treat it as a privileged service.
+Here is what has and has not been checked:
+
+| Done | Not done |
 |---|---|
-| `POST /mcp` | JSON-RPC: `initialize`, `ping`, `tools/list` (paginated), `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`, `resources/subscribe` / `unsubscribe`, `prompts/list`, `prompts/get`, `logging/setLevel`, `completion/complete`, notifications (incl. `notifications/cancelled`). Batches are accepted. Responses are `application/json`; a single `tools/call` with `_meta.progressToken` switches to an SSE reply when the upstream reports progress (`notifications/progress`, then the result). |
-| `GET /mcp` | SSE stream for server→client notifications: `notifications/tools/list_changed`, `notifications/resources/list_changed` and `notifications/prompts/list_changed` are sent when the aggregated list a session sees changes (a server announces changes, connects, is removed by hot reload, …); `notifications/resources/updated` for subscribed URIs; upstream `notifications/message` at or above the session's `logging/setLevel` level (`logger` = `<serverId>/<logger>`). |
-| Resources & prompts | Resource URIs are passed through unchanged; when two servers list the same URI the lowest server id wins. `resources/read` is routed by exact URI, then by resource template, then to the only server with resources. Prompt names follow `toolNaming` like tools. `resources/subscribe` is routed the same way; sessions share one upstream subscription per URI, restored after reconnects. `completion/complete` is routed by prompt name or resource template. |
-| `DELETE /mcp` | Ends the session. |
-| Sessions | `initialize` returns `Mcp-Session-Id`; later requests must send it (`400` if missing, `404` if unknown or expired). A session is bound to the API key / JWT subject that created it. Idle sessions expire after `mcp.sessionIdleTimeoutSeconds`. |
-| Tool names | `toolNaming: auto` (default) keeps a tool's name unless two servers expose the same name; then every copy becomes `<serverId>__<tool>`. `prefix` always uses `<serverId>__<tool>`. Ordering is deterministic (server id, then tool name). In `auto` mode the prefixed form is also accepted by `tools/call`. |
-| Errors | Unknown tool / bad params → JSON-RPC `-32602`; rate limit → `-32029` with `data.retryAfter`; server offline or timed out → a normal result with `isError: true` (so the model sees it); upstream JSON-RPC errors are forwarded unchanged; cancelled → `-32800`. |
-| Cancellation | `notifications/cancelled` (or the client dropping the HTTP request) cancels the upstream call, which receives its own `notifications/cancelled`. |
-| Security | Same `auth` as the REST API (`Authorization: Bearer …` or `X-API-Key`). Requests with an `Origin` header are rejected (`403`) unless it matches `mcp.allowedOrigins` (default: `cors.origins`) — set this when the gateway listens on a reachable address. |
+| [Threat model](docs/security/threat-model.md) with trust boundaries, known limitations and per-release audit findings (10.1, 10.2) | No independent third-party security audit |
+| CodeQL and OpenSSF Scorecard on every push to `main`; `npm audit --audit-level=high` blocks CI (currently clean) | No continuous / coverage-guided fuzzing — randomized testing is limited to fast-check property tests |
+| Property tests (fast-check) for config parsing, JSON-RPC framing, argument limits, JWT / bearer, Host and SAN parsing | The extended modules and experimental features above have not had the same review depth as the core |
+| Authorization matrix: every `/api/v1/admin/*` route answers 401 / 403 for unauthenticated and non-operator callers | The gateway does not sandbox stdio servers — they run as the gateway's OS user |
 
-## API Reference
+Things to know before deploying:
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/v1/health` | Gateway health and server summary |
-| `GET` | `/api/v1/servers` | List all registered servers |
-| `GET` | `/api/v1/servers/:id` | Get server details and tools |
-| `GET` | `/api/v1/tools` | List all tools (filterable by `?server=` or `?tag=`; `?format=openai\|openai-responses\|anthropic` for LLM schemas) |
-| `POST` | `/api/v1/tools/call` | Invoke a tool |
-| `POST` | `/api/v1/servers/:id/reconnect` | Reconnect a server now (resets backoff) |
-| `GET` | `/api/v1/health/live` | Liveness probe — always public, returns only `{"status":"ok"}` |
-| `GET` | `/api/v1/health/ready` | Readiness probe — always public; `200` when servers are ready, else `503` (`?min=N`) |
-| `GET` | `/api/v1/metrics` | Aggregated metrics (JSON or Prometheus) |
-| `GET` | `/api/v1/resources` | Resources of all servers (`?server=`), duplicate URIs collapsed |
-| `GET` | `/api/v1/resources/templates` | Resource templates (`?server=`) |
-| `POST` | `/api/v1/resources/read` | Read a resource: `{"uri": "...", "server"?: "..."}` |
-| `GET` | `/api/v1/prompts` | Prompts of all servers (`?server=`) |
-| `POST` | `/api/v1/prompts/get` | Get a prompt: `{"name": "...", "server"?: "...", "arguments"?: {...}}` |
-| `GET` | `/api/v1/requests` | Request history, newest first (`?limit=` max 500, `server`, `tool`, `client`, `success`, `via`, `kind`, `since`, `until`, `cursor`) |
-| `GET` | `/api/v1/stats` | Live dashboard data: time series (count, errors, p50/p95 per bucket), summary, top tools, per-server and per-key usage (`?window=`, `?bucket=` ms) |
-| `GET` | `/api/v1/events` | Server-Sent Events: a `request` event per call, a `snapshot` (health + summary) every 2 s |
-| `POST` `GET` `DELETE` | `/mcp` | MCP Streamable HTTP endpoint (see [above](#use-the-gateway-as-an-mcp-server-mcp)) |
+- **Operators are root-equivalent.** Any unrestricted client can change config, including which commands stdio
+  servers run. Give end users scoped keys or tenant roles.
+- **Auth is off by default.** Turn it on (`auth.strategy`, or `MCP_GATEWAY_API_KEYS`), or bind to loopback.
+- `mcp-gateway validate --strict` fails on security warnings; `GET /api/v1/security` reports the running posture.
+- stdio servers do not inherit `MCP_GATEWAY_*` variables, so third-party servers can't read the gateway's own keys.
 
-`/health` and `/metrics` are unauthenticated by default; set `auth.protect.health` / `auth.protect.metrics`
-to require auth for them too (`/health/live` and `/health/ready` always stay public for Docker / Kubernetes probes).
-Every other route requires auth when it is enabled.
-`/metrics` returns JSON by default (`?window=<ms>`); with `monitor.prometheus: true` it returns the
-Prometheus text format when the client asks for `text/plain` (as Prometheus does) or passes `?format=prometheus`.
+Hardening checklist: [SECURITY.md](SECURITY.md) and [docs/deployment.md](docs/deployment.md#security-checklist).
+Report vulnerabilities privately via
+[GitHub security advisories](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new), not in public issues.
 
-### LLM tool schemas
+## Supported versions
 
-`GET /api/v1/tools?format=openai` (Chat Completions), `openai-responses` (Responses API) or `anthropic` (Messages API)
-returns the tools the caller may use as function-calling definitions, plus a `mapping` from each LLM tool
-name back to the gateway server and tool:
-
-```json
-{
-  "format": "anthropic",
-  "tools": [{ "name": "github__create_issue", "description": "…", "input_schema": { "type": "object", "properties": { … } } }],
-  "mapping": { "github__create_issue": { "server": "github", "tool": "create_issue" } },
-  "total": 1
-}
-```
-
-Pass `tools` straight to the provider; when the model calls a tool, look it up in `mapping` and
-`POST /api/v1/tools/call` with that `server` / `tool` (the clients' `callLlmTool()` does this).
-Names follow `mcp.toolNaming`, are sanitised to `^[a-zA-Z0-9_-]{1,64}$` and de-duplicated; `$schema` is stripped and
-`parameters` is always an object schema. Scopes and `?server=` / `?tag=` filters apply.
-
-### Client libraries
-
-| | |
+| Version | Status |
 |---|---|
-| **TypeScript / JavaScript** — [`clients/js`](clients/js) | `@winstonsayno/mcp-gateway-client`: zero dependencies, `fetch`-based (browser, Node 18+, Deno, Bun, React Native), typed `health`, `servers`, `listTools`, `toolSchemas`, `callTool`, `callLlmTool`, plus a small MCP-over-`/mcp` session helper |
-| **Kotlin / JVM / Android** — [`clients/kotlin`](clients/kotlin) | OkHttp + kotlinx.serialization, Java 11 bytecode; same API surface, `McpSession` for `/mcp` |
-| **Python** — [`clients/python`](clients/python) | `mcp-gateway-client`: stdlib only, Python ≥ 3.9, typed `health`, `list_tools`, `tool_schemas`, `call_tool`, `call_llm_tool`, approvals, `GatewayError.is_policy_error` |
-| **Go** — [`clients/go`](clients/go) | `github.com/HarrisonCN/mcp-gateway/clients/go`: `net/http` only, Go ≥ 1.21, context-aware, `*mcpgateway.Error` with `IsPolicyError()` |
-| **Swift** — [`clients/swift`](clients/swift) | SwiftPM `MCPGateway`: async/await, `URLSession` (pluggable transport), macOS 12 / iOS 15 / Linux |
+| 10.x (LTS) | Bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |
+| < 10.0 | Unsupported — upgrade with `mcp-gateway migrate --to 10` ([guide](docs/guides/migrating-to-v10.md)) |
 
-Both are in this repository and not yet published to npm / Maven Central.
-
-`POST /api/v1/tools/call` responses:
-
-| Status | Meaning |
-|--------|---------|
-| `200` | Tool returned a result |
-| `400` | Invalid body (`tool` must be a string, `arguments` an object) or malformed JSON |
-| `403` | The tool is hidden by the server's `tools` filter (also when `"server"` is passed explicitly), or outside the caller's scope |
-| `404` | Unknown tool or server |
-| `409` | Tool name is exposed by several servers — pass `"server"` to choose |
-| `429` | Rate limited (see `Retry-After`) |
-| `502` | The MCP server returned an error |
-| `503` | Server is not connected (body has `status`, e.g. `reconnecting`; `Retry-After` when a retry is scheduled) |
-| `504` | The MCP server did not answer within `timeout` |
-
-## Configuration Reference
-
-```yaml
-port: 4000                    # HTTP port (env: MCP_GATEWAY_PORT)
-host: 0.0.0.0                 # Bind address (env: MCP_GATEWAY_HOST)
-logLevel: info                # debug | info | warn | error
-
-auth:
-  strategy: api-key           # none | api-key | jwt | oauth2 (OAuth 2.1 resource server, see docs/configuration.md)
-  apiKeys:
-    - "your-secret-key"       # full access
-    - "sha256:…"              # a key stored as its digest (mcp-gateway gen-key / hash-key)
-    - key: "${APP_KEY}"       # scoped key (see "Per-key scopes")
-      name: app
-      expiresAt: "2027-01-01" # optional expiry; disabled: true switches a key off
-      scope:
-        servers: ["github"]
-        tools: ["read_*"]
-        rateLimit: { limit: 30, windowSeconds: 60 }
-  protect:
-    health: false             # true → /api/v1/health requires auth
-    metrics: false            # true → /api/v1/metrics requires auth (configure your scraper)
-
-reconnect:                    # automatic reconnect of crashed / disconnected servers
-  enabled: true
-  initialDelayMs: 1000        # first retry delay
-  maxDelayMs: 60000           # backoff cap
-  multiplier: 2               # delay *= multiplier after each failure
-  jitter: 0.2                 # ±20 % randomisation
-  maxAttempts: 0              # 0 = retry forever; else give up (status: offline)
-
-health:
-  intervalMs: 30000           # MCP ping interval
-controlPlane:
-  dashboard: true             # serve /dashboard
-
-rateLimit:
-  limit: 100                  # Max requests per window
-  windowSeconds: 60           # Window duration
-  perKey: true                # Per-key or global
-
-monitor:
-  requestLog: true            # Log all requests
-  prometheus: true            # Enable Prometheus /metrics
-  retentionHours: 24          # Metrics retention
-
-security:                     # hardening (see docs/configuration.md#security)
-  authLockout: true           # 429 for IPs with repeated auth failures
-  # dnsRebindingProtection: true  # default: on for a loopback gateway without auth (10.2)
-  ipAllowlist: ["10.0.0.0/8"]
-  maxToolArgumentsBytes: 262144
-
-cors:
-  origins:
-    - "https://your-app.com"
-
-audit:                        # persistent request history (SQLite, Node 22.5+; default off)
-  enabled: false
-  path: mcp-gateway-audit.db
-  retentionDays: 30           # 0 = keep forever
-
-mcp:                          # downstream MCP endpoint (Streamable HTTP)
-  enabled: true               # restart required to change
-  path: /mcp                  # restart required to change; not "/" or under /api, /dashboard
-  toolNaming: auto            # auto | prefix  ("<serverId>__<tool>")
-  pageSize: 500               # tools per tools/list page
-  sessionIdleTimeoutSeconds: 1800
-  maxSessions: 1000           # least recently used idle session is evicted beyond this
-  # allowedOrigins: ["https://your-app.com"]   # browser origins allowed on /mcp (default: cors.origins)
-  # instructions: "Tools for the ACME workspace"  # returned from initialize
-
-servers:
-  - id: my-server             # Unique identifier
-    name: My Server           # Display name
-    transport: stdio          # stdio | streamable-http | sse | websocket
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
-    env:
-      MY_VAR: "${ENV_VAR}"    # Environment variable substitution
-    tags: [files, local]
-    enabled: true
-    timeoutMs: 30000          # ms, includes time queued behind maxConcurrency (schema v4: timeout)
-    maxConcurrency: 10        # max in-flight tool calls for this server
-    tools:                    # optional: expose only some tools (globs: * and ?, deny wins)
-      allow: ["read_*", "list_*"]
-      deny: ["*_secret"]
-    reconnect:                # optional per-server override of the reconnect block
-      maxAttempts: 5
-
-  - id: remote
-    name: Remote server
-    transport: streamable-http   # MCP 2025-03-26+ (POST + optional SSE responses, Mcp-Session-Id)
-    url: https://mcp.example.com/mcp
-    headers:
-      Authorization: "Bearer ${REMOTE_MCP_TOKEN}"   # ${VAR} expanded from the gateway's env
-
-  - id: legacy
-    name: Legacy SSE server
-    transport: sse            # MCP 2024-11-05 HTTP+SSE (GET stream + POST to the announced endpoint)
-    url: http://localhost:8080/sse
-
-  - id: socket
-    name: WebSocket server
-    transport: websocket      # one JSON-RPC message per frame, "mcp" subprotocol
-    url: ws://localhost:8081
-    subprotocol: mcp          # "" to request no subprotocol
-```
-
-### Hot reload
-
-With `mcp-gateway start` the config file is watched (disable with `--no-watch`). On save:
-
-| Applied immediately | Needs a restart |
-|---------------------|-----------------|
-| `servers` (added / changed / removed / disabled) | `port`, `host` |
-| `auth` (strategy, keys, JWT secret, `protect`) | `monitor.retentionHours` |
-| `rateLimit` (counters reset when it changes) | `health.intervalMs` |
-| `cors.origins`, `monitor.requestLog`, `monitor.prometheus` | `dashboard` |
-| `reconnect`, `logLevel` | `mcp.enabled`, `mcp.path`, `audit` |
-| `mcp.toolNaming`, `mcp.pageSize`, session limits, `mcp.allowedOrigins` | |
-
-An invalid file is rejected and the running config is kept. `MCP_GATEWAY_*` env overrides keep precedence.
-
-### Per-key scopes
-
-Give each app its own key and only the tools it needs. Plain string keys keep full access;
-object entries can be restricted (all fields except `key` are optional):
-
-```yaml
-auth:
-  strategy: api-key
-  apiKeys:
-    - "admin-key"                       # unrestricted
-    - key: ${AURA_GATEWAY_KEY}          # ${VAR} is expanded in object keys
-      name: aura                        # client id "key:aura" in logs, metrics and sessions (unique)
-      scope:
-        servers: ["github", "fs-*"]       # server id globs
-        tools: ["read_*", "github/create_issue"]   # tool globs; "server/tool" when the pattern has a "/"
-        rateLimit: { limit: 30, windowSeconds: 60 } # own bucket instead of the global rateLimit
-```
-
-- A tool must pass the server's own `tools` filter **and** the key's `servers` **and** `tools` lists.
-  An absent list means no restriction; an empty list allows nothing.
-- **Discovery hides** what a key may not use: `GET /tools`, `GET /servers`, `GET /servers/:id` (→ `404`), `/mcp` `tools/list`.
-- **Calls are refused**: `POST /tools/call` and `POST /servers/:id/reconnect` → `403`; `/mcp` `tools/call` → JSON-RPC error `-32003`.
-  Auto-routing only considers servers the key may use, so a name that collides elsewhere can still be called without `"server"`.
-- On `/mcp`, collision prefixes are computed from what the key can see (a key scoped to one server sees bare names).
-- Restricted keys only see their own entries in `GET /requests`.
-- **JWT**: put globs in the `mcp_servers` / `mcp_tools` claims (array, or a space/comma-separated string), e.g.
-  `{"sub": "user-1", "mcp_servers": ["github"], "mcp_tools": "read_* github/create_issue"}`. A malformed claim allows nothing.
-- Hot reloadable: changing scopes applies to the next request; open `/mcp` sessions get `notifications/tools/list_changed`,
-  and sessions of removed keys are closed.
-
-### Resources & prompts
-
-Servers that announce the `resources` / `prompts` capabilities have their resources, resource templates and
-prompts listed at connect time (and refreshed on `notifications/*/list_changed`). They are available on REST
-(`/api/v1/resources`, `/resources/templates`, `/resources/read`, `/prompts`, `/prompts/get`) and on `/mcp`.
-Reads and gets are forwarded live with the server's `timeout`, counted against the rate limit and recorded in
-metrics / history with `kind: "resource"` or `"prompt"`. Key scopes apply by **server** (`servers` globs);
-`tools` globs and `servers[].tools` filters only concern tools.
-
-```bash
-curl -s localhost:4000/api/v1/resources
-curl -s -X POST localhost:4000/api/v1/resources/read -H 'content-type: application/json' -d '{"uri":"file:///notes/todo.md"}'
-curl -s -X POST localhost:4000/api/v1/prompts/get -H 'content-type: application/json' \
-  -d '{"name":"review-code","server":"github","arguments":{"pr":"42"}}'
-```
-
-### Persistent audit log
-
-By default request history lives in memory (`monitor.retentionHours`). Enable the audit log to keep it in SQLite
-across restarts:
-
-```yaml
-audit:
-  enabled: true
-  path: ./data/mcp-gateway-audit.db   # default mcp-gateway-audit.db (WAL mode)
-  retentionDays: 30                   # pruned hourly; 0 = keep forever
-```
-
-- Uses Node's built-in [`node:sqlite`](https://nodejs.org/api/sqlite.html) (**Node 22.5+**): no extra dependency and
-  nothing native to compile. Node 22.0–22.4 refuses to start with `audit.enabled: true` and says why. Node may
-  print an `ExperimentalWarning` for `node:sqlite`.
-- Only metadata is stored: time, server, tool / URI / prompt, kind, duration, success, error message, client id, `via`
-  (`rest` / `mcp`). Arguments and results are never stored.
-- `GET /api/v1/requests` then reads from the database (`"source": "audit"`) and supports filters
-  (`server`, `tool`, `client`, `success=true|false`, `via=rest|mcp`, `kind=tool|resource|prompt`, `since` / `until` as ISO
-  or epoch ms) and paging (`nextCursor` → `?cursor=`). Restricted keys only ever see their own records.
-  The dashboard's *Request History* panel has the same filters and a *Load older* button.
-- Library users can plug in any store: `metrics.setAuditStore(myStore)` with the `AuditStore` interface.
-- Changing `audit` requires a restart.
-
-### Tool filtering
-
-Expose only part of a server's tools — e.g. make a filesystem server read-only, or drop tools that
-clash with another server's names:
-
-```yaml
-servers:
-  - id: filesystem
-    name: Filesystem (read-only)
-    transport: stdio
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "/data"]
-    tools:
-      allow: ["read_*", "list_*", "search_files", "get_file_info"]
-      deny: ["*_media_file"]
-```
-
-- Patterns are globs matched against the whole tool name, case-sensitive: `*` = any characters, `?` = one character.
-- A tool is exposed when it matches an `allow` pattern (or `allow` is absent / empty) **and** no `deny` pattern. Deny wins.
-- Hidden tools are absent from `GET /tools`, `GET /servers/:id`, tool counts and metrics, and don't cause
-  name conflicts with other servers. Calling one returns `404` (auto-routing) or `403` (explicit `"server"`).
-- The filter is applied to every tool list, including updates via `notifications/tools/list_changed`.
-  Changing it in the config file is applied by hot reload (the server is reconnected).
-
-### Reconnect & server status
-
-Each server's `health.status` is one of `online`, `degraded` (connected, but the health ping failed),
-`reconnecting` (lost — a retry is scheduled or running), `offline` (gave up, or reconnect disabled) or `unknown`.
-`GET /api/v1/servers/:id` also returns `health.reconnect` (`state`, `attempt`, `nextAttemptAt`, `lastError`,
-`reconnects`) and `session` (`transport`, negotiated `protocolVersion`, `serverInfo`, `connectedAt`).
-
-Prometheus series added: `mcp_gateway_server_up`, `mcp_gateway_server_status{status=…}`,
-`mcp_gateway_server_reconnects_total`, `mcp_gateway_server_reconnect_attempt`, `mcp_gateway_server_ping_ms`.
-
-## Docker
-
-```bash
-# Pull and run
-docker run -p 4000:4000 \
-  -v $(pwd)/mcp-gateway.yml:/app/mcp-gateway.yml \
-  -e GITHUB_TOKEN=ghp_... \
-  ghcr.io/harrisoncn/mcp-gateway:latest
-
-# Or with Docker Compose (gateway + Prometheus; see examples/docker)
-cd examples/docker
-GATEWAY_API_KEY=change-me docker compose up
-```
-
-The image's `HEALTHCHECK` uses the always-public `/api/v1/health/live`, so it keeps working when
-`auth.protect.health` is on.
-
-### Liveness vs. readiness (Kubernetes, load balancers)
-
-| Probe | Answers | Use it for |
-|-------|---------|------------|
-| `GET /api/v1/health/live` | always `200 {"status":"ok"}` while the process serves HTTP | restart a hung container |
-| `GET /api/v1/health/ready` | `200` when the upstream servers are ready, otherwise `503` | only route traffic to gateways that can serve tool calls |
-
-A server counts as ready when it is enabled, connected and not `degraded` (failing health pings).
-By default **every** enabled server must be ready; `?min=N` requires at least `N` instead (useful when
-some servers are optional). With no servers configured the gateway is ready. While shutting down it
-answers `503 {"status":"shutting_down"}` so load balancers drain it first. The body only carries counts:
-
-```json
-{ "status": "not_ready", "servers": { "ready": 1, "total": 2, "required": 2 } }
-```
-
-```yaml
-# Kubernetes
-livenessProbe:
-  httpGet: { path: /api/v1/health/live, port: 4000 }
-readinessProbe:
-  httpGet: { path: /api/v1/health/ready, port: 4000 }   # or /api/v1/health/ready?min=1
-  periodSeconds: 10
-```
-
-## Dashboard
-
-Open `http://localhost:4000/dashboard`. The first visit opens a short guided setup: connect with an API key,
-see the upstream servers, call a tool from a form generated from its JSON schema, and copy a ready-made
-config for Claude Desktop, Cursor, Claude Code, the JS / Kotlin clients or curl. Reopen it any time with the
-**?** button. After that the dashboard shows live request rate, p50 / p95 latency, error rate, top tools,
-usage per key, a live request stream, server health (with reconnect) and the filterable request history.
-It is one static file with no build step and no CDN; English / 中文, dark / light, and it works on phones.
-
-![Dashboard overview](docs/images/dashboard-overview.png)
-
-When auth is enabled the key is kept in the browser tab (`sessionStorage`, or `localStorage` with
-“remember”) and sent as `Authorization: Bearer …` on every API call. The page itself contains no data; set
-`dashboard.enabled: false` to stop serving it. See [dashboard/README.md](dashboard/README.md).
-
-## Embed as a Library
-
-```typescript
-import { Gateway, loadConfig } from '@winstonsayno/mcp-gateway';
-
-const config = await loadConfig('./mcp-gateway.yml');
-const gateway = new Gateway(config);
-
-await gateway.start();
-// Gateway is now running at http://localhost:4000
-
-// Graceful shutdown
-process.on('SIGTERM', () => gateway.stop());
-```
+The project follows [Semantic Versioning](https://semver.org/). Within 10.x the REST API under `/api/v1`, `/mcp`
+behaviour, config schema v10, CLI commands and flags, root library exports and Prometheus metric names change only
+in backward-compatible ways. Deep imports, log format, the dashboard and the audit database schema are not covered —
+see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
 ## What's New in v10.2
 
-| Change | |
-|--------|---|
-| **Test depth** | fast-check property / fuzz tests, admin authorization matrix over every `/api/v1/admin/*` route, DNS-rebinding / Origin / body-size / redaction regression tests |
-| **Fixes found** | replica secrets in `GET /servers`; loopback gateway without auth now protected against DNS rebinding and drive-by requests by default; URL credentials in `GET /admin/config`; deep-nesting redaction; config `TypeError` on non-array sections |
-
-## What's New in v10.1
-
-| Change | |
-|--------|---|
-| **Security baseline** | [threat model](docs/security/threat-model.md); stdio upstreams no longer see `MCP_GATEWAY_*` secrets; tenant owners can't enrol operators / globs; mTLS fails closed; strict SPIFFE SAN parsing |
-| **CI** | CodeQL, OpenSSF Scorecard, blocking `npm audit --audit-level=high` |
-
-## What's New in v10.0
-
-| Change | |
-|--------|---|
-| **Schema v10** | `version: 10` only; feature sections move under `features:` — run `mcp-gateway migrate --to 10` ([guide](docs/guides/migrating-to-v10.md)) |
-| **Unified kernel** | `GET /api/v1/admin/kernel`: schema, modules, call-hook pipeline, configured sections |
-| **LTS** | 10.x is long-term support: active until 2027-10-31, security fixes until 2028-10-31 |
-| **Roadmap** | 10.1 → 11.0 in [docs/ROADMAP.md](docs/ROADMAP.md) |
-
-## What's New in v9.9
-
-| Change | |
-|--------|---|
-| **Schema v10 preview** | `version: 10` nests feature sections under `features` — `mcp-gateway migrate --to 10` ([guide](docs/guides/migrating-to-v10.md)) |
-| **Deprecations** | schema v9 and top-level feature sections (removed in 10.0) |
-
-## What's New in v9.8
-
-| Feature | |
-|---------|---|
-| **Ecosystem marketplace GA** | Moderated plugin / tool catalogue: review queue, ratings and reviews, verified publishers — [guide](docs/guides/ecosystem.md) |
-
-## What's New in v9.7
-
-| Feature | |
-|---------|---|
-| **Post-quantum TLS** | Hybrid X25519MLKEM768 key exchange for upstream HTTPS, PQ probes and a certificate policy — [guide](docs/guides/pq-tls.md) |
-
-## What's New in v9.6
-
-| Feature | |
-|---------|---|
-| **Self-healing** | Automatic eject / failover, rollback and throttling of unhealthy upstreams, lifted after a cool-down — [guide](docs/guides/self-healing.md) |
-
-## What's New in v9.5
-
-| Feature | |
-|---------|---|
-| **SLA monitoring** | Availability / p95 objectives per server and tenant, error budgets, breaches and credit reports (JSON / CSV) — [guide](docs/guides/sla.md) |
-
-## What's New in v9.4
-
-| Feature | |
-|---------|---|
-| **Global tool registry** | Signed, immutable tool manifests; search, cross-gateway mirrors and version pins — [guide](docs/guides/tool-registry.md) |
-
-## What's New in v9.3
-
-| Feature | |
-|---------|---|
-| **Confidential computing** | Sensitive servers get calls only from a remotely attested TEE (SEV-SNP, TDX, Nitro, SGX) — [guide](docs/guides/confidential.md) |
-
-## What's New in v9.2
-
-| Feature | |
-|---------|---|
-| **Edge WASM runtime 2.0** | WebAssembly tools on any (edge) gateway: warm pool, SHA-256 pins, time / memory / concurrency quotas — [guide](docs/guides/edge-runtime.md) |
-
-## What's New in v9.1
-
-| Feature | |
-|---------|---|
-| **Multimodal tools** | MIME policy, size limits and chunked streaming (with `Range`) for image / audio / blob results — [guide](docs/guides/multimodal.md) |
-
-## What's New in v9.0
-
-| Change | |
-|--------|---|
-| **Schema v9** | `version: 9` only; `store: { backend, … }` replaces `state` — run `mcp-gateway migrate --to 9` ([guide](docs/guides/migrating-to-v9.md)) |
-| **Event-sourced store** | `store.backend: eventlog` — append-only log + snapshots; rate limits, lockouts and sessions survive restarts ([guide](docs/guides/event-sourced-store.md)) |
-| **Roadmap** | 9.1 → 10.0 in [docs/ROADMAP.md](docs/ROADMAP.md) |
-
-## What's New in v8.9
-
-| Change | |
-|--------|---|
-| **`migrate --to 9`** | Schema v9 preview: `store` replaces `state`; schema v8 and `state` deprecated (removed in 9.0) — [guide](docs/guides/migrating-to-v9.md) |
-| **Fix** | Chaos steady-state guard now aborts error-only experiments |
-
-## What's New in v8.8
-
-| Feature | |
-|---------|---|
-| **Chaos testing** | Time-boxed latency / error / timeout / corruption injection with a steady-state guard — [guide](docs/guides/chaos.md) |
-
-## What's New in v8.7
-
-| Feature | |
-|---------|---|
-| **Config assistant** | Plain-words config changes → validated patch and diff, applied on confirm; optional LLM — [guide](docs/guides/config-assistant.md) |
-
-## What's New in v8.6
-
-| Feature | |
-|---------|---|
-| **Data lineage** | Which tool output fed which tool input — graph per call, trace by value, OpenLineage export — [guide](docs/guides/data-lineage.md) |
-
-## What's New in v8.5
-
-| Feature | |
-|---------|---|
-| **Blue/green upgrades** | Probed atomic switch between upstream versions, in-flight drain, auto-rollback — [guide](docs/guides/blue-green.md) |
-
-## What's New in v8.4
-
-| Feature | |
-|---------|---|
-| **Cost advisor** | Quantified savings from live traffic: caching, failing tools, cheaper upstreams, budgets — [guide](docs/guides/cost-advisor.md) |
-
-## What's New in v8.3
-
-| Feature | |
-|---------|---|
-| **Collaborative debugging** | Shared live sessions: call stream (SSE), breakpoints, edit / resume / abort, notes, replay — [guide](docs/guides/debug-sessions.md) |
-
-## What's New in v8.2
-
-| Feature | |
-|---------|---|
-| **A2A federation** | Discover remote A2A agents and gateways, use their skills, forward tasks with shared audit — [guide](docs/guides/a2a-federation.md) |
-
-## What's New in v8.1
-
-| Feature | |
-|---------|---|
-| **Agent identities** | Each AI agent gets its own identity, tool scope and allowed delegators |
-| **Delegated auth** | Users delegate a narrow, short-lived slice of access; sub-agent `act` chains; -32019 for agent-only tools — [guide](docs/guides/agent-identity.md) |
-
-## What's New in v8.0
-
-| Change | |
-|--------|---|
-| **Plugin API v5 only** | JS (`apiVersion: 5`) and WASM (`component:`) plugins share one WIT-defined contract |
-| **Schema v8** | `version: 7`, `plugins[].wasm` and plugin API v4 removed — [migrating to 8.0](docs/guides/migrating-to-v8.md) |
-| **No deprecations** | Clean slate for the 8.x line — [roadmap 8.1 → 9.0](docs/ROADMAP.md) |
-
-## What's New in v7.9
-
-| Change | |
-|--------|---|
-| **Plugin API v5 preview** | JS and WASM plugins share one WIT-defined contract (`{ action }` outcomes) |
-| **Component plugins** | `plugins[].component` — canonical-ABI WASM plugins built with any component toolchain |
-| **`migrate --to 8`** | Schema v8; `plugins[].wasm`, plugin API v4 and schema v7 deprecated (removed in 8.0) — [guide](docs/guides/migrating-to-v8.md) |
-
-## What's New in v7.8
-
-| Feature | |
-|---------|---|
-| **Scheduled evidence bundles** | SOC 2, ISO/IEC 27001 and GDPR reports written on a schedule with a SHA-256 manifest |
-| **ISO 27001 mapping** | Annex A controls backed by DLP, sanitisation, approval flows, rollouts — [guide](docs/guides/compliance-reports.md) |
-
-## What's New in v7.7
-
-| Feature | |
-|---------|---|
-| **Multi-step approvals** | Ordered steps with named approvers, quorums and argument conditions (`amount >= 10000`) |
-| **Escalation & inbox** | Escalate to more approvers after a delay; approvers work from their own inbox — [guide](docs/guides/approval-flows.md) |
-
-## What's New in v7.6
-
-| Feature | |
-|---------|---|
-| **`mcp-gateway desktop`** | Import Claude Desktop / Cursor / Windsurf / VS Code servers into a loopback profile |
-| **Offline mode** | Remote upstreams fail fast (-32018) offline, local tools and policies keep working — [guide](docs/guides/offline.md) |
-
-## What's New in v7.5
-
-| Feature | |
-|---------|---|
-| **Gradual rollout** | Sticky % canaries per server, beta client lists, promote / rollback at runtime |
-| **Auto rollback** | Canary error rate over a window rolls it back to 0 % — [guide](docs/guides/rollouts.md) |
-
-## What's New in v7.4
-
-| Feature | |
-|---------|---|
-| **Semantic cache** | Paraphrased / reordered queries answered from earlier results, tenant-isolated, exact match on non-text args |
-| **Embeddings** | Offline `local` or any OpenAI-compatible API — [guide](docs/guides/semantic-cache.md) |
-
-## What's New in v7.3
-
-| Feature | |
-|---------|---|
-| **Output sanitisation** | Hidden Unicode, ANSI, HTML blocks and exfiltration images stripped from tool results |
-| **Injection defence** | Flag / mark / block injected results, spotlighting, inbound blocking (-32017) — [guide](docs/guides/sanitize.md) |
-
-## What's New in v7.2
-
-| Feature | |
-|---------|---|
-| **Organisations & plans** | `console.plans` with servers and daily call limits; onboarding, suspension, offboarding over the API |
-| **-32016** | Refusal for suspended organisations or exhausted daily limits — [guide](docs/guides/console.md) |
-
-## What's New in v7.1
-
-| Feature | |
-|---------|---|
-| **Terraform** | `restapi_object` resources for servers, tenants and API keys; hot-applied, `ETag` / `If-Match`, dry run |
-| **Adopt with one command** | `GET /api/v1/admin/terraform/export` writes `main.tf` with `import` blocks — [guide](docs/guides/terraform.md) |
-
-## What's New in v7.0
-
-⚠ Breaking release — read [Migrating to 7.0](docs/guides/migrating-to-v7.md). On 6.9: `npx @winstonsayno/mcp-gateway@6.9 migrate --write`.
-
-| Change | What to do |
-|--------|------------|
-| **Config schema v7** | `version: 7` only — `mcp-gateway migrate --to 7` (6.9) rewrites your file |
-| **`admin` / `dashboard` → `controlPlane`** | Moved by `migrate --to 7` |
-| **Control plane / data plane** | `controlPlane.role: control` on one gateway, `role: data` + `url` + `token` on the rest — [guide](docs/guides/control-plane.md) |
-
-## What's New in v6.9
-
-| Feature | Description |
-|---------|-------------|
-| **`migrate --to 7`** | Moves `admin` / `dashboard` under `controlPlane`, keeps comments |
-| **Deprecations** | Schema v6, `admin`, `dashboard` — all removed in 7.0 |
-
-## What's New in v6.8
-
-| Feature | Description |
-|---------|-------------|
-| **Helm chart** | Hardened Deployment, HPA, PDB, ServiceMonitor, optional operator |
-| **Operator** | `McpGateway` resources reconciled with server-side apply and status |
-
-## What's New in v6.7
-
-| Feature | Description |
-|---------|-------------|
-| **Usage metering** | Calls, tokens and duration per tenant, per month, per tool |
-| **Invoices** | Price book, discounts, minimums, tax; JSON or CSV |
-
-## What's New in v6.6
-
-| Feature | Description |
-|---------|-------------|
-| **Abuse detection** | Bursts vs baseline, error spikes, tool enumeration; optional quarantine |
-| **Injection scoring** | Weighted prompt-injection signals on arguments and results |
-
-## What's New in v6.5
-
-| Feature | Description |
-|---------|-------------|
-| **Policy simulation** | Replay history against a candidate policy; see who and what would be denied |
-| **Shadow policies** | Evaluate a second policy on live traffic without enforcing it |
-
-## What's New in v6.4
-
-| Feature | Description |
-|---------|-------------|
-| **SCIM 2.0** | Okta / Entra provision users and groups (filters, PATCH, group members) |
-| **OIDC SSO** | ID-token verification, PKCE login URL, IdP groups → tenant roles |
-
-## What's New in v6.3
-
-| Feature | Description |
-|---------|-------------|
-| **GenAI semconv** | `execute_tool` / `chat` spans with `gen_ai.*` attributes and token usage |
-| **GenAI metrics** | Operation duration and token usage histograms, OTLP push or pull |
-
-## What's New in v6.2
-
-| Feature | Description |
-|---------|-------------|
-| **Workflow DAGs** | Nodes with dependencies run in parallel; conditions, retries, continue-on-error |
-| **Async runs** | Start, poll, and inspect per-node status and output |
-
-## What's New in v6.1
-
-| Feature | Description |
-|---------|-------------|
-| **GraphQL upstreams** | Operations become tools; input schemas from variable definitions |
-| **gRPC upstreams** | Unary methods over Connect / JSON transcoding |
-
-## What's New in v6.0
-
-| Change | What to do |
-|--------|------------|
-| **Config schema v6** | `version: 6` only — `mcp-gateway migrate --to 6` (5.9) rewrites your file |
-| **`compliance.pii` → `dlp`** | Converted by `migrate --to 6`; compliance reports read DLP |
-| **Plugin API v3 removed** | Declare `apiVersion: 4` |
-| **Node.js 22+** | Enforced by the CLI |
-
-## What's New in v5.9
-
-Getting ready for 6.0: `npx @winstonsayno/mcp-gateway@5.9 migrate --write` — see [Migrating to 6.0](docs/guides/migrating-to-v6.md).
-
-| Feature | Description |
-|---------|-------------|
-| **Schema v6 preview** | `version: 6` accepted; `init` and examples write it |
-| **`migrate --to 6`** | Converts `compliance.pii` to `dlp`, keeps comments |
-| **Deprecations** | Schema v5, `compliance.pii`, plugin API v3 — all removed in 6.0 |
-
-## What's New in v5.8
-
-| Feature | Description |
-|---------|-------------|
-| **Adaptive pools** | Interchangeable servers / models scored by quality, cost and latency |
-| **Learns online** | Latency and errors from traffic, quality from feedback; Thompson-sampling exploration |
-
-## What's New in v5.7
-
-| Feature | Description |
-|---------|-------------|
-| **Python SDK** | `stream_tool()` and `McpSession` for the gateway's `/mcp` |
-| **Go SDK** | `StreamTool()` and `Client.MCP()` sessions |
-| **Release checklist** | Version, build and publish steps for every SDK |
-
-## What's New in v5.6
-
-| Feature | Description |
-|---------|-------------|
-| **DLP levels** | PII + custom detectors classified public → restricted |
-| **Per-tenant masking** | Clearance per tenant; mask, redact, stable pseudonyms, or block |
-| **Call hooks** | `registerCallHook()` — your own stage in the call pipeline |
-
-## What's New in v5.5
-
-| Feature | Description |
-|---------|-------------|
-| **Session recordings** | Capture an agent's tool calls by client and time window; import / export JSON |
-| **Replay evals** | Re-run a recording graded by success, structure or exact match — regression tests for agents |
-
-## What's New in v5.4
-
-| Feature | Description |
-|---------|-------------|
-| **Signed plugins** | Ed25519 `.sig` files verified at load; `pluginTrust.requireSigned` refuses unsigned code |
-| **Plugin marketplace** | Browse signed indexes and install with sha256 + signature checks |
-| **`mcp-gateway plugin`** | `keygen`, `sign`, `verify` |
-
-## What's New in v5.3
-
-| Feature | Description |
-|---------|-------------|
-| **Edge fleet view** | Configured + seen edges with config drift (`in-sync` / `stale` / `offline` / …) |
-| **Config push** | `POST /api/v1/admin/edge-fleet/push` — by node, label ring, or only drifted edges |
-| **Dashboard card** | Edge nodes with drift badges and a *Push config* button |
-
-## What's New in v5.2
-
-| Feature | Description |
-|---------|-------------|
-| **Active-active regions** | Peer gateways replicate shared state (last-writer-wins) and gossip upstream health |
-| **Cross-region failover** | `GET /api/v1/admin/regions/route/:serverId` → local, best healthy peer, or none |
-
-## What's New in v5.1
-
-| Feature | Description |
-|---------|-------------|
-| **Conformance suite** | `mcp-gateway conformance <url>` — 11 protocol checks against any Streamable HTTP MCP endpoint |
-| **Self-test** | `POST /api/v1/admin/conformance/run` checks the running gateway's own `/mcp` |
-| **Feature modules** | `GET /api/v1/admin/features`; embedders add modules with `registerFeature()` |
-
-## What's New in v5.0
-
-⚠ Breaking release — read [Migrating to 5.0](docs/guides/migrating-to-v5.md). On 4.9: `npx @winstonsayno/mcp-gateway@4.9 migrate --write`.
-
-| Feature | Description |
-|---------|-------------|
-| **Config schema v5** | `version: 5`, `servers[].timeoutMs` — `mcp-gateway migrate` does it for you |
-| **Plugin API v4** | `ctx.state` per-plugin store; v2 refused, v3 deprecated until 6.0 |
-| **Removals** | Every 4.x deprecation is gone; errors name the replacement |
-| **Roadmap to 6.0** | Multi-region clusters, edge fleet management, DLP, signed plugins, SDK publishing — see [ROADMAP](docs/ROADMAP.md) |
-
-## What's New in v4.9
-
-| Feature | Description |
-|---------|-------------|
-| **Schema v5 preview** | 4.9 reads `version: 5` (`servers[].timeoutMs`) — migrate before upgrading |
-| **`migrate --to 5`** | Rewrites v3 / v4 files to v5 in place, comments kept |
-| **Plugin API v4** | `ctx.state`: per-plugin key-value store with TTLs |
-| **5.0 deprecations** | `version: 4`, `servers[].timeout`, plugin API v2 — warned now, removed in 5.0 |
-
-## What's New in v4.8
-
-| Feature | Description |
-|---------|-------------|
-| **Edge config sync** | Edges pull ETag'd snapshots from a Node control plane and boot from the cached one offline |
-| **Offline queue** | Queue calls to unreachable upstreams (`offline.queueTools`), replay on the next sync |
-| **Usage outbox** | Edge calls flow back into the control plane's metrics; `/admin/edge/nodes` lists edges |
-
-## What's New in v4.7
-
-| Feature | Description |
-|---------|-------------|
-| **Python SDK** | `clients/python` — stdlib only, typed, policy-aware errors |
-| **Go SDK** | `clients/go` — `net/http` only, context-aware |
-| **Swift SDK** | `clients/swift` — async/await, macOS / iOS / Linux |
-| **SDK CI** | New `sdks.yml` workflow builds and tests all three |
-
-## What's New in v4.6
-
-| Feature | Description |
-|---------|-------------|
-| **Config editor** | New dashboard tab: forms + raw JSON for the running config |
-| **Validate · diff · apply** | Schema-checked, previewed, hot-reloaded — no restart, no YAML editing |
-| **Safe by default** | Read-only unless `controlPlane.configApi: true`; secrets stay redacted |
-
-## What's New in v4.5
-
-| Feature | Description |
-|---------|-------------|
-| **Upstream mTLS** | The gateway presents its certificate and verifies upstreams against a trust bundle |
-| **SPIFFE identities** | `tls.spiffeId` checks the workload identity instead of the hostname |
-| **Hot certificate rotation** | SVID files re-read on an interval; no restart |
-
-## What's New in v4.4
-
-| Feature | Description |
-|---------|-------------|
-| **`POST /api/v1/tools/stream`** | Progress, partial chunks and the result as Server-Sent Events |
-| **Backpressure** | Coalesced progress for slow readers, slow-consumer cut-off |
-| **`maxQueue`** | Per-server load shedding: fail fast with 503 instead of piling up |
-
-## What's New in v4.3
-
-| Feature | Description |
-|---------|-------------|
-| **Per-call LLM cost** | Token usage from `_meta.usage` × model prices, plus flat per-tool prices |
-| **Budgets** | Per pool / client / tenant, daily or monthly; alerts + webhook, optional hard block |
-| **`GET /api/v1/costs`** | Spend by client, tenant, server, tool or model |
-
-## What's New in v4.2
-
-| Feature | Description |
-|---------|-------------|
-| **Tool chains** | Declarative multi-step pipelines across servers, exposed as one MCP tool |
-| **Multi-agent fan-out** | `forEach` + `concurrency`, `parallel` groups, `when`, templates |
-| **Same guard rails** | Each step runs as the caller through scopes, policy, plugins and audit |
-
-## What's New in v4.1
-
-| Feature | Description |
-|---------|-------------|
-| **MCP 2025-11-25** | Newest spec revision, negotiated per session; `mcp.protocolVersions` to pin |
-| **Structured output, resource links, annotations** | Passed through to new clients, downgraded for old ones |
-| **`GET /api/v1/mcp/protocol`** | Feature matrix + what each upstream negotiated |
-
-## What's New in v4.0
-
-| Feature | Description |
-|---------|-------------|
-| **Config schema v4** | `version: 4`, API-key `scope:`, `smart` instead of `least-latency` — `mcp-gateway migrate` does it for you |
-| **Plugin API v3** | `ctx.secrets`, `ctx.tenant`, `onConfigChange`; v1 refused, v2 deprecated until 5.0 |
-| **Roadmap to 5.0** | MCP spec updates, orchestration, cost budgets, streaming, mTLS, config editor, SDKs — see [ROADMAP](docs/ROADMAP.md) |
-
-⚠ Breaking release — read [Migrating to 4.0](docs/guides/migrating-to-v4.md).
-
-## What's New in v3.9
-
-| Feature | Description |
-|---------|-------------|
-| **`mcp-gateway migrate`** | Rewrites your config to schema v4, comments kept; `--check` for CI |
-| **v4 deprecation warnings** | `version: 3`, flat API-key scope, `least-latency` — removed in 4.0 |
-| **`mcp-gateway bench`** | Built-in load test with latency percentiles; see [benchmarks](docs/benchmarks.md) |
-
-Details: [CHANGELOG](CHANGELOG.md) · [Migrating to 4.0](docs/guides/migrating-to-v4.md).
-
-## What's New in v3.8
-
-| Feature | Description |
-|---------|-------------|
-| **Self-serve keys** | `/portal`: sign up, get a scoped key; open, approval or closed signup |
-| **Usage** | 7-day calls, errors, latency per key; rotate / revoke |
-| **Interactive docs** | Tools in scope with schemas, example arguments, snippets and “Try it” |
-
-Details: [CHANGELOG](CHANGELOG.md) · [Configuration](docs/configuration.md#developer-portal-38).
-
-## What's New in v3.7
-
-| Feature | Description |
-|---------|-------------|
-| **PII redaction** | E-mail, phone, card, SSN, IBAN, IP, PRC ID — redact, block or tag, both directions |
-| **Data residency** | Pin tenants to regions; cross-region calls and failover are refused |
-| **SOC 2 / GDPR reports** | Controls with evidence from live config and history, JSON or Markdown |
-
-Details: [CHANGELOG](CHANGELOG.md) · [Configuration](docs/configuration.md#compliance-37).
-
-## What's New in v3.6
-
-| Feature | Description |
-|---------|-------------|
-| **Peering** | Gateways in several regions, HMAC-signed peer requests |
-| **Catalog sync** | Each gateway sees its peers' servers and their health |
-| **Cross-region failover** | Calls to a downed local server are served by a peer; `server: "id@peer"` for remote-only servers |
-
-Details: [CHANGELOG](CHANGELOG.md) · [Configuration](docs/configuration.md#federation-36).
-
-## What's New in v3.5
-
-| Feature | Description |
-|---------|-------------|
-| **Vault / KMS** | `secret://vault/…`, `secret://kms/…` references in server env, headers, URL, args |
-| **Rotation** | Periodic or on-demand re-read; servers reconnect with new credentials |
-| **Per-tenant credentials** | `inject:` adds a tenant's own key to each call, never logged |
-
-Details: [CHANGELOG](CHANGELOG.md) · [Configuration](docs/configuration.md#secrets-35).
-
-## What's New in v3.4
-
-| Feature | Description |
-|---------|-------------|
-| **Canary / A-B splits** | `routing.splits`: weighted, sticky-per-client traffic shares between servers |
-| **Auto rollback** | Variant guards on error rate / latency; reset via API |
-| **Smart balancing** | `strategy: smart` scores replicas by latency, error rate and cost |
-
-Details: [CHANGELOG](CHANGELOG.md) · [Configuration](docs/configuration.md#smart-routing-34).
-
-## What's New in v3.3
-
-| Feature | Description |
-|---------|-------------|
-| **WASM plugins** | `component: ./plugin.wasm` — plugin API v5 components in any language that compiles to WebAssembly |
-| **Tenant isolation** | One sandbox per tenant / client; no WASI, no host access; time and memory limits |
-| **API** | `GET /api/v1/plugins` lists plugins and live sandboxes |
-
-Details: [CHANGELOG](CHANGELOG.md) · [Plugins guide](docs/guides/plugins.md#wasm-plugins-33).
-
-## What's New in v3.2
-
-| Feature | Description |
-|---------|-------------|
-| **Request debugger** | Click a History row: arguments, result, metadata |
-| **Replay** | Re-run a call with the same or edited arguments; structural diff of the results |
-| **API** | `GET /api/v1/requests/:id`, `POST /api/v1/requests/:id/replay` (`replay.enabled`) |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v3.1
-
-| Feature | Description |
-|---------|-------------|
-| **Sampling passthrough** | Upstream `sampling/createMessage` reaches the calling MCP client's LLM |
-| **Elicitation passthrough** | `elicitation/create` asks the calling client's user |
-| **Roots passthrough** | `roots/list` + `roots/list_changed` between clients and servers |
-
-Config: [`mcp.passthrough`](docs/configuration.md#mcp-endpoint). Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v3.0
-
-**Breaking:** config schema v3 (`cors.origins`, `health.intervalMs`), plugin API v2 — see the
-[migration guide](docs/guides/migrating-to-v3.md) and the [roadmap](docs/ROADMAP.md).
-
-| Feature | Description |
-|---------|-------------|
-| **Config schema v3** | `corsOrigins` / `healthCheckIntervalMs` removed; `version: 3` |
-| **Plugin API v2** | Hook context argument, new `onError` hook; v1 deprecated |
-| **Docs** | Refreshed for v3, [migrating to 3.0](docs/guides/migrating-to-v3.md), [roadmap 3.1 – 4.0](docs/ROADMAP.md) |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v2.9
-
-| Feature | Description |
-|---------|-------------|
-| **Admin API** | Read, validate, diff and hot-apply the config over REST (`/api/v1/admin`) |
-| **Declarative config** | `mcp-gateway diff` / `apply` — [guide](docs/guides/declarative-config.md) |
-| **3.0 deprecations** | `corsOrigins` → `cors.origins`, `healthCheckIntervalMs` → `health.intervalMs` (warnings in 2.9, removed in 3.0) |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v2.8
-
-| Feature | Description |
-|---------|-------------|
-| **Policy as code** | `policy.files` + policy unit tests, `mcp-gateway policy test` for CI |
-| **SIEM export** | Audit records to syslog (UDP / TCP / TLS) or webhooks — [guide](docs/guides/policy-as-code.md) |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v2.7
-
-| Feature | Description |
-|---------|-------------|
-| **OpenAI tools proxy** | `/openai/v1/tools`, `/tool_calls`, `/chat/completions` with an automatic tool loop |
-| **A2A bridge** | Agent Card at `/.well-known/agent-card.json` + JSON-RPC `message/send` — [guide](docs/guides/bridges.md) |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v2.6
-
-| Feature | Description |
-|---------|-------------|
-| **Edge gateway** | `@winstonsayno/mcp-gateway/edge`: Fetch-API gateway for remote MCP servers, no Node dependencies |
-| **Runtime adapters** | Cloudflare Workers, Deno, Bun (and Node) — [guide](docs/guides/edge.md) |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v2.5
-
-| Feature | Description |
-|---------|-------------|
-| **Usage quotas** | per key or per tenant, hour / day / month, scoped by server / tool — `429` + `Retry-After` |
-| **Metering export** | `GET /api/v1/usage` as JSON or CSV, grouped by key / tenant / server / tool / hour / day |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v2.4
-
-| Feature | Description |
-|---------|-------------|
-| **Upstream catalog** | built-in reference servers + your own JSON catalogs (`catalog.sources`) |
-| **One-click add** | dashboard *Add a server* / `POST /api/v1/catalog/:id/install`, optional persistence (`serversFile`) |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v2.3
-
-| Feature | Description |
-|---------|-------------|
-| **Tenants** | `tenants:` workspaces owning servers, with members matched by client id |
-| **RBAC** | owner / admin / viewer roles enforced on REST, `/mcp` and approvals; dashboard *Workspaces* card |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v2.2
-
-| Feature | Description |
-|---------|-------------|
-| **Result caching** | `cache.rules`: per-tool opt-in TTL cache, per-client or shared, LRU |
-| **In-flight dedupe** | identical concurrent calls share one upstream request |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v2.1
-
-| Feature | Description |
-|---------|-------------|
-| **Load balancing** | `replicas:` per server with round-robin / weighted / least-latency / random / failover strategies |
-| **Failover** | retry the next healthy member on `not-connected` (opt-in `timeout`, `error`); passive ejection |
-| **Health checks** | every member is pinged; `GET /api/v1/load-balancing` shows members and ejections |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v2.0
-
-| Feature | Description |
-|---------|-------------|
-| **Plugins** | `onRequest` middleware, `onToolCall` before policy, `onResponse` after output filtering — [guide](docs/guides/plugins.md) |
-| **SIGHUP reload** | `kill -HUP` re-reads the config (plugins included), even with `--no-watch` |
-| **Node 22+** | breaking: Node 20 support dropped — [migration guide](docs/guides/migrating-to-v2.md) |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v1.7
-
-| Feature | Description |
-|---------|-------------|
-| **Clients 1.7** | JS + Kotlin clients gain `approvals()` / `approve()` / `deny()` and policy-aware errors (`code`, `isPolicyError`) |
-| **Maven Central ready** | Kotlin client POM, sources/javadoc jars, signing, Central Portal publish workflow |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v1.6
-
-| Feature | Description |
-|---------|-------------|
-| **Tool policy** | `policy.rules`: allow / deny / approve per client, server, tool and argument (`regex`, `glob`, `notUnder` path sandboxing, …) |
-| **Human approval** | flagged calls wait for an operator: dashboard *Pending approvals* card, `POST /api/v1/approvals/:id/approve` |
-| **Output filtering** | prompt-injection detectors on tool results: `redact`, `flag` or `block` |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v1.5
-
-| Feature | Description |
-|---------|-------------|
-| **Tracing** | `observability.tracing`: spans per tool / resource / prompt call, W3C `traceparent` propagation, built-in OTLP/HTTP exporter or `@opentelemetry/api` |
-| **Prometheus `/metrics`** | conventional scrape path + latency histogram `mcp_gateway_request_duration_seconds` |
-| **Dashboard charts** | calls per server (calls / errors / p95) alongside rate, latency and error charts |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v1.4
-
-| Feature | Description |
-|---------|-------------|
-| **Shared state store** | `state.store: redis` — rate limits, auth lockouts and MCP sessions shared across replicas (built-in RESP client, `failureMode`), pluggable `StateStore` for embedders |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v1.3
-
-| Feature | Description |
-|---------|-------------|
-| **OAuth 2.1 (MCP authorization)** | `auth.strategy: oauth2`: RFC 9728 protected-resource metadata, JWT validation via (discovered) JWKS or RFC 7662 introspection, audience binding (RFC 8707), `WWW-Authenticate` challenges, `requiredScopes` |
-| **Resumable streams** | `Last-Event-ID` replay on `GET /mcp` from a per-session event buffer (`mcp.eventBufferSize`) |
-
-Details: [CHANGELOG](CHANGELOG.md).
-
-## What's New in v1.2
-
-| Feature | Description |
-|---------|-------------|
-| **Hashed & expiring keys** | `auth.apiKeys` entries can be `sha256:<hex>` digests (`mcp-gateway gen-key`, `hash-key`) and carry `expiresAt` / `disabled` |
-| **JWT hardening** | `auth.jwt`: `issuer`, `audience`, `algorithms` (HMAC / asymmetric never mixed), `clockToleranceSeconds`, `requireExp`, `maxTokenAgeSeconds`, PEM `publicKey` or cached `jwksUrl` (works with OAuth 2.0 / OIDC providers) |
-| **`security` block** | headers + dashboard CSP, `hsts`, `trustProxy`, `ipAllowlist`, `allowedHosts`, `dnsRebindingProtection`, `maxBodyBytes`, `maxToolArgumentsBytes`, `authLockout`, `redactPatterns` — all hot reloadable |
-| **Secure-defaults check** | startup warnings, `validate --strict`, `GET /api/v1/security` and a *Security posture* card in the dashboard |
-| **More of MCP on `/mcp`** | `notifications/progress` (SSE replies), `logging/setLevel` + forwarded `notifications/message`, `completion/complete`, `resources/subscribe` / `unsubscribe` + `notifications/resources/updated` |
-
-Details and upgrade notes: [CHANGELOG](CHANGELOG.md#120---2026-10-07).
-
-## What's New in v1.0
-
-| Feature | Description |
-|---------|-------------|
-| **Stable API** | Semver from 1.0: `/api/v1`, `/mcp`, config keys, CLI and root exports are stable (see [stability](#api-stability)) |
-| **Docs** | [API reference](docs/api-reference.md), [configuration reference](docs/configuration.md), [deployment guide](docs/deployment.md) (Docker, Kubernetes, reverse proxy) |
-| **Container image** | Multi-arch `ghcr.io/harrisoncn/mcp-gateway` built on every release (Node 22) |
-| **Resources & prompts** | `resources/list`, `resources/templates/list`, `resources/read`, `prompts/list`, `prompts/get` aggregated on REST and `/mcp`, with list-changed notifications and scopes |
-| **Audit log** | Optional persistent request history in SQLite (`node:sqlite`), filterable / pageable `GET /api/v1/requests`, dashboard history |
-| **Clients & LLM schemas** | TypeScript client (`clients/js`), Kotlin client (`clients/kotlin`), `GET /api/v1/tools?format=openai\|openai-responses\|anthropic` |
-| **Per-key scopes** | API keys can carry `servers` / `tools` globs and their own `rateLimit`; JWTs carry `mcp_servers` / `mcp_tools` claims. Enforced on REST and `/mcp`, hot reloadable |
-| **`/mcp` endpoint** | The gateway is an MCP server (Streamable HTTP, 2025-06-18): sessions, aggregated + paginated `tools/list`, deterministic collision naming, routed `tools/call`, `list_changed` notifications, cancellation |
-
-## What's New in v0.2.0
-
-| Feature | Description |
-|---------|-------------|
-| **SSE Transport** | Transport class (`src/transport/sse.ts`); routable since the unreleased version |
-| **WebSocket Transport** | Transport class (`src/transport/websocket.ts`); routable since the unreleased version |
-| **Config Hot Reload** | Edit the server list in `mcp-gateway.yml` without restarting |
-| **Request Tracing** | `X-Request-Id` on every request & response |
-| **CORS Middleware** | Configurable cross-origin support |
-| **Web Dashboard** | Live monitoring UI at `/dashboard` |
-| **4 Bug Fixes** | Concurrency, id collision, handle leaks, timeouts |
-
-## API stability
-
-mcp-gateway follows [Semantic Versioning](https://semver.org/) since **1.0.0**. Within a major version (3.x now) the REST API under
-`/api/v1`, the `/mcp` endpoint behaviour, configuration keys, CLI commands / flags, root library exports and Prometheus
-metric names only change in backward-compatible ways (new fields, endpoints and options may be added — ignore
-unknown fields). Deep imports, log format, the dashboard and the audit database schema are not covered. Details:
-[docs/api-reference.md#stability-and-versioning](docs/api-reference.md#stability-and-versioning).
-
-## Roadmap
-
-3.0 completes the 1.x / 2.x plan (transports, `/mcp` endpoint, security, OAuth, tenants, policy, caching, plugins,
-edge runtimes, bridges, policy as code, declarative config). What comes next — sampling / elicitation passthrough,
-request replay, WASM plugins, smart routing, secrets management, federation, compliance, a developer portal and 4.0 —
-is in [docs/ROADMAP.md](docs/ROADMAP.md).
+Test-depth release, no new features: fast-check property tests, an authorization matrix over every admin route and
+regression tests — plus the fixes they found (replica secrets in `GET /api/v1/servers`, URL credentials in
+`GET /api/v1/admin/config`, deep-nesting redaction, and DNS-rebinding protection now on by default for a loopback
+gateway without auth). Full history: [CHANGELOG.md](CHANGELOG.md).
+
+## Documentation
+
+| | |
+|---|---|
+| [Getting started](docs/guides/getting-started.md) | First gateway, step by step |
+| [Configuration](docs/configuration.md) | Every config key, env overrides, scopes, hot reload |
+| [API reference](docs/api-reference.md) | REST `/api/v1`, admin API, `/mcp`, error codes |
+| [Deployment](docs/deployment.md) | Docker, Kubernetes, reverse proxy, systemd, security checklist |
+| [Guides](docs/guides) | One page per module, plus migration guides |
+| [Threat model](docs/security/threat-model.md) | Data flow, trust boundaries, audit findings |
+| [Roadmap](docs/ROADMAP.md) | 10.x hardening plan and what comes after |
+| [Dashboard](dashboard/README.md) | The built-in web UI |
 
 ## Contributing
 
-Contributions are welcome! See [CONTRIBUTING.md](docs/CONTRIBUTING.md).
-
 ```bash
-git clone https://github.com/HarrisonCN/mcp-gateway.git
-cd mcp-gateway
-npm install
+git clone https://github.com/HarrisonCN/mcp-gateway.git && cd mcp-gateway
+npm ci
 npm run typecheck && npm test
 npm run dev -- start -c examples/basic/mcp-gateway.yml
 ```
 
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md).
+
 ## License
 
-MIT © 2026 [HarrisonCN](https://github.com/HarrisonCN)
-
----
-
-<div align="center">
-  <sub>
-    Built for the agentic era · If this helps you, please ⭐ star the repo
-  </sub>
-</div>
+[MIT](LICENSE) © 2026 HarrisonCN
