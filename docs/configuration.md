@@ -27,7 +27,7 @@ hot reload is rejected and the running configuration kept.
 | `port` | `4000` | restart | HTTP port |
 | `host` | `0.0.0.0` | restart | bind address |
 | `logLevel` | `info` | ✓ | `debug` \| `info` \| `warn` \| `error` |
-| `version` | — | | config schema version; optional, `10` (or the deprecated `9`) when set — 9.9 reads both |
+| `version` | — | | config schema version; optional, `10` when set (10.0 refuses `9` — run `mcp-gateway migrate --to 10`) |
 | `features` | — | ✓ | schema v10: every feature-module section (`chaos`, `sla`, `dlp`, …) nested here — see [Migrating to 10.0](guides/migrating-to-v10.md) |
 | `cors.origins` | `["*"]` | ✓ | allowed browser origins: exact values, `*`, or `/regex/` |
 | `health.intervalMs` | `30000` | restart | MCP `ping` interval (min 1000) |
