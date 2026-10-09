@@ -80,11 +80,17 @@ jobs:
             --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
           echo "signature verified for ${IMAGE,,}@${DIGEST}"
 
+      - name: Image reference (lowercase — registry references must be)
+        id: ref
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/mcp-gateway
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "image=${IMAGE,,}@${DIGEST}" >> "$GITHUB_OUTPUT"
       - name: Trivy scan of the published image (report to code scanning)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
-          image-ref: ghcr.io/${{ github.repository_owner }}/mcp-gateway@${{ steps.build.outputs.digest }}
+          image-ref: ${{ steps.ref.outputs.image }}
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           format: sarif

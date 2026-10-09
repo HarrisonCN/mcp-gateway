@@ -418,6 +418,16 @@ export class Gateway {
         },
       }),
     );
+    // 10.5: kernel plugin SDK routes.
+    this.plugins.setRouteEnv({
+      tools: () => this.registry.getAllTools().map((t) => ({ serverId: t.serverId, name: t.name, description: t.description })),
+      invoke: (serverId, name, args, clientId) =>
+        this.invoker!.invoke({ serverId, name, kind: 'tool', method: 'tools/call', params: args, clientId: clientId ?? 'plugin', via: 'rest', timeoutMs: this.registry.getServer(serverId)?.timeout }),
+    });
+    const operatorGuard: express.RequestHandler = (req, res, next) =>
+      this.router!.isOperator(req) ? next() : void res.status(403).json({ error: 'Forbidden', message: 'The admin API is for operators (unscoped keys)' });
+    this.app.use('/api/v1/admin/plugins/:plugin', this.router.authenticate, operatorGuard, this.plugins.routeHandler('admin'));
+    this.app.use('/api/v1/features/plugins/:plugin', this.router.authenticate, this.plugins.routeHandler('client'));
     this.app.use('/api/v1', this.router);
     this.app.use('/api/v1', this.chains.router(this.router.authenticate));
     this.app.get('/api/v1/mtls', this.router.authenticate, (req, res) => {

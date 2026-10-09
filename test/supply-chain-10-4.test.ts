@@ -57,3 +57,13 @@ describe('supply chain (10.4)', () => {
     }
   });
 });
+
+describe('supply chain regressions (10.5)', () => {
+  it('the post-release Trivy scan uses a lowercase image reference', () => {
+    const s = steps(wf('docker.yml').jobs.image);
+    const ref = s.find((x) => x.id === 'ref');
+    expect(ref?.run).toContain('${IMAGE,,}@${DIGEST}');
+    const scan = s.find((x) => String(x.uses ?? '').startsWith('aquasecurity/trivy-action'));
+    expect(scan?.with['image-ref']).toBe('${{ steps.ref.outputs.image }}');
+  });
+});
