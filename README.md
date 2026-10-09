@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v10.1
+
+| Change | |
+|--------|---|
+| **Security baseline** | [threat model](docs/security/threat-model.md); stdio upstreams no longer see `MCP_GATEWAY_*` secrets; tenant owners can't enrol operators / globs; mTLS fails closed; strict SPIFFE SAN parsing |
+| **CI** | CodeQL, OpenSSF Scorecard, blocking `npm audit --audit-level=high` |
+
 ## What's New in v10.0
 
 | Change | |

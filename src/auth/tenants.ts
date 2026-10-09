@@ -82,6 +82,21 @@ export function highestRole(scope: AccessScope | undefined): TenantRole | undefi
   return best;
 }
 
+/**
+ * Why a non-operator tenant owner may not grant `client` a role (undefined = allowed).
+ *
+ * 10.1 hardening: owners manage *their* tenant only. A glob (`*`, `?`) would enrol every matching
+ * client — including operators and members of other tenants — and membership confines a client to
+ * the tenant's servers, so an owner could demote operators or pull foreign clients into the tenant.
+ * Owners therefore grant exact client ids, and never to a client that is currently an operator
+ * (`targetIsOperator`). Operators keep full glob support.
+ */
+export function memberGrantError(client: string, targetIsOperator: boolean): string | undefined {
+  if (/[*?]/.test(client)) return 'Only operators can add members by glob; tenant owners must name an exact client id';
+  if (targetIsOperator) return 'Tenant owners cannot enrol an operator client';
+  return undefined;
+}
+
 /** Validation message for a tenants block (undefined = valid). */
 export function invalidTenants(tenants: readonly TenantConfig[] | undefined): string | undefined {
   const ids = new Set<string>();
