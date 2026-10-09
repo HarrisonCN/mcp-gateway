@@ -334,13 +334,13 @@ The project follows [Semantic Versioning](https://semver.org/). Within a major l
 Prometheus metric names change only in backward-compatible ways. Deep imports, log format, the dashboard and the
 audit database schema are not covered — see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
-## What's New in v11.1
+## What's New in v11.2
 
-**Security release.** One authorization decision point for every tool call: REST, `/mcp`, bridges, chains, task
-graphs, agent delegation, plugins, federation and edge all go through `authorize()` inside the invoker, and a call
-without a principal is refused. Agent delegation tokens are now bounded by the delegating client's own scope (P0), and
-scope narrowing is strict — no glob can widen a grant (P1). Feature-module and plugin authors: `ctx.invoke` takes a
-principal. Details: [CHANGELOG.md](CHANGELOG.md).
+**Security release.** Multimodal blobs are bound to the client and tenant that produced them (cross-client reads
+answer 404, optional signed links, filesystem storage shared between instances) and capped by global and per-tenant
+byte budgets. Agent-token revocations now live in the shared state store — Redis for several instances, the new
+`store.backend: sqlite` or the event log for one node — and an unreachable store denies agent calls by default.
+Details: [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 

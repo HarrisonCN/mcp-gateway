@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [11.2.0] - 2026-10-09
+
+**Security release.** Multimodal blobs are bound to their owner and capped by byte budgets, and agent-token
+revocation is stored in the shared state store (Redis / SQLite / event log) with a fail-closed default.
+
+### Security
+- **P1 — multimodal blobs lacked caller-ownership checks (cross-client access).** Offloaded blobs recorded only
+  server, tool, type and expiry, and `GET /api/v1/features/multimodal/blobs/:id` required only authentication — any
+  client holding (or guessing from a leak) the id could read another client's or tenant's image/audio. Each blob is now
+  bound to the owning principal, tenant and `server/tool`; reads are re-authorized through the central authorizer (same
+  client, or same tenant with permission to call that tool) and answer `404` to everyone else. Ids are 192-bit random.
+- **P1 — token revocation lived only in process memory.** A revoked agent token became valid again after a restart and
+  was never revoked on other instances. Revocations and issued-token records now live in the shared state store with
+  TTL = token expiry; `features.agentIdentity.revocation.failureMode` defaults to **closed** (store unreachable → agent
+  calls, sub-token exchange and introspection answer `503`).
+- **P2 — multimodal memory caps too high** (10 MiB × 256 blobs ≈ 2.5 GiB worst case). New global and per-tenant
+  budgets for held blobs (`maxStoredBytes` 256 MiB, `maxTenantStoredBytes` 64 MiB) with expiry + LRU eviction; an
+  item that cannot fit is refused / stripped. (The per-item default drops in 12.0.)
+
+### Added
+- `store.backend: sqlite` (`store.sqlite.path`): durable single-node state store on `node:sqlite`; export
+  `SqliteStateStore`.
+- Multimodal: `storage: { type: filesystem, dir }` (blobs shared between instances via a shared volume),
+  `signedLinks: { key, ttlSeconds }` (HMAC links bound to owner + expiry), owner/tenant in the admin blob list,
+  counters `evicted` / `overBudget` / `deniedReads` / `heldBytes`.
+- Prometheus: `mcp_gateway_authz_denials_total`, `mcp_gateway_agent_revocation_checks_total`,
+  `mcp_gateway_agent_revocation_store_errors_total`, `mcp_gateway_agent_store_unavailable_total{decision}`,
+  `mcp_gateway_multimodal_held_bytes`, `…_evicted_total`, `…_over_budget_total`, `…_denied_reads_total`;
+  `registerMetricSource()` for feature modules. Admin view `revocation: { store, failureMode, shared, … }`.
+- Posture notice `agent-revocation-in-memory` when agent identity runs on the memory store.
+
+### Changed
+- `POST /admin/agent-identity/revoke` answers `{ revoked, known, shared }`; `503` when the revocation could not be
+  persisted (it is still applied on this instance). `applyMultimodal(…, now, owner?)` takes the owner; blobs without an
+  owner are readable by nobody.
+
 ## [11.1.0] - 2026-10-09
 
 **Security release.** Every upstream call now passes through one non-bypassable authorization decision point, and
