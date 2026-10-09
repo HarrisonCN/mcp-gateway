@@ -46,6 +46,7 @@ import { EdgeRuntimeSchema } from '../features/edge-runtime.js';
 import { ConfidentialSchema } from '../features/confidential.js';
 import { ToolRegistrySchema } from '../features/tool-registry.js';
 import { SlaSchema } from '../features/sla.js';
+import { SelfHealingSchema } from '../features/self-healing.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
@@ -516,6 +517,7 @@ const GatewayConfigSchema = z.object({
   confidential: ConfidentialSchema.optional(),
   toolRegistry: ToolRegistrySchema.optional(),
   sla: SlaSchema.optional(),
+  selfHealing: SelfHealingSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   audit: z

@@ -204,6 +204,8 @@ export { ToolRegistrySchema, satisfies, resolveVersion } from './features/tool-r
 export type { ToolRegistryConfig, ToolManifest } from './features/tool-registry.js';
 export { SlaSchema, recordSla } from './features/sla.js';
 export type { SlaConfig } from './features/sla.js';
+export { SelfHealingSchema, ERR_SELF_HEALING } from './features/self-healing.js';
+export type { SelfHealingConfig } from './features/self-healing.js';
 export type {
   GatewayConfig,
   McpServerConfig,

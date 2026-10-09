@@ -40,5 +40,6 @@ import './edge-runtime.js';
 import './confidential.js';
 import './tool-registry.js';
 import './sla.js';
+import './self-healing.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

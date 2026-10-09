@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.6.0] - 2026-10-09
+
+### Added
+- **Self-healing** (`selfHealing`): rules watch each upstream's error rate and p95 latency over a sliding window
+  (`windowSeconds`, `minCalls`) and act on their own — `eject` (refuse with JSON-RPC **-32025** or fail over to
+  `fallback`), `rollback` (route to `rollbackTo`, e.g. canary → stable) or `throttle` (`maxPerSecond`) — lifted after
+  `cooldownSeconds` (re-trips if still unhealthy). `GET /api/v1/admin/self-healing` shows active actions, window stats
+  and history; `POST …/:id/trigger` / `…/:id/clear` for operators. [Guide](docs/guides/self-healing.md).
+- Pages demo: self-healing actions.
+
 ## [9.5.0] - 2026-10-09
 
 ### Added

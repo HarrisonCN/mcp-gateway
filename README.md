@@ -586,6 +586,12 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v9.6
+
+| Feature | |
+|---------|---|
+| **Self-healing** | Automatic eject / failover, rollback and throttling of unhealthy upstreams, lifted after a cool-down — [guide](docs/guides/self-healing.md) |
+
 ## What's New in v9.5
 
 | Feature | |
