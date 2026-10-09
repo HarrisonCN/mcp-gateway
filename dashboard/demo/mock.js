@@ -75,6 +75,7 @@
     { id: "confidential", since: "9.3.0", summary: "Confidential computing: sensitive servers get calls only from inside a remotely attested TEE (SEV-SNP, TDX, Nitro, SGX)" },
     { id: "tool-registry", since: "9.4.0", summary: "Global tool registry: signed tool manifests, search, cross-gateway mirrors, immutable versions and version pins" },
     { id: "sla", since: "9.5.0", summary: "SLA monitoring: availability / p95 latency objectives per server and tenant, error budgets, breaches and service-credit reports" },
+    { id: "self-healing", since: "9.6.0", summary: "Self-healing: eject / fail over, roll back or throttle unhealthy upstreams automatically, lifted after a cool-down" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -752,6 +753,16 @@
     if (p === '/admin/sla') return json({ enabled: true, generatedAt: new Date().toISOString(), targets: [
       { id: 'search-gold', windowDays: 30, from: new Date(Date.now() - 30 * 86400000).toISOString(), calls: 182440, failures: 91, availability: 99.9501, objective: { availability: 99.9, latencyP95Ms: 800 }, latencyP95Ms: 500, errorBudget: { allowedFailures: 182.44, remaining: 91.44, remainingPercent: 50.12 }, met: true, breaches: [], credit: { percent: 0, amount: 0, currency: 'EUR' }, tenants: [{ tenant: 'acme', calls: 120000, failures: 60, availability: 99.95 }, { tenant: 'globex', calls: 62440, failures: 31, availability: 99.9504 }] },
       { id: 'github-silver', windowDays: 30, from: new Date(Date.now() - 30 * 86400000).toISOString(), calls: 40210, failures: 610, availability: 98.483, objective: { availability: 99.5, latencyP95Ms: null }, latencyP95Ms: 750, errorBudget: { allowedFailures: 201.05, remaining: -408.95, remainingPercent: -203.41 }, met: false, breaches: ['availability 98.483% < 99.5%'], credit: { percent: 10, amount: 50, currency: 'EUR' }, tenants: [] },
+    ] });
+    // 9.6: self-healing.
+    if (p === '/admin/self-healing') return json({ enabled: true, windowSeconds: 60, rules: [
+      { id: 'search-down', servers: ['search'], when: { errorRateAbove: 0.5 }, action: 'eject', fallback: 'search-backup', cooldownSeconds: 120 },
+      { id: 'github-slow', servers: ['github'], when: { p95Above: 3000 }, action: 'throttle', maxPerSecond: 5, cooldownSeconds: 60 },
+    ], active: [
+      { rule: 'github-slow', server: 'github', action: 'throttle', reason: 'p95 4210ms > 3000ms over 64 calls', since: new Date(Date.now() - 20000).toISOString(), until: new Date(Date.now() + 40000).toISOString(), refused: 12, rerouted: 0, to: null },
+    ], servers: [{ id: 'search', calls: 210, errors: 2, errorRate: 0.0095, p95: 310 }, { id: 'github', calls: 64, errors: 1, errorRate: 0.0156, p95: 4210 }], history: [
+      { at: new Date(Date.now() - 20000).toISOString(), rule: 'github-slow', server: 'github', action: 'throttle', event: 'triggered', reason: 'p95 4210ms > 3000ms over 64 calls' },
+      { at: new Date(Date.now() - 7200000).toISOString(), rule: 'search-down', server: 'search', action: 'eject', event: 'lifted', reason: 'cool-down elapsed' },
     ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 9.0: nothing is deprecated (schema v8 and the `state` block were removed).

@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Self-healing (9.6). */
+  selfHealing?: import('../features/self-healing.js').SelfHealingConfig;
   /** SLA monitoring & credit reports (9.5). */
   sla?: import('../features/sla.js').SlaConfig;
   /** Global tool registry (9.4). */

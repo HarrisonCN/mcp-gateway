@@ -487,6 +487,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const s = (await (await f('/api/v1/admin/sla')).json()) as any;
     expect(s.targets.map((t: any) => `${t.id}:${t.met}:${t.credit.percent}`)).toEqual(['search-gold:true:0', 'github-silver:false:10']);
   });
+  it('shows self-healing actions (9.6)', async () => {
+    const f = demoFetch();
+    const s = (await (await f('/api/v1/admin/self-healing')).json()) as any;
+    expect(s.active.map((a: any) => `${a.rule}:${a.action}`)).toEqual(['github-slow:throttle']);
+    expect(s.history).toHaveLength(2);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

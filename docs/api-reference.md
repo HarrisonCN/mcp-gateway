@@ -514,6 +514,8 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/sla` | SLA targets: calls, availability, p95, error budget, met, breaches, credit (9.5) |
 | `GET` | `/admin/sla/report?target=&format=json\|csv` | Service-credit report per target and tenant (9.5) |
 | `POST` | `/admin/sla/reset` | Clear the SLA counters (9.5) |
+| `GET` | `/admin/self-healing` | Self-healing rules, active actions, per-server window stats, history (9.6) |
+| `POST` | `/admin/self-healing/:id/trigger` · `/admin/self-healing/:id/clear` | Trigger a rule for `{ server }` / lift it (`{ server? }`) (9.6) |
 
 ## Bridges
 
