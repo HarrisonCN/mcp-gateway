@@ -9,6 +9,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.0.0] - 2026-10-09
+
+**Breaking: true modular kernel.** Feature modules are evaluated only when they are enabled — a gateway that
+configures no features evaluates **none** of the 47 modules (12.0: all 47). Config schema stays **v11** (no `migrate`
+needed). Guide: [Migrating to 13.0](docs/guides/migrating-to-v13.md). 10.x stays LTS.
+
+### Breaking
+- Feature modules are loaded through an `import()` manifest (`src/features/manifest.ts`) when their `features.<section>`
+  is configured (or on the first request for the always-available `kernel`, `conformance`, `k8s`, `terraform`,
+  `policy-sim`; `policy-sim`'s shadow hook loads at start only when `policyShadow` is set). Code that relied on a
+  module's import side effects without configuring it must configure it or set `kernel.modules: eager` (10.x
+  behaviour: everything at start).
+- Call-hook order is the manifest order (a `first` hook still runs first), no longer import order; `callHooks()` and
+  `GET /admin/kernel` `hooks` list only hooks of evaluated modules.
+- `createFeatureRouter()` returns a `FeatureRouter` with `activate()` / `reconcile(prev)` / `dispose()` /
+  `modules()`; `sync()` is now async. `listFeatures()` lists every built-in module, evaluated or not.
+- A module that fails to load or initialise no longer takes the gateway down: its routes answer **503**, its call
+  hooks are skipped, modules depending on it fail too, and `GET /admin/kernel` shows `state: failed` with the error.
+- `RELEASE_LINE` = `{ line: '13.x', lts: false }`.
+
+### Added
+- **Lean entry point `@winstonsayno/mcp-gateway/gateway`**: Gateway, config loading / validation, the authorizer,
+  the kernel API and types — importing it evaluates no feature module (the package root still re-exports every
+  module's helpers and therefore evaluates all of them).
+- **Module lifecycle contract** (all optional on `FeatureModule`): `init(ctx)`, `reconfigure(next, prev, ctx)`,
+  `disable(ctx)`, `dispose()`, `health()`. The kernel runs them in dependency order (`dispose` in reverse), isolates
+  failures and reports per-module `state` / `evaluated` / `dependsOn` / `loadMs` / `error` / `health` plus the
+  `evaluated` load order in `GET /admin/kernel`.
+- **Declared dependencies**: cross-module edges are manifest `dependsOn` entries obtained with
+  `requireDependency(from, dep)` — billing → genai-otel, sanitize → anomaly, edge-autonomy → edge-runtime + offline,
+  task-graphs → a2a-federation. Undeclared use throws; cycles are rejected.
+- Exports: `FEATURE_MANIFEST`, `manifestEntry`, `loadFeature`, `loadedFeatures`, `dependencyOrder`,
+  `requireDependency`, types `FeatureRouter`, `KernelModuleView`, `ModuleHealth`, `FeatureManifestEntry`.
+
+### Changed
+- Every feature's config schema lives in `src/features/schemas/<id>.ts`; `src/config/loader.ts` imports only those,
+  so validating a config never evaluates a module. `dlpStats` moved to `src/policy/dlp-stats.ts` and `policyFor` to
+  the DLP schema, so the admin API and compliance reports no longer import the DLP module (both still re-exported).
+- `undici` is required on first use (mTLS / post-quantum TLS upstreams only): ~95 fewer modules at start.
+- `bench/kernel.mjs` imports the `./gateway` entry, counts only feature modules (not schemas / the manifest) and
+  fails CI if a profile evaluates more modules than recorded. `bench/baseline.json` records 13.0 and the 12.0 run.
+- Baselines in `bench/baseline.json` are keyed by platform (`platforms["linux-arm64"]`, `platforms["linux-x64"]` =
+  GitHub Actions runners, recorded from the 13.0 CI runs); memory is only checked against a same-platform baseline.
+  The CI benchmark step runs with `set -o pipefail`, so the guard is no longer masked by `tee`.
+- Edge autonomy: `reconcile` runs are serialized — `POST /admin/edge-autonomy/reconcile` made while the background loop
+  is replaying joins that run and returns its counts (it used to answer all zeros).
+- CI / release builds no longer pull from Docker Hub (unauthenticated pull rate limits blocked releases): the
+  Dockerfile base image (`ARG NODE_IMAGE`, default `public.ecr.aws/docker/library/node:22-alpine`, same tag and
+  digest as `node:22-alpine`), the Redis service container, the Swift SDK container, BuildKit and QEMU binfmt come from
+  the Amazon ECR Public mirror of the Docker Official Images.
+
+### Benchmark (minimal profile, median of 3 interleaved runs × 5, same machine)
+| | 12.0.0 | 13.0.0 |
+|---|---:|---:|
+| import | 918 ms | 658 ms (−28 %) |
+| start | 16.7 ms | 21.9 ms |
+| RSS | 60.2 MiB | 53.8 MiB |
+| heap | 23.3 MiB | 19.5 MiB |
+| feature modules evaluated | 47 / 47 | 0 / 47 |
+
+### Unchanged
+- The single, non-bypassable authorizer (`src/auth/authorizer.ts`) for every tool-call path and its static
+  call-site test. Config schema v11. Modules cannot be unloaded from memory once evaluated (ES modules); `disable`
+  unmounts them (404), stops their hooks and lets them release resources.
+
 ## [12.0.0] - 2026-10-09
 
 **Breaking security release.** Third-party stdio MCP servers are isolated from the gateway core — environment

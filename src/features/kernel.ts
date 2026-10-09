@@ -14,12 +14,13 @@
 
 import { registerFeature, listFeatures, FEATURE_CONFIG_KEYS, isFeatureActive, moduleMode } from '../gateway/features.js';
 import { callHooks } from '../gateway/hooks.js';
+import { loadedFeatures } from '../gateway/kernel-runtime.js';
 import { VERSION } from '../utils/version.js';
 
 /** Config schema version read by this release line. */
 export const CONFIG_SCHEMA_VERSION = 11;
 
-/** Long-term support of the 10.x line (12.x is the current, non-LTS line; 10.x keeps its LTS dates). */
+/** Long-term support of the 10.x line (13.x is the current, non-LTS line; 10.x keeps its LTS dates). */
 export const LTS = {
   line: '10.x',
   codename: 'Kernel',
@@ -30,8 +31,8 @@ export const LTS = {
   maintenanceUntil: '2028-10-31',
 } as const;
 
-/** Current release line (12.0). */
-export const RELEASE_LINE = { line: '12.x', lts: false } as const;
+/** Current release line (13.0). */
+export const RELEASE_LINE = { line: '13.x', lts: false } as const;
 
 /** LTS status of the 10.x line on a date. */
 export function ltsStatus(now = new Date()): 'active' | 'maintenance' | 'end-of-life' {
@@ -54,7 +55,9 @@ registerFeature({
         line: RELEASE_LINE,
         lts: { ...LTS, status: ltsStatus() },
         moduleMode: moduleMode(ctx.config()),
-        modules: listFeatures().map((m) => ({ ...m, path: `/api/v1/admin/${m.id}`, active: isFeatureActive(ctx.config(), m.id) })),
+        // 13.0: state / evaluated / dependsOn / health per module (kernel lifecycle)
+        modules: (ctx.kernel?.() ?? listFeatures().map((m) => ({ ...m, state: undefined }))).map((m) => ({ ...m, path: `/api/v1/admin/${m.id}`, active: isFeatureActive(ctx.config(), m.id) && m.state !== 'failed' })),
+        evaluated: loadedFeatures(),
         hooks: callHooks().map((h, i) => ({ order: i + 1, id: h.id, before: !!h.before, after: !!h.after })),
         features: FEATURE_CONFIG_KEYS.map((k) => ({ section: `features.${k}`, configured: cfg[k] !== undefined })),
       });

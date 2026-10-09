@@ -31,22 +31,13 @@ import { dirname } from 'node:path';
 import { z } from 'zod';
 import { registerFeature } from '../gateway/features.js';
 import { registerCallHook } from '../gateway/hooks.js';
-import { extractUsage } from './genai-otel.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig } from '../utils/types.js';
-
-const Money = z.number().min(0);
-export const BillingSchema = z
-  .object({
-    enabled: z.boolean().default(true),
-    currency: z.string().regex(/^[A-Z]{3}$/).default('USD'),
-    taxPct: z.number().min(0).max(100).default(0),
-    priceBook: z.array(z.object({ match: z.string().min(1), perCall: Money.default(0), perInputToken: Money.default(0), perOutputToken: Money.default(0), perSecond: Money.default(0) }).strict()).default([]),
-    accounts: z.record(z.object({ name: z.string().optional(), discountPct: z.number().min(0).max(100).default(0), monthlyMinimum: Money.default(0), taxPct: z.number().min(0).max(100).optional() }).strict()).default({}),
-    storePath: z.string().optional(),
-  })
-  .strict();
-export type BillingConfig = z.input<typeof BillingSchema>;
+import { type BillingConfig, BillingSchema, Money } from './schemas/billing.js';
+export { type BillingConfig, BillingSchema } from './schemas/billing.js';
+import { requireDependency } from '../gateway/kernel-runtime.js';
+// 13.0: declared dependency (manifest dependsOn) instead of a static import of another feature module.
+const { extractUsage } = await requireDependency<typeof import('./genai-otel.js')>('billing', 'genai-otel');
 type Cfg = z.output<typeof BillingSchema>;
 type Price = Cfg['priceBook'][number];
 

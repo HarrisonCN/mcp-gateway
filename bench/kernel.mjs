@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 /**
- * Kernel benchmark (12.0): cold start time, memory and evaluated feature modules of the BUILT gateway (dist/).
+ * Kernel benchmark (12.0; 13.0: lean `./gateway` entry, schemas / manifest not counted, module-count guard): cold
+ * start time, memory and evaluated feature modules of the BUILT gateway (dist/).
  *
  *   node bench/kernel.mjs [--runs 5] [--json] [--compare bench/baseline.json] [--write bench/baseline.json]
  *
- * Each sample is a fresh `node --expose-gc` process that imports dist/gateway/index.js, starts a gateway on an
+ * Each sample is a fresh `node --expose-gc` process that imports dist/gateway/public.js (the `./gateway` export), starts a gateway on an
  * ephemeral port (no upstream servers) and reports: import ms, start ms, total ms, RSS / heap after GC, and how many
- * dist/features/*.js modules were evaluated (module-load tracing via module.registerHooks). Two profiles:
+ * dist/features/<id>.js modules were evaluated (not schemas/ or the manifest) (module-load tracing via module.registerHooks). Two profiles:
  * `minimal` (no features configured) and `all` (every feature section that validates with an empty object).
  *
  * --compare prints the delta against a recorded baseline and exits 1 only on a gross regression (> 2× the baseline
  * median for time, > 1.5× for memory) — CI runners are noisy, so the numbers are recorded, not tightly asserted.
+ * Baselines are per platform (`platforms["linux-x64"]` = GitHub Actions runners); memory is only checked against a
+ * baseline recorded on the same platform.
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -28,10 +31,9 @@ const child = String.raw`
 const t0 = performance.now();
 const { registerHooks } = await import('node:module');
 const loaded = new Set();
-registerHooks({ load(url, ctx, next) { if (url.includes('/dist/features/')) loaded.add(url.replace(/.*\/dist\/features\//, '')); return next(url, ctx); } });
+registerHooks({ load(url, ctx, next) { const m = /\/dist\/features\/([a-z0-9-]+)\.js$/.exec(url); if (m && m[1] !== 'manifest') loaded.add(m[1]); return next(url, ctx); } });
 const profile = process.argv[process.argv.length - 1];
-const { Gateway } = await import(process.env.MGW_DIST + '/gateway/index.js');
-const { logger } = await import(process.env.MGW_DIST + '/utils/logger.js');
+const { Gateway, logger } = await import(process.env.MGW_DIST + '/gateway/public.js');
 logger.setLevel('error');
 const t1 = performance.now();
 const base = { port: 0, host: '127.0.0.1', logLevel: 'error', servers: [], auth: { strategy: 'api-key', apiKeys: ['k'.repeat(40)] }, monitor: { requestLog: false } };
@@ -81,16 +83,24 @@ let failed = false;
 if (process.argv.includes('--json')) console.log(JSON.stringify(result, null, 2));
 else {
   const base = cmp ? JSON.parse(readFileSync(join(root, cmp), 'utf8')) : undefined;
+  // 13.0: baselines are keyed by platform (bench/baseline.json `platforms`); fall back to the top-level profiles
+  const platformBase = base?.platforms?.[result.platform];
+  const samePlatform = !!platformBase || base?.platform === result.platform;
+  const baseProfiles = platformBase?.profiles ?? base?.profiles;
   console.log(`Node ${result.node} · ${result.platform} · median of ${runs}`);
+  if (base && !samePlatform) console.log(`(no ${result.platform} baseline recorded: comparing with ${base.platform}; memory is report-only)`);
   console.log('| profile | metric | value | baseline | Δ |');
   console.log('|---|---|---:|---:|---:|');
   for (const [p, v] of Object.entries(result.profiles)) {
     for (const [k, x] of Object.entries(v)) {
-      const b = base?.profiles?.[p]?.[k];
+      const b = baseProfiles?.[p]?.[k];
       const d = b ? `${(((x - b) / b) * 100).toFixed(0)}%` : '';
       console.log(`| ${p} | ${k} | ${x} | ${b ?? ''} | ${d} |`);
       if (b && /Ms$/.test(k) && x > 2 * b + 50) failed = true;
-      if (b && /Mb$/.test(k) && x > 1.5 * b + 10) failed = true;
+      // memory differs a lot between platforms: only enforced against a baseline recorded on this platform
+      if (b && /Mb$/.test(k) && samePlatform && x > 1.5 * b + 10) failed = true;
+      // 13.0: a profile must never evaluate more feature modules than recorded (minimal: none)
+      if (b !== undefined && k === 'featureModules' && x > b) failed = true;
     }
   }
 }

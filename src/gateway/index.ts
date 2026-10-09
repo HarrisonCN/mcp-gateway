@@ -17,9 +17,8 @@ import { createApiRouter, serverStateSamples, type ApiRouter, type ToolCallRespo
 import { createOpenAIRouter } from '../bridges/openai.js';
 import { createAdminRouter } from './admin.js';
 import { createEdgeControlRouter } from './edge-control.js';
-import { createFeatureRouter, featureSections, principalOf, clientIdOf } from './features.js';
+import { createFeatureRouter, featureSections, principalOf, clientIdOf, type FeatureRouter } from './features.js';
 import { clientPrincipal, deniedPrincipal, systemPrincipal, type Principal } from '../auth/authorizer.js';
-import '../features/index.js';
 import { deprecate } from '../utils/deprecations.js';
 import { createA2ARouter } from '../bridges/a2a.js';
 import { ServerSupervisor } from './supervisor.js';
@@ -96,7 +95,7 @@ export class Gateway {
   /** 5.2: cleanups registered by feature modules. */
   private readonly featureStops: Array<() => void | Promise<void>> = [];
   /** 10.9: feature router (mounts modules that become active on reload). */
-  private featureRouter?: import('express').Router & { sync?: () => string[] };
+  private featureRouter?: FeatureRouter;
 
   /** Current principal of a client id (11.1): api-key scope + tenants re-resolved; unknown or unresolvable ids may call nothing. */
   principalFor(clientId: string | undefined): Principal {
@@ -434,6 +433,8 @@ export class Gateway {
         },
       });
     this.app.use('/api/v1', this.featureRouter);
+    // 13.0: evaluate, initialise and mount the modules that run from the start (dependency order, failure isolated).
+    await this.featureRouter.activate();
     // 10.5: kernel plugin SDK routes.
     this.plugins.setRouteEnv({
       tools: () => this.registry.getAllTools().map((t) => ({ serverId: t.serverId, name: t.name, description: t.description })),
@@ -613,6 +614,7 @@ export class Gateway {
     logger.info('Shutting down mcp-gateway...');
     await this.dataPlane?.stop();
     for (const fn of this.featureStops.splice(0)) await Promise.resolve(fn()).catch(() => {});
+    await this.featureRouter?.dispose().catch(() => {});
     const closed = this.server.listening
       ? new Promise<void>((res, rej) => this.server.close((err) => (err ? rej(err) : res())))
       : Promise.resolve();
@@ -808,7 +810,7 @@ export class Gateway {
         kernel: next.kernel,
         configDir: next.configDir ?? this.config.configDir,
       };
-      const activated = this.featureRouter?.sync?.() ?? [];
+      const activated = (await this.featureRouter?.reconcile(prevConfig)) ?? [];
       if (activated.length) applied.push(`modules (${activated.join(', ')})`);
       if (!same(prevCatalog, next.catalog)) {
         await this.catalog.refresh();

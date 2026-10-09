@@ -28,17 +28,8 @@ import { z } from 'zod';
 import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
 import { registerCallHook } from '../gateway/hooks.js';
 import type { GatewayConfig } from '../utils/types.js';
-
-export const DataLineageSchema = z
-  .object({
-    enabled: z.boolean().default(true),
-    scope: z.enum(['client', 'tenant', 'global']).default('client'),
-    windowMinutes: z.number().int().min(1).max(10_080).default(60),
-    minValueLength: z.number().int().min(4).max(1000).default(8),
-    maxNodes: z.number().int().min(100).max(1_000_000).default(5000),
-  })
-  .strict();
-export type DataLineageConfig = z.input<typeof DataLineageSchema>;
+import { type DataLineageConfig, DataLineageSchema } from './schemas/data-lineage.js';
+export { type DataLineageConfig, DataLineageSchema } from './schemas/data-lineage.js';
 type Cfg = z.output<typeof DataLineageSchema>;
 
 export interface LineageNode {

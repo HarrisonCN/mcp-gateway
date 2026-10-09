@@ -26,7 +26,11 @@
 import { createHash, createPrivateKey, X509Certificate } from 'crypto';
 import { readFileSync } from 'fs';
 import { isAbsolute, resolve } from 'path';
-import { Agent, fetch as undiciFetch } from 'undici';
+import { createRequire } from 'node:module';
+import type { Agent } from 'undici';
+// 13.0: undici (~95 modules) is required on first use — only gateways with mTLS / PQ-TLS upstreams pay for it.
+let undiciMod: typeof import('undici') | undefined;
+const undici = (): typeof import('undici') => (undiciMod ??= createRequire(import.meta.url)('undici') as typeof import('undici'));
 import { globToRegExp } from '../utils/tool-filter.js';
 import { logger } from '../utils/logger.js';
 
@@ -209,7 +213,7 @@ export class MtlsManager {
     if (this.enabled && !m) throw new Error(`mTLS identity is not loaded${this.error ? ` (${this.error})` : ''}; refusing to connect to "${server.id}" without it`);
     const ca = tls.ca ? loadPem(tls.ca, this.baseDir()) : m?.bundle;
     const presentCert = tls.clientCert !== false && m;
-    agent = new Agent({
+    agent = new (undici().Agent)({
       connect: {
         ...(ca ? { ca } : {}),
         ...(presentCert ? { cert: m.cert, key: m.key } : {}),
@@ -237,7 +241,7 @@ export class MtlsManager {
   /** `fetch` for a server's upstream requests (global fetch when mTLS does not apply). */
   fetchFor(server: { id: string; url?: string; tls?: ServerTlsConfig }): FetchLike {
     if (!this.applies(server)) return globalThis.fetch;
-    return (async (input: string | URL, init?: RequestInit) => undiciFetch(input as string, { ...(init as object), dispatcher: this.agentFor(server) } as never)) as unknown as FetchLike;
+    return (async (input: string | URL, init?: RequestInit) => undici().fetch(input as string, { ...(init as object), dispatcher: this.agentFor(server) } as never)) as unknown as FetchLike;
   }
 
   status(): { enabled: boolean; identity?: IdentityStatus; peers: Array<{ server: string; spiffeIds: string[]; at: string }> } {
@@ -279,9 +283,9 @@ export function upstreamFetch(server: { id: string; url?: string; tls?: ServerTl
   const groups = upstreamTlsGroups(server);
   if (!groups) return globalThis.fetch;
   let agent = groupAgents.get(groups);
-  if (!agent) groupAgents.set(groups, (agent = new Agent({ connect: { ecdhCurve: groups } })));
+  if (!agent) groupAgents.set(groups, (agent = new (undici().Agent)({ connect: { ecdhCurve: groups } })));
   const dispatcher = agent;
-  return ((input: string | URL, init?: RequestInit) => undiciFetch(input as string, { ...(init as object), dispatcher } as never)) as unknown as FetchLike;
+  return ((input: string | URL, init?: RequestInit) => undici().fetch(input as string, { ...(init as object), dispatcher } as never)) as unknown as FetchLike;
 }
 
 /** TLS key-exchange groups for upstream HTTPS connections (9.7 post-quantum TLS), e.g. `X25519MLKEM768:X25519`. */

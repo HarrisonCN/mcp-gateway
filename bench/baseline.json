@@ -1,24 +1,97 @@
 {
   "node": "v22.23.3",
   "platform": "linux-arm64",
-  "runs": 3,
+  "runs": 15,
+  "method": "median of 3 interleaved 12.0/13.0 bench runs × 5 samples each (shared, noisy sandbox)",
+  "note": "Top-level profiles = linux-arm64 sandbox (kept for older readers). `--compare` uses platforms[<platform>] when present; on a platform without a recorded baseline memory deltas are report-only.",
   "profiles": {
     "minimal": {
-      "importMs": 1066.7,
-      "startMs": 15.7,
-      "totalMs": 1081.2,
-      "rssMb": 58.7,
-      "heapMb": 23.3,
-      "featureModules": 47
+      "importMs": 657.9,
+      "startMs": 21.9,
+      "totalMs": 685.7,
+      "rssMb": 53.8,
+      "heapMb": 19.5,
+      "featureModules": 0
     },
     "all": {
-      "importMs": 1080.2,
-      "startMs": 46.4,
-      "totalMs": 1126.7,
-      "rssMb": 63.4,
-      "heapMb": 24,
-      "featureModules": 47
+      "importMs": 675.7,
+      "startMs": 152.4,
+      "totalMs": 824.8,
+      "rssMb": 56.1,
+      "heapMb": 21.7,
+      "featureModules": 31
     }
   },
-  "recordedAt": "2026-10-09T19:41:26.471Z"
+  "platforms": {
+    "linux-arm64": {
+      "node": "v22.23.3",
+      "method": "median of 3 interleaved 12.0/13.0 bench runs × 5 samples each (shared, noisy sandbox)",
+      "profiles": {
+        "minimal": {
+          "importMs": 657.9,
+          "startMs": 21.9,
+          "totalMs": 685.7,
+          "rssMb": 53.8,
+          "heapMb": 19.5,
+          "featureModules": 0
+        },
+        "all": {
+          "importMs": 675.7,
+          "startMs": 152.4,
+          "totalMs": 824.8,
+          "rssMb": 56.1,
+          "heapMb": 21.7,
+          "featureModules": 31
+        }
+      },
+      "recordedAt": "2026-10-09T20:50:00Z"
+    },
+    "linux-x64": {
+      "node": "v22.23.3 / v24.21.0",
+      "runner": "GitHub Actions ubuntu-latest",
+      "method": "median of the three CI job medians (5 samples each): Node 22 ×2, Node 24 ×1, 13.0.0 PR #137 run 37989480264",
+      "profiles": {
+        "minimal": {
+          "importMs": 231.5,
+          "startMs": 20.9,
+          "totalMs": 253.5,
+          "rssMb": 97.2,
+          "heapMb": 19.8,
+          "featureModules": 0
+        },
+        "all": {
+          "importMs": 231.6,
+          "startMs": 74.7,
+          "totalMs": 307.2,
+          "rssMb": 102.6,
+          "heapMb": 21.9,
+          "featureModules": 31
+        }
+      },
+      "recordedAt": "2026-10-09"
+    }
+  },
+  "before": {
+    "version": "12.0.0",
+    "note": "same machine, same session, interleaved with the 13.0 runs",
+    "profiles": {
+      "minimal": {
+        "importMs": 917.6,
+        "startMs": 16.7,
+        "totalMs": 935,
+        "rssMb": 60.2,
+        "heapMb": 23.3,
+        "featureModules": 47
+      },
+      "all": {
+        "importMs": 928.5,
+        "startMs": 42.5,
+        "totalMs": 971,
+        "rssMb": 65.9,
+        "heapMb": 24,
+        "featureModules": 47
+      }
+    }
+  },
+  "recordedAt": "2026-10-09T20:50:00Z"
 }

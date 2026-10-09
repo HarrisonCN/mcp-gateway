@@ -31,14 +31,8 @@ import { z } from 'zod';
 import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
 import { portableConfig } from '../gateway/admin.js';
 import type { GatewayConfig } from '../utils/types.js';
-
-export const ConfigAssistantSchema = z
-  .object({
-    enabled: z.boolean().default(true),
-    llm: z.object({ baseUrl: z.string().url(), model: z.string().min(1), apiKey: z.string().min(1).optional(), timeoutMs: z.number().int().min(1000).max(120_000).default(30_000) }).strict().optional(),
-  })
-  .strict();
-export type ConfigAssistantConfig = z.input<typeof ConfigAssistantSchema>;
+import { type ConfigAssistantConfig, ConfigAssistantSchema } from './schemas/config-assistant.js';
+export { type ConfigAssistantConfig, ConfigAssistantSchema } from './schemas/config-assistant.js';
 type Cfg = z.output<typeof ConfigAssistantSchema>;
 
 type Raw = Record<string, unknown>;

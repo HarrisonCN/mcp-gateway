@@ -26,16 +26,8 @@ import { registerCallHook } from '../gateway/hooks.js';
 import { evaluatePolicy, invalidPolicy, type PolicyDecision } from '../policy/tool-policy.js';
 import { PolicyRuleSchema } from '../policy/rule-schema.js';
 import type { GatewayConfig, ToolPolicyConfig } from '../utils/types.js';
-
-const policyFields = { rules: z.array(PolicyRuleSchema).default([]), default: z.enum(['allow', 'deny', 'approve']).default('allow') };
-const validRegexes = (p: { rules: unknown[] }, ctx: z.RefinementCtx) => {
-  const bad = invalidPolicy(p as ToolPolicyConfig);
-  if (bad) ctx.addIssue({ code: 'custom', message: bad });
-};
-export const CandidatePolicySchema = z.object(policyFields).strict().superRefine(validRegexes);
-export const PolicyShadowSchema = z.object({ ...policyFields, enabled: z.boolean().default(true) }).strict().superRefine(validRegexes);
-export type PolicyShadowConfig = z.input<typeof PolicyShadowSchema>;
-
+import { CandidatePolicySchema, type PolicyShadowConfig, PolicyShadowSchema, policyFields, validRegexes } from './schemas/policy-sim.js';
+export { CandidatePolicySchema, type PolicyShadowConfig, PolicyShadowSchema } from './schemas/policy-sim.js';
 export interface SimCall {
   clientId?: string;
   serverId: string;

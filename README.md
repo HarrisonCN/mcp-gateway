@@ -322,29 +322,31 @@ Report vulnerabilities privately via
 
 | Version | Status |
 |---|---|
-| 12.x (current) | New features, bug and security fixes |
-| 11.x | Superseded — upgrade to 12.x ([12.0 guide](docs/guides/migrating-to-v12.md)) |
+| 13.x (current) | New features, bug and security fixes |
+| 12.x | Superseded — upgrade to 13.x ([13.0 guide](docs/guides/migrating-to-v13.md)) |
+| 11.x | Superseded — upgrade to 13.x ([12.0 guide](docs/guides/migrating-to-v12.md), [13.0 guide](docs/guides/migrating-to-v13.md)) |
 | 10.x (LTS) | Bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |
 | < 10.0 | Unsupported — upgrade with `mcp-gateway migrate` ([10.0 guide](docs/guides/migrating-to-v10.md), [11.0 guide](docs/guides/migrating-to-v11.md)) |
 
-Upgrading from 10.x: `npx @winstonsayno/mcp-gateway@12 migrate --write` rewrites the config to schema v11 — see
+Upgrading from 10.x: `npx @winstonsayno/mcp-gateway@13 migrate --write` rewrites the config to schema v11 — see
 [Migrating to 11.0](docs/guides/migrating-to-v11.md). From 11.x: no config migration; stdio servers get an
-environment allowlist — see [Migrating to 12.0](docs/guides/migrating-to-v12.md).
+environment allowlist — see [Migrating to 12.0](docs/guides/migrating-to-v12.md). From 12.x: no config migration;
+feature modules load on demand — see [Migrating to 13.0](docs/guides/migrating-to-v13.md).
 
 The project follows [Semantic Versioning](https://semver.org/). Within a major line the REST API under `/api/v1`,
 `/mcp` behaviour, the config schema (v11 for 11.x, v10 for 10.x), CLI commands and flags, root library exports and
 Prometheus metric names change only in backward-compatible ways. Deep imports, log format, the dashboard and the
 audit database schema are not covered — see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
-## What's New in v12.0
+## What's New in v13.0
 
-**Breaking security release.** stdio MCP servers — third-party code — no longer inherit the gateway's environment:
-only an allowlist (`PATH`, `HOME`, locale, `TMPDIR` …) plus what you pass explicitly (`env`, `envPassthrough`). They
-can also run as another uid/gid, in a fixed working directory and inside bubblewrap, firejail or a container with the
-network off ([guide](docs/security/stdio-isolation.md)). Multimodal per-item limits are lower, hot reload rolls back
-on failure, and a kernel benchmark (startup time, memory, loaded modules) runs in CI. Builds on 11.1 / 11.2: one
-central authorizer for every tool call, owner-bound multimodal blobs, persistent agent-token revocation. Config schema
-stays v11. [Migrating to 12.0](docs/guides/migrating-to-v12.md).
+**Breaking: true modular kernel.** Feature modules are now loaded with `import()` only when you enable them — a
+gateway with no feature sections evaluates none of the 47 modules (12.0 evaluated all of them): import −28 %, RSS
+60 → 54 MiB in the minimal profile. Modules get a lifecycle contract (`init` / `reconfigure` / `disable` / `dispose` /
+`health`) with declared dependencies, dependency ordering and failure isolation (a broken module answers 503 instead
+of stopping the gateway), visible in `GET /api/v1/admin/kernel`. New lean entry `@winstonsayno/mcp-gateway/gateway`.
+Every tool call still goes through the one central authorizer. Config schema stays v11.
+[Migrating to 13.0](docs/guides/migrating-to-v13.md).
 
 ## Documentation
 

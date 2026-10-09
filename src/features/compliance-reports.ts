@@ -33,35 +33,12 @@ import { portableConfig, withFeatureSection } from '../gateway/admin.js';
 import { redactConfig } from '../config/diff.js';
 import { buildReport, reportMarkdown, type ControlResult, type ReportInput } from '../policy/compliance.js';
 import { securityWarnings } from '../security/posture.js';
-import { dlpStats } from './dlp.js';
+import { dlpStats } from '../policy/dlp-stats.js';
 import { VERSION } from '../utils/version.js';
 import { logger } from '../utils/logger.js';
 import type { GatewayConfig, RequestMetric } from '../utils/types.js';
-
-const Framework = z.enum(['soc2', 'iso27001', 'gdpr']);
-export type Framework = z.infer<typeof Framework>;
-const EVERY_MS = { daily: 86_400_000, weekly: 7 * 86_400_000, monthly: 30 * 86_400_000 } as const;
-
-export const ComplianceReportsSchema = z
-  .object({
-    enabled: z.boolean().default(true),
-    outputDir: z.string().min(1).default('./compliance'),
-    keep: z.number().int().min(1).max(1000).default(12),
-    schedules: z
-      .array(
-        z
-          .object({
-            id: z.string().min(1).regex(/^[A-Za-z0-9._-]+$/),
-            frameworks: z.array(Framework).min(1).default(['soc2', 'iso27001', 'gdpr']),
-            every: z.enum(['daily', 'weekly', 'monthly']).default('monthly'),
-            periodDays: z.number().int().min(1).max(366).default(30),
-          })
-          .strict(),
-      )
-      .default([]),
-  })
-  .strict();
-export type ComplianceReportsConfig = z.input<typeof ComplianceReportsSchema>;
+import { type ComplianceReportsConfig, ComplianceReportsSchema, EVERY_MS, Framework } from './schemas/compliance-reports.js';
+export { type ComplianceReportsConfig, ComplianceReportsSchema, Framework } from './schemas/compliance-reports.js';
 type Cfg = z.output<typeof ComplianceReportsSchema>;
 
 const settings = (cfg: GatewayConfig): Cfg | undefined => {

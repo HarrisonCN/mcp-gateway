@@ -49,44 +49,17 @@ import { registerFeature, badRequest, objectBody, type FeatureContext } from '..
 import { deniedPrincipal, type Principal } from '../auth/authorizer.js';
 import { registerCallHook, type HookCall } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
-import { EdgeRuntimeSchema, callEdgeTool } from './edge-runtime.js';
-import { OfflineSchema, isOffline, isRemote } from './offline.js';
 import { ERR_NOT_CONNECTED, ERR_TIMEOUT } from '../proxy/index.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
-
-/** Same code as the offline feature: refused because the network / upstream is gone. */
-export const ERR_EDGE_DENIED = -32018;
-
-const Rule = z
-  .object({
-    match: z.string().min(1),
-    action: z.enum(['cache', 'wasm', 'queue', 'deny']),
-    maxAgeSeconds: z.number().int().min(1).max(365 * 86_400).default(86_400),
-    wasmTool: z.string().min(1).optional(),
-    message: z.string().optional(),
-  })
-  .strict()
-  .refine((r) => r.action !== 'wasm' || r.wasmTool, { message: 'action: wasm needs "wasmTool" (a features.edgeRuntime tool name)' });
-
-export const EdgeAutonomySchema = z
-  .object({
-    enabled: z.boolean().default(true),
-    dir: z.string().min(1).optional(),
-    rules: z.array(Rule).min(1),
-    cacheEntries: z.number().int().min(1).max(100_000).default(1000),
-    outboxLimit: z.number().int().min(1).max(100_000).default(10_000),
-    reconcile: z
-      .object({
-        intervalMs: z.number().int().min(100).max(3_600_000).default(5000),
-        maxAttempts: z.number().int().min(1).max(100).default(5),
-        idempotencyArg: z.string().min(1).optional(),
-      })
-      .strict()
-      .default({}),
-  })
-  .strict();
-export type EdgeAutonomyConfig = z.input<typeof EdgeAutonomySchema>;
+import { ERR_EDGE_DENIED, type EdgeAutonomyConfig, EdgeAutonomySchema, Rule } from './schemas/edge-autonomy.js';
+export { ERR_EDGE_DENIED, type EdgeAutonomyConfig, EdgeAutonomySchema } from './schemas/edge-autonomy.js';
+import { EdgeRuntimeSchema } from './schemas/edge-runtime.js';
+import { OfflineSchema } from './schemas/offline.js';
+import { requireDependency } from '../gateway/kernel-runtime.js';
+// 13.0: declared dependencies (manifest dependsOn) instead of static imports of other feature modules.
+const { callEdgeTool } = await requireDependency<typeof import('./edge-runtime.js')>('edge-autonomy', 'edge-runtime');
+const { isOffline, isRemote } = await requireDependency<typeof import('./offline.js')>('edge-autonomy', 'offline');
 type Parsed = z.output<typeof EdgeAutonomySchema>;
 type RuleCfg = Parsed['rules'][number];
 
@@ -260,10 +233,27 @@ export async function localDecision(c: Parsed, cfg: GatewayConfig, call: HookCal
 }
 
 /** Replay queued calls whose server is connected again. */
-export async function reconcile(cfg: GatewayConfig, invoke: FeatureContext['invoke'], principalFor: (clientId: string | undefined) => Principal = deniedPrincipal): Promise<{ applied: number; failed: number; conflicts: number; pending: number }> {
-  const c = edgeAutonomyOf(cfg);
+type ReconcileResult = { applied: number; failed: number; conflicts: number; pending: number };
+let inflight: Promise<ReconcileResult> | undefined;
+
+/**
+ * Replay queued outbox entries whose server is reachable again. Runs are serialized: a call made while a reconcile is
+ * already running (e.g. the background loop) joins it and returns that run's result instead of reporting zeros.
+ */
+export async function reconcile(cfg: GatewayConfig, invoke: FeatureContext['invoke'], principalFor: (clientId: string | undefined) => Principal = deniedPrincipal): Promise<ReconcileResult> {
+  if (!edgeAutonomyOf(cfg)) return { applied: 0, failed: 0, conflicts: 0, pending: 0 };
+  if (inflight) return inflight;
+  inflight = reconcileOnce(cfg, invoke, principalFor);
+  try {
+    return await inflight;
+  } finally {
+    inflight = undefined;
+  }
+}
+
+async function reconcileOnce(cfg: GatewayConfig, invoke: FeatureContext['invoke'], principalFor: (clientId: string | undefined) => Principal): Promise<ReconcileResult> {
+  const c = edgeAutonomyOf(cfg)!;
   const out = { applied: 0, failed: 0, conflicts: 0, pending: 0 };
-  if (!c || edgeState.reconciling) return out;
   edgeState.reconciling = true;
   try {
     for (const e of edgeState.outbox) {

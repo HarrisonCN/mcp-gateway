@@ -35,27 +35,8 @@ import { registerFeature, objectBody, badRequest, type FeatureContext } from '..
 import { registerCallHook } from '../gateway/hooks.js';
 import { portableConfig, featureSection, withFeatureSection } from '../gateway/admin.js';
 import type { GatewayConfig } from '../utils/types.js';
-
-export const ERR_ORG_REFUSED = -32016;
-
-const Id = z.string().min(1).regex(/^[A-Za-z0-9._-]+$/, 'letters, digits, ".", "_" and "-" only');
-const PlanSchema = z.object({ name: z.string().optional(), servers: z.array(z.string().min(1)).min(1), callsPerDay: z.number().int().min(0).optional() }).strict();
-export const ConsoleSchema = z
-  .object({
-    enabled: z.boolean().default(true),
-    defaultPlan: z.string().min(1).optional(),
-    plans: z.record(PlanSchema).default({}),
-    orgs: z.record(z.object({ plan: z.string().min(1), suspended: z.boolean().default(false) }).strict()).default({}),
-  })
-  .strict()
-  .superRefine((c, ctx) => {
-    if (c.defaultPlan && !c.plans[c.defaultPlan]) ctx.addIssue({ code: 'custom', path: ['defaultPlan'], message: `unknown plan "${c.defaultPlan}"` });
-    for (const [id, o] of Object.entries(c.orgs)) {
-      if (!Id.safeParse(id).success) ctx.addIssue({ code: 'custom', path: ['orgs', id], message: 'org ids are letters, digits, ".", "_" and "-"' });
-      if (!c.plans[o.plan]) ctx.addIssue({ code: 'custom', path: ['orgs', id, 'plan'], message: `unknown plan "${o.plan}"` });
-    }
-  });
-export type ConsoleConfig = z.input<typeof ConsoleSchema>;
+import { type ConsoleConfig, ConsoleSchema, ERR_ORG_REFUSED, Id, PlanSchema } from './schemas/console.js';
+export { type ConsoleConfig, ConsoleSchema, ERR_ORG_REFUSED } from './schemas/console.js';
 type Cfg = z.output<typeof ConsoleSchema>;
 
 const settings = (cfg: GatewayConfig): Cfg | undefined => {

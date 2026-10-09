@@ -126,7 +126,13 @@ export { toLlmToolSchemas, sanitizeToolName, LLM_SCHEMA_FORMATS } from './mcp/ll
 export type { LlmSchemaFormat, LlmToolSchemas } from './mcp/llm-schemas.js';
 export { buildToolIndex, prefixedName, TOOL_NAME_SEPARATOR } from './mcp/naming.js';
 export { createFeatureRouter, registerFeature, listFeatures } from './features/index.js';
-export type { FeatureModule, FeatureContext } from './gateway/features.js';
+export type { FeatureModule, FeatureContext, FeatureRouter, KernelModuleView, ModuleHealth } from './gateway/features.js';
+// 13.0: modular kernel — import() manifest, on-demand loader, declared dependencies
+export { FEATURE_MANIFEST, manifestEntry } from './features/manifest.js';
+export type { FeatureManifestEntry } from './features/manifest.js';
+export { loadFeature, loadedFeatures, dependencyOrder, requireDependency } from './gateway/kernel-runtime.js';
+export { dlpStats } from './policy/dlp-stats.js';
+export { RELEASE_LINE } from './features/kernel.js';
 export { runConformance, formatReport as formatConformanceReport, CHECKS as CONFORMANCE_CHECKS } from './features/conformance.js';
 export type { ConformanceReport, CheckResult as ConformanceCheck } from './features/conformance.js';
 export { RegionMesh, RegionsSchema, resolveRegions } from './features/regions.js';

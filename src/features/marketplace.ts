@@ -23,17 +23,8 @@ import { resolve, join } from 'node:path';
 import { z } from 'zod';
 import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
 import { PluginTrustSchema, verifyArtifact, sha256Hex } from '../plugins/trust.js';
-
-export const MarketplaceSchema = z
-  .object({
-    dir: z.string().min(1).default('plugins'),
-    indexes: z.array(z.string().url()).default([]),
-    /** Max artifact size (default 5 MiB). */
-    maxBytes: z.number().int().positive().default(5 * 1024 * 1024),
-  })
-  .strict();
-export type MarketplaceConfig = z.input<typeof MarketplaceSchema>;
-
+import { type MarketplaceConfig, MarketplaceSchema } from './schemas/marketplace.js';
+export { type MarketplaceConfig, MarketplaceSchema } from './schemas/marketplace.js';
 export interface MarketplaceEntry {
   name: string;
   version: string;

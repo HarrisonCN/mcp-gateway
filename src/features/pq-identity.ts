@@ -43,28 +43,8 @@ import type { GatewayConfig } from '../utils/types.js';
 import { isToolInScope } from '../auth/scopes.js';
 import type { AuthedRequest } from '../auth/middleware.js';
 import { logger } from '../utils/logger.js';
-
-export const PqIdentitySchema = z
-  .object({
-    enabled: z.boolean().default(true),
-    keyFile: z.string().min(1),
-    keyId: z.string().min(1).max(128),
-    gatewayId: z.string().min(1).optional(),
-    validityDays: z.number().int().min(1).max(3650).default(90),
-    toolManifest: z.boolean().default(true),
-    auditLog: z
-      .object({
-        enabled: z.boolean().default(true),
-        dir: z.string().min(1).optional(),
-        maxEntries: z.number().int().min(100).max(1_000_000).default(50_000),
-        checkpointEvery: z.number().int().min(1).max(1_000_000).default(100),
-        checkpointSeconds: z.number().int().min(1).max(86_400).default(300),
-      })
-      .strict()
-      .default({}),
-  })
-  .strict();
-export type PqIdentityConfig = z.input<typeof PqIdentitySchema>;
+import { type PqIdentityConfig, PqIdentitySchema } from './schemas/pq-identity.js';
+export { type PqIdentityConfig, PqIdentitySchema } from './schemas/pq-identity.js';
 type Parsed = z.output<typeof PqIdentitySchema>;
 
 /** Canonical JSON (sorted keys) — what gets hashed and signed. */
