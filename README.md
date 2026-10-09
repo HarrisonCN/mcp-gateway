@@ -257,14 +257,14 @@ Server-side API keys can also carry scopes (`servers`, `tools`), their own `rate
 **Extended modules** — opt-in under `features:` in the config, each documented in [`docs/guides`](docs/guides):
 policy as code and approvals, [Cedar / OPA policies](docs/guides/policy-engine.md) with tests and impact analysis,
 [time-travel replay](docs/guides/time-travel.md), [real-time cost / carbon budgets](docs/guides/realtime-budgets.md),
+[durable task graphs](docs/guides/task-graphs.md) (cross-gateway, checkpoints, resume, compensation),
 DLP and prompt-injection sanitising, result and semantic caching, plugins (signed, WASM, and the
 [kernel plugin SDK](docs/guides/plugin-sdk.md) for hooks + config + routes),
 OpenAI / A2A bridges, control plane / data plane, multi-region, workflows, SLA and cost reporting, and more. These
 are compact implementations with unit tests, but they have seen far less real-world use than the core; read the guide
 and test in your environment before depending on one.
 
-**Experimental (interface-level)** — `validate`, startup and `GET /api/v1/security` print an EXPERIMENTAL notice
-when either is enabled.
+**Experimental** — `validate`, startup and `GET /api/v1/security` print an EXPERIMENTAL notice when one is enabled.
 - **Confidential computing / TEE attestation** ([guide](docs/guides/confidential.md)): the gateway checks a signed
   JSON attestation report from a key you trust, plus measurement allowlists and single-use nonces. It does **not**
   verify native SEV-SNP / TDX / Nitro / SGX evidence or vendor certificate chains, and the report is not bound to the
@@ -272,6 +272,9 @@ when either is enabled.
 - **Post-quantum TLS** ([guide](docs/guides/pq-tls.md)): offers hybrid `X25519MLKEM768` key exchange on upstream
   HTTPS (Streamable HTTP / SSE) connections and can probe what an upstream negotiates. It does not cover the gateway's
   own listener or WebSocket upstreams, and ML-KEM needs OpenSSL 3.5+.
+- **Edge autonomy** ([guide](docs/guides/edge-autonomy.md)): while an upstream is unreachable, answers matching calls
+  from the last good result or a local WASM tool, queues them into an outbox, or refuses them, and replays the outbox
+  on reconnect. No conflict resolution (rejected replays are parked for an operator), at-least-once replay.
 
 **Client libraries** — TypeScript ([`clients/js`](clients/js), published as `@winstonsayno/mcp-gateway-client`),
 Kotlin / JVM / Android ([`clients/kotlin`](clients/kotlin)), Python ([`clients/python`](clients/python)),
@@ -317,15 +320,15 @@ behaviour, config schema v10, CLI commands and flags, root library exports and P
 in backward-compatible ways. Deep imports, log format, the dashboard and the audit database schema are not covered —
 see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
-## What's New in v10.6
+## What's New in v10.7
 
-Feature line continues (opt-in, schema v10 compatible): a **time-travel journal** records configs and calls so you can
-see the gateway's configuration and traffic at any instant, follow an agent's call chain, diff configs and replay past
-calls under today's policy (optionally re-executing them and diffing results); **real-time budgets** cap cost or
-estimated carbon over sliding windows per client / tenant, warning first and then rejecting (REST `429` +
-`Retry-After`, JSON-RPC `-32013`) or downgrading the call. See the [time-travel](docs/guides/time-travel.md) and
-[real-time budgets](docs/guides/realtime-budgets.md) guides. Earlier in 10.x: plugin SDK and Cedar / OPA (10.5),
-signed images and SBOMs (10.4), secure defaults (10.3). Full history: [CHANGELOG.md](CHANGELOG.md).
+Feature line continues (opt-in, schema v10 compatible): **durable task graphs** orchestrate tools and agents across
+gateways (A2A) with checkpoints, resume after a crash, retry with backoff and saga compensation; **edge autonomy**
+(EXPERIMENTAL) keeps an edge gateway answering while an upstream is unreachable — cached results, local WASM tools, a
+queued outbox or a clear refusal, after local policy — and replays the outbox on reconnect. See the
+[task graphs](docs/guides/task-graphs.md) and [edge autonomy](docs/guides/edge-autonomy.md) guides. Earlier in 10.x:
+time-travel replay and real-time budgets (10.6), plugin SDK and Cedar / OPA (10.5), signed images and SBOMs (10.4),
+secure defaults (10.3). Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 

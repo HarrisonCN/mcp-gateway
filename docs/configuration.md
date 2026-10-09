@@ -670,6 +670,26 @@ replay — see [Time-travel debugging](guides/time-travel.md). `realtimeBudgets`
 budgets per client, tenant or globally; `reject` answers REST `429` + `Retry-After` and JSON-RPC `-32013` — see
 [Real-time budgets](guides/realtime-budgets.md).
 
+### Task graphs and edge autonomy (10.7)
+
+```yaml
+features:
+  taskGraphs:
+    dir: .mcp-gateway/task-graphs
+    graphs:
+      - id: onboard
+        nodes:
+          - { id: a, tool: crm/create, compensate: { tool: crm/delete, args: { id: "{{self.structuredContent.id}}" } } }
+          - { id: b, remote: { gateway: eu, skill: kyc }, needs: [a], retry: { attempts: 3, backoffMs: 500 } }
+  edgeAutonomy:                    # EXPERIMENTAL
+    dir: .mcp-gateway/edge
+    rules: [{ match: "crm/get_*", action: cache }, { match: "crm/update_*", action: queue }]
+```
+
+`taskGraphs`: cross-gateway task graphs with checkpoints, resume, retry and compensation — see
+[Task graphs](guides/task-graphs.md). `edgeAutonomy` (EXPERIMENTAL): local cache / WASM / queue / deny decisions while
+an upstream is unreachable, outbox reconcile on reconnect — see [Edge autonomy](guides/edge-autonomy.md).
+
 ## Plugins
 
 ```yaml
