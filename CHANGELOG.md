@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.1.0] - 2026-10-09
+
+Security baseline release — hardening, tests and docs only, no new features.
+
+### Security
+- **stdio upstreams no longer inherit the gateway's own secrets.** Child processes received the full gateway
+  environment, including `MCP_GATEWAY_API_KEYS`, `MCP_GATEWAY_ADMIN_KEY` and `MCP_GATEWAY_REDIS_URL`, so any
+  third-party MCP server could read the admin key. Every `MCP_GATEWAY_*` variable is now dropped from the child
+  environment; a server that really needs one passes it explicitly in its `env` (e.g. `MCP_GATEWAY_URL: ${MCP_GATEWAY_URL}`).
+  Commands are spawned with an argument array and `shell: false` (pinned by a regression test: `$(…)` / backticks
+  reach the child verbatim).
+- **Tenant owners can no longer enrol operators or wildcard members.** `PUT /api/v1/tenants/:id/members` let a
+  non-operator owner add a glob (`*`, `key:*`) or an operator's exact client id; membership confines a client to the
+  tenant's servers, so an owner could strip operators of admin access or pull other tenants' clients into their
+  tenant. Owners now grant exact, non-operator client ids only (403 otherwise); operators keep glob support.
+- **mTLS fails closed.** When `mtls.identity` was configured but could not be loaded, upstream connections went ahead
+  without the client certificate and verified the peer against the system CA store instead of the trust bundle. They
+  are now refused until the identity loads.
+- **SPIFFE peer identity parsing.** The certificate SAN was split naively on `, `, so a single JSON-quoted URI value
+  could smuggle a second `spiffe://` entry. SANs are parsed quote-aware, and a peer certificate must carry exactly one
+  SPIFFE ID (X509-SVID spec).
+- **OAuth audience warning.** Without `auth.oauth.resource` (or `audience`) the expected token audience follows the
+  request `Host` header; the gateway now warns at startup. Set `resource` (and `security.allowedHosts`).
+- Dev dependencies: vitest 1.6 → 4.1 (vitest / vite / tinypool / esbuild advisories: GHSA-5xrq-8626-4rwp,
+  GHSA-5gmw-xhrv-c9v3, GHSA-85c8-ppgw-ccpr, GHSA-4w7w-66w2-5vf9, GHSA-67mh-4wv8-2f99). Runtime dependencies had no
+  known vulnerabilities; `npm audit` is now clean.
+
+### Added
+- [docs/security/threat-model.md](docs/security/threat-model.md): assets, data flow, trust boundaries, STRIDE summary,
+  known limitations and the 10.1 audit log.
+- CI: CodeQL (`security-extended`) and OpenSSF Scorecard workflows; `npm audit --audit-level=high` is a blocking CI step.
+
+### Changed
+- Roadmap: 10.1 → 10.4 are security-hardening releases; the planned features move after them.
+
 ## [10.0.0] - 2026-10-09
 
 ### Breaking

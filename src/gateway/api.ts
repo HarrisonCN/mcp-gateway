@@ -35,7 +35,7 @@ import { LLM_SCHEMA_FORMATS, toLlmToolSchemas, type LlmSchemaFormat } from '../m
 import { VERSION } from '../utils/version.js';
 import { redactArgs } from '../security/redact.js';
 import type { CatalogEntry, InstallRequest } from '../catalog/index.js';
-import { withTenantScope, canCall, highestRole, roleIn, ROLE_RANK, membershipsOf } from '../auth/tenants.js';
+import { withTenantScope, canCall, highestRole, roleIn, ROLE_RANK, membershipsOf, memberGrantError } from '../auth/tenants.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { ERR_QUOTA_EXCEEDED, usageCsv, type UsageGroup } from './usage.js';
 import { ToolInvoker, POLICY_ERROR_CODES, ERR_OUTPUT_BLOCKED } from './invoker.js';
@@ -1061,6 +1061,11 @@ export function createApiRouter(
     const body = (req.body ?? {}) as { client?: unknown; role?: unknown };
     if (typeof body.client !== 'string' || !body.client || !['owner', 'admin', 'viewer'].includes(String(body.role))) {
       return void res.status(400).json({ error: 'Bad Request', message: 'Body must be { "client": "<client id glob>", "role": "owner" | "admin" | "viewer" }' });
+    }
+    if (!isOperator(req)) {
+      const target = router.resolveClient(body.client);
+      const denied = memberGrantError(body.client, !!target?.known && !isRestricted(target.scope));
+      if (denied) return void res.status(403).json({ error: 'Forbidden', message: denied });
     }
     const members = (t.members ??= []);
     const existing = members.find((m) => m.client === body.client);

@@ -37,6 +37,8 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      - name: Dependency audit (blocking on high / critical)
+        run: npm audit --audit-level=high
       - name: Typecheck
         run: npm run typecheck
       - name: Test with coverage (fails below thresholds in vitest.config.ts)

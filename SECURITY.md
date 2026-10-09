@@ -17,6 +17,11 @@ Please **do not** open a public issue. Use
 with steps to reproduce and the affected version. You will get an answer within a few days; fixes are released as
 patch versions and credited in the CHANGELOG unless you prefer otherwise.
 
+## Threat model
+
+[docs/security/threat-model.md](docs/security/threat-model.md) describes the data flow (client → auth → policy →
+upstream MCP servers / child processes), the trust boundaries, known limitations and the findings of each audit.
+
 ## Hardening a deployment
 
 mcp-gateway forwards tool calls to processes and services that can read files, call APIs and spend money, so treat

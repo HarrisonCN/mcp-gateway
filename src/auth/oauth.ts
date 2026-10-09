@@ -308,6 +308,17 @@ export function bearerChallenge(
   return `Bearer ${parts.join(', ')}`;
 }
 
+/**
+ * Startup warning when the token audience is derived from the request's `Host` header (10.1 hardening):
+ * without `auth.oauth.resource` (or `audience`) a client chooses the expected audience itself, so a token
+ * minted by the same authorization server for another resource could be replayed by sending that
+ * resource's host. Set `resource`, or restrict hosts with `security.allowedHosts`.
+ */
+export function resourceWarning(config: OAuthConfig): string | undefined {
+  if (config.resource || config.audience) return undefined;
+  return 'auth.oauth.resource is not set: the expected token audience is derived from the request Host header. Set auth.oauth.resource (and security.allowedHosts) so tokens issued for other resources are rejected.';
+}
+
 export interface OAuthMiddlewareOptions extends OAuthVerifierOptions {
   /** Path of the MCP endpoint (the protected resource). */
   mcpPath: () => string;
@@ -316,6 +327,8 @@ export interface OAuthMiddlewareOptions extends OAuthVerifierOptions {
 /** Express middleware for `auth.strategy: oauth2`. */
 export function oauthMiddleware(config: OAuthConfig, options: OAuthMiddlewareOptions): AuthMiddleware & { verifier: OAuthVerifier } {
   const verifier = new OAuthVerifier(config, options);
+  const hostWarning = resourceWarning(config);
+  if (hostWarning) logger.warn(hostWarning);
   const mw = ((req: Request, res: Response, next: NextFunction) => {
     const path = options.mcpPath();
     const header = req.headers.authorization;

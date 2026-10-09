@@ -71,10 +71,37 @@ export function loadPem(v: string, baseDir: string): string {
 /** SPIFFE IDs (URI SANs starting with `spiffe://`) of a certificate. */
 export function spiffeIdsOf(cert: X509Certificate | { subjectaltname?: string }): string[] {
   const san = cert instanceof X509Certificate ? (cert.subjectAltName ?? '') : (cert.subjectaltname ?? '');
-  return san
-    .split(/,\s*/)
+  return splitSan(san)
     .filter((p) => p.startsWith('URI:spiffe://'))
     .map((p) => p.slice(4));
+}
+
+/**
+ * Split a Node `subjectaltname` string into entries. Node JSON-quotes values that contain `,` / `"`
+ * (`URI:"spiffe://a, URI:spiffe://b"`); a naive split on `, ` would turn such a single value into a
+ * forged second entry (10.1 hardening). Quoted entries are kept whole and, since a SPIFFE ID can
+ * never contain those characters, never yield a SPIFFE ID.
+ */
+export function splitSan(san: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let quoted = false;
+  for (let i = 0; i < san.length; i++) {
+    const ch = san[i]!;
+    if (quoted) {
+      cur += ch;
+      if (ch === '\\') cur += san[++i] ?? '';
+      else if (ch === '"') quoted = false;
+    } else if (ch === '"') {
+      quoted = true;
+      cur += ch;
+    } else if (ch === ',') {
+      out.push(cur.trim());
+      cur = '';
+    } else cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out.filter(Boolean);
 }
 
 export function spiffeMatches(pattern: string, ids: string[]): boolean {
@@ -177,6 +204,9 @@ export class MtlsManager {
     if (agent) return agent;
     if (!this.material && this.enabled) this.reload();
     const m = this.material;
+    // 10.1 hardening: fail closed. With an identity configured but not loadable, connecting anyway would
+    // drop the client certificate and fall back to the system CA store instead of the trust bundle.
+    if (this.enabled && !m) throw new Error(`mTLS identity is not loaded${this.error ? ` (${this.error})` : ''}; refusing to connect to "${server.id}" without it`);
     const ca = tls.ca ? loadPem(tls.ca, this.baseDir()) : m?.bundle;
     const presentCert = tls.clientCert !== false && m;
     agent = new Agent({
@@ -192,6 +222,8 @@ export class MtlsManager {
               checkServerIdentity: (_host: string, peer: { subjectaltname?: string }) => {
                 const ids = spiffeIdsOf(peer);
                 this.peers.set(server.id, { spiffeIds: ids, at: new Date(this.now()).toISOString() });
+                // An X509-SVID carries exactly one SPIFFE ID (SPIFFE X509-SVID spec §2); refuse ambiguous certificates.
+                if (ids.length !== 1) return new Error(`peer certificate must carry exactly one SPIFFE ID (found ${ids.length})`);
                 return spiffeMatches(tls.spiffeId!, ids) ? undefined : new Error(`peer SPIFFE ID ${ids.join(', ') || '(none)'} does not match ${tls.spiffeId}`);
               },
             }
@@ -205,7 +237,7 @@ export class MtlsManager {
   /** `fetch` for a server's upstream requests (global fetch when mTLS does not apply). */
   fetchFor(server: { id: string; url?: string; tls?: ServerTlsConfig }): FetchLike {
     if (!this.applies(server)) return globalThis.fetch;
-    return ((input: string | URL, init?: RequestInit) => undiciFetch(input as string, { ...(init as object), dispatcher: this.agentFor(server) } as never)) as unknown as FetchLike;
+    return (async (input: string | URL, init?: RequestInit) => undiciFetch(input as string, { ...(init as object), dispatcher: this.agentFor(server) } as never)) as unknown as FetchLike;
   }
 
   status(): { enabled: boolean; identity?: IdentityStatus; peers: Array<{ server: string; spiffeIds: string[]; at: string }> } {
