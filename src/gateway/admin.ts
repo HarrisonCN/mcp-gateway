@@ -17,6 +17,7 @@
  * @module gateway/admin
  */
 
+import { FEATURE_CONFIG_KEYS } from './features.js';
 import express, { type Request, type RequestHandler, type Response } from 'express';
 import type { GatewayConfig } from '../utils/types.js';
 import { loadPolicyFiles, validateConfig } from '../config/loader.js';
@@ -53,6 +54,16 @@ export function portableConfig(cfg: GatewayConfig): Record<string, unknown> {
     const { store, ...st } = out.state as Record<string, unknown>;
     out.store = { ...(store !== undefined ? { backend: store } : {}), ...st };
     delete out.state;
+  }
+  // 9.9: schema v10 nests the feature sections under `features` (internals keep them top-level).
+  if (out.version === 10) {
+    const features: Record<string, unknown> = {};
+    for (const k of FEATURE_CONFIG_KEYS) {
+      if (out[k] === undefined) continue;
+      features[k] = out[k];
+      delete out[k];
+    }
+    if (Object.keys(features).length) out.features = features;
   }
   // Schema v5: servers use `timeoutMs` (internally `timeout`).
   if (Array.isArray(out.servers)) {

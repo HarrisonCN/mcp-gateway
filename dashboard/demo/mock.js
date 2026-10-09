@@ -780,8 +780,10 @@
       { id: 'globex', name: 'Globex', domain: 'globex.example', keyIds: ['gx-1'], verified: false, verifiedAt: null },
     ], listings: [] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
-    // 9.0: nothing is deprecated (schema v8 and the `state` block were removed).
-    if (p === '/admin/deprecations') return json({ runtime: [], config: [] });
+    // 9.9: the demo config is still on schema v9 (`mcp-gateway migrate --to 10`).
+    if (p === '/admin/deprecations') return json({ runtime: [], config: [
+      { id: 'schema-v9', removedIn: '10.0.0', replacement: 'version: 10', message: 'config schema v9 is deprecated; `mcp-gateway migrate --to 10` writes `version: 10`', detail: 'version: 9', source: 'config' },
+    ] });
     // 9.0: event-sourced store.
     if (p === '/admin/store/compact' && method === 'POST') return json({ compacted: true, eventlog: { kind: 'eventlog', dir: '/data/store', keys: 38, eventsSinceSnapshot: 0, totalEvents: 4212, snapshots: 3, lastSnapshotAt: new Date().toISOString(), replayed: 117 } });
     if (p === '/admin/store') return json({ backend: 'eventlog', failureMode: 'open', eventlog: { kind: 'eventlog', dir: '/data/store', keys: 38, eventsSinceSnapshot: 212, totalEvents: 4212, snapshots: 2, lastSnapshotAt: new Date(Date.now() - 3600000).toISOString(), replayed: 117 } });

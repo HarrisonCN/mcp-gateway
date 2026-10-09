@@ -29,7 +29,7 @@ describe('9.0: schema v9', () => {
     expect(() => validateConfig({ version: 8, servers: [] })).toThrow(/version: config schema v8 was removed in 9.0 — use `version: 9`; run `mcp-gateway migrate --to 9`/);
     expect(() => validateConfig({ version: 9, servers: [], state: { store: 'memory' } })).toThrow(/state: removed in 9.0 — use `store: \{ backend, … \}` \(`state.store` → `store.backend`\)/);
     expect(() => validateConfig({ servers: [], state: {} })).toThrow(/state: removed in 9.0/);
-    expect(() => validateConfig({ version: 10, servers: [] })).toThrow(/9.0 reads `version: 9`/);
+    expect(() => validateConfig({ version: 11, servers: [] })).toThrow(/9.9 reads `version: 9` or `version: 10`/);
     const v9 = validateConfig({ version: 9, servers: [], store: { backend: 'redis', redis: { url: 'redis://r:6379' }, failureMode: 'closed' } });
     expect(v9.state).toEqual({ store: 'redis', redis: { url: 'redis://r:6379' }, failureMode: 'closed' });
     expect(v9.deprecations).toBeUndefined();

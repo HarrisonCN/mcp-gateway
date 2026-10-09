@@ -1,5 +1,8 @@
 /**
- * To v9 (8.9, the default): everything for v8, then `version: 9` and `state` → `store` (`state.store` → `store.backend`).
+ * To v10 (9.9, the default): everything for v9, then `version: 10` and every top-level feature section (`chaos`, `sla`,
+ * `dlp`, … — {@link FEATURE_CONFIG_KEYS}) moves under `features`. 9.9 reads v9 and v10.
+ *
+ * To v9 (8.9): everything for v8, then `version: 9` and `state` → `store` (`state.store` → `store.backend`).
  * 8.9 reads v8 and v9.
  *
  * To v8 (7.9): everything for v7, then `version: 8`; `plugins[].wasm` entries are reported (rebuild as
@@ -33,6 +36,7 @@
  */
 
 import { parseDocument, isMap, isSeq, YAMLMap, type Document } from 'yaml';
+import { FEATURE_CONFIG_KEYS } from '../gateway/features.js';
 
 export interface MigrationResult {
   text: string;
@@ -45,8 +49,8 @@ export interface MigrationResult {
 export const SCOPE_FIELDS = ['servers', 'tools', 'rateLimit'] as const;
 
 /** Migrate a config file's text. `format` is guessed from the content when omitted. */
-export function migrateConfigText(text: string, format?: 'yaml' | 'json', to = 9): MigrationResult {
-  if (![4, 5, 6, 7, 8, 9].includes(to)) throw new Error(`Only migration to schema v4, v5, v6, v7, v8 or v9 is supported (got ${to})`);
+export function migrateConfigText(text: string, format?: 'yaml' | 'json', to = 10): MigrationResult {
+  if (![4, 5, 6, 7, 8, 9, 10].includes(to)) throw new Error(`Only migration to schema v4, v5, v6, v7, v8, v9 or v10 is supported (got ${to})`);
   const fmt = format ?? (/^\s*[{[]/.test(text) ? 'json' : 'yaml');
   const doc = parseDocument(text, { keepSourceTokens: true });
   if (doc.errors.length) throw new Error(`Cannot parse the config: ${doc.errors[0]!.message}`);
@@ -191,6 +195,32 @@ function migrateDoc(doc: Document, changes: string[], notes: string[], to: numbe
     }
   }
 
+  if (to >= 10) {
+    // 9.9 → 10.0: every feature section moves under `features` (pairs are moved, so comments travel with them).
+    const items = (root as YAMLMap).items;
+    const moving = items.filter((p) => (FEATURE_CONFIG_KEYS as readonly string[]).includes(String((p.key as { value?: unknown })?.value ?? p.key)));
+    if (moving.length) {
+      let features = doc.get('features');
+      if (features !== undefined && !isMap(features)) notes.push('features is not a mapping: move the feature sections under it by hand.');
+      else {
+        if (!isMap(features)) {
+          features = doc.createNode({});
+          doc.set('features', features);
+        }
+        for (const p of moving) {
+          const k = String((p.key as { value?: unknown })?.value ?? p.key);
+          if ((features as YAMLMap).has(k)) {
+            notes.push(`features.${k} and top-level ${k} are both set: merge them by hand.`);
+            continue;
+          }
+          items.splice(items.indexOf(p), 1);
+          (features as YAMLMap).items.push(p as never);
+          changes.push(`${k} → features.${k}`);
+        }
+      }
+    }
+  }
+
   const plugins = doc.get('plugins');
   if (to >= 8 && isSeq(plugins)) {
     plugins.items.forEach((p, i) => {
@@ -213,7 +243,7 @@ function migrateDoc(doc: Document, changes: string[], notes: string[], to: numbe
 }
 
 /** Plain-object variant (for validation / tests). */
-export function migrateConfigObject(raw: Record<string, unknown>, to = 9): { config: Record<string, unknown>; changes: string[] } {
+export function migrateConfigObject(raw: Record<string, unknown>, to = 10): { config: Record<string, unknown>; changes: string[] } {
   const r = migrateConfigText(JSON.stringify(raw), 'json', to);
   return { config: JSON.parse(r.text) as Record<string, unknown>, changes: r.changes };
 }
