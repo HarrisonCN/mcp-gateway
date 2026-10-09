@@ -200,6 +200,8 @@ export { EdgeRuntimeSchema, ERR_EDGE_RUNTIME, callEdgeTool } from './features/ed
 export type { EdgeRuntimeConfig } from './features/edge-runtime.js';
 export { ConfidentialSchema, ERR_ATTESTATION_REQUIRED, verifyEvidence } from './features/confidential.js';
 export type { ConfidentialConfig } from './features/confidential.js';
+export { ToolRegistrySchema, satisfies, resolveVersion } from './features/tool-registry.js';
+export type { ToolRegistryConfig, ToolManifest } from './features/tool-registry.js';
 export type {
   GatewayConfig,
   McpServerConfig,

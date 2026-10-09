@@ -73,6 +73,7 @@
     { id: "multimodal", since: "9.1.0", summary: "Multimodal tools: content-type policy and size limits for image / audio / blob results, offloaded and streamed in chunks" },
     { id: "edge-runtime", since: "9.2.0", summary: "Edge WASM runtime 2.0: WebAssembly tools with a warm instance pool, SHA-256 pins and per-tool time / memory / concurrency quotas" },
     { id: "confidential", since: "9.3.0", summary: "Confidential computing: sensitive servers get calls only from inside a remotely attested TEE (SEV-SNP, TDX, Nitro, SGX)" },
+    { id: "tool-registry", since: "9.4.0", summary: "Global tool registry: signed tool manifests, search, cross-gateway mirrors, immutable versions and version pins" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -740,6 +741,12 @@
       { id: 'postgres', match: 'postgres', platforms: ['sev-snp', 'tdx'], attested: true, platform: 'sev-snp', measurement: '5f1c9a0e7b2d4c6f8a1e3b5d7f9c0a2e4b6d8f0a1c3e5b7d', attestedAt: new Date(Date.now() - 900000).toISOString(), expiresAt: new Date(Date.now() + 2700000).toISOString(), lastFailure: null },
       { id: 'payroll', match: 'payroll*', platforms: ['nitro'], attested: false, platform: null, measurement: null, attestedAt: null, expiresAt: null, lastFailure: { at: new Date(Date.now() - 60000).toISOString(), reason: 'measurement is not in the allowlist' } },
     ] });
+    // 9.4: global tool registry.
+    if (p === '/admin/tool-registry') return json({ enabled: true, count: 3, entries: [
+      { id: 'acme/search', publisher: 'acme', name: 'search', version: '1.3.0', description: 'Web search with citations', tools: ['web_search', 'fetch_page'], verified: true, origin: 'local' },
+      { id: 'globex/crm', publisher: 'globex', name: 'crm', version: '4.1.2', description: 'CRM contacts and deals', tools: ['find_contact', 'create_deal'], verified: true, origin: 'https://registry.globex.example/api/v1/features/tool-registry/index.json' },
+      { id: 'initech/tickets', publisher: 'initech', name: 'tickets', version: '0.9.0', description: 'Ticketing', tools: ['open_ticket'], verified: true, origin: 'local' },
+    ], mirrors: [{ url: 'https://registry.globex.example/api/v1/features/tool-registry/index.json', lastSyncAt: new Date(Date.now() - 1200000).toISOString(), ok: true, added: 2, error: null }], pins: { 'acme/search': '~1.2.0' } });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 9.0: nothing is deprecated (schema v8 and the `state` block were removed).
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });
