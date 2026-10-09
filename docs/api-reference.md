@@ -498,6 +498,9 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/chaos` | Chaos experiments: state, injected faults, calls / errors, remaining time (8.8) |
 | `POST` | `/admin/chaos/:id/start` | Start an experiment `{ durationSeconds? }` (8.8) |
 | `POST` | `/admin/chaos/:id/stop` · `/admin/chaos/stop-all` | Stop one / every running experiment (8.8) |
+| `GET` | `/admin/multimodal` | Multimodal policy, counters (items, bytes, refused, stripped, offloaded) and held blobs (9.1) |
+| `DELETE` | `/admin/multimodal/blobs` | Drop every held blob (9.1) |
+| `GET` | `/features/multimodal/blobs/:id` | Stream an offloaded blob (any authenticated client; `Range` supported) (9.1) |
 
 ## Bridges
 
