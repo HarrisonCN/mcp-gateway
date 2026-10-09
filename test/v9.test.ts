@@ -54,7 +54,7 @@ describe('9.0: schema v9', () => {
     expect(validateConfig(p).state).toEqual(e.state);
     // no `version` in the file: still converted (8.9 only converted v9 files, so a re-validate of such configs broke).
     expect(portableConfig(validateConfig({ servers: [], store: { backend: 'memory' } })).store).toEqual({ backend: 'memory', failureMode: 'open' });
-    expect(distributedConfig({ servers: [] }).version).toBe(10); // 10.0
+    expect(distributedConfig({ servers: [] }).version).toBe(11); // 11.0
   });
 
   it('MCP_GATEWAY_REDIS_URL sets store.backend: redis on a v9 file (8.9 wrote the conflicting `state` block)', async () => {

@@ -30,7 +30,7 @@ describe('6.0: schema v6, compliance.pii removed, migrate --to 6', () => {
     expect(configDeprecations({ version: 11, compliance: { residency: {} } })).toEqual([]);
     expect(configDeprecations(null)).toEqual([]);
     const v7 = validateConfig({ version: 11, servers: [], features: { dlp: { default: { clearance: 'public' } } } });
-    expect(v7.version).toBe(10);
+    expect(v7.version).toBe(11);
     expect(v7.deprecations?.map((d) => d.id)).toBeUndefined(); // 11.0: nothing deprecated
     expect(() => validateConfig({ version: 11, servers: [], compliance: { pii: { action: 'redact' } } })).toThrow(/compliance.pii: removed in 6.0 — use `dlp`/);
   });

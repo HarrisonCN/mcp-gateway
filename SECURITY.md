@@ -4,11 +4,14 @@
 
 | Version | Supported |
 |---|---|
+| 11.x (current) | ✅ new features, bug and security fixes |
 | 10.x (LTS) | ✅ bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |
-| < 10.0 | ❌ — please upgrade (`mcp-gateway migrate --to 10`, see [Migrating to 10.0](docs/guides/migrating-to-v10.md)) |
+| < 10.0 | ❌ — please upgrade (`mcp-gateway migrate`, see [Migrating to 10.0](docs/guides/migrating-to-v10.md) and [Migrating to 11.0](docs/guides/migrating-to-v11.md)) |
 
-10.x is the first long-term-support line: config schema v10 stays stable across every 10.x minor release, and
-`ltsStatus()` / `GET /api/v1/admin/kernel` report where the running release is in its support window.
+11.x is the current line (config schema v11, lazily loaded feature modules). 10.x is the long-term-support line:
+config schema v10 stays stable across every 10.x minor release, and its LTS dates are unchanged by 11.0.
+`ltsStatus()` / `GET /api/v1/admin/kernel` report the running line and the 10.x support window. Security fixes for
+10.x ship as 10.x patch releases.
 
 ## Reporting a vulnerability
 
@@ -26,7 +29,7 @@ patch versions and credited in the CHANGELOG unless you prefer otherwise.
   scanning and Dependabot. Verify an image with:
 
   ```bash
-  cosign verify ghcr.io/harrisoncn/mcp-gateway:10 \
+  cosign verify ghcr.io/harrisoncn/mcp-gateway:11 \
     --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
   ```

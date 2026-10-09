@@ -29,7 +29,7 @@ plugins:
 describe('schema v8 (8.0)', () => {
   it('reads version 8 (or none) with servers[].timeoutMs (internally timeout)', () => {
     const cfg = validateConfig({ version: 11, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 1234 }] });
-    expect(cfg.version).toBe(10);
+    expect(cfg.version).toBe(11);
     expect(cfg.servers[0]!.timeout).toBe(1234);
     expect(cfg.deprecations?.map((d) => d.id)).toBeUndefined(); // 11.0: nothing deprecated
     expect(validateConfig({ servers: [{ id: 'b', name: 'b', transport: 'stdio', command: 'x' }] }).servers[0]!.timeout).toBe(30000);

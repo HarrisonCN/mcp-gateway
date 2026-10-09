@@ -61,7 +61,7 @@ describe('7.0: schema v7', () => {
     expect(migrateConfigText(r.text, undefined, 7).changed).toBe(false);
     const old = migrateConfigObject({ version: 5, compliance: { pii: { action: 'redact' } }, dashboard: {}, servers: [] }, 7);
     expect(old.changes).toEqual(['version: 5 → 7', 'compliance.pii (action redact) → dlp', 'dashboard.enabled → controlPlane.dashboard']);
-    expect(() => validateConfig(migrateConfigObject(old.config, 10).config)).not.toThrow(); // 10.0: dlp → features.dlp
+    expect(() => validateConfig(migrateConfigObject(old.config, 11).config)).not.toThrow(); // 11.0: dlp → features.dlp, version 11
     expect(migrateConfigObject({ admin: 1, servers: [] }).changes).toContain('admin (empty) removed');
     expect(migrateConfigText(JSON.stringify({ admin: { configApi: true, extra: 1 }, servers: [] }), 'json').notes.join()).toMatch(/admin: keys other than configApi/);
   });

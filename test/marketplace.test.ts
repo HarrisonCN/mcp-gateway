@@ -126,7 +126,7 @@ describe('plugin marketplace (5.4)', () => {
   });
 
   it('install needs indexes and trusted keys', async () => {
-    h = await startFeatureGw();
+    h = await startFeatureGw({ kernel: { modules: 'eager' } } as never); // 11.0: eager, so the unconfigured module is mounted
     expect((await h.admin('marketplace')).body.plugins).toEqual([]);
     expect((await h.admin('marketplace/install', { name: 'x' })).status).toBe(404);
     await h.gw.reload({ ...(h.gw as any).config, marketplace: { indexes: ['https://i.example/x.json'] } });

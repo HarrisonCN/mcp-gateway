@@ -40,26 +40,31 @@ describe('10.0: schema v10, unified kernel, LTS', () => {
     expect(p.features).toEqual({ chaos: cfg.chaos });
     expect(p).not.toHaveProperty('chaos');
     expect(validateConfig(p).chaos).toEqual(cfg.chaos);
-    expect(distributedConfig({ servers: [] }).version).toBe(10);
+    expect(distributedConfig({ servers: [] }).version).toBe(11);
   });
 
-  it('migrate --to 10 still upgrades 9.x files', () => {
+  it('migrate --to 10 still upgrades 9.x files; 11.0 validates them after --to 11', () => {
     const r = migrateConfigText('version: 9\nsla:\n  targets: [{ id: gold, availability: 99.9 }] # gold\nservers: []\n', 'yaml', 10);
     expect(r.changes).toEqual(['version: 9 → 10', 'sla → features.sla']);
     expect(r.text).toContain('# gold');
-    expect(validateConfig(parse(r.text)).sla).toBeDefined();
+    expect(() => validateConfig(parse(r.text))).toThrow(/schema v10 was removed in 11.0/);
+    const r11 = migrateConfigText(r.text, 'yaml');
+    expect(r11.text).toContain('# gold');
+    expect(validateConfig(parse(r11.text)).sla).toBeDefined();
   });
 
   it('kernel: schema, LTS, modules, hook pipeline, configured sections', async () => {
-    expect(CONFIG_SCHEMA_VERSION).toBe(10);
+    expect(CONFIG_SCHEMA_VERSION).toBe(11);
     expect(LTS).toMatchObject({ line: '10.x', lts: true });
     expect(ltsStatus(new Date('2027-01-01'))).toBe('active');
     expect(ltsStatus(new Date('2028-01-01'))).toBe('maintenance');
     expect(ltsStatus(new Date('2029-01-01'))).toBe('end-of-life');
     h = await startFeatureGw({ chaos } as never);
     const k = await h.admin('kernel');
-    expect(k.body.schema).toBe(10);
+    expect(k.body.schema).toBe(11);
     expect(k.body.lts.line).toBe('10.x');
+    expect(k.body.line).toEqual({ line: '11.x', lts: false });
+    expect(k.body.moduleMode).toBe('lazy');
     expect(k.body.modules.map((m: any) => m.id)).toEqual(expect.arrayContaining(['kernel', 'chaos', 'sla', 'self-healing', 'ecosystem']));
     expect(k.body.hooks.map((x: any) => x.id)).toEqual(expect.arrayContaining(['chaos', 'multimodal', 'confidential', 'sla', 'self-healing']));
     expect(k.body.hooks[0].order).toBe(1);

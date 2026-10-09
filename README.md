@@ -118,8 +118,10 @@ docker run -d -p 4000:4000 \
   -v "$PWD/mcp-gateway.yml:/app/mcp-gateway.yml:ro" \
   -v mcp-gateway-data:/app/data \
   -e MCP_GATEWAY_API_KEYS=change-me \
-  ghcr.io/harrisoncn/mcp-gateway:10
+  ghcr.io/harrisoncn/mcp-gateway:11
 ```
+
+(`:10` stays on the last 10.x LTS release.)
 
 `MCP_GATEWAY_API_KEYS` (comma-separated, plain or `sha256:<hex>`) turns on API-key auth without editing the file.
 stdio servers run inside the container, which ships Node.js/npm; install anything else (Python, `uvx`, …) in a derived
@@ -254,13 +256,14 @@ Server-side API keys can also carry scopes (`servers`, `tools`), their own `rate
   `bench`, `conformance` (MCP conformance suite against any Streamable HTTP endpoint), `desktop`, `plugin`, `operator`.
 - Embeddable as a library (`import { Gateway, loadConfig } from '@winstonsayno/mcp-gateway'`).
 
-**Extended modules** — opt-in under `features:` in the config, each documented in [`docs/guides`](docs/guides):
+**Extended modules** — opt-in under `features:` in the config (since 11.0 a module is loaded only when its section is
+configured), each documented in [`docs/guides`](docs/guides):
 policy as code and approvals, [Cedar / OPA policies](docs/guides/policy-engine.md) with tests and impact analysis,
 [time-travel replay](docs/guides/time-travel.md), [real-time cost / carbon budgets](docs/guides/realtime-budgets.md),
 [durable task graphs](docs/guides/task-graphs.md) (cross-gateway, checkpoints, resume, compensation),
 DLP and prompt-injection sanitising, result and semantic caching, plugins (signed, WASM, and the
 [kernel plugin SDK](docs/guides/plugin-sdk.md) for hooks + config + routes),
-OpenAI / A2A bridges, control plane / data plane, multi-region, workflows, SLA and cost reporting, and more. These
+OpenAI / A2A bridges, control plane / data plane, multi-region, SLA and cost reporting, and more. These
 are compact implementations with unit tests, but they have seen far less real-world use than the core; read the guide
 and test in your environment before depending on one.
 
@@ -319,13 +322,17 @@ Report vulnerabilities privately via
 
 | Version | Status |
 |---|---|
+| 11.x (current) | New features, bug and security fixes |
 | 10.x (LTS) | Bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |
-| < 10.0 | Unsupported — upgrade with `mcp-gateway migrate --to 10` ([guide](docs/guides/migrating-to-v10.md)) |
+| < 10.0 | Unsupported — upgrade with `mcp-gateway migrate` ([10.0 guide](docs/guides/migrating-to-v10.md), [11.0 guide](docs/guides/migrating-to-v11.md)) |
 
-The project follows [Semantic Versioning](https://semver.org/). Within 10.x the REST API under `/api/v1`, `/mcp`
-behaviour, config schema v10, CLI commands and flags, root library exports and Prometheus metric names change only
-in backward-compatible ways. Deep imports, log format, the dashboard and the audit database schema are not covered —
-see [stability and versioning](docs/api-reference.md#stability-and-versioning).
+Upgrading from 10.x: `npx @winstonsayno/mcp-gateway@11 migrate --write` rewrites the config to schema v11 — see
+[Migrating to 11.0](docs/guides/migrating-to-v11.md).
+
+The project follows [Semantic Versioning](https://semver.org/). Within a major line the REST API under `/api/v1`,
+`/mcp` behaviour, the config schema (v11 for 11.x, v10 for 10.x), CLI commands and flags, root library exports and
+Prometheus metric names change only in backward-compatible ways. Deep imports, log format, the dashboard and the
+audit database schema are not covered — see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
 ## What's New in v10.9
 
@@ -347,7 +354,7 @@ OPA (10.5), signed images and SBOMs (10.4), secure defaults (10.3). Full history
 | [Deployment](docs/deployment.md) | Docker, Kubernetes, reverse proxy, systemd, security checklist |
 | [Guides](docs/guides) | One page per module, plus migration guides |
 | [Threat model](docs/security/threat-model.md) | Data flow, trust boundaries, audit findings |
-| [Roadmap](docs/ROADMAP.md) | 10.x hardening plan and what comes after |
+| [Roadmap](docs/ROADMAP.md) | 10.x / 11.0 release plan and what comes after |
 | [Dashboard](dashboard/README.md) | The built-in web UI |
 
 ## Contributing

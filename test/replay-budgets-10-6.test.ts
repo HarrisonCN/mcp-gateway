@@ -110,8 +110,10 @@ describe('time-travel journal (10.6)', () => {
     expect((await fx.admin('time-travel/replay', { ids: 'x' })).status).toBe(400);
   });
 
-  it('admin API answers 400 when the feature is not configured', async () => {
-    fx = await startFeatureGw();
+  it('admin API answers 400 when the feature is not configured (eager) / 404 (lazy, 11.0 default)', async () => {
+    expect((await (fx = await startFeatureGw()).admin('time-travel')).status).toBe(404);
+    await fx.stop();
+    fx = await startFeatureGw({ kernel: { modules: 'eager' } } as never);
     expect((await fx.admin('time-travel')).body.enabled).toBe(false);
     expect((await fx.admin('time-travel/calls')).status).toBe(400);
   });

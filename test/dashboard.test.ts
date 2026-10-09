@@ -502,7 +502,7 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
   it('shows the unified kernel (10.0)', async () => {
     const f = demoFetch();
     const k = (await (await f('/api/v1/admin/kernel')).json()) as any;
-    expect(k.schema).toBe(10);
+    expect(k.schema).toBe(11);
     expect(k.lts.line).toBe('10.x');
     expect(k.modules.map((m: any) => m.id)).toContain('kernel');
   });

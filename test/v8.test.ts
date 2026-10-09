@@ -28,7 +28,7 @@ describe('8.0: schema v8, plugin API v5', () => {
     expect(Object.keys(DEPRECATIONS)).toEqual([]); // 11.0
     expect(configDeprecations({ version: 11, plugins: [{ component: './b.wasm' }] })).toEqual([]);
     const v8 = validateConfig({ version: 11, servers: [], plugins: [{ component: './p.wasm', isolation: 'client' }] });
-    expect(v8.version).toBe(10);
+    expect(v8.version).toBe(11);
     expect(v8.deprecations?.map((d) => d.id)).toBeUndefined(); // 11.0: nothing deprecated
     expect(() => validateConfig({ version: 7, servers: [] })).toThrow(/version: config schema v7 was removed in 8.0 — use `version: 11`; run `mcp-gateway migrate --to 11`/);
     expect(() => validateConfig({ servers: [], plugins: [{ wasm: './p.wasm' }] })).toThrow(/plugins.0.wasm: removed in 8.0 — rebuild against wit\/mcp-gateway-plugin.wit \(plugin API v5\) and use `component`/);

@@ -71,7 +71,7 @@ describe('session recording and evals (5.5)', () => {
   });
 
   it('records a live session, replays it and catches a regression', async () => {
-    h = await startFeatureGw({ replay: { enabled: true } } as never);
+    h = await startFeatureGw({ replay: { enabled: true }, sessions: {} } as never); // 11.0: lazy — the module needs its section
     expect((await h.admin('sessions', { name: 'nope' })).status).toBe(422);
     for (const hello of ['one', 'two']) {
       const r = await fetch(`${h.base}/api/v1/tools/call`, { method: 'POST', headers: op, body: JSON.stringify({ tool: 'echo', server: 'fake', arguments: { hello } }) });
@@ -99,7 +99,7 @@ describe('session recording and evals (5.5)', () => {
   });
 
   it('refuses to record without replay capture', async () => {
-    h = await startFeatureGw();
+    h = await startFeatureGw({ sessions: {} } as never);
     expect((await h.admin('sessions', { name: 'x' })).status).toBe(409);
     expect((await h.admin('sessions')).body.replayEnabled).toBe(false);
   });
