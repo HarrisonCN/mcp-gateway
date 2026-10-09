@@ -208,6 +208,8 @@ export { SelfHealingSchema, ERR_SELF_HEALING } from './features/self-healing.js'
 export type { SelfHealingConfig } from './features/self-healing.js';
 export { PqTlsSchema, groupsSupported, effectiveGroups } from './features/pq-tls.js';
 export type { PqTlsConfig } from './features/pq-tls.js';
+export { EcosystemSchema, verifyPublisher } from './features/ecosystem.js';
+export type { EcosystemConfig } from './features/ecosystem.js';
 export type {
   GatewayConfig,
   McpServerConfig,

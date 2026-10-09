@@ -518,6 +518,10 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `POST` | `/admin/self-healing/:id/trigger` · `/admin/self-healing/:id/clear` | Trigger a rule for `{ server }` / lift it (`{ server? }`) (9.6) |
 | `GET` | `/admin/pq-tls` | Post-quantum TLS: mode, OpenSSL support, effective groups, last probe per HTTPS upstream (9.7) |
 | `POST` | `/admin/pq-tls/probe` | Probe HTTPS upstreams `{ server? }`: PQ handshake, classical handshake, certificate policy (9.7) |
+| `GET` | `/admin/ecosystem` | Marketplace stats, review queue, publishers (verified), listings (9.8) |
+| `POST` | `/admin/ecosystem/listings/:id/approve` · `/admin/ecosystem/listings/:id/reject` | Approve / reject a listing `{ reason }` (9.8) |
+| `POST` | `/admin/ecosystem/reviews/:listing/:client/hide` · `/admin/ecosystem/publishers/:id/verify` | Hide a review / verify a publisher's domain (9.8) |
+| `GET` · `POST` | `/features/ecosystem/catalog` · `/features/ecosystem/submissions` · `/features/ecosystem/listings/:id[/ratings]` | Catalogue, submit, listing details, rate (any authenticated client) (9.8) |
 
 ## Bridges
 

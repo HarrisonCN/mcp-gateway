@@ -499,6 +499,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(q.groups).toBe('X25519MLKEM768:X25519:P-256');
     expect(q.servers.map((s: any) => `${s.id}:${s.lastProbe.pq}`)).toEqual(['search:true', 'postgres:false']);
   });
+  it('shows the marketplace review queue (9.8)', async () => {
+    const f = demoFetch();
+    const e = (await (await f('/api/v1/admin/ecosystem')).json()) as any;
+    expect(e.queue.map((l: any) => l.id)).toEqual(['acme.pii-guard@2.0.0', 'indie.weather@0.3.1']);
+    expect(e.publishers.filter((p: any) => p.verified).map((p: any) => p.id)).toEqual(['acme']);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {
