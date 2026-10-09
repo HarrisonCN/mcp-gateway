@@ -63,10 +63,12 @@ describe('10.0: schema v10, unified kernel, LTS', () => {
     const k = await h.admin('kernel');
     expect(k.body.schema).toBe(11);
     expect(k.body.lts.line).toBe('10.x');
-    expect(k.body.line).toEqual({ line: '12.x', lts: false });
+    expect(k.body.line).toEqual({ line: '13.x', lts: false });
     expect(k.body.moduleMode).toBe('lazy');
     expect(k.body.modules.map((m: any) => m.id)).toEqual(expect.arrayContaining(['kernel', 'chaos', 'sla', 'self-healing', 'ecosystem']));
-    expect(k.body.hooks.map((x: any) => x.id)).toEqual(expect.arrayContaining(['chaos', 'multimodal', 'confidential', 'sla', 'self-healing']));
+    // 13.0: only evaluated modules have registered hooks (unconfigured ones are never loaded)
+    expect(k.body.hooks.map((x: any) => x.id)).toEqual(expect.arrayContaining(['chaos']));
+    expect(k.body.hooks.map((x: any) => x.id)).not.toContain('multimodal');
     expect(k.body.hooks[0].order).toBe(1);
     expect(k.body.features.find((f: any) => f.section === 'features.chaos').configured).toBe(true);
     expect(k.body.features.find((f: any) => f.section === 'features.sla').configured).toBe(false);
