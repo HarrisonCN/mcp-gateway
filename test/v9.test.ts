@@ -38,7 +38,7 @@ describe('9.0: schema v9', () => {
     expect(() => validateConfig({ version: 10, servers: [], store: { backend: 'sqlite' } })).toThrow();
     expect(removedConfigKeys({ version: 10 })).toEqual([]);
     expect(normalizeStoreV9({ a: 1 })).toEqual({ a: 1 });
-    expect(parse(generateDefaultConfig()).version).toBe(10);
+    expect(parse(generateDefaultConfig()).version).toBe(11);
   });
 
   it('eventlog backend: defaults, validation, round trip through portableConfig; data planes get v10 (10.0)', () => {
