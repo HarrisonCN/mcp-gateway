@@ -308,7 +308,8 @@ const SecuritySchema = z
       })
       .optional(),
     allowedHosts: z.array(z.string().min(1)).optional(),
-    dnsRebindingProtection: z.boolean().default(false),
+    // 10.2: unset = on automatically for a loopback-bound gateway without auth (see effectiveRebindingProtection).
+    dnsRebindingProtection: z.boolean().optional(),
     maxBodyBytes: z.number().int().min(1024).default(10 * 1024 * 1024),
     maxToolArgumentsBytes: z.number().int().min(0).default(0),
     authLockout: z.union([z.boolean(), LockoutSchema]).optional(),

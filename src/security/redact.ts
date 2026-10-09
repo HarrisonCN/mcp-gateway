@@ -82,7 +82,8 @@ export function isSecretKey(key: string): boolean {
 
 /** Deep copy of `value` with secret keys masked and secret-looking strings redacted. */
 export function redactValue<T>(value: T, depth = 0): T {
-  if (depth > 20) return value;
+  // 10.2: past the depth limit nothing is returned unredacted (deeply nested secrets leaked before).
+  if (depth > 20) return (typeof value === 'object' && value !== null ? REDACTED : typeof value === 'string' ? redactString(value) : value) as T;
   if (typeof value === 'string') return redactString(value) as T;
   if (Array.isArray(value)) return value.map((v) => redactValue(v, depth + 1)) as T;
   if (value && typeof value === 'object' && !(value instanceof Date)) {

@@ -34,6 +34,7 @@ import { dedupeResources, routeResource } from '../mcp/catalog.js';
 import { LLM_SCHEMA_FORMATS, toLlmToolSchemas, type LlmSchemaFormat } from '../mcp/llm-schemas.js';
 import { VERSION } from '../utils/version.js';
 import { redactArgs } from '../security/redact.js';
+import { effectiveRebindingProtection } from '../security/network.js';
 import type { CatalogEntry, InstallRequest } from '../catalog/index.js';
 import { withTenantScope, canCall, highestRole, roleIn, ROLE_RANK, membershipsOf, memberGrantError } from '../auth/tenants.js';
 import { globToRegExp } from '../utils/tool-filter.js';
@@ -205,11 +206,17 @@ const asyncHandler =
 /** Never expose env values (tokens are commonly configured there). */
 export function redactServer(server: McpServerConfig): McpServerConfig {
   const mask = (r: Record<string, string>) => Object.fromEntries(Object.keys(r).map((k) => [k, '***']));
-  const out = { ...server };
-  if (server.env) out.env = mask(server.env);
-  if (server.headers) out.headers = mask(server.headers);
-  if (server.url) out.url = redactUrl(server.url);
-  if (server.args) out.args = redactArgs(server.args);
+  const redact = <T extends { env?: Record<string, string>; headers?: Record<string, string>; url?: string; args?: string[] }>(s: T): T => {
+    const out = { ...s };
+    if (s.env) out.env = mask(s.env);
+    if (s.headers) out.headers = mask(s.headers);
+    if (s.url) out.url = redactUrl(s.url);
+    if (s.args) out.args = redactArgs(s.args);
+    return out;
+  };
+  const out = redact(server);
+  // 10.2: replicas carry their own url / headers / env / args (they leaked through GET /servers before).
+  if (server.replicas) out.replicas = server.replicas.map((r) => redact(r));
   return out;
 }
 
@@ -410,7 +417,7 @@ export function createApiRouter(
       settings: {
         headers: sec.headers !== false,
         hsts: !!sec.hsts,
-        dnsRebindingProtection: !!sec.dnsRebindingProtection,
+        dnsRebindingProtection: effectiveRebindingProtection(cfg),
         allowedHosts: sec.allowedHosts ?? null,
         ipAllowlist: sec.ipAllowlist?.length ?? 0,
         trustProxy: sec.trustProxy ?? false,

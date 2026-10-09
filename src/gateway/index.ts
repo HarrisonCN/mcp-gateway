@@ -27,7 +27,7 @@ import { corsMiddleware } from '../middleware/cors.js';
 import { requestIdMiddleware } from '../middleware/request-id.js';
 import { createErrorHandler, notFoundHandler } from '../middleware/error-handler.js';
 import { dashboardCsp, securityHeadersMiddleware } from '../security/headers.js';
-import { defaultAllowedHosts, hostCheckMiddleware, ipAllowlistMiddleware } from '../security/network.js';
+import { crossSiteGuardMiddleware, defaultAllowedHosts, effectiveRebindingProtection, hostCheckMiddleware, ipAllowlistMiddleware, LOOPBACK_ORIGIN_PATTERN } from '../security/network.js';
 import { configureRedaction } from '../security/redact.js';
 import { securityWarnings } from '../security/posture.js';
 import { logger } from '../utils/logger.js';
@@ -145,7 +145,7 @@ export class Gateway {
       reconnect: config.reconnect,
       prepare: (c) => (SecretManager.usesSecrets(c) ? this.secrets.resolveServer(c) : Promise.resolve(c)),
     });
-    this.cors = corsMiddleware({ origins: config.cors?.origins ?? ['*'] });
+    this.cors = corsMiddleware({ origins: this.corsOrigins(config) });
     this.jsonParser = express.json({ limit: this.maxBodyBytes() });
     configureRedaction(config.security?.redactPatterns);
     this.ipFilter = config.security?.ipAllowlist ? ipAllowlistMiddleware(config.security.ipAllowlist) : undefined;
@@ -159,7 +159,12 @@ export class Gateway {
   private allowedHosts(): readonly string[] | undefined {
     const sec = this.config.security;
     if (sec?.allowedHosts) return sec.allowedHosts;
-    return sec?.dnsRebindingProtection ? defaultAllowedHosts(this.config.host) : undefined;
+    return effectiveRebindingProtection(this.config) ? defaultAllowedHosts(this.config.host) : undefined;
+  }
+
+  /** CORS origins: configured, else `*` — or only loopback origins while DNS-rebinding protection is on (10.2). */
+  private corsOrigins(config: GatewayConfig = this.config): string[] {
+    return config.cors?.origins ?? (effectiveRebindingProtection(config) ? [LOOPBACK_ORIGIN_PATTERN] : ['*']);
   }
 
   private applyTrustProxy(): void {
@@ -278,6 +283,7 @@ export class Gateway {
     // a disallowed client address or Host header.
     this.app.use((req, res, next) => (this.ipFilter ? this.ipFilter(req, res, next) : next()));
     this.app.use(hostCheckMiddleware(() => this.allowedHosts()));
+    this.app.use(crossSiteGuardMiddleware(() => effectiveRebindingProtection(this.config), () => this.config.cors?.origins));
     // 7.0 data plane: the admin API lives on the control plane; nothing is served before the first config arrives.
     if (roleOf(this.config) === 'data') {
       const cp = this.config.controlPlane!;
@@ -330,7 +336,7 @@ export class Gateway {
         corsOrigins: () => this.config.cors?.origins,
         resolveClient: (clientId) => router.resolveClient(clientId),
         requestLog: () => this.config.monitor?.requestLog !== false,
-        strictOrigins: () => this.config.security?.dnsRebindingProtection === true,
+        strictOrigins: () => effectiveRebindingProtection(this.config),
         maxBodyBytes: () => this.maxBodyBytes(),
         maxArgumentsBytes: () => this.config.security?.maxToolArgumentsBytes ?? 0,
         sessionStore: shared?.store,
@@ -701,8 +707,8 @@ export class Gateway {
         this.mcp?.update(next.mcp);
         applied.push('mcp');
       }
-      if (!same(this.config.cors?.origins, next.cors?.origins)) {
-        this.cors = corsMiddleware({ origins: next.cors?.origins ?? ['*'] });
+      if (!same(this.corsOrigins(), this.corsOrigins(next))) {
+        this.cors = corsMiddleware({ origins: this.corsOrigins(next) });
         applied.push('cors');
       }
       if (!same(this.config.security, next.security)) {
