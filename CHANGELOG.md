@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.8.0] - 2026-10-09
+
+Last release of the 10.5 – 10.8 feature line: **privacy computing** and **post-quantum identity**, both EXPERIMENTAL
+and opt-in. Config schema v10 is unchanged apart from the new optional `features.privacy` and `features.pqIdentity`
+sections and the optional `pluginTrust.requirePostQuantum` / `pluginTrust.keys[].mldsa` fields.
+
+### Added
+- **Privacy computing** (`features.privacy`, EXPERIMENTAL, [guide](docs/guides/privacy.md)): `protect` globs make
+  tools answer only differentially private aggregates — direct calls are refused (`403` / `-32003`).
+  `POST /api/v1/features/privacy/aggregate` runs the tool as the caller, clamps a field to caller-given bounds and
+  returns a Laplace-noised `count`, `sum`, `mean` or `histogram` (cryptographic RNG; noise scale = sensitivity / ε);
+  ε is charged to a per-client budget per window (`429` when exhausted). `POST /api/v1/features/privacy/federated`
+  aggregates in each domain — locally or on a peer gateway — and combines only the noisy partial results.
+- **Post-quantum identity** (`features.pqIdentity`, EXPERIMENTAL, [guide](docs/guides/pq-identity.md)): Ed25519 +
+  ML-DSA-44/65/87 (FIPS 204) hybrid signatures (both must verify) for a signed gateway identity document, a signed
+  tool manifest (per key scope), and a hash-chained audit log of every tool call (incl. refused ones) with signed
+  checkpoints and a verifier that reports modified entries, gaps and forged checkpoints. Plugin artifacts:
+  `pluginTrust.keys[].mldsa` requires hybrid signatures, `pluginTrust.requirePostQuantum` refuses classical-only ones;
+  `mcp-gateway plugin sign --pq-key`. New CLI `mcp-gateway pq keygen | info`.
+- ML-DSA runs on `node:crypto` when the runtime implements it (Node 24.7+ / OpenSSL 3.5; enabled only after a
+  start-up interoperability self-test), otherwise on the new pinned dependency `@noble/post-quantum` 0.7.1 (pure JS;
+  not independently audited).
+
+### Not provided
+- No X.509 hybrid certificates (the identity document is signed JSON), no key rotation / revocation, no HSM keys.
+- DP guarantees assume one row per person and data-independent bounds; floating-point Laplace sampling is not snapped.
+
 ## [10.7.0] - 2026-10-09
 
 Third release of the 10.5 – 10.8 feature line: **multi-agent orchestration 2.0** (durable, cross-gateway task graphs)

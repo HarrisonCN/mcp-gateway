@@ -527,6 +527,8 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/realtime-budgets` | Real-time cost / carbon budgets and usage; `/alerts`, `POST /estimate`, `POST /reset` (10.6) |
 | `GET` | `/admin/task-graphs` | Durable task graphs; `POST /run`, `/runs`, `/runs/:id`, `POST /runs/:id/resume`, `POST /runs/:id/cancel` (10.7) |
 | `GET` | `/admin/edge-autonomy` | Edge autonomy (EXPERIMENTAL): connectivity, `/decisions`, `POST /connectivity`, `/outbox`, `POST /reconcile` (10.7) |
+| `GET` | `/admin/privacy` | Privacy computing (EXPERIMENTAL): protected tools, budgets, peers; `POST /reset-budgets`. Clients: `POST /features/privacy/aggregate`, `POST /features/privacy/federated`, `GET /features/privacy/budget` (10.8) |
+| `GET` | `/admin/pq-identity` | Post-quantum identity (EXPERIMENTAL): backend, keys, audit head; `/audit`, `POST /audit/checkpoint`, `POST /audit/verify`, `POST /verify`. Clients: `GET /features/pq-identity/identity`, `GET /features/pq-identity/tool-manifest` (10.8) |
 
 ## Bridges
 
