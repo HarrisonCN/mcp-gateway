@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.2.0] - 2026-10-09
+
+### Added
+- **Edge WASM runtime 2.0** (`edgeRuntime`): WebAssembly **tools** (core ABI shared with WASM plugins: `memory`,
+  `alloc`, an export `(ptr, len) -> i64` taking JSON arguments) run in worker sandboxes from a warm instance pool
+  (`warm`, idle instances above it stop after `idleSeconds`), with SHA-256 pins (`sha256`) and per-tool quotas
+  (`limits.timeoutMs`, `memoryMb`, `maxConcurrent`). Failures and quota refusals use JSON-RPC **-32023**.
+  `POST /api/v1/features/edge-runtime/tools/:name/call`; `GET /api/v1/admin/edge-runtime` reports pool, cold starts
+  and latency; `POST /api/v1/admin/edge-runtime/reload` re-reads and re-pins modules. [Guide](docs/guides/edge-runtime.md).
+- Pages demo: edge WASM tools.
+
 ## [9.1.0] - 2026-10-09
 
 ### Added

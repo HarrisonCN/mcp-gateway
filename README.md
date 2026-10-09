@@ -586,6 +586,12 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v9.2
+
+| Feature | |
+|---------|---|
+| **Edge WASM runtime 2.0** | WebAssembly tools on any (edge) gateway: warm pool, SHA-256 pins, time / memory / concurrency quotas — [guide](docs/guides/edge-runtime.md) |
+
 ## What's New in v9.1
 
 | Feature | |
