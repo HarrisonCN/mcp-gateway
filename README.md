@@ -336,13 +336,15 @@ The project follows [Semantic Versioning](https://semver.org/). Within a major l
 Prometheus metric names change only in backward-compatible ways. Deep imports, log format, the dashboard and the
 audit database schema are not covered — see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
-## What's New in v11.2
+## What's New in v12.0
 
-**Security release.** Multimodal blobs are bound to the client and tenant that produced them (cross-client reads
-answer 404, optional signed links, filesystem storage shared between instances) and capped by global and per-tenant
-byte budgets. Agent-token revocations now live in the shared state store — Redis for several instances, the new
-`store.backend: sqlite` or the event log for one node — and an unreachable store denies agent calls by default.
-Details: [CHANGELOG.md](CHANGELOG.md).
+**Breaking security release.** stdio MCP servers — third-party code — no longer inherit the gateway's environment:
+only an allowlist (`PATH`, `HOME`, locale, `TMPDIR` …) plus what you pass explicitly (`env`, `envPassthrough`). They
+can also run as another uid/gid, in a fixed working directory and inside bubblewrap, firejail or a container with the
+network off ([guide](docs/security/stdio-isolation.md)). Multimodal per-item limits are lower, hot reload rolls back
+on failure, and a kernel benchmark (startup time, memory, loaded modules) runs in CI. Builds on 11.1 / 11.2: one
+central authorizer for every tool call, owner-bound multimodal blobs, persistent agent-token revocation. Config schema
+stays v11. [Migrating to 12.0](docs/guides/migrating-to-v12.md).
 
 ## Documentation
 
