@@ -49,7 +49,10 @@ GATEWAY_API_KEY=change-me docker compose up
 ## Kubernetes
 
 > 6.8: there is a Helm chart and an operator — see [guides/kubernetes.md](guides/kubernetes.md). The plain
-> manifests below still work.
+> manifests below still work. Since 10.3 the chart requires an API key: provide `MCP_GATEWAY_API_KEYS` through
+> `existingSecret` (`helm install gw ./deploy/helm/mcp-gateway --set existingSecret=gw-secrets`), and the gateway
+> itself refuses to start on `0.0.0.0` without auth — so keep the Secret below (or an `auth` block) in plain manifests
+> too, or opt out explicitly with `security.insecure: true` on a trusted network.
 
 ```yaml
 apiVersion: v1
@@ -165,7 +168,10 @@ location / {
 ## Security checklist
 
 - Enable `auth` (API keys or JWT) whenever the gateway is reachable from anything but localhost; give each app its own
-  scoped key.
+  scoped key. Since 10.3 this is enforced: without auth the gateway starts only on a loopback address, unless you pass
+  `--insecure` (`security.insecure: true`).
+- Browser and mobile apps: never embed a long-lived key — proxy through your backend or issue short-lived scoped JWTs
+  (`auth.jwt.requireExp`, `maxTokenAgeSeconds`, `mcp_servers` / `mcp_tools` claims) and list origins in `cors.origins`.
 - Set `cors.origins` / `mcp.allowedOrigins` to the browser origins that may call the gateway (DNS-rebinding
   protection for `/mcp`).
 - Store API keys as digests (`mcp-gateway gen-key` / `hash-key` → `sha256:…`), give keys an `expiresAt`, and

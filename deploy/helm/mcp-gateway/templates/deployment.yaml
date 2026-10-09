@@ -1,3 +1,4 @@
+{{- include "mcp-gateway.validateAuth" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,6 +18,9 @@ spec:
       labels: {{- include "mcp-gateway.labels" . | nindent 8 }}
       annotations:
         mcp-gateway.dev/config-hash: {{ toYaml .Values.config | sha256sum | trunc 16 }}
+        {{- if .Values.apiKeys }}
+        mcp-gateway.dev/api-keys-hash: {{ join "," .Values.apiKeys | sha256sum | trunc 16 }}
+        {{- end }}
         prometheus.io/scrape: "true"
         prometheus.io/port: {{ .Values.port | quote }}
         prometheus.io/path: /api/v1/metrics
@@ -31,12 +35,17 @@ spec:
         - name: mcp-gateway
           image: {{ include "mcp-gateway.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args: ["start", "-c", "/config/mcp-gateway.yml"]
+          args: ["start", "-c", "/config/mcp-gateway.yml"{{ if (.Values.security).insecure }}, "--insecure"{{ end }}]
           ports:
             - { name: http, containerPort: {{ .Values.port }} }
-          {{- if .Values.existingSecret }}
+          {{- if or .Values.existingSecret .Values.apiKeys }}
           envFrom:
+            {{- if .Values.existingSecret }}
             - secretRef: { name: {{ .Values.existingSecret }} }
+            {{- end }}
+            {{- if .Values.apiKeys }}
+            - secretRef: { name: {{ include "mcp-gateway.apiKeysSecret" . }} }
+            {{- end }}
           {{- end }}
           volumeMounts:
             - { name: config, mountPath: /config, readOnly: true }
