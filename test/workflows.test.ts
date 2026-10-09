@@ -21,7 +21,7 @@ describe('workflow engine (6.2)', () => {
     expect(() => wf([{ id: 'a', tool: 's/t', needs: ['zz'] }])).toThrow(/needs unknown node zz/);
     expect(() => wf([{ id: 'a', tool: 's/t' }, { id: 'a', tool: 's/t' }])).toThrow(/duplicate node/);
     expect(() => wf([{ id: 'a', tool: 'notarget' }])).toThrow(/server\/tool/);
-    expect(() => validateConfig({ servers: [], workflows: [{ id: 'w', nodes: [{ id: 'a', tool: 's/t' }] }] })).not.toThrow();
+    expect(() => validateConfig({ servers: [], features: { workflows: [{ id: 'w', nodes: [{ id: 'a', tool: 's/t' }] }] } })).not.toThrow();
   });
 
   it('runs independent nodes in parallel, passes values, renders output', async () => {

@@ -55,8 +55,8 @@ export function portableConfig(cfg: GatewayConfig): Record<string, unknown> {
     out.store = { ...(store !== undefined ? { backend: store } : {}), ...st };
     delete out.state;
   }
-  // 9.9: schema v10 nests the feature sections under `features` (internals keep them top-level).
-  if (out.version === 10) {
+  // Schema v10 (10.0) nests the feature sections under `features` (internals keep them top-level).
+  {
     const features: Record<string, unknown> = {};
     for (const k of FEATURE_CONFIG_KEYS) {
       if (out[k] === undefined) continue;
@@ -74,6 +74,18 @@ export function portableConfig(cfg: GatewayConfig): Record<string, unknown> {
     });
   }
   return out;
+}
+
+/** A feature section of a schema-form config (schema v10: under `features`). */
+export const featureSection = (p: Record<string, unknown>, key: string): unknown => ((p.features as Record<string, unknown> | undefined) ?? {})[key];
+
+/** A schema-form config with one feature section replaced (`undefined` removes it); schema v10 keeps it under `features`. */
+export function withFeatureSection(p: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
+  const features = { ...((p.features as Record<string, unknown> | undefined) ?? {}) };
+  if (value === undefined) delete features[key];
+  else features[key] = value;
+  const { features: _f, ...rest } = p;
+  return Object.keys(features).length ? { ...rest, features } : rest;
 }
 
 /** The running config with schema defaults applied (embedders may pass unvalidated objects), for diffs. */

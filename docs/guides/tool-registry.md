@@ -4,21 +4,22 @@ A registry of MCP tool packages that works across organisations: publishers sign
 and search a registry, mirror others, and pin the versions it deploys.
 
 ```yaml
-version: 9
-toolRegistry:
-  file: ./data/registry.json
-  requireSignature: true
-  trustedPublishers:
-    acme: |
-      -----BEGIN PUBLIC KEY-----
-      …
-      -----END PUBLIC KEY-----
-  mirrors:
-    - url: https://registry.partner.example/api/v1/features/tool-registry/index.json
-      apiKey: ${PARTNER_REGISTRY_KEY}
-      everySeconds: 3600
-  pins:
-    acme/search: "~1.2.0"
+version: 10
+features:
+  toolRegistry:
+    file: ./data/registry.json
+    requireSignature: true
+    trustedPublishers:
+      acme: |
+        -----BEGIN PUBLIC KEY-----
+        …
+        -----END PUBLIC KEY-----
+    mirrors:
+      - url: https://registry.partner.example/api/v1/features/tool-registry/index.json
+        apiKey: ${PARTNER_REGISTRY_KEY}
+        everySeconds: 3600
+    pins:
+      acme/search: "~1.2.0"
 ```
 
 ## Manifests

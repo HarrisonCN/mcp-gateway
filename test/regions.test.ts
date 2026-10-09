@@ -73,8 +73,8 @@ describe('multi-region mesh (5.2)', () => {
   });
 
   it('validates the regions config section', () => {
-    expect(() => validateConfig({ servers: [], regions: { self: 'Bad Region' } })).toThrow();
-    const c = validateConfig({ servers: [], regions: { self: 'eu', peers: [{ id: 'us', url: 'https://us.example' }] } });
+    expect(() => validateConfig({ servers: [], features: { regions: { self: 'Bad Region' } } })).toThrow();
+    const c = validateConfig({ servers: [], features: { regions: { self: 'eu', peers: [{ id: 'us', url: 'https://us.example' }] } } });
     expect(resolveRegions(c.regions)).toMatchObject({ syncIntervalMs: 5000, peers: [{ priority: 100 }] });
   });
 

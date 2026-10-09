@@ -134,12 +134,12 @@ export function desktopConfig(opts: { servers?: McpServerConfig[]; apiKey?: stri
   return {
     apiKey,
     config: {
-      version: 9,
+      version: 10,
       host: '127.0.0.1',
       port: opts.port ?? 4000,
       auth: { strategy: 'api-key', apiKeys: [apiKey] },
       controlPlane: { dashboard: true },
-      offline: { mode: 'auto' },
+      features: { offline: { mode: 'auto' } },
       servers,
     },
   };

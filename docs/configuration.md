@@ -27,7 +27,7 @@ hot reload is rejected and the running configuration kept.
 | `port` | `4000` | restart | HTTP port |
 | `host` | `0.0.0.0` | restart | bind address |
 | `logLevel` | `info` | ✓ | `debug` \| `info` \| `warn` \| `error` |
-| `version` | — | | config schema version; optional, `10` (or the deprecated `9`) when set — 9.9 reads both |
+| `version` | — | | config schema version; optional, `10` when set (10.0 refuses `9` — run `mcp-gateway migrate --to 10`) |
 | `features` | — | ✓ | schema v10: every feature-module section (`chaos`, `sla`, `dlp`, …) nested here — see [Migrating to 10.0](guides/migrating-to-v10.md) |
 | `cors.origins` | `["*"]` | ✓ | allowed browser origins: exact values, `*`, or `/regex/` |
 | `health.intervalMs` | `30000` | restart | MCP `ping` interval (min 1000) |
@@ -326,18 +326,20 @@ portal:
 ## Compliance (3.7)
 
 ```yaml
-# 6.0: PII handling is configured with `dlp` (see docs/guides/dlp.md); `compliance.pii` was removed.
-dlp:
-  scope: both
-  default: { clearance: public, strategy: redact }
 compliance:
   residency:
-    rules:                  # first matching rule wins; a rule without tenants applies to everybody
-      - { tenants: ["eu-*"], regions: ["eu-*"] }
-    allowUnknown: false     # pinned tenants may not use servers / peers without a region
+    rules:
+      # first matching rule wins; a rule without tenants applies to everybody
+      - {tenants: ["eu-*"], regions: ["eu-*"]}
+    allowUnknown: false # pinned tenants may not use servers / peers without a region
 
 servers:
-  - { id: crm-eu, region: eu-west-1, ... }
+  - {id: crm-eu, region: eu-west-1, ...}
+features:
+  # 6.0: PII handling is configured with `dlp` (see docs/guides/dlp.md); `compliance.pii` was removed.
+  dlp:
+    scope: both
+    default: {clearance: public, strategy: redact}
 ```
 
 - **PII (via `dlp` since 6.0; `compliance.pii` in 3.7–5.9):** strings anywhere inside tool arguments / results are scanned. Payment cards are Luhn-checked, IBANs mod-97,
@@ -494,10 +496,10 @@ scopes, policy, quotas), then diffs the two results. Captured payloads are redac
 ## Admin API
 
 ```yaml
-version: 9
+version: 10
 controlPlane:
-  configApi: true   # allow PUT /api/v1/admin/config and POST /api/v1/admin/reload (default false)
-  dashboard: true   # serve /dashboard (default true)
+  configApi: true # allow PUT /api/v1/admin/config and POST /api/v1/admin/reload (default false)
+  dashboard: true # serve /dashboard (default true)
 ```
 
 (Schema v6 spelled these `admin: { configApi }` and `dashboard: { enabled }` — removed in 7.0;
@@ -517,7 +519,7 @@ controlPlane:
 
 ```yaml
 # data plane
-version: 9
+version: 10
 port: 4000
 controlPlane:
   role: data

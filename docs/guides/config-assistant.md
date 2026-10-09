@@ -4,11 +4,13 @@ Say what you want changed; the assistant turns it into a config patch, **validat
 run), and applies it only when you confirm.
 
 ```yaml
-configAssistant:
-  llm:                                  # optional
-    baseUrl: https://api.openai.com/v1  # any OpenAI-compatible chat-completions endpoint (also local models)
-    model: gpt-4o-mini
-    apiKey: ${OPENAI_API_KEY}
+features:
+  configAssistant:
+    llm:
+      # optional
+      baseUrl: https://api.openai.com/v1 # any OpenAI-compatible chat-completions endpoint (also local models)
+      model: gpt-4o-mini
+      apiKey: ${OPENAI_API_KEY}
 ```
 
 ```bash

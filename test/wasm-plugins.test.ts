@@ -121,7 +121,7 @@ auth:
 tenants:
   - { id: acme, servers: ["*"], members: [{ client: "key:a", role: admin }] }
   - { id: globex, servers: ["*"], members: [{ client: "key:b", role: admin }] }
-version: 9
+version: 10
 plugins:
   - { component: counter.wasm }
 `,

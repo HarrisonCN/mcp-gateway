@@ -18,8 +18,8 @@ describe('semantic cache (7.4)', () => {
     expect(s('weather in Paris today', 'weather in Berlin today')).toBeLessThan(0.9);
     expect(s('reset my password', 'delete my account')).toBeLessThan(0.7);
     expect(splitArgs({ q: 'x', days: 3, o: { l: 'en', n: [1, 'y'] } })).toEqual({ text: 'o.l: en\no.n[1]: y\nq: x', exact: '{"days":3,"o":{"l":"§","n":[1,"§"]},"q":"§"}' });
-    expect(() => validateConfig({ servers: [], semanticCache: { tools: [] } })).toThrow();
-    expect(() => validateConfig({ servers: [], semanticCache: { tools: ['*'], embedding: { provider: 'openai' } } })).toThrow(/needs `url`/);
+    expect(() => validateConfig({ servers: [], features: { semanticCache: { tools: [] } } })).toThrow();
+    expect(() => validateConfig({ servers: [], features: { semanticCache: { tools: ['*'], embedding: { provider: 'openai' } } } })).toThrow(/needs `url`/);
   });
 
   it('store: threshold, TTL, eviction and purge', () => {

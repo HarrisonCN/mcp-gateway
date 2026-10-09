@@ -1,6 +1,6 @@
 /**
  * To v10 (9.9, the default): everything for v9, then `version: 10` and every top-level feature section (`chaos`, `sla`,
- * `dlp`, … — {@link FEATURE_CONFIG_KEYS}) moves under `features`. 9.9 reads v9 and v10.
+ * `dlp`, … — {@link FEATURE_CONFIG_KEYS}) moves under `features`. 9.9 reads v9 and v10; 10.0 reads v10 only.
  *
  * To v9 (8.9): everything for v8, then `version: 9` and `state` → `store` (`state.store` → `store.backend`).
  * 8.9 reads v8 and v9.

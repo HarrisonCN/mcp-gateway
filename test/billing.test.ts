@@ -56,8 +56,8 @@ describe('usage billing and invoices (6.7)', () => {
     expect(csv.split('\n')[0]).toBe('invoice,account,period,target,calls,input_tokens,output_tokens,seconds,rate,amount_eur');
     expect(csv).toContain('INV-202610-ACME,acme,2026-10,total,,,,,,13.5');
     expect(invoiceCsv(buildInvoice(cfg, 'a,b', '2026-10', {}))).toContain('"a,b"');
-    expect(() => validateConfig({ servers: [], billing: cfg })).not.toThrow();
-    expect(() => validateConfig({ servers: [], billing: { currency: 'euro' } })).toThrow();
+    expect(() => validateConfig({ servers: [], features: { billing: cfg } })).not.toThrow();
+    expect(() => validateConfig({ servers: [], features: { billing: { currency: 'euro' } } })).toThrow();
   });
 
   it('meters gateway traffic per account and serves usage / invoices', async () => {

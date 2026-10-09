@@ -5,18 +5,19 @@ functions (lookups, formatting, validation, scoring) that answer on the gateway 
 [edge fleet](edge.md), next to the agent, with no upstream round trip.
 
 ```yaml
-version: 9
-edgeRuntime:
-  idleSeconds: 300
-  tools:
-    - name: geo-lookup
-      wasm: ./tools/geo.wasm
-      sha256: 9f2c41d0…           # optional pin (hex); a different file is refused
-      export: run                 # default
-      description: Country for an IP address
-      inputSchema: { type: object, properties: { ip: { type: string } } }
-      limits: { timeoutMs: 50, memoryMb: 8, maxConcurrent: 4 }
-      warm: 2
+version: 10
+features:
+  edgeRuntime:
+    idleSeconds: 300
+    tools:
+      - name: geo-lookup
+        wasm: ./tools/geo.wasm
+        sha256: 9f2c41d0… # optional pin (hex); a different file is refused
+        export: run # default
+        description: Country for an IP address
+        inputSchema: {type: object, properties: {ip: {type: string}}}
+        limits: {timeoutMs: 50, memoryMb: 8, maxConcurrent: 4}
+        warm: 2
 ```
 
 ## ABI

@@ -17,8 +17,8 @@ const fail = (code = -32000) => ({ success: false, durationMs: 5, error: { code,
 
 describe('SLA monitoring (9.5)', () => {
   it('validates targets', () => {
-    expect(() => validateConfig({ version: 9, servers: [], sla: { targets: [{ id: 'a', availability: 101 }] } })).toThrow();
-    expect(() => validateConfig({ version: 9, servers: [], sla: { targets: [{ id: 'a', availability: 99 }, { id: 'a', availability: 99 }] } })).toThrow(/duplicate SLA target/);
+    expect(() => validateConfig({ version: 10, servers: [], features: { sla: { targets: [{ id: 'a', availability: 101 }] } } })).toThrow();
+    expect(() => validateConfig({ version: 10, servers: [], features: { sla: { targets: [{ id: 'a', availability: 99 }, { id: 'a', availability: 99 }] } } })).toThrow(/duplicate SLA target/);
   });
 
   it('measures availability, p95, error budget, breaches and credits; reports JSON and CSV', async () => {

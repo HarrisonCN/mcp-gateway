@@ -15,13 +15,14 @@ npx @winstonsayno/mcp-gateway start -c mcp-gateway.yml
 (file mode `0600`):
 
 ```yaml
-version: 9
-host: 127.0.0.1              # loopback only
+version: 10
+host: 127.0.0.1 # loopback only
 port: 4000
-auth: { strategy: api-key, apiKeys: [mgw_…] }   # generated
-controlPlane: { dashboard: true }
-offline: { mode: auto }
-servers: [ … imported … ]
+auth: {strategy: api-key, apiKeys: [mgw_…]} # generated
+controlPlane: {dashboard: true}
+servers: [… imported …]
+features:
+  offline: {mode: auto}
 ```
 
 It prints the snippet to put back into the client so it talks to the gateway only:
@@ -33,12 +34,13 @@ It prints the snippet to put back into the client so it talks to the gateway onl
 ## Offline mode
 
 ```yaml
-offline:
-  mode: auto                 # auto: probe the network | online | offline
-  probeUrl: https://1.1.1.1/
-  probeIntervalMs: 15000
-  probeTimeoutMs: 3000
-  allowRemote: ["nas-*"]     # remote servers still tried offline (LAN)
+features:
+  offline:
+    mode: auto # auto: probe the network | online | offline
+    probeUrl: https://1.1.1.1/
+    probeIntervalMs: 15000
+    probeTimeoutMs: 3000
+    allowRemote: ["nas-*"] # remote servers still tried offline (LAN)
 ```
 
 While offline, calls to **remote** upstreams (`streamable-http`, `sse`, `websocket`) are refused at once with

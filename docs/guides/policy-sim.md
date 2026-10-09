@@ -26,10 +26,11 @@ shadow decision) without calling the upstream.
 ## Shadow mode
 
 ```yaml
-policyShadow:
-  default: deny
-  rules:
-    - { name: read-only, effect: allow, tools: ["*read*", "*list*", "*search*"] }
+features:
+  policyShadow:
+    default: deny
+    rules:
+      - {name: read-only, effect: allow, tools: ["*read*", "*list*", "*search*"]}
 ```
 
 The shadow policy is evaluated on every call that the enforced policy lets through and never blocks anything.

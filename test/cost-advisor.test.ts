@@ -18,8 +18,8 @@ const obs = (tool: string, n: number, opts: { server?: string; repeat?: boolean;
 
 describe('cost advisor (8.4)', () => {
   it('config and stable argument hashes', () => {
-    expect(() => validateConfig({ servers: [], costAdvisor: { repeatThreshold: 2 } })).toThrow();
-    expect(validateConfig({ version: 9, servers: [], costAdvisor: {} }).costAdvisor).toBeDefined();
+    expect(() => validateConfig({ servers: [], features: { costAdvisor: { repeatThreshold: 2 } } })).toThrow();
+    expect(validateConfig({ version: 10, servers: [], features: { costAdvisor: {} } }).costAdvisor).toBeDefined();
     expect(argsHash({ a: 1, b: [1, { c: 2 }] })).toBe(argsHash({ b: [1, { c: 2 }], a: 1 }));
     expect(argsHash({ a: 1 })).not.toBe(argsHash({ a: 2 }));
   });

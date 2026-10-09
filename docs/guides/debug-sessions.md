@@ -6,10 +6,11 @@ someone can inspect and **edit** the arguments before resuming (or **abort** the
 **replay** any captured call.
 
 ```yaml
-debugSessions:
-  maxSessions: 10
-  holdTimeoutSeconds: 60   # paused calls are aborted (-32020) when nobody resumes them in time
-  maxEvents: 500
+features:
+  debugSessions:
+    maxSessions: 10
+    holdTimeoutSeconds: 60 # paused calls are aborted (-32020) when nobody resumes them in time
+    maxEvents: 500
 ```
 
 Sessions are created at runtime by operators:

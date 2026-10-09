@@ -33,7 +33,7 @@ import type { Response, Router } from 'express';
 import { z } from 'zod';
 import { registerFeature, objectBody, badRequest, type FeatureContext } from '../gateway/features.js';
 import { registerCallHook } from '../gateway/hooks.js';
-import { portableConfig } from '../gateway/admin.js';
+import { portableConfig, featureSection, withFeatureSection } from '../gateway/admin.js';
 import type { GatewayConfig } from '../utils/types.js';
 
 export const ERR_ORG_REFUSED = -32016;
@@ -159,7 +159,7 @@ function mount(router: Router, ctx: FeatureContext): void {
   };
   const parts = () => {
     const p = portableConfig(ctx.config());
-    const cons = { ...((p.console as Obj) ?? {}) };
+    const cons = { ...((featureSection(p, 'console') as Obj) ?? {}) }; // 10.0: under `features`
     const orgs = { ...((cons.orgs as Record<string, Obj>) ?? {}) };
     const tenants = ((p.tenants as Obj[]) ?? []).slice();
     return { p, cons, orgs, tenants };
@@ -198,7 +198,7 @@ function mount(router: Router, ctx: FeatureContext): void {
     if (orgs[id.data] || tenants.some((t) => t.id === id.data)) return void res.status(409).json({ error: 'Conflict', message: `"${id.data}" already exists` });
     orgs[id.data] = { plan };
     tenants.push({ id: id.data, ...(typeof b.name === 'string' && b.name ? { name: b.name } : {}), servers: c.plans[plan]!.servers, ...(b.owner ? { members: [{ client: b.owner, role: 'owner' }] } : {}) });
-    await write(res, { ...p, console: { ...cons, orgs }, tenants }, 201, () => view(settings(ctx.config())!, id.data));
+    await write(res, { ...withFeatureSection(p, 'console', { ...cons, orgs }), tenants }, 201, () => view(settings(ctx.config())!, id.data));
   });
 
   router.patch('/orgs/:id', async (req, res) => {
@@ -217,7 +217,7 @@ function mount(router: Router, ctx: FeatureContext): void {
     if (ti >= 0) {
       tenants[ti] = { ...tenants[ti]!, ...(b.plan ? { servers: c.plans[b.plan as string]!.servers } : {}), ...(typeof b.name === 'string' && b.name ? { name: b.name } : {}) };
     }
-    await write(res, { ...p, console: { ...cons, orgs }, ...(tenants.length ? { tenants } : {}) }, 200, () => view(settings(ctx.config())!, oid));
+    await write(res, { ...withFeatureSection(p, 'console', { ...cons, orgs }), ...(tenants.length ? { tenants } : {}) }, 200, () => view(settings(ctx.config())!, oid));
   });
 
   router.delete('/orgs/:id', async (req, res) => {
@@ -230,7 +230,7 @@ function mount(router: Router, ctx: FeatureContext): void {
     const rest = tenants.filter((t) => t.id !== oid);
     const { tenants: _t, ...base } = p;
     consoleCounter.reset(oid);
-    await write(res, { ...base, console: { ...cons, orgs }, ...(rest.length ? { tenants: rest } : {}) }, 200, () => ({ removed: oid }));
+    await write(res, { ...withFeatureSection(base, 'console', { ...cons, orgs }), ...(rest.length ? { tenants: rest } : {}) }, 200, () => ({ removed: oid }));
   });
 
   router.post('/orgs/:id/reset-usage', (req, res) => {

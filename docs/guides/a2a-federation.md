@@ -5,16 +5,17 @@ gateway **discovers** remote A2A agents — other mcp-gateways in other regions 
 and lets its own clients and agents **forward tasks** to them, under one trust and audit model.
 
 ```yaml
-a2aFederation:
-  gatewayId: us-east                 # sent to remotes in message metadata (default mcp-gateway/<version>)
-  refreshSeconds: 60                 # agent cards are re-read on this interval
-  timeoutMs: 15000
-  remotes:
-    - id: eu
-      url: https://gw-eu.example.com # card at <url>/.well-known/agent-card.json
-      token: ${EU_A2A_TOKEN}         # bearer for the remote (its API key)
-      skills: ["search*", "translate"]   # skill-id globs exposed locally (default all)
-      clients: ["key:ops-*", "agent:*"]  # local clients allowed to use it (default all)
+features:
+  a2aFederation:
+    gatewayId: us-east # sent to remotes in message metadata (default mcp-gateway/<version>)
+    refreshSeconds: 60 # agent cards are re-read on this interval
+    timeoutMs: 15000
+    remotes:
+      - id: eu
+        url: https://gw-eu.example.com # card at <url>/.well-known/agent-card.json
+        token: ${EU_A2A_TOKEN} # bearer for the remote (its API key)
+        skills: ["search*", "translate"] # skill-id globs exposed locally (default all)
+        clients: ["key:ops-*", "agent:*"] # local clients allowed to use it (default all)
 ```
 
 | | |

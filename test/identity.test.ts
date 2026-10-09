@@ -76,7 +76,7 @@ describe('enterprise SSO and SCIM (6.4)', () => {
     expect(u.origin + u.pathname).toBe('https://idp.example/authorize');
     expect(Object.fromEntries(u.searchParams)).toMatchObject({ response_type: 'code', client_id: 'gw', redirect_uri: 'https://gw/cb', state: 's', code_challenge_method: 'S256', scope: 'openid email profile groups' });
     expect(u.searchParams.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(() => validateConfig({ servers: [], identity: { groupRoles: [{ group: 'x', tenant: 't', role: 'god' }] } })).toThrow();
+    expect(() => validateConfig({ servers: [], features: { identity: { groupRoles: [{ group: 'x', tenant: 't', role: 'god' }] } } })).toThrow();
   });
 
   it('SCIM REST surface and SSO verify through the gateway', async () => {

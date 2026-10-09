@@ -5,21 +5,22 @@ watch retries, failover (federation, blue/green, rollouts), approvals and your a
 a schedule, always time-boxed.
 
 ```yaml
-chaos:
-  experiments:
-    - id: slow-search
-      servers: [search]
-      tools: ["*"]
-      clients: ["key:staging-*"]    # start with test clients — the default is everyone
-      percent: 25                   # share of matching calls affected
-      fault: { latencyMs: 1500 }
-      durationSeconds: 300
-      abortIfErrorRateAbove: 0.5    # steady-state guard
-      every: daily                  # optional: hourly | daily | weekly
-    - id: github-flaky
-      servers: [github]
-      percent: 10
-      fault: { errorRate: 0.5, timeoutRate: 0.1, timeoutMs: 20000, corruptRate: 0.05 }
+features:
+  chaos:
+    experiments:
+      - id: slow-search
+        servers: [search]
+        tools: ["*"]
+        clients: ["key:staging-*"] # start with test clients — the default is everyone
+        percent: 25 # share of matching calls affected
+        fault: {latencyMs: 1500}
+        durationSeconds: 300
+        abortIfErrorRateAbove: 0.5 # steady-state guard
+        every: daily # optional: hourly | daily | weekly
+      - id: github-flaky
+        servers: [github]
+        percent: 10
+        fault: {errorRate: 0.5, timeoutRate: 0.1, timeoutMs: 20000, corruptRate: 0.05}
 ```
 
 | Fault | Effect on an affected call |

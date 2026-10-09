@@ -5,14 +5,15 @@ The semantic cache answers calls whose **text arguments mean the same thing** â€
 lookup or FAQ tools that agents call with slightly different wording.
 
 ```yaml
-semanticCache:
-  tools: ["search/*", "docs/lookup"]    # opt-in: server/tool globs
-  threshold: 0.9                        # cosine similarity needed for a hit
-  ttlSeconds: 3600
-  maxEntries: 5000                      # oldest entries are evicted first
-  scope: tenant                         # tenant (default) | client | global
-  embedding:
-    provider: local                     # local | openai
+features:
+  semanticCache:
+    tools: ["search/*", "docs/lookup"] # opt-in: server/tool globs
+    threshold: 0.9 # cosine similarity needed for a hit
+    ttlSeconds: 3600
+    maxEntries: 5000 # oldest entries are evicted first
+    scope: tenant # tenant (default) | client | global
+    embedding:
+      provider: local # local | openai
 ```
 
 How a call is matched:

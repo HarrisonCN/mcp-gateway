@@ -586,6 +586,15 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v10.0
+
+| Change | |
+|--------|---|
+| **Schema v10** | `version: 10` only; feature sections move under `features:` — run `mcp-gateway migrate --to 10` ([guide](docs/guides/migrating-to-v10.md)) |
+| **Unified kernel** | `GET /api/v1/admin/kernel`: schema, modules, call-hook pipeline, configured sections |
+| **LTS** | 10.x is long-term support: active until 2027-10-31, security fixes until 2028-10-31 |
+| **Roadmap** | 10.1 → 11.0 in [docs/ROADMAP.md](docs/ROADMAP.md) |
+
 ## What's New in v9.9
 
 | Change | |

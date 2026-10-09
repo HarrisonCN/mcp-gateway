@@ -57,8 +57,8 @@ describe('OpenTelemetry GenAI semantic conventions (6.3)', () => {
   });
 
   it('validates config', () => {
-    expect(() => validateConfig({ servers: [], genaiTelemetry: { systems: { llm: 'openai' }, otlpEndpoint: 'http://c:4318' } })).not.toThrow();
-    expect(() => validateConfig({ servers: [], genaiTelemetry: { exportIntervalMs: 5 } })).toThrow();
+    expect(() => validateConfig({ servers: [], features: { genaiTelemetry: { systems: { llm: 'openai' }, otlpEndpoint: 'http://c:4318' } } })).not.toThrow();
+    expect(() => validateConfig({ servers: [], features: { genaiTelemetry: { exportIntervalMs: 5 } } })).toThrow();
   });
 
   it('records gateway traffic, serves spans / OTLP and pushes on stop', async () => {

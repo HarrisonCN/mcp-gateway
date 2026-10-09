@@ -78,7 +78,7 @@ describe('GraphQL / gRPC upstreams (6.1)', () => {
   });
 
   it('validates config (kinds, duplicates, names)', () => {
-    expect(() => validateConfig(cfg())).not.toThrow();
+    expect(() => validateConfig({ servers: [], features: { apiUpstreams: cfg().apiUpstreams } })).not.toThrow(); // 10.0: schema v10
     expect(() => ApiUpstreamsSchema.parse([{ id: 'a', kind: 'soap', url: 'http://x' }])).toThrow();
     expect(() => ApiUpstreamsSchema.parse([{ id: 'a', kind: 'grpc', url: 'http://x', methods: [{ name: 'm', service: 's', method: 'M' }] }, { id: 'a', kind: 'grpc', url: 'http://x', methods: [{ name: 'm', service: 's', method: 'M' }] }])).toThrow(/duplicate upstream id/);
     expect(() => ApiUpstreamsSchema.parse([{ id: 'a b', kind: 'graphql', url: 'http://x', operations: [{ name: 'q', document: '{ x }' }] }])).toThrow();

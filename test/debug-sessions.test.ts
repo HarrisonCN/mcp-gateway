@@ -22,8 +22,8 @@ const waitFor = async (fn: () => Promise<boolean>) => {
 
 describe('debug sessions (8.3)', () => {
   it('config and breakpoint matching', () => {
-    expect(() => validateConfig({ servers: [], debugSessions: { maxSessions: 0 } })).toThrow();
-    expect(validateConfig({ version: 9, servers: [], debugSessions: {} }).debugSessions).toBeDefined();
+    expect(() => validateConfig({ servers: [], features: { debugSessions: { maxSessions: 0 } } })).toThrow();
+    expect(validateConfig({ version: 10, servers: [], features: { debugSessions: {} } }).debugSessions).toBeDefined();
     expect(hits({ tool: 'fake/*' }, 'fake/echo', {})).toBe(true);
     expect(hits({ tool: 'fake/echo', when: { path: 'a.b', equals: 2 } }, 'fake/echo', { a: { b: 2 } })).toBe(true);
     expect(hits({ tool: 'fake/echo', when: { path: 'a.b', equals: 2 } }, 'fake/echo', { a: { b: 3 } })).toBe(false);

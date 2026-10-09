@@ -4,12 +4,13 @@
 **evidence bundles** on a schedule — SOC 2, **ISO/IEC 27001:2022** and GDPR — ready to hand to an auditor.
 
 ```yaml
-complianceReports:
-  outputDir: ./compliance        # relative to the config file
-  keep: 12                       # newest bundles kept
-  schedules:
-    - { id: monthly, frameworks: [soc2, iso27001, gdpr], every: monthly, periodDays: 30 }
-    - { id: weekly-iso, frameworks: [iso27001], every: weekly, periodDays: 7 }
+features:
+  complianceReports:
+    outputDir: ./compliance # relative to the config file
+    keep: 12 # newest bundles kept
+    schedules:
+      - {id: monthly, frameworks: [soc2, iso27001, gdpr], every: monthly, periodDays: 30}
+      - {id: weekly-iso, frameworks: [iso27001], every: weekly, periodDays: 7}
 ```
 
 Each run writes `<outputDir>/<schedule>-<timestamp>/`:

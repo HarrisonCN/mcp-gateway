@@ -4,29 +4,30 @@ The gateway already sees every call's outcome and latency. Self-healing rules tu
 in the loop — and undo it again once the cool-down is over.
 
 ```yaml
-version: 9
-selfHealing:
-  windowSeconds: 60
-  minCalls: 20
-  rules:
-    - id: search-down
-      servers: ["search"]
-      when: { errorRateAbove: 0.5 }
-      action: eject
-      fallback: search-backup        # omit to refuse calls instead
-      cooldownSeconds: 120
-    - id: search-v2-bad
-      servers: ["search-v2"]
-      when: { errorRateAbove: 0.1, p95Above: 1500 }
-      action: rollback
-      rollbackTo: search
-      cooldownSeconds: 900
-    - id: github-slow
-      servers: ["github"]
-      when: { p95Above: 3000 }
-      action: throttle
-      maxPerSecond: 5
-      cooldownSeconds: 60
+version: 10
+features:
+  selfHealing:
+    windowSeconds: 60
+    minCalls: 20
+    rules:
+      - id: search-down
+        servers: ["search"]
+        when: {errorRateAbove: 0.5}
+        action: eject
+        fallback: search-backup # omit to refuse calls instead
+        cooldownSeconds: 120
+      - id: search-v2-bad
+        servers: ["search-v2"]
+        when: {errorRateAbove: 0.1, p95Above: 1500}
+        action: rollback
+        rollbackTo: search
+        cooldownSeconds: 900
+      - id: github-slow
+        servers: ["github"]
+        when: {p95Above: 3000}
+        action: throttle
+        maxPerSecond: 5
+        cooldownSeconds: 60
 ```
 
 ## Actions

@@ -5,17 +5,18 @@ Ship a new version of an upstream MCP server without a big-bang switch: register
 
 ```yaml
 servers:
-  - { id: search,    name: Search,    transport: streamable-http, url: https://search-v1.internal/mcp }
-  - { id: search-v2, name: Search v2, transport: streamable-http, url: https://search-v2.internal/mcp }
-rollouts:
-  - id: search-v2
-    stable: search            # what clients call
-    canary: search-v2         # the new version (same tool names)
-    tools: ["*"]              # which tools of the stable server roll out (globs)
-    percent: 10               # share of clients sent to the canary
-    clients: ["key:beta-*"]   # always on the canary
-    exclude: ["key:billing"]  # never on the canary
-    autoRollback: { maxErrorRate: 0.2, minCalls: 20, window: 200 }
+  - {id: search, name: Search, transport: streamable-http, url: https://search-v1.internal/mcp}
+  - {id: search-v2, name: Search v2, transport: streamable-http, url: https://search-v2.internal/mcp}
+features:
+  rollouts:
+    - id: search-v2
+      stable: search # what clients call
+      canary: search-v2 # the new version (same tool names)
+      tools: ["*"] # which tools of the stable server roll out (globs)
+      percent: 10 # share of clients sent to the canary
+      clients: ["key:beta-*"] # always on the canary
+      exclude: ["key:billing"] # never on the canary
+      autoRollback: {maxErrorRate: 0.2, minCalls: 20, window: 200}
 ```
 
 - **Sticky:** a client's bucket is a hash of its id and the rollout id, so each client consistently sees one version

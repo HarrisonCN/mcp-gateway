@@ -5,18 +5,19 @@ Tool results are untrusted input for the model: a web page, an issue comment or 
 `sanitize` cleans every tool result before it leaves the gateway, and can refuse suspicious arguments and results.
 
 ```yaml
-sanitize:
-  servers: ["*"]                     # upstreams it applies to (globs)
-  exempt: ["internal/*"]             # server/tool globs left untouched
-  invisible: true                    # zero-width, bidi overrides, Unicode tag characters
-  ansi: true                         # terminal escape sequences
-  html: true                         # <script>/<style>/<iframe>/<object>/<embed> blocks, HTML comments
-  images: strip                      # markdown images to hosts not in allowedImageHosts → "[image removed]"
-  allowedImageHosts: ["*.githubusercontent.com"]
-  maxChars: 200000                   # optional: truncate long text
-  injection: { action: mark, threshold: 0.6 }   # off | flag | mark | block
-  spotlight: true                    # wrap text in <<tool-output server/tool>> … <</tool-output>>
-  inbound: off                       # block: refuse calls whose arguments score ≥ threshold
+features:
+  sanitize:
+    servers: ["*"] # upstreams it applies to (globs)
+    exempt: ["internal/*"] # server/tool globs left untouched
+    invisible: true # zero-width, bidi overrides, Unicode tag characters
+    ansi: true # terminal escape sequences
+    html: true # <script>/<style>/<iframe>/<object>/<embed> blocks, HTML comments
+    images: strip # markdown images to hosts not in allowedImageHosts → "[image removed]"
+    allowedImageHosts: ["*.githubusercontent.com"]
+    maxChars: 200000 # optional: truncate long text
+    injection: {action: mark, threshold: 0.6} # off | flag | mark | block
+    spotlight: true # wrap text in <<tool-output server/tool>> … <</tool-output>>
+    inbound: off # block: refuse calls whose arguments score ≥ threshold
 ```
 
 | `injection.action` | Effect when the cleaned result scores ≥ `threshold` (6.6 injection signals) |

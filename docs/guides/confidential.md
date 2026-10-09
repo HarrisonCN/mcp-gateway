@@ -5,20 +5,22 @@ Run those MCP servers inside a trusted execution environment (AMD SEV-SNP, Intel
 and let the gateway send them calls **only after remote attestation** has proven what is running and where.
 
 ```yaml
-version: 9
-confidential:
-  nonceTtlSeconds: 120
-  servers:
-    - match: "payroll-*"            # server id glob
-      platforms: [sev-snp, tdx]
-      measurements: ["5f1c9a0e…"]   # allowed launch measurements, lower-case hex
-      trustedKeys:                  # keys of the attestation service / verifier you trust
-        - |
-          -----BEGIN PUBLIC KEY-----
-          …
-          -----END PUBLIC KEY-----
-      validitySeconds: 3600
-      allowDebug: false
+version: 10
+features:
+  confidential:
+    nonceTtlSeconds: 120
+    servers:
+      - match: "payroll-*" # server id glob
+        platforms: [sev-snp, tdx]
+        measurements: ["5f1c9a0e…"] # allowed launch measurements, lower-case hex
+        trustedKeys:
+          # keys of the attestation service / verifier you trust
+          - |
+            -----BEGIN PUBLIC KEY-----
+            …
+            -----END PUBLIC KEY-----
+        validitySeconds: 3600
+        allowDebug: false
 ```
 
 ## Flow

@@ -5,12 +5,13 @@ The gateway describes every tool call with the OpenTelemetry
 GenAI-aware backend (Grafana, Datadog, Honeycomb, Langfuse, Arize Phoenix …).
 
 ```yaml
-genaiTelemetry:
-  systems: { llm: openai, claude: anthropic }   # server id → gen_ai.provider.name (calls become `chat` operations)
-  modelArg: model                                # argument that carries the model name
-  captureContent: false                          # true: gen_ai.input.messages / output.messages (JSON, 4 KB max)
-  otlpEndpoint: http://otel-collector:4318       # optional OTLP/HTTP JSON push of spans + metrics
-  exportIntervalMs: 10000
+features:
+  genaiTelemetry:
+    systems: {llm: openai, claude: anthropic} # server id → gen_ai.provider.name (calls become `chat` operations)
+    modelArg: model # argument that carries the model name
+    captureContent: false # true: gen_ai.input.messages / output.messages (JSON, 4 KB max)
+    otlpEndpoint: http://otel-collector:4318 # optional OTLP/HTTP JSON push of spans + metrics
+    exportIntervalMs: 10000
 ```
 
 ## Spans

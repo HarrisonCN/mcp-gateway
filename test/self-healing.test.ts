@@ -20,9 +20,9 @@ const keys = { strategy: 'api-key', apiKeys: ['op', { key: 'scoped', servers: ['
 
 describe('self-healing (9.6)', () => {
   it('validates rules', () => {
-    expect(() => validateConfig({ version: 9, servers: [], selfHealing: { rules: [{ id: 'a', servers: ['x'], when: {}, action: 'eject' }] } })).toThrow(/errorRateAbove or p95Above/);
-    expect(() => validateConfig({ version: 9, servers: [], selfHealing: { rules: [{ id: 'a', servers: ['x'], when: { p95Above: 10 }, action: 'rollback' }] } })).toThrow(/rollbackTo/);
-    expect(() => validateConfig({ version: 9, servers: [], selfHealing: { rules: [{ id: 'a', servers: ['x'], when: { p95Above: 10 }, action: 'throttle' }] } })).toThrow(/maxPerSecond/);
+    expect(() => validateConfig({ version: 10, servers: [], features: { selfHealing: { rules: [{ id: 'a', servers: ['x'], when: {}, action: 'eject' }] } } })).toThrow(/errorRateAbove or p95Above/);
+    expect(() => validateConfig({ version: 10, servers: [], features: { selfHealing: { rules: [{ id: 'a', servers: ['x'], when: { p95Above: 10 }, action: 'rollback' }] } } })).toThrow(/rollbackTo/);
+    expect(() => validateConfig({ version: 10, servers: [], features: { selfHealing: { rules: [{ id: 'a', servers: ['x'], when: { p95Above: 10 }, action: 'throttle' }] } } })).toThrow(/maxPerSecond/);
     expect(ERR_SELF_HEALING).toBe(-32025);
   });
 

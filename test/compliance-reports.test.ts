@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startFeatureGw, type FeatureGw } from './helpers/feature-gw.js';
 import { validateConfig } from '../src/config/loader.js';
+import { FEATURE_CONFIG_KEYS } from '../src/gateway/features.js';
 import { writeBundle, verifyBundle, renderFramework } from '../src/features/compliance-reports.js';
 import type { GatewayConfig } from '../src/utils/types.js';
 
@@ -14,8 +15,12 @@ afterEach(async () => {
   h = undefined;
 });
 
-const cfg = (extra: Record<string, unknown> = {}) =>
-  validateConfig({ servers: [{ id: 'a', name: 'a', transport: 'streamable-http', url: 'https://a.example/mcp' }], auth: { strategy: 'api-key', apiKeys: ['secret-key'] }, ...extra }) as GatewayConfig;
+// 10.0: feature sections go under `features` (schema v10).
+const cfg = (extra: Record<string, unknown> = {}) => {
+  const feats = Object.fromEntries(Object.entries(extra).filter(([k]) => (FEATURE_CONFIG_KEYS as readonly string[]).includes(k)));
+  const core = Object.fromEntries(Object.entries(extra).filter(([k]) => !(k in feats)));
+  return validateConfig({ servers: [{ id: 'a', name: 'a', transport: 'streamable-http', url: 'https://a.example/mcp' }], auth: { strategy: 'api-key', apiKeys: ['secret-key'] }, ...core, ...(Object.keys(feats).length ? { features: feats } : {}) }) as GatewayConfig;
+};
 
 describe('compliance reports (7.8)', () => {
   it('ISO 27001 controls reflect the 7.x features', () => {
@@ -46,7 +51,7 @@ describe('compliance reports (7.8)', () => {
     expect(verifyBundle(join(dir, m.bundle))).toEqual({ ok: true, problems: [] });
     writeFileSync(join(dir, m.bundle, 'soc2.md'), 'edited');
     expect(verifyBundle(join(dir, m.bundle)).problems).toEqual(['soc2.md: sha256 mismatch']);
-    expect(() => validateConfig({ servers: [], complianceReports: { schedules: [{ id: 'x', frameworks: ['hipaa'] }] } })).toThrow();
+    expect(() => validateConfig({ servers: [], features: { complianceReports: { schedules: [{ id: 'x', frameworks: ['hipaa'] }] } } })).toThrow();
   });
 
   it('gateway: run now, list with verification, download, preview, prune', async () => {

@@ -3,24 +3,25 @@
 Expose GraphQL operations and unary gRPC methods as tools — no MCP server needed in front of them.
 
 ```yaml
-apiUpstreams:
-  - id: shop
-    kind: graphql
-    url: https://shop.example/graphql
-    headers: { authorization: "Bearer ${SHOP_TOKEN}" }
-    timeoutMs: 15000
-    operations:
-      - name: product
-        description: Look up a product
-        document: "query product($id: ID!, $locale: String) { product(id: $id) { id title price } }"
-  - id: billing
-    kind: grpc
-    url: https://billing.example          # Connect server, Envoy gRPC-JSON transcoder or gRPC-Gateway
-    methods:
-      - name: getInvoice
-        service: billing.v1.Invoices
-        method: Get
-        inputSchema: { type: object, properties: { id: { type: string } }, required: [id] }
+features:
+  apiUpstreams:
+    - id: shop
+      kind: graphql
+      url: https://shop.example/graphql
+      headers: {authorization: "Bearer ${SHOP_TOKEN}"}
+      timeoutMs: 15000
+      operations:
+        - name: product
+          description: Look up a product
+          document: "query product($id: ID!, $locale: String) { product(id: $id) { id title price } }"
+    - id: billing
+      kind: grpc
+      url: https://billing.example # Connect server, Envoy gRPC-JSON transcoder or gRPC-Gateway
+      methods:
+        - name: getInvoice
+          service: billing.v1.Invoices
+          method: Get
+          inputSchema: {type: object, properties: {id: {type: string}}, required: [id]}
 ```
 
 ## GraphQL

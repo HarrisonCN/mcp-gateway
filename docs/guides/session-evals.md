@@ -5,10 +5,11 @@ server, changing policy, or switching a model.
 
 ```yaml
 replay:
-  enabled: true          # capture arguments + results (redacted) — required for recording
-sessions:
-  dir: ./recordings      # optional: persist recordings as JSON next to the config
-  maxRecordings: 100
+  enabled: true # capture arguments + results (redacted) — required for recording
+features:
+  sessions:
+    dir: ./recordings # optional: persist recordings as JSON next to the config
+    maxRecordings: 100
 ```
 
 ## Record
