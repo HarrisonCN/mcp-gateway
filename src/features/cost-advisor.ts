@@ -26,8 +26,8 @@ import { registerCallHook } from '../gateway/hooks.js';
 import { priceCall, usageOf, type CostsConfig } from '../costs/index.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig, ToolInfo } from '../utils/types.js';
-import { CostAdvisorConfig, CostAdvisorSchema } from './schemas/cost-advisor.js';
-export { CostAdvisorConfig, CostAdvisorSchema } from './schemas/cost-advisor.js';
+import { type CostAdvisorConfig, CostAdvisorSchema } from './schemas/cost-advisor.js';
+export { type CostAdvisorConfig, CostAdvisorSchema } from './schemas/cost-advisor.js';
 type Cfg = z.output<typeof CostAdvisorSchema>;
 
 export interface Observation {

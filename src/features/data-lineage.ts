@@ -28,8 +28,8 @@ import { z } from 'zod';
 import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
 import { registerCallHook } from '../gateway/hooks.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { DataLineageConfig, DataLineageSchema } from './schemas/data-lineage.js';
-export { DataLineageConfig, DataLineageSchema } from './schemas/data-lineage.js';
+import { type DataLineageConfig, DataLineageSchema } from './schemas/data-lineage.js';
+export { type DataLineageConfig, DataLineageSchema } from './schemas/data-lineage.js';
 type Cfg = z.output<typeof DataLineageSchema>;
 
 export interface LineageNode {

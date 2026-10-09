@@ -33,8 +33,8 @@ import { registerFeature } from '../gateway/features.js';
 import { registerCallHook } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { BillingConfig, BillingSchema, Money } from './schemas/billing.js';
-export { BillingConfig, BillingSchema } from './schemas/billing.js';
+import { type BillingConfig, BillingSchema, Money } from './schemas/billing.js';
+export { type BillingConfig, BillingSchema } from './schemas/billing.js';
 import { requireDependency } from '../gateway/kernel-runtime.js';
 // 13.0: declared dependency (manifest dependsOn) instead of a static import of another feature module.
 const { extractUsage } = await requireDependency<typeof import('./genai-otel.js')>('billing', 'genai-otel');

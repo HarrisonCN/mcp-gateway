@@ -33,8 +33,8 @@ import { registerCallHook } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { redactValue } from '../security/redact.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
-import { DebugSessionsConfig, DebugSessionsSchema, ERR_DEBUG_ABORTED } from './schemas/debug-sessions.js';
-export { DebugSessionsConfig, DebugSessionsSchema, ERR_DEBUG_ABORTED } from './schemas/debug-sessions.js';
+import { type DebugSessionsConfig, DebugSessionsSchema, ERR_DEBUG_ABORTED } from './schemas/debug-sessions.js';
+export { type DebugSessionsConfig, DebugSessionsSchema, ERR_DEBUG_ABORTED } from './schemas/debug-sessions.js';
 type Cfg = z.output<typeof DebugSessionsSchema>;
 
 const Match = z.object({ servers: z.array(z.string()).optional(), tools: z.array(z.string()).optional(), clients: z.array(z.string()).optional() }).strict();

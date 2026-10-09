@@ -23,8 +23,8 @@
 
 import { z } from 'zod';
 import { registerFeature, badRequest, objectBody, type FeatureContext } from '../gateway/features.js';
-import { RegionsConfig, RegionsSchema } from './schemas/regions.js';
-export { RegionsConfig, RegionsSchema } from './schemas/regions.js';
+import { type RegionsConfig, RegionsSchema } from './schemas/regions.js';
+export { type RegionsConfig, RegionsSchema } from './schemas/regions.js';
 type Resolved = z.output<typeof RegionsSchema>;
 
 export interface ReplicatedEntry {

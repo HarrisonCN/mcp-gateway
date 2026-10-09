@@ -26,8 +26,8 @@ import { registerCallHook } from '../gateway/hooks.js';
 import { evaluatePolicy, invalidPolicy, type PolicyDecision } from '../policy/tool-policy.js';
 import { PolicyRuleSchema } from '../policy/rule-schema.js';
 import type { GatewayConfig, ToolPolicyConfig } from '../utils/types.js';
-import { CandidatePolicySchema, PolicyShadowConfig, PolicyShadowSchema, policyFields, validRegexes } from './schemas/policy-sim.js';
-export { CandidatePolicySchema, PolicyShadowConfig, PolicyShadowSchema } from './schemas/policy-sim.js';
+import { CandidatePolicySchema, type PolicyShadowConfig, PolicyShadowSchema, policyFields, validRegexes } from './schemas/policy-sim.js';
+export { CandidatePolicySchema, type PolicyShadowConfig, PolicyShadowSchema } from './schemas/policy-sim.js';
 export interface SimCall {
   clientId?: string;
   serverId: string;

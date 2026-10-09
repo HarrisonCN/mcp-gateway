@@ -37,8 +37,8 @@ import { registerMetricSource } from '../monitor/index.js';
 import { ERR_FORBIDDEN } from '../auth/authorizer.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { Agent, AgentIdentityConfig, AgentIdentitySchema, ERR_AGENT_REQUIRED } from './schemas/agent-identity.js';
-export { AgentIdentityConfig, AgentIdentitySchema, ERR_AGENT_REQUIRED } from './schemas/agent-identity.js';
+import { Agent, type AgentIdentityConfig, AgentIdentitySchema, ERR_AGENT_REQUIRED } from './schemas/agent-identity.js';
+export { type AgentIdentityConfig, AgentIdentitySchema, ERR_AGENT_REQUIRED } from './schemas/agent-identity.js';
 type Cfg = z.output<typeof AgentIdentitySchema>;
 
 export interface Actor {

@@ -33,8 +33,8 @@ import { registerFeature, objectBody, badRequest, clientIdOf } from '../gateway/
 import { globToRegExp } from '../utils/tool-filter.js';
 import { VERSION } from '../utils/version.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { A2aFederationConfig, A2aFederationSchema, Remote } from './schemas/a2a-federation.js';
-export { A2aFederationConfig, A2aFederationSchema } from './schemas/a2a-federation.js';
+import { type A2aFederationConfig, A2aFederationSchema, Remote } from './schemas/a2a-federation.js';
+export { type A2aFederationConfig, A2aFederationSchema } from './schemas/a2a-federation.js';
 type Cfg = z.output<typeof A2aFederationSchema>;
 type RemoteCfg = Cfg['remotes'][number];
 

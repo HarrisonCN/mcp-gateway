@@ -32,8 +32,8 @@ import { registerFeature, objectBody, badRequest } from '../gateway/features.js'
 import { registerCallHook } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig, McpServerConfig } from '../utils/types.js';
-import { ERR_OFFLINE, OfflineConfig, OfflineSchema } from './schemas/offline.js';
-export { ERR_OFFLINE, OfflineConfig, OfflineSchema } from './schemas/offline.js';
+import { ERR_OFFLINE, type OfflineConfig, OfflineSchema } from './schemas/offline.js';
+export { ERR_OFFLINE, type OfflineConfig, OfflineSchema } from './schemas/offline.js';
 type Cfg = z.output<typeof OfflineSchema>;
 
 const settings = (cfg: GatewayConfig): Cfg | undefined => {

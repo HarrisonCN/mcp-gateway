@@ -49,8 +49,8 @@ import { globToRegExp } from '../utils/tool-filter.js';
 import { isToolInScope } from '../auth/scopes.js';
 import type { AuthedRequest } from '../auth/middleware.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { ERR_PRIVACY_PROTECTED, PrivacyConfig, PrivacySchema } from './schemas/privacy.js';
-export { ERR_PRIVACY_PROTECTED, PrivacyConfig, PrivacySchema } from './schemas/privacy.js';
+import { ERR_PRIVACY_PROTECTED, type PrivacyConfig, PrivacySchema } from './schemas/privacy.js';
+export { ERR_PRIVACY_PROTECTED, type PrivacyConfig, PrivacySchema } from './schemas/privacy.js';
 type Parsed = z.output<typeof PrivacySchema>;
 
 export const QuerySchema = z

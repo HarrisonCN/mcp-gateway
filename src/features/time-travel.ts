@@ -48,8 +48,8 @@ import { jsonDiff } from '../gateway/replay.js';
 import { evaluatePolicy } from '../policy/tool-policy.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
-import { TimeTravelConfig, TimeTravelSchema } from './schemas/time-travel.js';
-export { TimeTravelConfig, TimeTravelSchema } from './schemas/time-travel.js';
+import { type TimeTravelConfig, TimeTravelSchema } from './schemas/time-travel.js';
+export { type TimeTravelConfig, TimeTravelSchema } from './schemas/time-travel.js';
 type Parsed = z.output<typeof TimeTravelSchema>;
 
 export interface ConfigEvent {

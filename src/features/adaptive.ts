@@ -32,8 +32,8 @@ import { z } from 'zod';
 import { registerFeature, objectBody, badRequest, principalOf } from '../gateway/features.js';
 import { registerCallHook } from '../gateway/hooks.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { AdaptiveConfig, AdaptiveSchema, Candidate, Pool } from './schemas/adaptive.js';
-export { AdaptiveConfig, AdaptiveSchema } from './schemas/adaptive.js';
+import { type AdaptiveConfig, AdaptiveSchema, Candidate, Pool } from './schemas/adaptive.js';
+export { type AdaptiveConfig, AdaptiveSchema } from './schemas/adaptive.js';
 type PoolCfg = z.output<typeof Pool>;
 
 export interface CandidateStats {

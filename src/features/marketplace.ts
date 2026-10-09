@@ -23,8 +23,8 @@ import { resolve, join } from 'node:path';
 import { z } from 'zod';
 import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
 import { PluginTrustSchema, verifyArtifact, sha256Hex } from '../plugins/trust.js';
-import { MarketplaceConfig, MarketplaceSchema } from './schemas/marketplace.js';
-export { MarketplaceConfig, MarketplaceSchema } from './schemas/marketplace.js';
+import { type MarketplaceConfig, MarketplaceSchema } from './schemas/marketplace.js';
+export { type MarketplaceConfig, MarketplaceSchema } from './schemas/marketplace.js';
 export interface MarketplaceEntry {
   name: string;
   version: string;

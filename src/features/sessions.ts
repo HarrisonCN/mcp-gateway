@@ -32,8 +32,8 @@ import { resolve, join } from 'node:path';
 import { z } from 'zod';
 import { registerFeature, objectBody, badRequest, principalOf, type FeatureContext } from '../gateway/features.js';
 import { jsonDiff, type CapturedCall, type JsonChange } from '../gateway/replay.js';
-import { SessionsConfig, SessionsSchema } from './schemas/sessions.js';
-export { SessionsConfig, SessionsSchema } from './schemas/sessions.js';
+import { type SessionsConfig, SessionsSchema } from './schemas/sessions.js';
+export { type SessionsConfig, SessionsSchema } from './schemas/sessions.js';
 export interface RecordedStep {
   serverId: string;
   tool: string;

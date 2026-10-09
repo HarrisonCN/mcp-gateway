@@ -37,8 +37,8 @@ import { dlpStats } from '../policy/dlp-stats.js';
 import { VERSION } from '../utils/version.js';
 import { logger } from '../utils/logger.js';
 import type { GatewayConfig, RequestMetric } from '../utils/types.js';
-import { ComplianceReportsConfig, ComplianceReportsSchema, EVERY_MS, Framework } from './schemas/compliance-reports.js';
-export { ComplianceReportsConfig, ComplianceReportsSchema, Framework } from './schemas/compliance-reports.js';
+import { type ComplianceReportsConfig, ComplianceReportsSchema, EVERY_MS, Framework } from './schemas/compliance-reports.js';
+export { type ComplianceReportsConfig, ComplianceReportsSchema, Framework } from './schemas/compliance-reports.js';
 type Cfg = z.output<typeof ComplianceReportsSchema>;
 
 const settings = (cfg: GatewayConfig): Cfg | undefined => {

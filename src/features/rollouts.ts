@@ -35,8 +35,8 @@ import { portableConfig, featureSection, withFeatureSection } from '../gateway/a
 import { globToRegExp } from '../utils/tool-filter.js';
 import { logger } from '../utils/logger.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { RolloutSchema, RolloutsConfig, RolloutsSchema } from './schemas/rollouts.js';
-export { RolloutsConfig, RolloutsSchema } from './schemas/rollouts.js';
+import { RolloutSchema, type RolloutsConfig, RolloutsSchema } from './schemas/rollouts.js';
+export { type RolloutsConfig, RolloutsSchema } from './schemas/rollouts.js';
 type Rollout = z.output<typeof RolloutSchema>;
 
 const fnv = (s: string) => {

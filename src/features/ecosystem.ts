@@ -34,8 +34,8 @@ import { z } from 'zod';
 import { registerFeature, objectBody, badRequest, clientIdOf } from '../gateway/features.js';
 import { logger } from '../utils/logger.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { EcosystemConfig, EcosystemSchema, ID } from './schemas/ecosystem.js';
-export { EcosystemConfig, EcosystemSchema } from './schemas/ecosystem.js';
+import { type EcosystemConfig, EcosystemSchema, ID } from './schemas/ecosystem.js';
+export { type EcosystemConfig, EcosystemSchema } from './schemas/ecosystem.js';
 const ListingInput = z
   .object({
     name: z.string().regex(ID),

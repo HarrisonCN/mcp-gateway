@@ -45,8 +45,8 @@ import { registerCallHook } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { logger } from '../utils/logger.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { ERR_SELF_HEALING, Rule, SelfHealingConfig, SelfHealingSchema } from './schemas/self-healing.js';
-export { ERR_SELF_HEALING, SelfHealingConfig, SelfHealingSchema } from './schemas/self-healing.js';
+import { ERR_SELF_HEALING, Rule, type SelfHealingConfig, SelfHealingSchema } from './schemas/self-healing.js';
+export { ERR_SELF_HEALING, type SelfHealingConfig, SelfHealingSchema } from './schemas/self-healing.js';
 type R = z.output<typeof Rule>;
 
 interface Active {

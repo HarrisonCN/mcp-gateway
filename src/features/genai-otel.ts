@@ -37,8 +37,8 @@ import { registerFeature } from '../gateway/features.js';
 import { registerCallHook, type HookCall } from '../gateway/hooks.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { VERSION } from '../utils/version.js';
-import { GenaiTelemetryConfig, GenaiTelemetrySchema } from './schemas/genai-otel.js';
-export { GenaiTelemetryConfig, GenaiTelemetrySchema } from './schemas/genai-otel.js';
+import { type GenaiTelemetryConfig, GenaiTelemetrySchema } from './schemas/genai-otel.js';
+export { type GenaiTelemetryConfig, GenaiTelemetrySchema } from './schemas/genai-otel.js';
 type Cfg = z.output<typeof GenaiTelemetrySchema>;
 
 /** Recommended explicit bucket boundaries (GenAI semconv). */

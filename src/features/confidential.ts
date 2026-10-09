@@ -38,8 +38,8 @@ import { globToRegExp } from '../utils/tool-filter.js';
 import { logger } from '../utils/logger.js';
 import { canonicalJson } from '../gateway/cache.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { ConfidentialConfig, ConfidentialSchema, ERR_ATTESTATION_REQUIRED, Rule, TEE_PLATFORMS } from './schemas/confidential.js';
-export { ConfidentialConfig, ConfidentialSchema, ERR_ATTESTATION_REQUIRED, TEE_PLATFORMS } from './schemas/confidential.js';
+import { type ConfidentialConfig, ConfidentialSchema, ERR_ATTESTATION_REQUIRED, Rule, TEE_PLATFORMS } from './schemas/confidential.js';
+export { type ConfidentialConfig, ConfidentialSchema, ERR_ATTESTATION_REQUIRED, TEE_PLATFORMS } from './schemas/confidential.js';
 type R = z.output<typeof Rule>;
 
 interface Attestation {

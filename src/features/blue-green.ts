@@ -35,8 +35,8 @@ import { registerCallHook } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { logger } from '../utils/logger.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { BlueGreenConfig, BlueGreenSchema, Color, Deployment } from './schemas/blue-green.js';
-export { BlueGreenConfig, BlueGreenSchema } from './schemas/blue-green.js';
+import { type BlueGreenConfig, BlueGreenSchema, Color, Deployment } from './schemas/blue-green.js';
+export { type BlueGreenConfig, BlueGreenSchema } from './schemas/blue-green.js';
 type Dep = z.output<typeof Deployment>;
 
 interface Runtime {

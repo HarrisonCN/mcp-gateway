@@ -35,8 +35,8 @@ import { registerFeature, objectBody, badRequest, type FeatureContext } from '..
 import { registerCallHook } from '../gateway/hooks.js';
 import { portableConfig, featureSection, withFeatureSection } from '../gateway/admin.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { ConsoleConfig, ConsoleSchema, ERR_ORG_REFUSED, Id, PlanSchema } from './schemas/console.js';
-export { ConsoleConfig, ConsoleSchema, ERR_ORG_REFUSED } from './schemas/console.js';
+import { type ConsoleConfig, ConsoleSchema, ERR_ORG_REFUSED, Id, PlanSchema } from './schemas/console.js';
+export { type ConsoleConfig, ConsoleSchema, ERR_ORG_REFUSED } from './schemas/console.js';
 type Cfg = z.output<typeof ConsoleSchema>;
 
 const settings = (cfg: GatewayConfig): Cfg | undefined => {

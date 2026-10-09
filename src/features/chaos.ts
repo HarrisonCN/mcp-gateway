@@ -33,8 +33,8 @@ import { registerCallHook } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { logger } from '../utils/logger.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { ChaosConfig, ChaosSchema, ERR_CHAOS_INJECTED, EVERY_MS, Experiment } from './schemas/chaos.js';
-export { ChaosConfig, ChaosSchema, ERR_CHAOS_INJECTED } from './schemas/chaos.js';
+import { type ChaosConfig, ChaosSchema, ERR_CHAOS_INJECTED, EVERY_MS, Experiment } from './schemas/chaos.js';
+export { type ChaosConfig, ChaosSchema, ERR_CHAOS_INJECTED } from './schemas/chaos.js';
 type Exp = z.output<typeof Experiment>;
 
 interface Run {

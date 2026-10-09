@@ -55,8 +55,8 @@ import { priceCall, usageOf, type LlmUsage } from '../costs/index.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
-import { BudgetSchema, CarbonSchema, ERR_BUDGET_EXCEEDED, RealtimeBudgetsConfig, RealtimeBudgetsSchema } from './schemas/realtime-budgets.js';
-export { ERR_BUDGET_EXCEEDED, RealtimeBudgetsConfig, RealtimeBudgetsSchema } from './schemas/realtime-budgets.js';
+import { BudgetSchema, CarbonSchema, ERR_BUDGET_EXCEEDED, type RealtimeBudgetsConfig, RealtimeBudgetsSchema } from './schemas/realtime-budgets.js';
+export { ERR_BUDGET_EXCEEDED, type RealtimeBudgetsConfig, RealtimeBudgetsSchema } from './schemas/realtime-budgets.js';
 type Parsed = z.output<typeof RealtimeBudgetsSchema>;
 type Budget = Parsed['budgets'][number];
 

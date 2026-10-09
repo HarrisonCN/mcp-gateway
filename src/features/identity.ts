@@ -35,8 +35,8 @@ import { z } from 'zod';
 import express, { type Request, type Response } from 'express';
 import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { IdentityConfig, IdentitySchema, Role } from './schemas/identity.js';
-export { IdentityConfig, IdentitySchema } from './schemas/identity.js';
+import { type IdentityConfig, IdentitySchema, Role } from './schemas/identity.js';
+export { type IdentityConfig, IdentitySchema } from './schemas/identity.js';
 type Cfg = z.output<typeof IdentitySchema>;
 
 const USER = 'urn:ietf:params:scim:schemas:core:2.0:User';

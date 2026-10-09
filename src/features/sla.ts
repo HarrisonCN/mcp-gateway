@@ -34,8 +34,8 @@ import { registerFeature, badRequest } from '../gateway/features.js';
 import { registerCallHook, type HookCall } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
-import { BOUNDS, HOUR, SlaConfig, SlaSchema, Target } from './schemas/sla.js';
-export { SlaConfig, SlaSchema } from './schemas/sla.js';
+import { BOUNDS, HOUR, type SlaConfig, SlaSchema, Target } from './schemas/sla.js';
+export { type SlaConfig, SlaSchema } from './schemas/sla.js';
 type T = z.output<typeof Target>;
 
 interface Bucket {

@@ -41,8 +41,8 @@ import { registerCallHook } from '../gateway/hooks.js';
 import { evaluateCedar, parseCedar, toCedarRequest, type CedarDecision, type CedarPolicy } from '../policy/cedar.js';
 import type { GatewayConfig } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
-import { PolicyEngineConfig, PolicyEngineSchema, TestSchema } from './schemas/policy-engine.js';
-export { PolicyEngineConfig, PolicyEngineSchema } from './schemas/policy-engine.js';
+import { type PolicyEngineConfig, PolicyEngineSchema, TestSchema } from './schemas/policy-engine.js';
+export { type PolicyEngineConfig, PolicyEngineSchema } from './schemas/policy-engine.js';
 type Parsed = z.output<typeof PolicyEngineSchema>;
 
 export interface EngineRequest {

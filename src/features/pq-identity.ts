@@ -43,8 +43,8 @@ import type { GatewayConfig } from '../utils/types.js';
 import { isToolInScope } from '../auth/scopes.js';
 import type { AuthedRequest } from '../auth/middleware.js';
 import { logger } from '../utils/logger.js';
-import { PqIdentityConfig, PqIdentitySchema } from './schemas/pq-identity.js';
-export { PqIdentityConfig, PqIdentitySchema } from './schemas/pq-identity.js';
+import { type PqIdentityConfig, PqIdentitySchema } from './schemas/pq-identity.js';
+export { type PqIdentityConfig, PqIdentitySchema } from './schemas/pq-identity.js';
 type Parsed = z.output<typeof PqIdentitySchema>;
 
 /** Canonical JSON (sorted keys) — what gets hashed and signed. */

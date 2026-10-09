@@ -36,8 +36,8 @@ import { registerFeature, objectBody, badRequest } from '../gateway/features.js'
 import { canonicalJson } from '../gateway/cache.js';
 import { logger } from '../utils/logger.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { ID, SEMVER, ToolRegistryConfig, ToolRegistrySchema, parseRange, parseV, compareVersions } from './schemas/tool-registry.js';
-export { compareVersions, ToolRegistryConfig, ToolRegistrySchema } from './schemas/tool-registry.js';
+import { ID, SEMVER, type ToolRegistryConfig, ToolRegistrySchema, parseRange, parseV, compareVersions } from './schemas/tool-registry.js';
+export { compareVersions, type ToolRegistryConfig, ToolRegistrySchema } from './schemas/tool-registry.js';
 export const ManifestSchema = z
   .object({
     publisher: z.string().regex(ID),

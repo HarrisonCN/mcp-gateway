@@ -34,8 +34,8 @@ import { registerFeature, objectBody } from '../gateway/features.js';
 import { WasmSandbox } from '../plugins/wasm.js';
 import { logger } from '../utils/logger.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { ERR_EDGE_RUNTIME, EdgeRuntimeConfig, EdgeRuntimeSchema, Tool } from './schemas/edge-runtime.js';
-export { ERR_EDGE_RUNTIME, EdgeRuntimeConfig, EdgeRuntimeSchema } from './schemas/edge-runtime.js';
+import { ERR_EDGE_RUNTIME, type EdgeRuntimeConfig, EdgeRuntimeSchema, Tool } from './schemas/edge-runtime.js';
+export { ERR_EDGE_RUNTIME, type EdgeRuntimeConfig, EdgeRuntimeSchema } from './schemas/edge-runtime.js';
 type T = z.output<typeof Tool>;
 
 interface Pool {

@@ -35,11 +35,11 @@ import { registerCallHook } from '../gateway/hooks.js';
 import { DETECTORS } from '../policy/compliance.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { DlpConfig, DlpSchema, ERR_DLP_BLOCKED, LEVELS, Level, Strategy, TenantPolicy , policyFor } from './schemas/dlp.js';
+import { type DlpConfig, DlpSchema, ERR_DLP_BLOCKED, LEVELS, type Level, type Strategy, TenantPolicy, policyFor } from './schemas/dlp.js';
 export { policyFor } from './schemas/dlp.js';
 export { dlpStats } from '../policy/dlp-stats.js';
 import { dlpStats, countDlpFindings as count } from '../policy/dlp-stats.js';
-export { DlpConfig, DlpSchema, ERR_DLP_BLOCKED, LEVELS, Level, Strategy } from './schemas/dlp.js';
+export { type DlpConfig, DlpSchema, ERR_DLP_BLOCKED, LEVELS, type Level, type Strategy } from './schemas/dlp.js';
 type Resolved = z.output<typeof DlpSchema>;
 
 /** Built-in category levels. */

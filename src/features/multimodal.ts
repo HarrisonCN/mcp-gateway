@@ -42,8 +42,8 @@ import { registerMetricSource } from '../monitor/index.js';
 import { registerCallHook } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
-import { CHUNK, ERR_MEDIA_REFUSED, MultimodalConfig, MultimodalSchema } from './schemas/multimodal.js';
-export { ERR_MEDIA_REFUSED, MultimodalConfig, MultimodalSchema } from './schemas/multimodal.js';
+import { CHUNK, ERR_MEDIA_REFUSED, type MultimodalConfig, MultimodalSchema } from './schemas/multimodal.js';
+export { ERR_MEDIA_REFUSED, type MultimodalConfig, MultimodalSchema } from './schemas/multimodal.js';
 type Mm = z.output<typeof MultimodalSchema>;
 
 /** Owner of a held blob (11.2). */

@@ -24,8 +24,8 @@
 import { z } from 'zod';
 import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
 import { buildEdgeSnapshot, type EdgeNode } from '../gateway/edge-control.js';
-import { EdgeFleetConfig, EdgeFleetSchema } from './schemas/edge-fleet.js';
-export { EdgeFleetConfig, EdgeFleetSchema } from './schemas/edge-fleet.js';
+import { type EdgeFleetConfig, EdgeFleetSchema } from './schemas/edge-fleet.js';
+export { type EdgeFleetConfig, EdgeFleetSchema } from './schemas/edge-fleet.js';
 type Resolved = z.output<typeof EdgeFleetSchema>;
 
 export type Drift = 'in-sync' | 'stale' | 'never-synced' | 'unmanaged' | 'offline';

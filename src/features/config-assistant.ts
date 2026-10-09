@@ -31,8 +31,8 @@ import { z } from 'zod';
 import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
 import { portableConfig } from '../gateway/admin.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { ConfigAssistantConfig, ConfigAssistantSchema } from './schemas/config-assistant.js';
-export { ConfigAssistantConfig, ConfigAssistantSchema } from './schemas/config-assistant.js';
+import { type ConfigAssistantConfig, ConfigAssistantSchema } from './schemas/config-assistant.js';
+export { type ConfigAssistantConfig, ConfigAssistantSchema } from './schemas/config-assistant.js';
 type Cfg = z.output<typeof ConfigAssistantSchema>;
 
 type Raw = Record<string, unknown>;

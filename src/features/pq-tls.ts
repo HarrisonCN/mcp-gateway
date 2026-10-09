@@ -34,8 +34,8 @@ import { setUpstreamTlsGroups } from '../security/mtls.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { logger } from '../utils/logger.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { GROUP, PqTlsConfig, PqTlsSchema } from './schemas/pq-tls.js';
-export { PqTlsConfig, PqTlsSchema } from './schemas/pq-tls.js';
+import { GROUP, type PqTlsConfig, PqTlsSchema } from './schemas/pq-tls.js';
+export { type PqTlsConfig, PqTlsSchema } from './schemas/pq-tls.js';
 type P = z.output<typeof PqTlsSchema>;
 
 /** Can this Node / OpenSSL negotiate the groups? */

@@ -36,8 +36,8 @@ import { registerFeature, objectBody, badRequest } from '../gateway/features.js'
 import { registerCallHook } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { ERR_INJECTION_BLOCKED, SanitizeConfig, SanitizeSchema } from './schemas/sanitize.js';
-export { ERR_INJECTION_BLOCKED, SanitizeConfig, SanitizeSchema } from './schemas/sanitize.js';
+import { ERR_INJECTION_BLOCKED, type SanitizeConfig, SanitizeSchema } from './schemas/sanitize.js';
+export { ERR_INJECTION_BLOCKED, type SanitizeConfig, SanitizeSchema } from './schemas/sanitize.js';
 import { requireDependency } from '../gateway/kernel-runtime.js';
 // 13.0: declared dependency (manifest dependsOn) instead of a static import of another feature module.
 const { injectionScore } = await requireDependency<typeof import('./anomaly.js')>('sanitize', 'anomaly');

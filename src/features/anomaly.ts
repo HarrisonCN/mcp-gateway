@@ -35,8 +35,8 @@ import { BUILTIN_INJECTION_PATTERNS } from '../policy/output-filter.js';
 import { POLICY_ERROR_CODES } from '../gateway/invoker.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { AnomalyConfig, AnomalySchema, ERR_ANOMALY_QUARANTINED } from './schemas/anomaly.js';
-export { AnomalyConfig, AnomalySchema, ERR_ANOMALY_QUARANTINED } from './schemas/anomaly.js';
+import { type AnomalyConfig, AnomalySchema, ERR_ANOMALY_QUARANTINED } from './schemas/anomaly.js';
+export { type AnomalyConfig, AnomalySchema, ERR_ANOMALY_QUARANTINED } from './schemas/anomaly.js';
 type Cfg = z.output<typeof AnomalySchema>;
 
 const WEIGHTS: Record<string, number> = {

@@ -35,8 +35,8 @@ import { registerFeature, objectBody, badRequest } from '../gateway/features.js'
 import { registerCallHook, type HookCall } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
-import { SemanticCacheConfig, SemanticCacheSchema } from './schemas/semantic-cache.js';
-export { SemanticCacheConfig, SemanticCacheSchema } from './schemas/semantic-cache.js';
+import { type SemanticCacheConfig, SemanticCacheSchema } from './schemas/semantic-cache.js';
+export { type SemanticCacheConfig, SemanticCacheSchema } from './schemas/semantic-cache.js';
 type Cfg = z.output<typeof SemanticCacheSchema>;
 
 const settings = (cfg: GatewayConfig): Cfg | undefined => {

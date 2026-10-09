@@ -35,8 +35,8 @@
 import { z } from 'zod';
 import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
 import type { GatewayConfig } from '../utils/types.js';
-import { ApiUpstreamsConfig, ApiUpstreamsSchema, Common, GraphqlUpstream, GrpcUpstream, Name } from './schemas/api-upstreams.js';
-export { ApiUpstreamsConfig, ApiUpstreamsSchema } from './schemas/api-upstreams.js';
+import { type ApiUpstreamsConfig, ApiUpstreamsSchema, Common, GraphqlUpstream, GrpcUpstream, Name } from './schemas/api-upstreams.js';
+export { type ApiUpstreamsConfig, ApiUpstreamsSchema } from './schemas/api-upstreams.js';
 type Upstream = z.output<typeof ApiUpstreamsSchema>[number];
 
 export interface ApiUpstreamTool {
