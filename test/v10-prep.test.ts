@@ -57,7 +57,7 @@ describe('10.0 preparation (9.9)', () => {
     expect(cfg.deprecations).toBeUndefined();
     expect(migrateConfigText(r.text).changed).toBe(false);
     expect(migrateConfigText('version: 9\nfeatures: { chaos: {} }\nchaos: {}\n').notes.join()).toMatch(/both set/);
-    expect(migrateConfigText('version: 8\nstate: { store: memory }\ndlp: {}\nservers: []\n').changes).toEqual(['version: 8 → 10', 'state → store', 'dlp → features.dlp']);
+    expect(migrateConfigText('version: 8\nstate: { store: memory }\ndlp: {}\nservers: []\n').changes).toEqual(['version: 8 → 10', 'state → store (store → backend)', 'dlp → features.dlp']);
     expect(migrateConfigText(src, 'yaml', 9).changed).toBe(false);
   });
 });

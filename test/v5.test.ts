@@ -31,7 +31,7 @@ describe('schema v8 (8.0)', () => {
     const cfg = validateConfig({ version: 9, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 1234 }] });
     expect(cfg.version).toBe(9);
     expect(cfg.servers[0]!.timeout).toBe(1234);
-    expect(cfg.deprecations).toBeUndefined();
+    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['schema-v9']); // 9.9
     expect(validateConfig({ servers: [{ id: 'b', name: 'b', transport: 'stdio', command: 'x' }] }).servers[0]!.timeout).toBe(30000);
   });
 
@@ -58,7 +58,7 @@ describe('schema v8 (8.0)', () => {
     const mod = (await import('../src/utils/deprecations.js')) as Record<string, unknown>;
     expect(mod.normalizeV4Preview).toBeUndefined();
     expect(mod.normalizeControlPlane).toBeUndefined();
-    expect(Object.values(DEPRECATIONS)).toEqual([]); // 9.0
+    expect(Object.values(DEPRECATIONS).map((d) => d.id)).toEqual(['schema-v9', 'top-level-features']); // 9.9
   });
 });
 
@@ -73,7 +73,7 @@ describe('mcp-gateway migrate --to 5', () => {
     expect(() => validateConfig(parseYaml(r.text))).toThrow(/schema v5 was removed in 6.0/);
     expect(migrateConfigText(r.text, undefined, 5).changed).toBe(false);
     const v6 = validateConfig(parseYaml(migrateConfigText(V4).text));
-    expect(v6.version).toBe(9);
+    expect(v6.version).toBe(10); // 9.9: migrate defaults to --to 10
     expect(v6.servers[0]!.timeout).toBe(15000);
   });
 
