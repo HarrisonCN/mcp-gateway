@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Global tool registry (9.4). */
+  toolRegistry?: import('../features/tool-registry.js').ToolRegistryConfig;
   /** Confidential computing / TEE (9.3). */
   confidential?: import('../features/confidential.js').ConfidentialConfig;
   /** Edge WASM runtime 2.0 (9.2). */

@@ -476,6 +476,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const c = (await (await f('/api/v1/admin/confidential')).json()) as any;
     expect(c.servers.map((s: any) => `${s.id}:${s.attested}`)).toEqual(['postgres:true', 'payroll:false']);
   });
+  it('lists the tool registry (9.4)', async () => {
+    const f = demoFetch();
+    const r = (await (await f('/api/v1/admin/tool-registry')).json()) as any;
+    expect(r.entries.map((e: any) => `${e.id}@${e.version}`)).toEqual(['acme/search@1.3.0', 'globex/crm@4.1.2', 'initech/tickets@0.9.0']);
+    expect(r.mirrors[0].ok).toBe(true);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {
