@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.8.0] - 2026-10-09
+
+### Added
+- **Ecosystem marketplace GA** (`ecosystem`): a moderated catalogue of plugins, tools and WASM tools. Clients submit
+  listings (`POST /api/v1/features/ecosystem/submissions`) into a review queue; operators approve or reject them with a
+  reason (`POST /api/v1/admin/ecosystem/listings/:id/approve|reject`). Approved listings appear in
+  `GET /api/v1/features/ecosystem/catalog` (search, `kind`, `tag`; verified publishers and better ratings first) with
+  ratings and reviews (one per client, 1–5 stars; operators can hide reviews). Publishers are verified through
+  `https://<domain>/.well-known/mcp-gateway-publisher.json` (publisher id + key ids); `autoApproveVerified` skips the
+  queue for them. Optional `file` persistence. [Guide](docs/guides/ecosystem.md).
+- Pages demo: marketplace review queue and publishers.
+
 ## [9.7.0] - 2026-10-09
 
 ### Added
