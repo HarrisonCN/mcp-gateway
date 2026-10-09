@@ -1,0 +1,22 @@
+{{- if and (.Values.security).insecure (not (or .Values.existingSecret .Values.apiKeys (include "mcp-gateway.configAuth" .))) }}
+#######################################################################################################
+##  WARNING: mcp-gateway is running WITHOUT AUTHENTICATION (security.insecure=true, --insecure).      ##
+##  Anyone who can reach the Service can call every upstream tool and change config through the      ##
+##  admin API. Use this only on a trusted, isolated network. To turn auth on:                         ##
+##    kubectl create secret generic gw-secrets --from-literal=MCP_GATEWAY_API_KEYS=<key>              ##
+##    helm upgrade {{ .Release.Name }} ./deploy/helm/mcp-gateway --set existingSecret=gw-secrets --set security.insecure=false
+#######################################################################################################
+{{- else if (.Values.security).insecure }}
+NOTE: security.insecure=true is set but authentication is configured, so --insecure has no effect; you can remove it.
+{{- end }}
+
+mcp-gateway {{ .Chart.AppVersion }} is installed as {{ include "mcp-gateway.fullname" . }} in namespace {{ .Release.Namespace }}.
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "mcp-gateway.fullname" . }} 4000:{{ .Values.service.port }}
+  curl -H "Authorization: Bearer <key>" http://localhost:4000/api/v1/tools
+  MCP endpoint: http://localhost:4000/mcp    Dashboard: http://localhost:4000/dashboard
+{{- if .Values.existingSecret }}
+
+Auth: API keys come from MCP_GATEWAY_API_KEYS in Secret "{{ .Values.existingSecret }}". If the pod exits with
+"Refusing to start: authentication is disabled", that key is missing from the Secret.
+{{- end }}

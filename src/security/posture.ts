@@ -27,6 +27,51 @@ export function isLoopbackHost(host: string): boolean {
 
 const DAY = 86_400_000;
 
+/**
+ * 10.3 secure default: why the gateway refuses to start (or reload) with this config — authentication off while
+ * listening on a non-loopback address — unless `security.insecure` / `start --insecure` acknowledges it.
+ * Data planes (`controlPlane.role: data`) are exempt: they take auth from the control plane's config.
+ */
+export function insecureBindError(config: GatewayConfig): string | undefined {
+  const strategy = config.auth?.strategy ?? 'none';
+  if (strategy !== 'none' || isLoopbackHost(config.host ?? '0.0.0.0') || config.security?.insecure) return undefined;
+  if (config.controlPlane?.role === 'data') return undefined;
+  return (
+    `Refusing to start: authentication is disabled while listening on ${config.host ?? '0.0.0.0'}, so anyone who can reach ` +
+    'this port could call every tool and the admin API. Configure auth (auth.strategy, or MCP_GATEWAY_API_KEYS), bind to ' +
+    '127.0.0.1, or — only on a trusted network — start with --insecure (security.insecure: true).'
+  );
+}
+
+/** Features that are experimental / interface-level (10.3 honest labelling): what is verified and what is not. */
+export function experimentalFeatureWarnings(config: GatewayConfig): SecurityWarning[] {
+  const out: SecurityWarning[] = [];
+  if (config.confidential) {
+    out.push({
+      id: 'experimental-confidential',
+      level: 'info',
+      message:
+        'features.confidential (TEE attestation) is EXPERIMENTAL. Verified: an Ed25519 / ECDSA / RSA signature by a configured trustedKey ' +
+        'over a JSON report, the platform / measurement allowlists, the single-use nonce, issue time and debug flag. NOT verified: ' +
+        'native SEV-SNP / TDX / Nitro / SGX evidence and vendor certificate chains (you must run that verifier), and the report is not ' +
+        'bound to the upstream connection (no TLS channel binding) — treat it as an interface for an external attestation service.',
+    });
+  }
+  const pq = config.postQuantumTls as { mode?: string } | undefined;
+  if (pq && pq.mode !== 'off') {
+    out.push({
+      id: 'experimental-pq-tls',
+      level: 'info',
+      message:
+        'features.postQuantumTls is EXPERIMENTAL. Verified: the TLS key-exchange groups offered on upstream HTTPS (streamable-http / SSE) ' +
+        'connections are set from groups / mode, and POST /admin/pq-tls/probe checks the negotiated group and certificate policy. NOT ' +
+        'covered: the gateway\'s own listener, WebSocket upstreams, and certificatePolicy on live connections (probe only); ML-KEM needs ' +
+        'OpenSSL 3.5+.',
+    });
+  }
+  return out;
+}
+
 export function securityWarnings(config: GatewayConfig, now = Date.now()): SecurityWarning[] {
   const out: SecurityWarning[] = [];
   const add = (id: string, message: string, level: 'warn' | 'info' = 'warn') => out.push({ id, message, level });
@@ -38,7 +83,7 @@ export function securityWarnings(config: GatewayConfig, now = Date.now()): Secur
     add(
       'auth-disabled-public-bind',
       `Authentication is disabled while listening on ${config.host}: anyone who can reach this port can call every tool. ` +
-        'Set auth.strategy (api-key or jwt) or bind to 127.0.0.1.',
+        'Set auth.strategy (api-key or jwt) or bind to 127.0.0.1. Since 10.3 the gateway refuses to start like this unless --insecure (security.insecure: true) is given.',
     );
   }
   const rebinding = effectiveRebindingProtection(config);
@@ -99,5 +144,6 @@ export function securityWarnings(config: GatewayConfig, now = Date.now()): Secur
   if (config.cors?.origins?.includes('*') && strategy !== 'none') {
     add('cors-wildcard', 'cors.origins contains "*": any web page may call the API with a key it holds. List your dashboard origins instead.');
   }
+  out.push(...experimentalFeatureWarnings(config));
   return out;
 }

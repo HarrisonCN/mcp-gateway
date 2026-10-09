@@ -515,6 +515,8 @@ export interface SecurityConfig {
   maxBodyBytes?: number;
   /** Maximum size of a tool call's / prompt's `arguments` as JSON, in bytes (default 0 = no limit). */
   maxToolArgumentsBytes?: number;
+  /** 10.3: allow auth off on a non-loopback bind address (`start --insecure`). */
+  insecure?: boolean;
   /** Lock out IPs after repeated authentication failures (off unless set; `true` = defaults). */
   authLockout?: boolean | AuthLockoutConfig;
   /** Extra regular expressions whose matches are masked in logs, the request log / audit log and API output. */

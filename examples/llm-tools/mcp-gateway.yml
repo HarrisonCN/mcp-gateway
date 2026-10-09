@@ -1,0 +1,21 @@
+# Gateway for examples/llm-tools/agent.mjs. Start with:
+#   MCP_GATEWAY_API_KEYS=$(npx @winstonsayno/mcp-gateway gen-key) npx @winstonsayno/mcp-gateway start -c mcp-gateway.yml
+version: 10
+port: 4000
+host: 127.0.0.1
+logLevel: info
+
+auth:
+  strategy: api-key
+  apiKeys: ["overridden-by-MCP_GATEWAY_API_KEYS"]
+
+servers:
+  - id: filesystem
+    name: Filesystem
+    transport: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+
+# No browser clients call this gateway (the agent runs server-side); list origins here if one does.
+mcp:
+  allowedOrigins: []

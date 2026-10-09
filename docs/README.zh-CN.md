@@ -29,6 +29,16 @@
 
 **mcp-gateway 解决了这些问题。** 它作为一个单一的、可观测的、安全的入口，位于你的 AI 客户端和 MCP 服务器之间。
 
+它不绑定某一家模型或某一类客户端：
+
+- **任意支持函数调用的大模型**：OpenAI、xAI Grok、DeepSeek 等 OpenAI 兼容接口，以及 Anthropic Claude。用
+  `GET /api/v1/tools?format=openai|openai-responses|anthropic` 取得对应格式的工具，再用 `POST /api/v1/tools/call`
+  执行模型发起的调用（示例见 [examples/llm-tools](../examples/llm-tools)）。这只是普通 HTTP 集成，并非与任何模型厂商的官方合作。
+- **网页与应用**：浏览器前端、移动端和桌面应用通过 REST 或客户端库（JS、Kotlin/Android、Swift/iOS、Python、Go）
+  调用同一套工具。切勿把长期有效的 API Key 打包进网页或 App：请经由你的后端转发，或签发短期、带作用域的 JWT
+  （`auth.jwt.requireExp`、`maxTokenAgeSeconds`、`mcp_servers` / `mcp_tools` 声明），并用 `cors.origins` 限定来源。
+- 自 10.3 起，未开启认证时网关只能监听回环地址（`--insecure` 例外），Helm Chart 默认要求提供 API Key。
+
 ## 快速开始
 
 ### 安装

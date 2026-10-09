@@ -15,7 +15,26 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: azure/setup-helm@v4
-      - run: helm lint deploy/helm/mcp-gateway
-      - run: helm template t deploy/helm/mcp-gateway > /dev/null
-      - run: helm template t deploy/helm/mcp-gateway --set autoscaling.enabled=true --set podDisruptionBudget.enabled=true --set serviceMonitor.enabled=true --set operator.enabled=true --set existingSecret=s > /dev/null
-      - run: helm template t deploy/helm/mcp-gateway --set operator.enabled=true --set operator.watchNamespace=team-a > /dev/null
+      - name: Lint (with a test Secret)
+        run: |
+          helm lint --strict deploy/helm/mcp-gateway --set existingSecret=test-secret
+          helm lint --strict deploy/helm/mcp-gateway --set security.insecure=true
+      - name: Default values must fail with a clear message (API key required since 10.3)
+        run: |
+          if helm template t deploy/helm/mcp-gateway > /dev/null 2> err.txt; then
+            echo "::error::chart rendered without an API key"; exit 1
+          fi
+          cat err.txt
+          grep -q "mcp-gateway: an API key is required" err.txt
+          grep -q "existingSecret" err.txt
+          grep -q "security.insecure=true" err.txt
+      - name: Render configured cases
+        run: |
+          C=deploy/helm/mcp-gateway
+          helm template t $C --set existingSecret=test-secret | grep -q "secretRef: { name: test-secret }"
+          helm template t $C --set 'apiKeys={sha256:0000}' | grep -q "MCP_GATEWAY_API_KEYS"
+          helm template t $C --set config.auth.strategy=jwt --set config.auth.jwtSecret=x > /dev/null
+          helm template t $C --set security.insecure=true | grep -q -- '"--insecure"'
+          if helm template t $C --set existingSecret=test-secret | grep -q -- '--insecure'; then exit 1; fi
+          helm template t $C --set autoscaling.enabled=true --set podDisruptionBudget.enabled=true --set serviceMonitor.enabled=true --set operator.enabled=true --set existingSecret=test-secret > /dev/null
+          helm template t $C --set operator.enabled=true --set operator.watchNamespace=team-a --set existingSecret=test-secret > /dev/null

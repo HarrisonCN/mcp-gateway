@@ -29,7 +29,7 @@ import { createErrorHandler, notFoundHandler } from '../middleware/error-handler
 import { dashboardCsp, securityHeadersMiddleware } from '../security/headers.js';
 import { crossSiteGuardMiddleware, defaultAllowedHosts, effectiveRebindingProtection, hostCheckMiddleware, ipAllowlistMiddleware, LOOPBACK_ORIGIN_PATTERN } from '../security/network.js';
 import { configureRedaction } from '../security/redact.js';
-import { securityWarnings } from '../security/posture.js';
+import { experimentalFeatureWarnings, insecureBindError, securityWarnings } from '../security/posture.js';
 import { logger } from '../utils/logger.js';
 import { Mutex } from '../utils/mutex.js';
 import { VERSION } from '../utils/version.js';
@@ -178,6 +178,8 @@ export class Gateway {
 
   async start(): Promise<void> {
     if (this.started) throw new Error('Gateway already started');
+    const insecure = insecureBindError(this.config);
+    if (insecure) throw new Error(insecure);
     this.started = true;
     logger.setLevel(this.config.logLevel ?? 'info');
     if (this.config.mtls) {
@@ -535,10 +537,13 @@ export class Gateway {
         const { port } = this.address() ?? { port: this.config.port };
         logger.info(`mcp-gateway v${VERSION} listening on http://${this.config.host}:${port}`);
         logger.info(`API: http://${this.config.host}:${port}/api/v1`);
+        const experimental = new Set(experimentalFeatureWarnings(this.config).map((w) => w.id));
         for (const w of securityWarnings(this.config)) {
           if (w.level === 'warn') logger.warn(`Security: ${w.message}`);
+          else if (experimental.has(w.id)) logger.warn(`Experimental: ${w.message}`);
           else logger.info(`Security hint: ${w.message}`);
         }
+        if (this.config.security?.insecure && (this.config.auth?.strategy ?? 'none') === 'none') logger.warn('Started with --insecure: authentication is off on a non-loopback address.');
         resolveListen();
       };
       this.server.once('error', onError);
@@ -662,6 +667,8 @@ export class Gateway {
    * still require a restart.
    */
   async reload(next: GatewayConfig): Promise<void> {
+    const insecure = insecureBindError({ ...next, host: this.config.host, security: { ...next.security, insecure: next.security?.insecure ?? this.config.security?.insecure } });
+    if (insecure) throw new Error(insecure.replace('Refusing to start', 'Refusing to reload'));
     await this.reloadLock.runExclusive(async () => {
       if (this.stopping) return;
       const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);

@@ -47,6 +47,7 @@ program
   .option('-p, --port <number>', 'Override port from config')
   .option('--log-level <level>', 'Log level (debug|info|warn|error)')
   .option('--no-watch', 'Disable config hot reload')
+  .option('--insecure', 'Allow starting without auth on a non-loopback address (trusted networks only)')
   .action(async (options) => {
     let gateway: Gateway | undefined;
     let watcher: ConfigWatcher | undefined;
@@ -66,6 +67,7 @@ program
         }
         config.logLevel = options.logLevel;
       }
+      if (options.insecure) config.security = { ...config.security, insecure: true };
 
       const fromDisk = resolveConfigPath(options.config) ? () => loadConfig(options.config) : undefined;
       const gw = new Gateway(config, { reloadFromDisk: fromDisk });
@@ -103,6 +105,7 @@ program
           // CLI overrides keep precedence over the file
           if (options.logLevel) next.logLevel = options.logLevel;
           if (options.port !== undefined) next.port = config.port;
+          if (options.insecure) next.security = { ...next.security, insecure: true };
           gw.reload(next).catch((err: unknown) => {
             logger.error(`Hot reload failed: ${err instanceof Error ? err.message : String(err)}`);
           });

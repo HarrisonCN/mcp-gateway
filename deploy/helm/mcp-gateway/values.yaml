@@ -11,8 +11,35 @@ image:
   pullPolicy: IfNotPresent
 port: 4000
 
-# Existing Secret with environment variables (e.g. MCP_GATEWAY_API_KEYS, upstream tokens).
+# ---------------------------------------------------------------------------------------------------------------------
+# Authentication — REQUIRED since chart 10.3.0. The gateway listens on 0.0.0.0 inside the pod, and since 10.3 it refuses
+# to start there without auth, so the chart fails at template / install time unless one of these is set:
+#
+#   1. existingSecret (recommended): a Secret whose keys become environment variables. Put MCP_GATEWAY_API_KEYS in it
+#      (comma-separated keys, plain or `sha256:<hex>` digests from `mcp-gateway gen-key` / `hash-key`), plus any
+#      upstream tokens your servers need:
+#        npx @winstonsayno/mcp-gateway gen-key          # prints "key: mgw_…" (for clients) and "hash: sha256:…"
+#        kubectl create secret generic gw-secrets --from-literal=MCP_GATEWAY_API_KEYS=sha256:<hash>
+#        helm install gw ./deploy/helm/mcp-gateway --set existingSecret=gw-secrets
+#   2. apiKeys: the chart renders a Secret with MCP_GATEWAY_API_KEYS for you. Convenient for tests, but the keys are
+#      stored in the Helm release — prefer `sha256:` digests here, or use existingSecret.
+#   3. config.auth with a non-"none" strategy (e.g. jwt), or config.controlPlane.role: data (auth comes from the
+#      control plane).
+#
+# The chart cannot see inside existingSecret: if it lacks MCP_GATEWAY_API_KEYS (and config.auth is unset) the pod
+# exits at startup with "Refusing to start: authentication is disabled ...".
+# ---------------------------------------------------------------------------------------------------------------------
+
+# Existing Secret with environment variables (MCP_GATEWAY_API_KEYS, upstream tokens).
 existingSecret: ""
+
+# API keys rendered into a chart-managed Secret as MCP_GATEWAY_API_KEYS (used only when non-empty).
+apiKeys: []
+
+security:
+  # Opt out of the auth requirement: start the gateway with --insecure (NO authentication on the pod address).
+  # Only for a trusted, isolated network — anyone who can reach the Service can call every tool and the admin API.
+  insecure: false
 
 service:
   type: ClusterIP

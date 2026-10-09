@@ -3,7 +3,8 @@
 
 version: 10
 port: 4000
-host: 0.0.0.0
+# Loopback only: this example has no auth. Use 0.0.0.0 only together with auth (10.3 refuses otherwise).
+host: 127.0.0.1
 logLevel: info
 
 monitor:

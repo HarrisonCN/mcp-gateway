@@ -4,7 +4,11 @@ Three ways to run mcp-gateway on Kubernetes, from simplest to most automated.
 
 ## 1. Helm chart
 
+An API key is **required** since chart 10.3.0 — the chart fails at template / install time without one (see the
+[chart README](../../deploy/helm/mcp-gateway/README.md) for the exact message and the alternatives):
+
 ```bash
+kubectl create secret generic gw-secrets --from-literal=MCP_GATEWAY_API_KEYS=sha256:<hash from gen-key>
 helm install gw ./deploy/helm/mcp-gateway \
   --set existingSecret=gw-secrets \
   --set-file config=./my-values-config.yaml    # or edit `config:` in values.yaml
@@ -13,7 +17,9 @@ helm install gw ./deploy/helm/mcp-gateway \
 | Value | Default | |
 |-------|---------|---|
 | `config` | `{ version: 10, monitor: { prometheus: true }, servers: [] }` | The gateway config (rendered into a ConfigMap) |
-| `existingSecret` | `""` | Secret with env vars — put `MCP_GATEWAY_API_KEYS` and upstream tokens here |
+| `existingSecret` | `""` | Secret with env vars — put `MCP_GATEWAY_API_KEYS` and upstream tokens here (required unless one of the next rows applies) |
+| `apiKeys` | `[]` | Alternative: keys rendered into a chart-managed Secret (prefer `sha256:` digests) |
+| `security.insecure` | `false` | Opt out: start with `--insecure`, **no auth** — trusted networks only; NOTES print a warning |
 | `replicaCount`, `resources`, `nodeSelector`, `tolerations`, `affinity` | | Usual knobs |
 | `autoscaling.enabled` | `false` | HPA on CPU (`minReplicas`, `maxReplicas`, `targetCPUUtilizationPercentage`) |
 | `podDisruptionBudget.enabled` | `false` | PDB with `minAvailable` |
@@ -57,3 +63,7 @@ replicas and phase. `mcp-gateway operator --once` reconciles once and prints the
 
 `GET /api/v1/admin/k8s/manifests?namespace=prod&replicas=3&secret=gw-secrets&format=yaml` renders manifests for the
 gateway's current config. API keys are never rendered into the ConfigMap — keep them in the Secret.
+
+> Since 10.3 a gateway with `auth.strategy: none` refuses to start on a non-loopback address. Manifests rendered by
+> the operator or this endpoint bind `0.0.0.0`, so give them a Secret with `MCP_GATEWAY_API_KEYS`
+> (`envFromSecret` / `?secret=`) or an `auth` block, or set `security.insecure: true` in the config.

@@ -107,7 +107,7 @@ describe('secure default: DNS-rebinding protection for a loopback gateway withou
 
 describe('Host / Origin bypass with explicit protection', () => {
   it('allowedHosts are matched exactly (port, suffix and wildcard tricks)', async () => {
-    const { port } = await start({ host: '0.0.0.0', security: { dnsRebindingProtection: true, allowedHosts: ['gw.example', '*.corp.example'] } });
+    const { port } = await start({ host: '0.0.0.0', security: { insecure: true, dnsRebindingProtection: true, allowedHosts: ['gw.example', '*.corp.example'] } });
     const st = async (host: string) => (await raw(port, 'GET', '/api/v1/tools', { host })).status;
     expect(await st('gw.example')).toBe(200);
     expect(await st('GW.EXAMPLE:443')).toBe(200);
