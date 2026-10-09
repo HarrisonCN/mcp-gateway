@@ -30,7 +30,7 @@
 import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { z } from 'zod';
-import { registerFeature, objectBody, badRequest, type FeatureContext } from '../gateway/features.js';
+import { registerFeature, objectBody, badRequest, principalOf, type FeatureContext } from '../gateway/features.js';
 import { jsonDiff, type CapturedCall, type JsonChange } from '../gateway/replay.js';
 
 export const SessionsSchema = z.object({ dir: z.string().min(1).optional(), maxRecordings: z.number().int().positive().default(100) }).strict();
@@ -104,7 +104,7 @@ export function grade(step: RecordedStep, got: { success: boolean; result?: unkn
 }
 
 /** Replay a recording through `invoke` and grade it. */
-export async function replayRecording(rec: Recording, invoke: FeatureContext['invoke'], opts: { mode?: EvalMode; stopOnFailure?: boolean } = {}): Promise<EvalReport> {
+export async function replayRecording(rec: Recording, invoke: (serverId: string, tool: string, args: Record<string, unknown>, clientId?: string) => Promise<import('../utils/types.js').ProxyResponse>, opts: { mode?: EvalMode; stopOnFailure?: boolean } = {}): Promise<EvalReport> {
   const mode = opts.mode ?? 'success';
   const outcomes: StepOutcome[] = [];
   let stop = false;
@@ -247,7 +247,7 @@ registerFeature({
       if (!r) return void res.status(404).json({ error: 'Not Found', message: 'no such recording' });
       const b = (req.body ?? {}) as { mode?: unknown; stopOnFailure?: unknown };
       if (b.mode !== undefined && !['success', 'structure', 'exact'].includes(String(b.mode))) return badRequest(res, '"mode" must be success, structure or exact');
-      res.json(await replayRecording(r, ctx.invoke, { mode: b.mode as EvalMode | undefined, stopOnFailure: b.stopOnFailure === true }));
+      res.json(await replayRecording(r, (s, t, a, c) => ctx.invoke(s, t, a, principalOf(req), c), { mode: b.mode as EvalMode | undefined, stopOnFailure: b.stopOnFailure === true }));
     });
   },
 });

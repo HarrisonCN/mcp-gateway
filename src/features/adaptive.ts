@@ -29,7 +29,7 @@
  */
 
 import { z } from 'zod';
-import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
+import { registerFeature, objectBody, badRequest, principalOf } from '../gateway/features.js';
 import { registerCallHook } from '../gateway/hooks.js';
 import type { GatewayConfig } from '../utils/types.js';
 
@@ -204,7 +204,7 @@ registerFeature({
       if (b.arguments !== undefined && (typeof b.arguments !== 'object' || b.arguments === null || Array.isArray(b.arguments))) return badRequest(res, '"arguments" must be an object');
       const r = adaptiveRouter.pick(p, true);
       if (!r) return void res.status(422).json({ error: 'Unprocessable Entity', message: 'no candidate within maxCostPerCall' });
-      const out = await ctx.invoke(r.candidate.server, r.candidate.tool, { ...r.candidate.args, ...((b.arguments as Record<string, unknown>) ?? {}) }, `adaptive:${p.id}`);
+      const out = await ctx.invoke(r.candidate.server, r.candidate.tool, { ...r.candidate.args, ...((b.arguments as Record<string, unknown>) ?? {}) }, principalOf(req), `adaptive:${p.id}`);
       res.status(out.success ? 200 : 502).json({ pool: p.id, candidate: r.candidate.id, costPerCall: r.candidate.costPerCall, ...out });
     });
     router.post('/feedback', (req, res) => {

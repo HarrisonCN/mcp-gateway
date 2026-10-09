@@ -41,6 +41,7 @@ import { globToRegExp } from '../utils/tool-filter.js';
 import { ERR_BUDGET_EXCEEDED } from '../costs/index.js';
 import { ERR_QUOTA_EXCEEDED, usageCsv, type UsageGroup } from './usage.js';
 import { ToolInvoker, POLICY_ERROR_CODES, ERR_OUTPUT_BLOCKED } from './invoker.js';
+import { clientPrincipal } from '../auth/authorizer.js';
 import { ApprovalError } from '../policy/approvals.js';
 import { jsonDiff } from './replay.js';
 import { FEDERATION_HEADER, verifyFederation } from './federation.js';
@@ -709,6 +710,7 @@ export function createApiRouter(
       params: args as Record<string, unknown>,
       timeoutMs: server.timeout,
       clientId: (req as AuthedRequest).clientId,
+      principal: clientPrincipal((req as AuthedRequest).clientId, scopeOf(req)),
       via: 'rest',
       traceparent: traceparentOf(req),
       ...(opts.replayOf ? { replayOf: opts.replayOf } : {}),
@@ -873,6 +875,7 @@ export function createApiRouter(
       params: params as Record<string, unknown>,
       timeoutMs: server.timeout,
       clientId: (req as AuthedRequest).clientId,
+      principal: clientPrincipal((req as AuthedRequest).clientId, scopeOf(req)),
       via: 'rest',
       traceparent: traceparentOf(req),
     });

@@ -10,6 +10,7 @@
  */
 
 import { activeCallHooks, type HookCall } from './hooks.js';
+import { authorize, principalChain, type Principal } from '../auth/authorizer.js';
 import type { McpProxy, ProgressUpdate, RelayCaller } from '../proxy/index.js';
 import type { MetricsCollector } from '../monitor/index.js';
 import type { McpServerConfig, ProxyResponse, ToolPolicyConfig } from '../utils/types.js';
@@ -73,6 +74,11 @@ export interface InvokeContext {
   meta?: Record<string, unknown>;
   /** Set on calls that arrived from a peer gateway: never forwarded again (3.6). */
   fromPeer?: string;
+  /**
+   * Who the call is made for (11.1). Required: `invoke()` authorizes every call against it before anything else
+   * (see auth/authorizer); a call without one is refused.
+   */
+  principal: Principal;
 }
 
 export interface InvokeResult extends ProxyResponse {
@@ -117,6 +123,8 @@ export interface InvokerDeps {
   usage?: UsageMeter;
   /** Tenant ids of a client (for per-tenant quotas and metering). */
   tenantsOf?: (clientId: string | undefined) => string[];
+  /** 11.1: server tool filter, enforced by the central authorizer for every caller. */
+  exposed?: (serverId: string, tool: string) => boolean;
 }
 
 export class ToolInvoker {
@@ -124,6 +132,8 @@ export class ToolInvoker {
   private filter?: { config: unknown; filter: OutputFilter };
   /** Prompt-injection findings since start (per pattern). */
   readonly filterFindings = new Map<string, number>();
+  /** Calls refused by the central authorizer since start (11.1). */
+  authzDenials = 0;
 
   constructor(private readonly deps: InvokerDeps) {
     this.approvals = deps.approvals ?? new ApprovalQueue(deps.policy?.()?.approval);
@@ -212,6 +222,13 @@ export class ToolInvoker {
         'mcp.client.id': ctx.clientId,
       },
     });
+    // 11.1: the single, non-bypassable authorization decision point (fail-closed without a principal).
+    const denied = authorize(ctx.principal, { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind }, { exposed: this.deps.exposed });
+    if (denied) {
+      this.authzDenials++;
+      return this.refuse(ctx, denied.code, denied.message, { ...denied.data, chain: principalChain(ctx.principal) }, span);
+    }
+    if (ctx.principal.delegation?.length) span.setAttribute('mcp.principal.chain', principalChain(ctx.principal).join(' > '));
     const plugins = this.deps.plugins && this.deps.plugins.size > 0 ? this.deps.plugins : undefined;
     const call: PluginCall | undefined = plugins
       ? { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, method: ctx.method, arguments: ctx.params, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], via: ctx.via, state: new Map() }
@@ -246,7 +263,7 @@ export class ToolInvoker {
     }
     // 5.6: feature call hooks (before).
     const hookCfg = this.deps.config?.();
-    const hookCall = (): HookCall => ({ serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params });
+    const hookCall = (): HookCall => ({ serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params, principal: ctx.principal });
     let preset: ProxyResponse | undefined;
     if (hookCfg && ctx.kind === 'tool') {
       for (const h of activeCallHooks(hookCfg)) {

@@ -219,8 +219,12 @@ export interface PluginRouteContext {
   state?: PluginState;
   /** Tools the gateway currently serves. */
   tools: () => Array<{ serverId: string; name: string; description?: string }>;
-  /** Call a tool through the full pipeline (scopes are not applied: the route decides who may call it). */
-  invoke: (serverId: string, tool: string, args: Record<string, unknown>, clientId?: string) => Promise<ProxyResponse>;
+  /**
+   * Call a tool through the full pipeline. 11.1: always authorized by the gateway's central authorizer — pass the
+   * route's `req` (its caller's scope applies) or a client id (that client's current scope applies; unknown ids may call
+   * nothing). Without either the call runs as `system:plugin:<name>` (operator-installed code acting on its own).
+   */
+  invoke: (serverId: string, tool: string, args: Record<string, unknown>, caller?: string | Request) => Promise<ProxyResponse>;
   /** Client id of the request (`key:<name>`, `jwt:<sub>`, …). */
   clientOf: (req: Request) => string | undefined;
 }
@@ -228,7 +232,7 @@ export interface PluginRouteContext {
 /** What the gateway provides to plugin routes (10.5). */
 export interface PluginRouteEnv {
   tools: PluginRouteContext['tools'];
-  invoke: PluginRouteContext['invoke'];
+  invoke: (serverId: string, tool: string, args: Record<string, unknown>, caller: string | Request | undefined, plugin: string) => Promise<ProxyResponse>;
 }
 
 /**
@@ -460,7 +464,7 @@ export class PluginHost {
           gatewayVersion: VERSION,
           state: this.ctxOf(p).state,
           tools: env.tools,
-          invoke: env.invoke,
+          invoke: (s, t, a, caller) => env.invoke(s, t, a, caller, p.name),
           clientOf: (req) => (req as Request & { clientId?: string }).clientId,
         };
         for (const [kind, build, map] of [['admin', p.routes.admin, admin], ['client', p.routes.client, client]] as const) {

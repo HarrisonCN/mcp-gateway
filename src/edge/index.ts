@@ -14,7 +14,8 @@
  * @module edge
  */
 
-import { globToRegExp } from '../utils/tool-filter.js';
+import { globToRegExp, isToolAllowed } from '../utils/tool-filter.js';
+import { authorize, clientPrincipal, systemPrincipal, type Principal } from '../auth/authorizer.js';
 import type { ToolFilterConfig } from '../utils/types.js';
 import { EdgeSync, type EdgeCatalogTool, type EdgeEvent, type EdgeSnapshot, type EdgeSyncOptions, type PullResult } from './sync.js';
 
@@ -354,6 +355,7 @@ export function createEdgeGateway(config: EdgeConfig): EdgeGateway {
         try {
           const u = upstreams.get(q.server);
           if (!u) throw new RpcError(-32602, `Unknown server: ${q.server}`);
+          edgeAuthorize(systemPrincipal('edge-sync'), q.server, q.tool);
           await u.request('tools/call', { name: q.tool, arguments: q.arguments });
           replayed++;
           done.push(q.id);
@@ -407,6 +409,12 @@ export function createEdgeGateway(config: EdgeConfig): EdgeGateway {
     return keys.some((k) => (k.startsWith('sha256:') ? safeEqual(`sha256:${digest}`, k.toLowerCase()) : safeEqual(token, k)));
   }
 
+  /** 11.1: the same central authorization decision as the Node gateway (edge keys are unscoped; the server tool filter applies to every call, replays included). */
+  function edgeAuthorize(p: Principal, serverId: string, tool: string): void {
+    const denied = authorize(p, { serverId, name: tool, kind: 'tool' }, { exposed: (sid, t) => isToolAllowed(t, upstreams.get(sid)?.cfg.tools) });
+    if (denied) throw new RpcError(denied.code, denied.message, denied.data);
+  }
+
   async function index(): Promise<{ list: IndexedTool[]; errors: Record<string, string> }> {
     const errors: Record<string, string> = {};
     const per = await Promise.all(
@@ -433,6 +441,7 @@ export function createEdgeGateway(config: EdgeConfig): EdgeGateway {
     const { list } = await index();
     const hit = server ? list.find((t) => t.serverId === server && t.tool.name === name) : list.find((t) => t.exposed === name) ?? list.find((t) => t.tool.name === name);
     if (!hit) throw new RpcError(-32602, `Unknown tool: ${name}`);
+    edgeAuthorize(clientPrincipal('edge:api-key', undefined), hit.serverId, hit.tool.name);
     const started = Date.now();
     const ev = { server: hit.serverId, tool: hit.tool.name };
     try {
