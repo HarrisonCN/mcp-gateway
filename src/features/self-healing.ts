@@ -159,6 +159,7 @@ export function observe(cfg: GatewayConfig, server: string, ok: boolean, ms: num
   if (!s) return;
   const rules = s.rules.filter((r) => glob(r.servers, server));
   if (!rules.length) return;
+  for (const r of rules) current(r, server, now); // lift expired actions first (fresh window)
   const list = selfHealingState.samples.get(server) ?? [];
   list.push({ at: now, ok, ms });
   if (list.length > 10_000) list.shift();
