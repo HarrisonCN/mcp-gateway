@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '9.5.0';
+  const VERSION = '9.6.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
