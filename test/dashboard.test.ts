@@ -176,10 +176,11 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(((await (await f('/api/v1/portal/keys/pend0001/approve', { method: 'POST' })).json()) as any).status).toBe('active');
   });
 
-  it('lists no config deprecations (9.0), the event-sourced store and the data planes of the control plane', async () => {
+  it('lists the 9.9 config deprecations, the event-sourced store and the data planes of the control plane', async () => {
     const f = demoFetch();
     const r = (await (await f('/api/v1/admin/deprecations')).json()) as any;
-    expect(r).toEqual({ runtime: [], config: [] });
+    expect(r.runtime).toEqual([]);
+    expect(r.config.map((d: any) => `${d.id}@${d.removedIn}`)).toEqual(['schema-v9@10.0.0']); // 9.9
     const st = (await (await f('/api/v1/admin/store')).json()) as any;
     expect(st.backend).toBe('eventlog');
     expect(st.eventlog.keys).toBe(38);

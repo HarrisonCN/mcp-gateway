@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.9.0] - 2026-10-09
+
+### Added
+- **Config schema v10 preview**: `version: 10` with every feature-module section nested under `features: { … }`
+  (`chaos`, `sla`, `dlp`, `sessions`, …). 9.9 reads both schema v9 and v10; unknown `features` keys are refused.
+- **`mcp-gateway migrate --to 10`** (new default): `version: 10` and top-level feature sections → `features` (YAML
+  pairs are moved, so comments travel with them).
+- `GET /api/v1/admin/config` returns `features` for v10 files; data planes receive the control plane's schema version.
+- Pages demo: the demo config reports the `schema-v9` deprecation.
+- [Migrating to 10.0](docs/guides/migrating-to-v10.md).
+
+### Deprecated (removed in 10.0)
+- Config schema v9 (`schema-v9`) → `version: 10`.
+- Top-level feature sections (`top-level-features`) → `features: { … }`.
+
+### Fixed
+- `docs/configuration.md` still described `version` as `8` (or the deprecated `7`).
+- `test/v6.test.ts` validated `version: 9` with a top-level `dlp` section and expected no deprecations; now uses schema v10
+  (`features: { dlp }`).
+
 ## [9.8.0] - 2026-10-09
 
 ### Added

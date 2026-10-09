@@ -11,5 +11,5 @@ release. (The 8.x → 9.0 plan is complete; see the [CHANGELOG](../CHANGELOG.md)
 - ✅ v9.6：自愈：基于 SLO 与异常检测自动回滚、限流与摘除故障上游
 - ✅ v9.7：后量子 TLS：支持混合后量子密钥交换（X25519MLKEM768）与证书策略
 - ✅ v9.8：生态市场 GA：插件与工具市场正式可用，评分、审核与发布者认证
-- v9.9：v10 弃用警告与 `migrate --to 10`
+- ✅ v9.9：v10 弃用警告与 `migrate --to 10`
 - v10.0：（破坏性）统一网关内核、schema v10、长期支持（LTS）版本、迁移指南

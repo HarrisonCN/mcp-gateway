@@ -28,7 +28,7 @@ describe('7.0: schema v7', () => {
   it('controlPlane: role defaults to all; data planes need url + token; url/token only on data planes', () => {
     const v7 = validateConfig({ version: 9, servers: [], controlPlane: { configApi: true, dashboard: false } });
     expect(v7.controlPlane).toEqual({ role: 'all', configApi: true, dashboard: false, pullIntervalMs: 10000 });
-    expect(v7.deprecations).toBeUndefined(); // 8.0
+    expect(v7.deprecations?.map((d) => d.id)).toEqual(['schema-v9']); // 9.9
     expect(validateConfig({ servers: [] }).controlPlane).toBeUndefined();
     const dp = validateConfig({ servers: [], controlPlane: { role: 'data', url: 'http://cp:4000', token: 't', pullIntervalMs: 2000, nodeId: 'dp-1' } });
     expect(dp.controlPlane).toMatchObject({ role: 'data', url: 'http://cp:4000', nodeId: 'dp-1', pullIntervalMs: 2000 });
