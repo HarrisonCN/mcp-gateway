@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Confidential computing / TEE (9.3). */
+  confidential?: import('../features/confidential.js').ConfidentialConfig;
   /** Edge WASM runtime 2.0 (9.2). */
   edgeRuntime?: import('../features/edge-runtime.js').EdgeRuntimeConfig;
   /** Multimodal tools (9.1). */

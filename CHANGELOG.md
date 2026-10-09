@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.3.0] - 2026-10-09
+
+### Added
+- **Confidential computing / TEE** (`confidential`): servers matched by `confidential.servers[].match` get calls only
+  after remote attestation — a signed report (`platform` sev-snp / tdx / nitro / sgx, launch `measurement`, a
+  single-use gateway `nonce`, `issuedAt`, `debug`) verified against `trustedKeys` (Ed25519 / ECDSA / RSA PEM), the
+  platform list and the measurement allowlist, honoured for `validitySeconds`. Until then calls are refused with
+  JSON-RPC **-32024**. `POST /api/v1/admin/confidential/:server/nonce` · `…/attest` · `DELETE …/:server`;
+  `GET /api/v1/admin/confidential` shows attestation state and the last rejection. [Guide](docs/guides/confidential-computing.md).
+- Pages demo: attested TEE servers.
+
 ## [9.2.0] - 2026-10-09
 
 ### Added
