@@ -335,7 +335,7 @@ monitor:
 
 security:                     # hardening (see docs/configuration.md#security)
   authLockout: true           # 429 for IPs with repeated auth failures
-  dnsRebindingProtection: false  # true for a local gateway without auth
+  # dnsRebindingProtection: true  # default: on for a loopback gateway without auth (10.2)
   ipAllowlist: ["10.0.0.0/8"]
   maxToolArgumentsBytes: 262144
 

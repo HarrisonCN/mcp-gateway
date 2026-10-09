@@ -1194,7 +1194,7 @@ logLevel: info
 #   hsts: false                    # true behind HTTPS
 #   trustProxy: false              # e.g. 1 or ["10.0.0.0/8"] behind a reverse proxy (affects req.ip)
 #   ipAllowlist: ["10.0.0.0/8", "127.0.0.1"]
-#   dnsRebindingProtection: false  # true: Host must be localhost / allowedHosts, /mcp only same-origin + loopback origins
+#   dnsRebindingProtection: true   # Host must be localhost / allowedHosts, /mcp only same-origin + loopback origins (default: on for loopback + no auth)
 #   allowedHosts: ["gateway.example.com"]
 #   maxBodyBytes: 10485760
 #   maxToolArgumentsBytes: 0       # 0 = no limit

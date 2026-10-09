@@ -794,7 +794,7 @@ security:
   trustProxy: false            # Express "trust proxy": true, hop count, or addresses / CIDRs of your proxies
   ipAllowlist: ["10.0.0.0/8", "127.0.0.1", "::1"]   # only these clients (IPv4 / IPv6 / CIDR)
   allowedHosts: ["gateway.example.com", "*.internal.example.com"]   # Host header allowlist
-  dnsRebindingProtection: false
+  # dnsRebindingProtection: unset = on for a loopback-bound gateway without auth (10.2)
   maxBodyBytes: 10485760       # JSON request body limit (REST and /mcp), min 1024
   maxToolArgumentsBytes: 0     # limit for tools/call, prompts/get and completion arguments; 0 = none
   authLockout: false           # true, or { maxFailures: 10, windowSeconds: 300, lockoutSeconds: 900 }
@@ -810,7 +810,7 @@ Everything hot reloads.
 | `trustProxy` | decides `req.ip`, used by rate limits, lockout, the IP allowlist and logs. Leave `false` unless a proxy you control sets `X-Forwarded-For`. |
 | `ipAllowlist` | other clients get `403`. `/api/v1/health/live` and `/health/ready` stay open for probes. |
 | `allowedHosts` | requests with another `Host` get `403` (probes excepted). |
-| `dnsRebindingProtection` | `Host` must be in `allowedHosts` (default: `localhost`, `127.0.0.1`, `[::1]` and the bind address), and `/mcp` accepts browser requests only from the same origin, loopback origins and origins listed in `mcp.allowedOrigins` / `cors.origins` (`*` ignored). Recommended for a local gateway without auth. |
+| `dnsRebindingProtection` | `Host` must be in `allowedHosts` (default: `localhost`, `127.0.0.1`, `[::1]` and the bind address), and `/mcp` accepts browser requests only from the same origin, loopback origins and origins listed in `mcp.allowedOrigins` / `cors.origins` (`*` ignored). Unset (default since 10.2): **on automatically when the gateway is bound to a loopback address with auth off**, off otherwise; set `true` / `false` to override. While on, CORS defaults to loopback origins (unless `cors.origins` is set) and state-changing requests (not GET / HEAD / OPTIONS) carrying a foreign `Origin` get `403`. |
 | `maxBodyBytes` | larger bodies get `413` (REST) / `413` + JSON-RPC error (`/mcp`). |
 | `maxToolArgumentsBytes` | REST: `413`; `/mcp`: JSON-RPC `-32602`. |
 | `authLockout` | after `maxFailures` failed authentications (`401`) from one IP within `windowSeconds`, that IP gets `429` + `Retry-After` for `lockoutSeconds` on every authenticated route, including `/mcp`. A success resets the count. In-memory, per instance. Only active with an auth strategy. |

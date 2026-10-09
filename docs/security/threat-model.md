@@ -92,3 +92,19 @@ Admin traffic (`/api/v1/admin/*`, dashboard, control plane) takes the same path 
 | `src/security/mtls.ts` | identity load failure fell back to system CAs without a client cert | fail closed |
 | `src/auth/oauth.ts` | audience derived from `Host` when `resource` unset | startup warning + docs |
 | `src/auth/tenants.ts` | glob matching is anchored and escaped; no issue | — |
+
+## Audit log (10.2 test depth)
+
+Property / fuzz tests (`test/property.test.ts`, fast-check), the admin authorization matrix
+(`test/admin-auth-matrix.test.ts`: every mounted `/api/v1/admin/*` route × no auth / invalid key / scoped key /
+tenant owner / cross-tenant owner) and regression tests (`test/regressions-10-2.test.ts`) found:
+
+| Area | Finding | Fix |
+|---|---|---|
+| config pre-validation (`utils/deprecations.ts`) | `servers: {}` / `servers: ""` / non-array `auth.apiKeys` crashed with a `TypeError` instead of a validation error | non-array values reach the schema, which reports them |
+| `GET /api/v1/servers[/:id]` (any authenticated client) | replica `url` credentials and query tokens, `headers`, `env` and `args` were returned unredacted | replicas are redacted like the primary |
+| `GET /api/v1/admin/config` | URLs with `user:pass@` or secret query parameters were returned verbatim | masked (`<redacted>`), restored on PUT |
+| `redactValue` (logs, audit, API output) | values nested deeper than 20 levels were returned unredacted | masked past the depth limit |
+| defaults (`host` loopback + `auth` off) | no Host check and CORS `*`: a web page (or a DNS-rebinding attack) could drive the gateway through the browser, including state-changing admin calls via simple cross-site POSTs | DNS-rebinding protection is on by default in that setup: loopback Host check, loopback-only CORS, foreign `Origin` refused on non-GET requests |
+| admin authorization matrix | all 150+ admin routes answer 401 / 403 for every non-operator caller | no issue |
+| JWT / bearer parsing, JSON-RPC framing, argument size limits, Host parsing | no issue (properties hold) | — |

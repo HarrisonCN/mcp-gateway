@@ -34,7 +34,7 @@ it like any other privileged service. The full checklist is in
 | Leaked config file | store keys as `sha256:` digests (`mcp-gateway gen-key`, `hash-key`); `expiresAt` / `disabled` per key |
 | Key guessing | `security.authLockout: true` (429 after repeated failures per IP) plus `rateLimit` |
 | Forged / confused JWTs | `auth.jwt.issuer`, `audience`, `requireExp`, `algorithms`; HMAC and asymmetric algorithms are never mixed |
-| DNS rebinding against a local gateway | `security.dnsRebindingProtection: true` (Host + Origin checks), `mcp.allowedOrigins` |
+| DNS rebinding / drive-by requests against a local gateway | on by default for a loopback gateway without auth (10.2); otherwise `security.dnsRebindingProtection: true` (Host + Origin checks), `mcp.allowedOrigins` |
 | Exposure beyond your network | `security.ipAllowlist`, `security.allowedHosts`, `security.trustProxy` behind a proxy |
 | Oversized payloads | `security.maxBodyBytes`, `security.maxToolArgumentsBytes` |
 | Secrets in logs / history | built-in redaction of token-shaped strings and secret keys; `security.redactPatterns` for your own formats |
