@@ -69,6 +69,17 @@ export function experimentalFeatureWarnings(config: GatewayConfig): SecurityWarn
         'OpenSSL 3.5+.',
     });
   }
+  if (config.edgeAutonomy) {
+    out.push({
+      id: 'experimental-edge-autonomy',
+      level: 'info',
+      message:
+        'features.edgeAutonomy is EXPERIMENTAL. Verified: while an upstream is unreachable, matching calls are answered from the last good ' +
+        'result, a local WASM tool, queued into a persisted outbox or refused, after local policy; queued calls are replayed through the ' +
+        'full pipeline on reconnect. NOT provided: conflict resolution (a replay the upstream rejects is parked as a conflict), ' +
+        'exactly-once delivery (use reconcile.idempotencyArg), and freshness of cached answers beyond maxAgeSeconds.',
+    });
+  }
   return out;
 }
 

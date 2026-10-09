@@ -46,6 +46,8 @@ import './ecosystem.js';
 import './policy-engine.js';
 import './time-travel.js';
 import './realtime-budgets.js';
+import './task-graphs.js';
+import './edge-autonomy.js';
 import './kernel.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';
