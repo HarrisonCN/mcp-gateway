@@ -122,7 +122,7 @@ export function configDeprecations(raw: unknown): Array<Deprecation & { detail?:
   if (typeof raw !== 'object' || raw === null) return [];
   const r = raw as Record<string, unknown>;
   const out: Array<Deprecation & { detail?: string }> = [];
-  if (r.version !== 11) out.push({ ...DEPRECATIONS['config-schema-v10']!, detail: r.version === undefined ? 'no `version` key: 11.0 reads the file as schema v11' : 'version: 10' });
+  if (r.version === undefined || r.version === 10) out.push({ ...DEPRECATIONS['config-schema-v10']!, detail: r.version === undefined ? 'no `version` key: 11.0 reads the file as schema v11' : 'version: 10' });
   const wf = (r.features as { workflows?: unknown } | undefined)?.workflows;
   if (wf !== undefined) out.push({ ...DEPRECATIONS['features-workflows']!, detail: `${Array.isArray(wf) ? wf.length : 0} workflow(s)` });
   return out;

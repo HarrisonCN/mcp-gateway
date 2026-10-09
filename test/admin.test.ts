@@ -57,7 +57,7 @@ describe('3.0 removals', () => {
 
   it('rejects removed keys and foreign config versions with the replacement', () => {
     expect(removedConfigKeys({ corsOrigins: [], healthCheckIntervalMs: 5000 })).toHaveLength(2);
-    expect(configDeprecations({ corsOrigins: [] })).toEqual([]);
+    expect(configDeprecations({ corsOrigins: [] }).map((d) => d.id)).toEqual(['config-schema-v10']);
     const cfg = validateConfig({ version: 10, servers: [], cors: { origins: ['https://a.example'] }, health: { intervalMs: 5000 } });
     expect(cfg.cors?.origins).toEqual(['https://a.example']);
     expect(cfg.health?.intervalMs).toBe(5000);

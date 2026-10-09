@@ -31,7 +31,7 @@ describe('schema v8 (8.0)', () => {
     const cfg = validateConfig({ version: 10, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 1234 }] });
     expect(cfg.version).toBe(10);
     expect(cfg.servers[0]!.timeout).toBe(1234);
-    expect(cfg.deprecations?.map((d) => d.id)).toBeUndefined(); // 10.0: nothing deprecated
+    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['config-schema-v10']); // 10.9: schema v10 deprecated
     expect(validateConfig({ servers: [{ id: 'b', name: 'b', transport: 'stdio', command: 'x' }] }).servers[0]!.timeout).toBe(30000);
   });
 
@@ -41,7 +41,7 @@ describe('schema v8 (8.0)', () => {
     expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/config schema v6 was removed in 7.0 — use `version: 10`/);
     expect(() => validateConfig({ servers: [{ id: 'a', transport: 'stdio', command: 'x', timeout: 5 }] })).toThrow(/servers.0.timeout: removed in 5.0 — use `timeoutMs`/);
     expect(removedConfigKeys({ version: 4, servers: [{ id: 'a', timeout: 1 }] })).toHaveLength(2);
-    expect(() => validateConfig({ version: 11, servers: [] })).toThrow(/10.0 reads `version: 10`/);
+    expect(() => validateConfig({ version: 12, servers: [] })).toThrow(/10.9 reads `version: 10` and `version: 11`/);
     expect(() => validateConfig({ version: 7, servers: [] })).toThrow(/config schema v7 was removed in 8.0 — use `version: 10`/);
     expect(configDeprecations({ version: 7, servers: [] })).toEqual([]); // 8.0
   });
@@ -58,7 +58,7 @@ describe('schema v8 (8.0)', () => {
     const mod = (await import('../src/utils/deprecations.js')) as Record<string, unknown>;
     expect(mod.normalizeV4Preview).toBeUndefined();
     expect(mod.normalizeControlPlane).toBeUndefined();
-    expect(Object.values(DEPRECATIONS).map((d) => d.id)).toEqual([]); // 10.0
+    expect(Object.values(DEPRECATIONS).map((d) => d.id)).toEqual(['config-schema-v10', 'features-workflows']); // 10.0
   });
 });
 
@@ -73,7 +73,7 @@ describe('mcp-gateway migrate --to 5', () => {
     expect(() => validateConfig(parseYaml(r.text))).toThrow(/schema v5 was removed in 6.0/);
     expect(migrateConfigText(r.text, undefined, 5).changed).toBe(false);
     const v6 = validateConfig(parseYaml(migrateConfigText(V4).text));
-    expect(v6.version).toBe(10); // 9.9: migrate defaults to --to 10
+    expect(v6.version).toBe(11); // 10.9: migrate defaults to --to 11
     expect(v6.servers[0]!.timeout).toBe(15000);
   });
 

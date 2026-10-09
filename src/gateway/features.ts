@@ -114,21 +114,22 @@ export function createFeatureRouter(deps: FeatureRouterDeps): express.Router {
   });
   // 10.9: modules are mounted when they become active (at start, on reload via `sync()`, or on first request);
   // inactive modules answer 404 in lazy mode.
-  const mounted = new Map<string, { admin: express.Router; client?: express.Router }>();
+  // Each module gets a fixed holder router in the stack (so route listings and the auth matrix see every mounted
+  // route); the module's own routers are added to its holder once it is active.
+  const holders = new Map<string, { admin: express.Router; client?: express.Router }>();
+  const mounted = new Set<string>();
   const ensure = (m: FeatureModule) => {
-    let r = mounted.get(m.id);
-    if (!r) {
-      const admin = express.Router();
-      m.mount(admin, deps.context);
-      let client: express.Router | undefined;
-      if (m.mountClient) {
-        client = express.Router();
-        m.mountClient(client, deps.context);
-      }
-      r = { admin, client };
-      mounted.set(m.id, r);
+    if (mounted.has(m.id)) return;
+    const h = holders.get(m.id)!;
+    const admin = express.Router();
+    m.mount(admin, deps.context);
+    h.admin.use(admin);
+    if (m.mountClient && h.client) {
+      const client = express.Router();
+      m.mountClient(client, deps.context);
+      h.client.use(client);
     }
-    return r;
+    mounted.add(m.id);
   };
   const inactive = (m: FeatureModule, res: express.Response) =>
     void res.status(404).json({
@@ -136,17 +137,16 @@ export function createFeatureRouter(deps: FeatureRouterDeps): express.Router {
       message: `Feature module "${m.id}" is not active: kernel.modules is lazy and ${FEATURE_ACTIVATION[m.id]!.map((k) => `features.${String(k)}`).join(' / ')} is not configured`,
     });
   for (const m of mods) {
+    const h = { admin: express.Router(), client: m.mountClient ? express.Router() : undefined };
+    holders.set(m.id, h);
     if (isFeatureActive(deps.context.config(), m.id)) ensure(m);
-    router.use(`/admin/${m.id}`, deps.authenticate, operator, (req, res, next) => {
+    const gate: express.RequestHandler = (_req, res, next) => {
       if (!isFeatureActive(deps.context.config(), m.id)) return inactive(m, res);
-      ensure(m).admin(req, res, next);
-    });
-    if (m.mountClient) {
-      router.use(`/features/${m.id}`, deps.authenticate, (req, res, next) => {
-        if (!isFeatureActive(deps.context.config(), m.id)) return inactive(m, res);
-        ensure(m).client!(req, res, next);
-      });
-    }
+      ensure(m);
+      next();
+    };
+    router.use(`/admin/${m.id}`, deps.authenticate, operator, gate, h.admin);
+    if (h.client) router.use(`/features/${m.id}`, deps.authenticate, gate, h.client);
   }
   /** Mount modules that became active (call after a config reload). */
   (router as express.Router & { sync?: () => string[] }).sync = () => {
