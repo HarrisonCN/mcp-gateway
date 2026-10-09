@@ -5,18 +5,19 @@ users and groups are provisioned with **SCIM 2.0**, people sign in with **OIDC**
 roles**.
 
 ```yaml
-identity:
-  oidc:
-    issuer: https://acme.okta.com
-    clientId: 0oa1example
-    redirectUri: https://gateway.acme.com/sso/callback
-    groupsClaim: groups            # ID-token claim with group names
-    # jwksUrl: …                   # default: <issuer>/.well-known/jwks.json
-  groupRoles:
-    - { group: Platform, tenant: platform, role: owner }
-    - { group: Engineering, tenant: eng, role: admin }
-    - { group: Support, tenant: eng }          # viewer
-  storePath: ./data/scim.json      # optional: persist the SCIM directory across restarts
+features:
+  identity:
+    oidc:
+      issuer: https://acme.okta.com
+      clientId: 0oa1example
+      redirectUri: https://gateway.acme.com/sso/callback
+      groupsClaim: groups # ID-token claim with group names
+      # jwksUrl: …                   # default: <issuer>/.well-known/jwks.json
+    groupRoles:
+      - {group: Platform, tenant: platform, role: owner}
+      - {group: Engineering, tenant: eng, role: admin}
+      - {group: Support, tenant: eng} # viewer
+    storePath: ./data/scim.json # optional: persist the SCIM directory across restarts
 ```
 
 ## SCIM provisioning

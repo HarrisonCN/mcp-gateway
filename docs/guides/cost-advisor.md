@@ -7,13 +7,14 @@ turns them into quantified recommendations with the config to apply.
 costs:
   currency: USD
   tools:
-    - { match: "search/*", perCall: 0.01 }
-    - { match: "search-lite/*", perCall: 0.007 }
-costAdvisor:
-  windowMinutes: 1440     # rolling window analysed
-  minCalls: 20            # ignore tools with fewer calls
-  repeatThreshold: 0.3    # identical-call share that suggests caching
-  errorThreshold: 0.2     # failure rate that flags wasted spend
+    - {match: "search/*", perCall: 0.01}
+    - {match: "search-lite/*", perCall: 0.007}
+features:
+  costAdvisor:
+    windowMinutes: 1440 # rolling window analysed
+    minCalls: 20 # ignore tools with fewer calls
+    repeatThreshold: 0.3 # identical-call share that suggests caching
+    errorThreshold: 0.2 # failure rate that flags wasted spend
 ```
 
 `GET /api/v1/admin/cost-advisor` (optionally `?windowMinutes=60`):

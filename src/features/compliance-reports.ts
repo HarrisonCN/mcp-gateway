@@ -29,7 +29,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { registerFeature, objectBody, badRequest, type FeatureContext } from '../gateway/features.js';
-import { portableConfig } from '../gateway/admin.js';
+import { portableConfig, withFeatureSection } from '../gateway/admin.js';
 import { redactConfig } from '../config/diff.js';
 import { buildReport, reportMarkdown, type ControlResult, type ReportInput } from '../policy/compliance.js';
 import { securityWarnings } from '../security/posture.js';
@@ -200,7 +200,7 @@ export function writeBundle(dir: string, schedule: string, frameworks: Framework
     const s = r.json.summary as { pass: number; warn: number; fail: number };
     fws.push({ framework: fw, ...s });
   }
-  const { complianceReports: _c, ...rest } = portableConfig(cfg);
+  const rest = withFeatureSection(portableConfig(cfg), 'complianceReports', undefined);
   put('config.redacted.json', JSON.stringify(redactConfig(rest), null, 2));
   const body = { bundle, schedule, generatedAt: new Date(now).toISOString(), gatewayVersion: VERSION, period: { since: new Date(since).toISOString(), until: new Date(until).toISOString() }, frameworks: fws, files };
   const manifest: Manifest = { ...body, digest: sha(JSON.stringify(body)) };

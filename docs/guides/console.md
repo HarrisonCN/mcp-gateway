@@ -5,17 +5,18 @@ plus a **plan**: the plan decides which upstream servers the organisation's tena
 members may make per UTC day.
 
 ```yaml
-version: 9
-controlPlane: { configApi: true }      # needed for onboarding / plan changes over the API
-console:
-  defaultPlan: free
-  plans:
-    free: { name: Free, servers: ["search"], callsPerDay: 1000 }
-    pro:  { name: Pro,  servers: ["*"] }                # no daily limit
-  orgs:
-    acme: { plan: pro }
+version: 10
+controlPlane: {configApi: true} # needed for onboarding / plan changes over the API
 tenants:
-  - { id: acme, name: ACME, servers: ["*"], members: [{ client: "key:acme-*", role: owner }] }
+  - {id: acme, name: ACME, servers: ["*"], members: [{client: "key:acme-*", role: owner}]}
+features:
+  console:
+    defaultPlan: free
+    plans:
+      free: {name: Free, servers: ["search"], callsPerDay: 1000}
+      pro: {name: Pro, servers: ["*"]} # no daily limit
+    orgs:
+      acme: {plan: pro}
 ```
 
 - Calls by members of a **suspended** organisation, or over the plan's `callsPerDay`, are refused with JSON-RPC

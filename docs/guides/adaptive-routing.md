@@ -5,14 +5,15 @@ routing 2.0 picks between **interchangeable candidates** — the same tool on di
 different models — by **quality, cost and latency**, and keeps learning.
 
 ```yaml
-adaptive:
-  pools:
-    - id: summarize
-      objective: { quality: 0.6, cost: 0.3, latency: 0.1 }   # weights
-      maxCostPerCall: 0.02
-      candidates:
-        - { id: small, server: llm, tool: complete, args: { model: gpt-mini },  costPerCall: 0.001 }
-        - { id: large, server: llm, tool: complete, args: { model: gpt-large }, costPerCall: 0.015 }
+features:
+  adaptive:
+    pools:
+      - id: summarize
+        objective: {quality: 0.6, cost: 0.3, latency: 0.1} # weights
+        maxCostPerCall: 0.02
+        candidates:
+          - {id: small, server: llm, tool: complete, args: {model: gpt-mini}, costPerCall: 0.001}
+          - {id: large, server: llm, tool: complete, args: {model: gpt-large}, costPerCall: 0.015}
 ```
 
 ## How it learns

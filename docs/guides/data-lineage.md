@@ -5,11 +5,12 @@ emails one of them. `dataLineage` reconstructs these chains without any change t
 answer *"where did this value come from?"* and *"where did this tool's output go?"*.
 
 ```yaml
-dataLineage:
-  scope: client          # link calls of the same client (default), tenant, or globally
-  windowMinutes: 60
-  minValueLength: 8      # ignore short values ("1", "true", "EUR")
-  maxNodes: 5000
+features:
+  dataLineage:
+    scope: client # link calls of the same client (default), tenant, or globally
+    windowMinutes: 60
+    minValueLength: 8 # ignore short values ("1", "true", "EUR")
+    maxNodes: 5000
 ```
 
 **How it works.** Every tool call is a node. The string (and long numeric) values of each successful result —

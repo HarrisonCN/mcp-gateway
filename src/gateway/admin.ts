@@ -76,6 +76,18 @@ export function portableConfig(cfg: GatewayConfig): Record<string, unknown> {
   return out;
 }
 
+/** A feature section of a schema-form config (schema v10: under `features`). */
+export const featureSection = (p: Record<string, unknown>, key: string): unknown => ((p.features as Record<string, unknown> | undefined) ?? {})[key];
+
+/** A schema-form config with one feature section replaced (`undefined` removes it); schema v10 keeps it under `features`. */
+export function withFeatureSection(p: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
+  const features = { ...((p.features as Record<string, unknown> | undefined) ?? {}) };
+  if (value === undefined) delete features[key];
+  else features[key] = value;
+  const { features: _f, ...rest } = p;
+  return Object.keys(features).length ? { ...rest, features } : rest;
+}
+
 /** The running config with schema defaults applied (embedders may pass unvalidated objects), for diffs. */
 function normalized(cfg: GatewayConfig): Record<string, unknown> {
   const p = portableConfig(cfg);

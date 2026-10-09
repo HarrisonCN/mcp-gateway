@@ -5,15 +5,16 @@ JSON-RPC result (`image`, `audio`, or an embedded `resource` with a `blob`). The
 around that content and keeps huge payloads out of the JSON stream.
 
 ```yaml
-version: 9
-multimodal:
-  allowedTypes: ["image/*", "audio/mpeg", "audio/wav"]   # MIME globs; default image/* and audio/*
-  maxItemBytes: 10485760        # decoded bytes per item
-  maxTotalBytes: 33554432       # decoded bytes per tool result
-  onViolation: refuse           # or strip
-  offloadAboveBytes: 262144     # hold larger items and return a link
-  blobTtlSeconds: 600
-  servers: ["*"]
+version: 10
+features:
+  multimodal:
+    allowedTypes: ["image/*", "audio/mpeg", "audio/wav"] # MIME globs; default image/* and audio/*
+    maxItemBytes: 10485760 # decoded bytes per item
+    maxTotalBytes: 33554432 # decoded bytes per tool result
+    onViolation: refuse # or strip
+    offloadAboveBytes: 262144 # hold larger items and return a link
+    blobTtlSeconds: 600
+    servers: ["*"]
 ```
 
 ## Policy

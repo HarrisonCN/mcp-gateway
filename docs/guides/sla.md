@@ -4,21 +4,22 @@ Define service-level objectives for the tools you offer — per upstream server 
 measure them on every call, track the error budget and compute service credits when an objective is missed.
 
 ```yaml
-version: 9
-sla:
-  targets:
-    - id: search-gold
-      servers: ["search*"]
-      tenants: ["*"]
-      availability: 99.9          # % of successful calls in the window
-      latencyP95Ms: 800
-      windowDays: 30              # rolling
-      monthlyFee: 2000
-      currency: EUR
-      credits:
-        - { below: 99.0, percent: 25 }
-        - { below: 99.9, percent: 10 }
-      excludeErrorCodes: [-32003] # refusals that are not the provider's fault
+version: 10
+features:
+  sla:
+    targets:
+      - id: search-gold
+        servers: ["search*"]
+        tenants: ["*"]
+        availability: 99.9 # % of successful calls in the window
+        latencyP95Ms: 800
+        windowDays: 30 # rolling
+        monthlyFee: 2000
+        currency: EUR
+        credits:
+          - {below: 99.0, percent: 25}
+          - {below: 99.9, percent: 10}
+        excludeErrorCodes: [-32003] # refusals that are not the provider's fault
 ```
 
 ## How it is measured

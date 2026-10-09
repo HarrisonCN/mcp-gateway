@@ -5,22 +5,23 @@ approvals work in a real organisation: several steps, each with its own approver
 above a threshold, and escalation when nobody answers.
 
 ```yaml
-approvalFlows:
-  flows:
-    - id: payments
-      tools: ["payments/transfer", "payments/refund"]   # server/tool globs
-      clients: ["key:agent-*"]                          # optional: only these callers
-      when: [{ path: amount, op: gte, value: 1000 }]    # optional: only these calls
-      timeoutSeconds: 900                               # then the call is refused (expired)
-      steps:
-        - name: lead
-          approvers: ["key:lead-*", "oidc:alice@example.com"]
-        - name: finance
-          approvers: ["key:fin-*"]
-          required: 2                                   # two different finance approvers
-          when: [{ path: amount, op: gte, value: 10000 }]
-          escalateAfterSeconds: 300
-          escalateTo: ["key:cfo"]                       # may approve this step after 5 minutes
+features:
+  approvalFlows:
+    flows:
+      - id: payments
+        tools: ["payments/transfer", "payments/refund"] # server/tool globs
+        clients: ["key:agent-*"] # optional: only these callers
+        when: [{path: amount, op: gte, value: 1000}] # optional: only these calls
+        timeoutSeconds: 900 # then the call is refused (expired)
+        steps:
+          - name: lead
+            approvers: ["key:lead-*", "oidc:alice@example.com"]
+          - name: finance
+            approvers: ["key:fin-*"]
+            required: 2 # two different finance approvers
+            when: [{path: amount, op: gte, value: 10000}]
+            escalateAfterSeconds: 300
+            escalateTo: ["key:cfo"] # may approve this step after 5 minutes
 ```
 
 - The first flow whose `tools`, `clients` and `when` match holds the call; its steps whose `when` matches run in

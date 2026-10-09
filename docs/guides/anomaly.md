@@ -3,15 +3,16 @@
 Spot abusive clients and prompt-injection attempts in live traffic.
 
 ```yaml
-anomaly:
-  action: quarantine          # alert (default): record only | quarantine: also refuse (-32015)
-  quarantineSeconds: 300
-  windowMinutes: 5
-  burst: { factor: 5, min: 30 }            # calls this minute > max(factor × baseline, min)
-  errors: { ratio: 0.5, min: 20 }          # error ratio over the window
-  enumeration: { distinctTools: 25 }       # distinct tools over the window
-  injection: { threshold: 0.6, scan: both } # arguments | results | both | off
-  exempt: ["key:load-test*"]
+features:
+  anomaly:
+    action: quarantine # alert (default): record only | quarantine: also refuse (-32015)
+    quarantineSeconds: 300
+    windowMinutes: 5
+    burst: {factor: 5, min: 30} # calls this minute > max(factor × baseline, min)
+    errors: {ratio: 0.5, min: 20} # error ratio over the window
+    enumeration: {distinctTools: 25} # distinct tools over the window
+    injection: {threshold: 0.6, scan: both} # arguments | results | both | off
+    exempt: ["key:load-test*"]
 ```
 
 ## Signals

@@ -31,7 +31,7 @@
 import { z } from 'zod';
 import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
 import { registerCallHook } from '../gateway/hooks.js';
-import { portableConfig } from '../gateway/admin.js';
+import { portableConfig, featureSection, withFeatureSection } from '../gateway/admin.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { logger } from '../utils/logger.js';
 import type { GatewayConfig } from '../utils/types.js';
@@ -198,9 +198,9 @@ registerFeature({
         if (req.query.persist === 'true' && percent !== undefined) {
           if (ctx.config().controlPlane?.configApi !== true || !ctx.applyConfig) return void res.status(403).json({ error: 'Forbidden', message: 'persist=true needs controlPlane.configApi: true' });
           const p = portableConfig(ctx.config());
-          const next = ((p.rollouts as Array<Record<string, unknown>>) ?? []).map((x) => (x.id === r.id ? { ...x, percent } : x));
+          const next = ((featureSection(p, 'rollouts') as Array<Record<string, unknown>>) ?? []).map((x) => (x.id === r.id ? { ...x, percent } : x));
           try {
-            await ctx.applyConfig({ ...p, rollouts: next });
+            await ctx.applyConfig(withFeatureSection(p, 'rollouts', next));
           } catch (err) {
             return badRequest(res, err instanceof Error ? err.message : String(err));
           }

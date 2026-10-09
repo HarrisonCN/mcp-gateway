@@ -4,18 +4,19 @@ A workflow is a DAG of tool calls that runs inside the gateway. Each node lists 
 dependencies have settled starts immediately, up to `concurrency` at a time.
 
 ```yaml
-workflows:
-  - id: enrich-lead
-    concurrency: 4
-    nodes:
-      - { id: company, tool: crm/lookup, args: { domain: "{{input.domain}}" } }
-      - { id: news, tool: search/web, args: { q: "{{input.domain}} funding" }, retry: { attempts: 3, backoffMs: 200 } }
-      - id: score
-        tool: llm/score
-        needs: [company, news]
-        args: { company: "{{nodes.company.text}}", news: "{{nodes.news.text}}" }
-      - { id: notify, tool: slack/post, needs: [score], if: "nodes.score.structuredContent.hot", onError: continue }
-    output: "{{nodes.score.structuredContent}}"
+features:
+  workflows:
+    - id: enrich-lead
+      concurrency: 4
+      nodes:
+        - {id: company, tool: crm/lookup, args: {domain: "{{input.domain}}"}}
+        - {id: news, tool: search/web, args: {q: "{{input.domain}} funding"}, retry: {attempts: 3, backoffMs: 200}}
+        - id: score
+          tool: llm/score
+          needs: [company, news]
+          args: {company: "{{nodes.company.text}}", news: "{{nodes.news.text}}"}
+        - {id: notify, tool: slack/post, needs: [score], if: "nodes.score.structuredContent.hot", onError: continue}
+      output: "{{nodes.score.structuredContent}}"
 ```
 
 | Node field | Meaning |

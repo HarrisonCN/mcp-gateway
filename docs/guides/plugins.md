@@ -183,14 +183,15 @@ A `.sig` file is JSON `{ keyId, sha256, signature }`: an Ed25519 signature over
 ### Trust policy
 
 ```yaml
-pluginTrust:
-  requireSigned: true            # refuse unsigned plugins and package-name modules
-  keys:
-    - id: acme-2026
-      publicKey: |
-        -----BEGIN PUBLIC KEY-----
-        MCowBQYDK2VwAyEA…
-        -----END PUBLIC KEY-----
+features:
+  pluginTrust:
+    requireSigned: true # refuse unsigned plugins and package-name modules
+    keys:
+      - id: acme-2026
+        publicKey: |
+          -----BEGIN PUBLIC KEY-----
+          MCowBQYDK2VwAyEA…
+          -----END PUBLIC KEY-----
 ```
 
 With `keys` set, every plugin that ships a `.sig` must verify (a mismatched hash, unknown key or bad signature
@@ -200,9 +201,10 @@ plugins; hot reloads.
 ### Marketplace
 
 ```yaml
-marketplace:
-  dir: ./plugins                                   # relative to the config file
-  indexes: [https://plugins.example.com/index.json]
+features:
+  marketplace:
+    dir: ./plugins # relative to the config file
+    indexes: [https://plugins.example.com/index.json]
 ```
 
 An index is `{ "plugins": [{ name, version, description?, url, sha256, signature, keyId, kind? }] }`.

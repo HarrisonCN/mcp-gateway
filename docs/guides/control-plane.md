@@ -14,16 +14,16 @@ Run one control plane and as many data planes as you need behind a load balancer
 ## Control plane
 
 ```yaml
-version: 9
+version: 10
 controlPlane:
   role: control
-  configApi: true          # optional: edit the config over the admin API / dashboard
+  configApi: true # optional: edit the config over the admin API / dashboard
 auth:
   strategy: api-key
   apiKeys:
-    - ${OPERATOR_KEY}       # unscoped = operator; data planes authenticate with it
+    - ${OPERATOR_KEY} # unscoped = operator; data planes authenticate with it
 servers:
-  - { id: github, name: GitHub, transport: streamable-http, url: https://api.githubcopilot.com/mcp/ }
+  - {id: github, name: GitHub, transport: streamable-http, url: https://api.githubcopilot.com/mcp/}
 ```
 
 | Endpoint | |
@@ -40,14 +40,14 @@ its own). It contains secrets (API keys, upstream headers), so it is only served
 ## Data plane
 
 ```yaml
-version: 9
+version: 10
 port: 4000
 controlPlane:
   role: data
   url: https://cp.internal:4000
-  token: ${OPERATOR_KEY}     # an operator API key of the control plane
-  pullIntervalMs: 10000      # default; min 1000
-  nodeId: dp-eu-1            # default: <hostname>-<random>
+  token: ${OPERATOR_KEY} # an operator API key of the control plane
+  pullIntervalMs: 10000 # default; min 1000
+  nodeId: dp-eu-1 # default: <hostname>-<random>
 ```
 
 - **Fail closed:** until the first config has been pulled and applied, every route except `/`, `/api/v1/health`,

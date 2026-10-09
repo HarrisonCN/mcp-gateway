@@ -5,15 +5,16 @@ and the agent can do everything the user can. `agentIdentity` gives every agent 
 **delegate** a narrow, short-lived slice of their access to it (OAuth 2.0 token exchange, RFC 8693 `act` semantics).
 
 ```yaml
-agentIdentity:
-  signingKey: ${AGENT_TOKEN_KEY}     # HMAC-SHA256 key, ≥ 32 characters
-  issuer: mcp-gateway
-  tokenTtlSeconds: 900               # default and maximum token lifetime
-  maxDelegationDepth: 2              # agent → sub-agent chains
-  requireAgentFor: ["payments/*"]    # these tools only accept agent tokens (-32019 otherwise)
-  agents:
-    - { id: travel-bot, name: Travel bot, tools: ["flights/*", "hotels/search"], delegators: ["jwt:*"] }
-    - { id: booker, tools: ["flights/book", "payments/*"] }
+features:
+  agentIdentity:
+    signingKey: ${AGENT_TOKEN_KEY} # HMAC-SHA256 key, ≥ 32 characters
+    issuer: mcp-gateway
+    tokenTtlSeconds: 900 # default and maximum token lifetime
+    maxDelegationDepth: 2 # agent → sub-agent chains
+    requireAgentFor: ["payments/*"] # these tools only accept agent tokens (-32019 otherwise)
+    agents:
+      - {id: travel-bot, name: Travel bot, tools: ["flights/*", "hotels/search"], delegators: ["jwt:*"]}
+      - {id: booker, tools: ["flights/book", "payments/*"]}
 ```
 
 ## Flow

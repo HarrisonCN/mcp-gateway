@@ -5,15 +5,16 @@ The [plugin marketplace](plugins.md) (5.4) distributed signed artifacts and the 
 reviews, and verified publishers.
 
 ```yaml
-version: 9
-ecosystem:
-  file: ./data/ecosystem.json
-  autoApproveVerified: false
-  publishers:
-    - id: acme
-      name: ACME Corp
-      domain: acme.example
-      keyIds: [acme-2026]
+version: 10
+features:
+  ecosystem:
+    file: ./data/ecosystem.json
+    autoApproveVerified: false
+    publishers:
+      - id: acme
+        name: ACME Corp
+        domain: acme.example
+        keyIds: [acme-2026]
 ```
 
 ## Listings and review

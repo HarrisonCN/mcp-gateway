@@ -3,13 +3,13 @@
 `store.backend: eventlog` makes a **single-instance** gateway keep its shared state across restarts without Redis.
 
 ```yaml
-version: 9
+version: 10
 store:
   backend: eventlog
   eventlog:
-    dir: .mcp-gateway/store    # relative to the config file (default)
-    snapshotEvery: 10000       # events between snapshots (default 10 000)
-    fsync: false               # fsync every append (default false)
+    dir: .mcp-gateway/store # relative to the config file (default)
+    snapshotEvery: 10000 # events between snapshots (default 10 000)
+    fsync: false # fsync every append (default false)
   failureMode: open
 ```
 

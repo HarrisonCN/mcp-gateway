@@ -5,17 +5,18 @@ post-quantum key exchange protects it now. 9.7 makes the gateway's upstream HTTP
 **X25519MLKEM768** (X25519 combined with ML-KEM-768, FIPS 203 — the hybrid used by browsers and major CDNs).
 
 ```yaml
-version: 9
-postQuantumTls:
-  mode: prefer                    # prefer | require | off
-  groups: [X25519MLKEM768]
-  classicalGroups: [X25519, P-256]
-  servers: ["*"]                  # HTTPS upstreams (server id globs)
-  certificatePolicy:
-    allowedKeyTypes: [ec, ed25519, ed448, rsa, rsa-pss, ml-dsa]
-    minRsaBits: 3072
-    maxValidityDays: 398
-    rejectSha1: true
+version: 10
+features:
+  postQuantumTls:
+    mode: prefer # prefer | require | off
+    groups: [X25519MLKEM768]
+    classicalGroups: [X25519, P-256]
+    servers: ["*"] # HTTPS upstreams (server id globs)
+    certificatePolicy:
+      allowedKeyTypes: [ec, ed25519, ed448, rsa, rsa-pss, ml-dsa]
+      minRsaBits: 3072
+      maxValidityDays: 398
+      rejectSha1: true
 ```
 
 ## Requirements
