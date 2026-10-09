@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Ecosystem marketplace GA (9.8). */
+  ecosystem?: import('../features/ecosystem.js').EcosystemConfig;
   /** Post-quantum TLS (9.7). */
   postQuantumTls?: import('../features/pq-tls.js').PqTlsConfig;
   /** Self-healing (9.6). */

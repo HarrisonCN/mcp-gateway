@@ -586,6 +586,12 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v9.8
+
+| Feature | |
+|---------|---|
+| **Ecosystem marketplace GA** | Moderated plugin / tool catalogue: review queue, ratings and reviews, verified publishers — [guide](docs/guides/ecosystem.md) |
+
 ## What's New in v9.7
 
 | Feature | |

@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '9.7.0';
+  const VERSION = '9.8.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -77,6 +77,7 @@
     { id: "sla", since: "9.5.0", summary: "SLA monitoring: availability / p95 latency objectives per server and tenant, error budgets, breaches and service-credit reports" },
     { id: "self-healing", since: "9.6.0", summary: "Self-healing: eject / fail over, roll back or throttle unhealthy upstreams automatically, lifted after a cool-down" },
     { id: "pq-tls", since: "9.7.0", summary: "Post-quantum TLS: hybrid X25519MLKEM768 key exchange for upstream HTTPS, PQ handshake probes and a certificate policy" },
+    { id: "ecosystem", since: "9.8.0", summary: "Ecosystem marketplace GA: moderated catalogue of plugins and tools, ratings and reviews, verified publishers" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -770,6 +771,14 @@
       { id: 'search', url: 'https://search.internal:8443/mcp', lastProbe: { server: 'search', host: 'search.internal', port: 8443, pq: true, pqError: null, protocol: 'TLSv1.3', classicalGroup: 'X25519', certificate: { subject: 'CN=search.internal', keyType: 'ec', bits: null, signature: null, validTo: new Date(Date.now() + 80 * 86400000).toISOString(), validityDays: 90 }, violations: [], at: new Date(Date.now() - 600000).toISOString() } },
       { id: 'postgres', url: 'https://pg-mcp.internal/mcp', lastProbe: { server: 'postgres', host: 'pg-mcp.internal', port: 443, pq: false, pqError: 'ssl/tls alert handshake failure', protocol: 'TLSv1.3', classicalGroup: 'X25519', certificate: { subject: 'CN=pg-mcp.internal', keyType: 'rsa', bits: 2048, signature: null, validTo: new Date(Date.now() + 300 * 86400000).toISOString(), validityDays: 365 }, violations: ['RSA key of 2048 bits < 3072'], at: new Date(Date.now() - 600000).toISOString() } },
     ] });
+    // 9.8: ecosystem marketplace GA.
+    if (p === '/admin/ecosystem') return json({ enabled: true, stats: { listings: 42, pending: 2, approved: 37, rejected: 3, reviews: 518 }, queue: [
+      { id: 'acme.pii-guard@2.0.0', name: 'pii-guard', version: '2.0.0', kind: 'plugin', publisher: { id: 'acme', name: 'ACME Corp', verified: true }, submittedBy: 'key:acme-ci', submittedAt: new Date(Date.now() - 3600000).toISOString() },
+      { id: 'indie.weather@0.3.1', name: 'weather', version: '0.3.1', kind: 'wasm-tool', publisher: { id: 'indie', name: 'indie', verified: false }, submittedBy: 'key:indie', submittedAt: new Date(Date.now() - 600000).toISOString() },
+    ], publishers: [
+      { id: 'acme', name: 'ACME Corp', domain: 'acme.example', keyIds: ['acme-2026'], verified: true, verifiedAt: new Date(Date.now() - 86400000 * 12).toISOString() },
+      { id: 'globex', name: 'Globex', domain: 'globex.example', keyIds: ['gx-1'], verified: false, verifiedAt: null },
+    ], listings: [] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 9.0: nothing is deprecated (schema v8 and the `state` block were removed).
     if (p === '/admin/deprecations') return json({ runtime: [], config: [] });
