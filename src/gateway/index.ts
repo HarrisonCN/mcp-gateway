@@ -143,7 +143,7 @@ export class Gateway {
     private readonly options: GatewayOptions = {},
   ) {
     this.registry = new ServerRegistry(config.health?.intervalMs ?? 30_000);
-    this.proxy = new McpProxy();
+    this.proxy = new McpProxy({ stdio: () => ({ envPassthrough: this.config.security?.stdioEnvPassthrough, baseDir: this.config.configDir }) });
     this.metrics = new MetricsCollector(config.monitor);
     this.portal = new PortalStore(() => this.config.portal, {
       baseDir: () => this.config.configDir,
@@ -731,6 +731,10 @@ export class Gateway {
         logger.warn('Config "monitor.retentionHours" changed — restart required for it to take effect');
       }
 
+      // 12.0: transactional reload — any failure below restores the previous config (router, policy, mcp, cors,
+      // security, logging, feature sections) and rethrows; servers already reconnected keep running.
+      const prevConfig = this.config;
+      try {
       // Router-level settings (auth may be rejected and kept; the router logs that).
       this.router?.update(this.withPortalKeys(next));
       if (!same(this.config.auth, next.auth)) {
@@ -862,8 +866,30 @@ export class Gateway {
           (applied.length ? `; updated ${applied.join(', ')}` : ''),
       );
       await this.plugins.configChanged({ applied, servers: (next.servers ?? []).map((x) => x.id), at: new Date().toISOString() });
+      } catch (err) {
+        this.rollbacks++;
+        logger.error(`Hot reload failed, rolled back to the previous config: ${err instanceof Error ? err.message : String(err)}`);
+        this.config = prevConfig;
+        try {
+          this.router?.update(this.withPortalKeys(prevConfig));
+          this.mcp?.update(prevConfig.mcp);
+          this.cors = corsMiddleware({ origins: this.corsOrigins(prevConfig) });
+          configureRedaction(prevConfig.security?.redactPatterns);
+          this.ipFilter = prevConfig.security?.ipAllowlist ? ipAllowlistMiddleware(prevConfig.security.ipAllowlist) : undefined;
+          this.supervisor.setReconnectDefaults(prevConfig.reconnect);
+          if (prevConfig.logLevel) logger.setLevel(prevConfig.logLevel);
+          this.invoker?.refreshPolicy();
+          this.mcp?.refreshClients();
+        } catch (e) {
+          logger.error(`Rollback incomplete: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        throw err;
+      }
     });
   }
+
+  /** Hot reloads rolled back after a failure (12.0). */
+  rollbacks = 0;
 
   /** `auth.apiKeys` plus the active developer-portal keys (3.8). */
   private withPortalKeys(cfg: GatewayConfig): GatewayConfig {

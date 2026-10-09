@@ -6,6 +6,7 @@
  * @module security/posture
  */
 
+import { secretLikePassthrough } from '../transport/isolation.js';
 import { isIP } from 'net';
 import type { GatewayConfig } from '../utils/types.js';
 import { normalizeApiKeys, isHashedKey, keyExpiry } from '../auth/middleware.js';
@@ -112,6 +113,16 @@ export function securityWarnings(config: GatewayConfig, now = Date.now()): Secur
   const loopback = isLoopbackHost(config.host ?? '0.0.0.0');
   const sec = config.security ?? {};
 
+  {
+    // 12.0: secrets passed through to third-party stdio servers on purpose.
+    const flagged = [
+      ...secretLikePassthrough(sec.stdioEnvPassthrough).map((n) => `security.stdioEnvPassthrough: ${n}`),
+      ...(config.servers ?? []).flatMap((s) => secretLikePassthrough(s.envPassthrough).map((n) => `servers.${s.id}.envPassthrough: ${n}`)),
+    ];
+    if (flagged.length) {
+      add('stdio-secret-passthrough', `Credential-like variables are passed through to stdio MCP servers (third-party code): ${flagged.join(', ')}. Prefer a dedicated, narrowly scoped credential in the server's explicit env.`);
+    }
+  }
   if (config.agentIdentity && (config.state?.store ?? 'memory') === 'memory') {
     add(
       'agent-revocation-in-memory',

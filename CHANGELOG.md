@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [12.0.0] - 2026-10-09
+
+**Breaking security release.** Third-party stdio MCP servers are isolated from the gateway core — environment
+allowlist, optional uid/gid, working directory and sandbox wrapper with networking off — multimodal per-item limits
+are lower, and hot reload is transactional. Config schema stays **v11** (no `migrate` needed). Guide:
+[Migrating to 12.0](docs/guides/migrating-to-v12.md). 10.x stays LTS.
+
+### Security
+- **P1 — child-process environment inheritance too broad (credential exposure to third-party MCP servers).** stdio
+  servers inherited the gateway's whole environment except `MCP_GATEWAY_*`, so `AWS_SECRET_ACCESS_KEY`,
+  `OPENAI_API_KEY`, database URLs etc. reached every upstream server. 12.0 replaces the exclusion policy with an
+  **allowlist**: `PATH`, `HOME`, `LANG`/`LANGUAGE`/`LC_*`, `TZ`, `TMPDIR`, `TERM` (+ `SystemRoot`, `ComSpec`, `PATHEXT`,
+  `TEMP`/`TMP`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `windir` on Windows), then `security.stdioEnvPassthrough`,
+  the server's `envPassthrough`, then its explicit `env`. Credential-looking passthrough is flagged by the posture
+  check (`stdio-secret-passthrough`).
+
+### Breaking
+- stdio environment allowlist (above). Servers that relied on inherited variables need `env` / `envPassthrough`.
+- Multimodal defaults: `maxItemBytes` 10 MiB → 4 MiB, `maxTotalBytes` 32 MiB → 16 MiB.
+- Hot reload is transactional: a failure while applying a config (catalog, plugins, mTLS, …) restores the previous
+  config and rejects the reload (`POST /admin/config` fails) instead of leaving it half-applied.
+- `GET /admin/kernel` `line: 12.x`; `RELEASE_LINE` = `{ line: '12.x', lts: false }`.
+
+### Added
+- `servers[].isolation`: `uid` / `gid` (POSIX), `cwd`, `sandbox: { type: bubblewrap | firejail | container | custom,
+  network: none | host, writable, readable, image, runtime, command }` — see
+  [Isolating stdio MCP servers](docs/security/stdio-isolation.md). `servers[].envPassthrough`,
+  `security.stdioEnvPassthrough`. Exports from `transport/isolation`: `childEnv`, `planSpawn`.
+- `bench/kernel.mjs`: cold start time, RSS / heap and evaluated feature modules of the built gateway (module-load
+  tracing); CI compares against the recorded `bench/baseline.json` (gross-regression guard only).
+- CI tests: 500 concurrent tool calls (scoped + unscoped, exact 403 count), multimodal memory pressure
+  (300 × 1 MiB, held bytes within budget), hot-reload rollback. `Gateway.rollbacks` counter.
+
+### Not in 12.0
+- Feature modules are still evaluated at startup (the config loader imports their schemas); on-demand `import()`
+  loading with a module lifecycle lands in 13.0. Baseline: 47 / 47 feature modules evaluated, ~1.07 s import.
+
 ## [11.2.0] - 2026-10-09
 
 **Security release.** Multimodal blobs are bound to their owner and capped by byte budgets, and agent-token

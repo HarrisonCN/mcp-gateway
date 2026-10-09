@@ -19,7 +19,7 @@ import { VERSION } from '../utils/version.js';
 /** Config schema version read by this release line. */
 export const CONFIG_SCHEMA_VERSION = 11;
 
-/** Long-term support of the 10.x line (11.x is the current, non-LTS line; 10.x keeps its LTS dates). */
+/** Long-term support of the 10.x line (12.x is the current, non-LTS line; 10.x keeps its LTS dates). */
 export const LTS = {
   line: '10.x',
   codename: 'Kernel',
@@ -30,8 +30,8 @@ export const LTS = {
   maintenanceUntil: '2028-10-31',
 } as const;
 
-/** Current release line (11.0). */
-export const RELEASE_LINE = { line: '11.x', lts: false } as const;
+/** Current release line (12.0). */
+export const RELEASE_LINE = { line: '12.x', lts: false } as const;
 
 /** LTS status of the 10.x line on a date. */
 export function ltsStatus(now = new Date()): 'active' | 'maintenance' | 'end-of-life' {

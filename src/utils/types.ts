@@ -61,8 +61,12 @@ export interface McpServerConfig {
   subprotocol?: string;
   /** Per-server overrides for automatic reconnect */
   reconnect?: Partial<ReconnectConfig>;
-  /** Environment variables to pass to the server process */
+  /** Environment variables to pass to the server process (explicit values; `${VAR}` expanded) */
   env?: Record<string, string>;
+  /** 12.0: variables (names or `PREFIX_*` globs) copied from the gateway's environment, on top of the minimal allowlist */
+  envPassthrough?: string[];
+  /** 12.0: run the stdio server as another uid/gid, in a fixed working directory and/or inside a sandbox wrapper */
+  isolation?: import('../transport/isolation.js').IsolationConfig;
   /** Tags for grouping and filtering */
   tags?: string[];
   /** Whether this server is enabled */
@@ -533,6 +537,8 @@ export interface SecurityConfig {
   maxBodyBytes?: number;
   /** Maximum size of a tool call's / prompt's `arguments` as JSON, in bytes (default 0 = no limit). */
   maxToolArgumentsBytes?: number;
+  /** 12.0: extra variables (names or `PREFIX_*` globs) every stdio server inherits on top of the minimal allowlist. */
+  stdioEnvPassthrough?: string[];
   /** 10.3: allow auth off on a non-loopback bind address (`start --insecure`). */
   insecure?: boolean;
   /** Lock out IPs after repeated authentication failures (off unless set; `true` = defaults). */

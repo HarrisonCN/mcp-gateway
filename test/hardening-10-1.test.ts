@@ -12,8 +12,8 @@ logger.setLevel('error');
 const fixture = fileURLToPath(new URL('./fixtures/fake-mcp-server.mjs', import.meta.url));
 
 describe('stdio upstream environment (env leakage)', () => {
-  it('drops the gateway MCP_GATEWAY_* secrets but keeps the rest and explicit env', () => {
-    const env = childEnv({ PATH: '/bin', HOME: '/h', MCP_GATEWAY_ADMIN_KEY: 'adm', MCP_GATEWAY_API_KEYS: 'k1,k2', mcp_gateway_key: 'x' }, { FOO: 'bar', MCP_GATEWAY_URL: 'http://gw' });
+  it('drops the gateway MCP_GATEWAY_* secrets (12.0: allowlist) and keeps explicit env', () => {
+    const env = childEnv({ PATH: '/bin', HOME: '/h', MCP_GATEWAY_ADMIN_KEY: 'adm', MCP_GATEWAY_API_KEYS: 'k1,k2', mcp_gateway_key: 'x', OTHER: 'o' }, { FOO: 'bar', MCP_GATEWAY_URL: 'http://gw' }, [], 'linux');
     expect(env).toEqual({ PATH: '/bin', HOME: '/h', FOO: 'bar', MCP_GATEWAY_URL: 'http://gw' });
   });
 
@@ -28,7 +28,7 @@ describe('stdio upstream environment (env leakage)', () => {
       const params = await got;
       await ch.close();
       expect(params.admin).toBeNull();
-      expect(params.visible).toBe('yes');
+      expect(params.visible).toBeNull(); // 12.0: not on the allowlist
       // Arguments reach the child verbatim (no shell interpretation).
       expect(params.arg).toBe('$(touch /tmp/mgw-pwned); `id`');
     } finally {

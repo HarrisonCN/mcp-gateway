@@ -1,0 +1,24 @@
+{
+  "node": "v22.23.3",
+  "platform": "linux-arm64",
+  "runs": 3,
+  "profiles": {
+    "minimal": {
+      "importMs": 1066.7,
+      "startMs": 15.7,
+      "totalMs": 1081.2,
+      "rssMb": 58.7,
+      "heapMb": 23.3,
+      "featureModules": 47
+    },
+    "all": {
+      "importMs": 1080.2,
+      "startMs": 46.4,
+      "totalMs": 1126.7,
+      "rssMb": 63.4,
+      "heapMb": 24,
+      "featureModules": 47
+    }
+  },
+  "recordedAt": "2026-10-09T19:41:26.471Z"
+}

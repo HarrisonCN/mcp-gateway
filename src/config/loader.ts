@@ -108,6 +108,31 @@ const McpServerSchema = z.object({
   args: z.array(z.string()).optional(),
   url: z.string().url().optional(),
   env: z.record(z.string()).optional(),
+  envPassthrough: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*\*?$/, 'an environment variable name or PREFIX_* glob')).optional(),
+  isolation: z
+    .object({
+      uid: z.number().int().min(0).optional(),
+      gid: z.number().int().min(0).optional(),
+      cwd: z.string().min(1).optional(),
+      sandbox: z
+        .object({
+          type: z.enum(['bubblewrap', 'firejail', 'container', 'custom']),
+          network: z.enum(['none', 'host']).default('none'),
+          writable: z.array(z.string().min(1)).optional(),
+          readable: z.array(z.string().min(1)).optional(),
+          image: z.string().min(1).optional(),
+          runtime: z.string().min(1).optional(),
+          command: z.array(z.string()).min(1).optional(),
+        })
+        .strict()
+        .superRefine((s, ctx) => {
+          if (s.type === 'container' && !s.image) ctx.addIssue({ code: 'custom', path: ['image'], message: 'image is required for sandbox type "container"' });
+          if (s.type === 'custom' && !s.command?.some((t) => t.includes('{command}'))) ctx.addIssue({ code: 'custom', path: ['command'], message: 'a custom sandbox command must contain "{command}"' });
+        })
+        .optional(),
+    })
+    .strict()
+    .optional(),
   headers: z.record(z.string()).optional(),
   subprotocol: z.string().optional(),
   reconnect: ReconnectSchema.optional(),
@@ -320,6 +345,7 @@ const SecuritySchema = z
     insecure: z.boolean().optional(),
     maxBodyBytes: z.number().int().min(1024).default(10 * 1024 * 1024),
     maxToolArgumentsBytes: z.number().int().min(0).default(0),
+    stdioEnvPassthrough: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*\*?$/, 'an environment variable name or PREFIX_* glob')).optional(),
     authLockout: z.union([z.boolean(), LockoutSchema]).optional(),
     redactPatterns: z
       .array(z.string().min(1))
