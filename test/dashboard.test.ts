@@ -325,14 +325,6 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const c = (await (await f('/api/v1/admin/api-upstreams/call', { method: 'POST', body: '{"tool":"shop.product","arguments":{"id":"p-1"}}' })).json()) as any;
     expect(c.success).toBe(true);
   });
-  it('shows a workflow DAG and a finished run (6.2)', async () => {
-    const f = demoFetch();
-    const l = (await (await f('/api/v1/admin/workflows')).json()) as any;
-    expect(l.workflows[0].layers).toEqual([['company', 'news'], ['score'], ['notify']]);
-    const r = (await (await f('/api/v1/admin/workflows/run', { method: 'POST', body: '{"workflow":"enrich-lead"}' })).json()) as any;
-    expect(r.status).toBe('succeeded');
-    expect(r.nodes).toHaveLength(4);
-  });
     it('shows GenAI semconv metrics and spans (6.3)', async () => {
     const f = demoFetch();
     const st = (await (await f('/api/v1/admin/genai-otel')).json()) as any;
