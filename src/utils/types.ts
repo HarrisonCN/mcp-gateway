@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Edge WASM runtime 2.0 (9.2). */
+  edgeRuntime?: import('../features/edge-runtime.js').EdgeRuntimeConfig;
   /** Multimodal tools (9.1). */
   multimodal?: import('../features/multimodal.js').MultimodalConfig;
   /** Chaos testing (8.8). */

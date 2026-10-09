@@ -466,6 +466,11 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(m.policy.allowedTypes).toEqual(['image/*', 'audio/*']);
     expect(m.blobs.map((b: any) => b.mimeType)).toEqual(['image/png', 'audio/mpeg']);
   });
+  it('lists the edge WASM tools (9.2)', async () => {
+    const f = demoFetch();
+    const e = (await (await f('/api/v1/admin/edge-runtime')).json()) as any;
+    expect(e.tools.map((t: any) => `${t.name}:${t.pinned}`)).toEqual(['geo-lookup:true', 'markdown-to-html:false']);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

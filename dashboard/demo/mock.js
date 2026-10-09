@@ -71,6 +71,7 @@
     { id: "config-assistant", since: "8.7.0", summary: "Natural-language config assistant: plain-words changes \u2192 validated config patch, diff (dry run), apply" },
     { id: "chaos", since: "8.8.0", summary: "Chaos testing: scheduled or on-demand latency / error / timeout / corruption injection with a steady-state guard" },
     { id: "multimodal", since: "9.1.0", summary: "Multimodal tools: content-type policy and size limits for image / audio / blob results, offloaded and streamed in chunks" },
+    { id: "edge-runtime", since: "9.2.0", summary: "Edge WASM runtime 2.0: WebAssembly tools with a warm instance pool, SHA-256 pins and per-tool time / memory / concurrency quotas" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -727,6 +728,11 @@
     if (p === '/admin/multimodal') return json({ enabled: true, policy: { enabled: true, allowedTypes: ['image/*', 'audio/*'], maxItemBytes: 10485760, maxTotalBytes: 33554432, onViolation: 'refuse', offloadAboveBytes: 262144, blobTtlSeconds: 600, maxBlobs: 256, servers: ['*'] }, stats: { results: 1840, items: 412, bytes: 96468992, refused: 3, stripped: 0, offloaded: 57 }, blobs: [
       { id: '6f0c2a9e-demo', mimeType: 'image/png', bytes: 1843200, serverId: 'browser', tool: 'screenshot', expiresAt: new Date(Date.now() + 420000).toISOString() },
       { id: '9b1d77c3-demo', mimeType: 'audio/mpeg', bytes: 3145728, serverId: 'speech', tool: 'synthesize', expiresAt: new Date(Date.now() + 180000).toISOString() },
+    ] });
+    // 9.2: edge WASM runtime 2.0.
+    if (p === '/admin/edge-runtime') return json({ enabled: true, tools: [
+      { name: 'geo-lookup', wasm: './tools/geo.wasm', export: 'run', sha256: '9f2c41d0b7e3a8c5f1e6d2b49a07c3e8d5f1a2b6c9e0d4f7a3b8c1e5d2f6a90b', pinned: true, loaded: true, error: null, limits: { timeoutMs: 50, memoryMb: 8, maxConcurrent: 4 }, pool: { warm: 2, idle: 2, busy: 0, started: 3 }, calls: 18422, errors: 2, coldStarts: 1, latencyMs: { p50: 1, max: 21 } },
+      { name: 'markdown-to-html', wasm: './tools/md.wasm', export: 'run', sha256: '1c7e9a2f4b8d0e6c3a5f7b9d1e2c4a6f8b0d2e4c6a8f0b2d4e6c8a0f2b4d6e8c', pinned: false, loaded: true, error: null, limits: { timeoutMs: 100, memoryMb: 16, maxConcurrent: 4 }, pool: { warm: 1, idle: 1, busy: 0, started: 1 }, calls: 640, errors: 0, coldStarts: 0, latencyMs: { p50: 2, max: 9 } },
     ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 9.0: nothing is deprecated (schema v8 and the `state` block were removed).

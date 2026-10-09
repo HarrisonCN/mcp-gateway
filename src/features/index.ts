@@ -36,5 +36,6 @@ import './data-lineage.js';
 import './config-assistant.js';
 import './chaos.js';
 import './multimodal.js';
+import './edge-runtime.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';
