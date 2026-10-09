@@ -5,8 +5,8 @@
  * ```yaml
  * multimodal:
  *   allowedTypes: ["image/*", "audio/mpeg", "audio/wav"]   # MIME globs (default: image/* and audio/*)
- *   maxItemBytes: 10485760        # per content item (decoded); larger items are refused or dropped
- *   maxTotalBytes: 33554432       # per tool result
+ *   maxItemBytes: 4194304         # per content item (decoded); larger items are refused or dropped
+ *   maxTotalBytes: 16777216       # per tool result
  *   onViolation: refuse           # refuse (JSON-RPC -32022) | strip (drop the item, add a text note)
  *   offloadAboveBytes: 262144     # larger allowed items are kept by the gateway and streamed from a link
  *   blobTtlSeconds: 600
@@ -51,8 +51,8 @@ export const MultimodalSchema = z
   .object({
     enabled: z.boolean().default(true),
     allowedTypes: z.array(z.string().min(1)).default(['image/*', 'audio/*']),
-    maxItemBytes: z.number().int().min(1).default(10 * 1024 * 1024),
-    maxTotalBytes: z.number().int().min(1).default(32 * 1024 * 1024),
+    maxItemBytes: z.number().int().min(1).default(4 * 1024 * 1024), // 12.0: 10 MiB → 4 MiB
+    maxTotalBytes: z.number().int().min(1).default(16 * 1024 * 1024), // 12.0: 32 MiB → 16 MiB
     onViolation: z.enum(['refuse', 'strip']).default('refuse'),
     offloadAboveBytes: z.number().int().min(1).optional(),
     blobTtlSeconds: z.number().int().min(1).max(86_400).default(600),
