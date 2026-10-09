@@ -54,6 +54,8 @@ import { TimeTravelSchema } from '../features/time-travel.js';
 import { RealtimeBudgetsSchema } from '../features/realtime-budgets.js';
 import { TaskGraphsSchema } from '../features/task-graphs.js';
 import { EdgeAutonomySchema } from '../features/edge-autonomy.js';
+import { PrivacySchema } from '../features/privacy.js';
+import { PqIdentitySchema } from '../features/pq-identity.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
@@ -538,6 +540,9 @@ const GatewayConfigSchema = z.object({
   // 10.7: durable cross-gateway task graphs; edge autonomy (EXPERIMENTAL)
   taskGraphs: TaskGraphsSchema.optional(),
   edgeAutonomy: EdgeAutonomySchema.optional(),
+  // 10.8 (EXPERIMENTAL): differential privacy / federated query; post-quantum (ML-DSA hybrid) identity
+  privacy: PrivacySchema.optional(),
+  pqIdentity: PqIdentitySchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   audit: z

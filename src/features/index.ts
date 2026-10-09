@@ -48,6 +48,8 @@ import './time-travel.js';
 import './realtime-budgets.js';
 import './task-graphs.js';
 import './edge-autonomy.js';
+import './privacy.js';
+import './pq-identity.js';
 import './kernel.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

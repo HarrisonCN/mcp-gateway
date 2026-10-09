@@ -69,6 +69,28 @@ export function experimentalFeatureWarnings(config: GatewayConfig): SecurityWarn
         'OpenSSL 3.5+.',
     });
   }
+  if (config.privacy) {
+    out.push({
+      id: 'experimental-privacy',
+      level: 'info',
+      message:
+        'features.privacy is EXPERIMENTAL. Verified: protected tools only answer Laplace-noised aggregates (count / sum / mean / histogram) ' +
+        'with clamping to caller-given bounds and a per-client epsilon budget; federated queries combine noisy partial results. NOT verified: ' +
+        'that each person contributes at most one row (the DP guarantee depends on it), floating-point side channels of Laplace sampling ' +
+        '(outputs are rounded, not snapped), and budgets survive no restart.',
+    });
+  }
+  if (config.pqIdentity || (config.pluginTrust as { keys?: Array<{ mldsa?: unknown }>; requirePostQuantum?: boolean } | undefined)?.keys?.some((k) => k.mldsa) || (config.pluginTrust as { requirePostQuantum?: boolean } | undefined)?.requirePostQuantum) {
+    out.push({
+      id: 'experimental-pq-identity',
+      level: 'info',
+      message:
+        'Post-quantum identity (features.pqIdentity / ML-DSA plugin signatures) is EXPERIMENTAL. Verified: Ed25519 + ML-DSA (FIPS 204) hybrid ' +
+        'signatures, both must verify; ML-DSA from node:crypto when the runtime has it (self-tested) else @noble/post-quantum (not ' +
+        'independently audited). NOT provided: X.509 hybrid certificates (the identity document is signed JSON), key rotation / revocation, ' +
+        'HSM-held keys.',
+    });
+  }
   if (config.edgeAutonomy) {
     out.push({
       id: 'experimental-edge-autonomy',

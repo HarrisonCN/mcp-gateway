@@ -46,6 +46,7 @@
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
+    "@noble/post-quantum": "0.7.1",
     "commander": "^12.1.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",

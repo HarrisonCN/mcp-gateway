@@ -163,6 +163,10 @@ export interface GatewayConfig {
   taskGraphs?: import('../features/task-graphs.js').TaskGraphsConfig;
   /** Edge autonomy, EXPERIMENTAL (10.7). */
   edgeAutonomy?: import('../features/edge-autonomy.js').EdgeAutonomyConfig;
+  /** Privacy computing, EXPERIMENTAL (10.8). */
+  privacy?: import('../features/privacy.js').PrivacyConfig;
+  /** Post-quantum identity, EXPERIMENTAL (10.8). */
+  pqIdentity?: import('../features/pq-identity.js').PqIdentityConfig;
   /** Post-quantum TLS (9.7). */
   postQuantumTls?: import('../features/pq-tls.js').PqTlsConfig;
   /** Self-healing (9.6). */
