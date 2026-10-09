@@ -196,6 +196,8 @@ export { ChaosSchema, ERR_CHAOS_INJECTED } from './features/chaos.js';
 export type { ChaosConfig } from './features/chaos.js';
 export { MultimodalSchema, ERR_MEDIA_REFUSED, applyMultimodal } from './features/multimodal.js';
 export type { MultimodalConfig } from './features/multimodal.js';
+export { EdgeRuntimeSchema, ERR_EDGE_RUNTIME, callEdgeTool } from './features/edge-runtime.js';
+export type { EdgeRuntimeConfig } from './features/edge-runtime.js';
 export type {
   GatewayConfig,
   McpServerConfig,

@@ -501,6 +501,9 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/multimodal` | Multimodal policy, counters (items, bytes, refused, stripped, offloaded) and held blobs (9.1) |
 | `DELETE` | `/admin/multimodal/blobs` | Drop every held blob (9.1) |
 | `GET` | `/features/multimodal/blobs/:id` | Stream an offloaded blob (any authenticated client; `Range` supported) (9.1) |
+| `GET` | `/admin/edge-runtime` | Edge WASM tools: pin status, pool (idle / busy / started), calls, errors, cold starts, latency (9.2) |
+| `POST` | `/admin/edge-runtime/reload` | Re-read and re-pin every module; drops the pool (9.2) |
+| `GET` · `POST` | `/features/edge-runtime/tools` · `/features/edge-runtime/tools/:name/call` | List / call edge WASM tools `{ arguments }` (any authenticated client) (9.2) |
 
 ## Bridges
 
