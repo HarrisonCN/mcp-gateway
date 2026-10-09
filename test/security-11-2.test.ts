@@ -132,7 +132,7 @@ describe('multimodal budgets (11.2)', () => {
 describe('agent-token revocation store (11.2)', () => {
   const agentCfg = { signingKey: KEY, agents: [{ id: 'helper', tools: ['fake/*'], delegators: ['*'] }] };
   const base = (extra: Record<string, unknown>) =>
-    ({ port: 0, host: '127.0.0.1', logLevel: 'error', monitor: { requestLog: false }, servers: [fakeServer('fake')], auth: { strategy: 'api-key', apiKeys: ['op', { key: 'alice-key', name: 'alice' }] }, agentIdentity: agentCfg, ...extra }) as unknown as GatewayConfig;
+    ({ port: 0, host: '127.0.0.1', logLevel: 'error', monitor: { requestLog: false, prometheus: true }, servers: [fakeServer('fake')], auth: { strategy: 'api-key', apiKeys: ['op', { key: 'alice-key', name: 'alice' }] }, agentIdentity: agentCfg, ...extra }) as unknown as GatewayConfig;
   const boot = async (cfg: GatewayConfig) => {
     const g = new Gateway(cfg);
     await g.start();
@@ -187,8 +187,9 @@ describe('agent-token revocation store (11.2)', () => {
     expect(r.status).toBe(503);
     expect(r.body.message).toMatch(/revocation store unavailable/);
     expect(agentState.stats.deniedStoreUnavailable).toBeGreaterThan(0);
-    const m = await (await fetch(`${url}/api/v1/metrics/prometheus`, { headers: { authorization: 'Bearer op' } })).text().catch(() => '');
-    if (m.includes('mcp_gateway_')) expect(m).toMatch(/mcp_gateway_agent_revocation_store_errors_total [1-9]/);
+    const m = await (await fetch(`${url}/api/v1/metrics?format=prometheus`, { headers: { authorization: 'Bearer op', accept: 'text/plain' } })).text();
+    expect(m).toMatch(/mcp_gateway_agent_revocation_store_errors_total [1-9]/);
+    expect(m).toMatch(/mcp_gateway_agent_store_unavailable_total\{decision="deny"\} [1-9]/);
     const open = await boot(base({ ...dead, agentIdentity: { ...agentCfg, revocation: { failureMode: 'open' } } }));
     const t2 = await mint(open.url);
     expect((await call(open.url, t2.access_token)).status).toBe(200);
