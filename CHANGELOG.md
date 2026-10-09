@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.4.0] - 2026-10-09
+
+### Added
+- **Global tool registry** (`toolRegistry`): publish signed tool manifests (`publisher`, `name`, semver `version`,
+  `tools`, `server`) verified against `trustedPublishers` (Ed25519 / ECDSA / RSA); versions are immutable. Search
+  (`GET /api/v1/admin/tool-registry?q=`), version history, `…/:publisher/:name/resolve?range=` with ranges (`^`, `~`,
+  `1.2.x`, `>=`, `*`) and configured `pins`. Every gateway serves its registry at
+  `/api/v1/features/tool-registry/index.json`; `mirrors` pull other registries on a schedule (or
+  `POST …/tool-registry/sync`) and re-verify every signature. Optional `file` persistence.
+  [Guide](docs/guides/tool-registry.md).
+- Pages demo: tool registry.
+
 ## [9.3.0] - 2026-10-09
 
 ### Added

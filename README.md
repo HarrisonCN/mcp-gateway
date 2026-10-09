@@ -586,6 +586,12 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v9.4
+
+| Feature | |
+|---------|---|
+| **Global tool registry** | Signed, immutable tool manifests; search, cross-gateway mirrors and version pins — [guide](docs/guides/tool-registry.md) |
+
 ## What's New in v9.3
 
 | Feature | |
