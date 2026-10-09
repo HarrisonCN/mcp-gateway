@@ -48,18 +48,8 @@ import { jsonDiff } from '../gateway/replay.js';
 import { evaluatePolicy } from '../policy/tool-policy.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
-
-export const TimeTravelSchema = z
-  .object({
-    enabled: z.boolean().default(true),
-    dir: z.string().min(1).optional(),
-    retentionDays: z.number().int().min(1).max(3650).default(7),
-    maxEntries: z.number().int().min(100).max(1_000_000).default(20_000),
-    results: z.boolean().default(true),
-    maxBytes: z.number().int().min(256).max(1_048_576).default(16_384),
-  })
-  .strict();
-export type TimeTravelConfig = z.input<typeof TimeTravelSchema>;
+import { TimeTravelConfig, TimeTravelSchema } from './schemas/time-travel.js';
+export { TimeTravelConfig, TimeTravelSchema } from './schemas/time-travel.js';
 type Parsed = z.output<typeof TimeTravelSchema>;
 
 export interface ConfigEvent {

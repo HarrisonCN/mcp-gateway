@@ -34,26 +34,8 @@ import { setUpstreamTlsGroups } from '../security/mtls.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { logger } from '../utils/logger.js';
 import type { GatewayConfig } from '../utils/types.js';
-
-const GROUP = /^[A-Za-z0-9_-]+$/;
-export const PqTlsSchema = z
-  .object({
-    mode: z.enum(['off', 'prefer', 'require']).default('prefer'),
-    groups: z.array(z.string().regex(GROUP)).min(1).default(['X25519MLKEM768']),
-    classicalGroups: z.array(z.string().regex(GROUP)).default(['X25519', 'P-256']),
-    servers: z.array(z.string().min(1)).default(['*']),
-    certificatePolicy: z
-      .object({
-        minRsaBits: z.number().int().min(1024).default(3072),
-        allowedKeyTypes: z.array(z.enum(['ec', 'ed25519', 'ed448', 'rsa', 'rsa-pss', 'ml-dsa'])).default(['ec', 'ed25519', 'ed448', 'rsa', 'rsa-pss', 'ml-dsa']),
-        maxValidityDays: z.number().int().min(1).optional(),
-        rejectSha1: z.boolean().default(true),
-      })
-      .strict()
-      .default({}),
-  })
-  .strict();
-export type PqTlsConfig = z.input<typeof PqTlsSchema>;
+import { GROUP, PqTlsConfig, PqTlsSchema } from './schemas/pq-tls.js';
+export { PqTlsConfig, PqTlsSchema } from './schemas/pq-tls.js';
 type P = z.output<typeof PqTlsSchema>;
 
 /** Can this Node / OpenSSL negotiate the groups? */

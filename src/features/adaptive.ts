@@ -32,20 +32,8 @@ import { z } from 'zod';
 import { registerFeature, objectBody, badRequest, principalOf } from '../gateway/features.js';
 import { registerCallHook } from '../gateway/hooks.js';
 import type { GatewayConfig } from '../utils/types.js';
-
-const Candidate = z
-  .object({ id: z.string().min(1), server: z.string().min(1), tool: z.string().min(1), args: z.record(z.unknown()).default({}), costPerCall: z.number().min(0).default(0) })
-  .strict();
-const Pool = z
-  .object({
-    id: z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/),
-    objective: z.object({ quality: z.number().min(0).default(0.6), cost: z.number().min(0).default(0.3), latency: z.number().min(0).default(0.1) }).strict().default({}),
-    maxCostPerCall: z.number().min(0).optional(),
-    candidates: z.array(Candidate).min(1),
-  })
-  .strict();
-export const AdaptiveSchema = z.object({ pools: z.array(Pool).default([]) }).strict();
-export type AdaptiveConfig = z.input<typeof AdaptiveSchema>;
+import { AdaptiveConfig, AdaptiveSchema, Candidate, Pool } from './schemas/adaptive.js';
+export { AdaptiveConfig, AdaptiveSchema } from './schemas/adaptive.js';
 type PoolCfg = z.output<typeof Pool>;
 
 export interface CandidateStats {

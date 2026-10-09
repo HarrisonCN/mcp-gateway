@@ -26,18 +26,8 @@ import { registerCallHook } from '../gateway/hooks.js';
 import { priceCall, usageOf, type CostsConfig } from '../costs/index.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig, ToolInfo } from '../utils/types.js';
-
-export const CostAdvisorSchema = z
-  .object({
-    enabled: z.boolean().default(true),
-    windowMinutes: z.number().int().min(1).max(43_200).default(1440),
-    minCalls: z.number().int().min(1).default(20),
-    repeatThreshold: z.number().gt(0).max(1).default(0.3),
-    errorThreshold: z.number().gt(0).max(1).default(0.2),
-    maxObservations: z.number().int().min(100).max(1_000_000).default(50_000),
-  })
-  .strict();
-export type CostAdvisorConfig = z.input<typeof CostAdvisorSchema>;
+import { CostAdvisorConfig, CostAdvisorSchema } from './schemas/cost-advisor.js';
+export { CostAdvisorConfig, CostAdvisorSchema } from './schemas/cost-advisor.js';
 type Cfg = z.output<typeof CostAdvisorSchema>;
 
 export interface Observation {

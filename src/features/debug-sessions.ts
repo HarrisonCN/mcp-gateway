@@ -33,19 +33,8 @@ import { registerCallHook } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { redactValue } from '../security/redact.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
-
-/** JSON-RPC error: a call paused at a debug breakpoint was aborted or timed out (8.3). */
-export const ERR_DEBUG_ABORTED = -32020;
-
-export const DebugSessionsSchema = z
-  .object({
-    enabled: z.boolean().default(true),
-    maxSessions: z.number().int().min(1).max(100).default(10),
-    holdTimeoutSeconds: z.number().int().min(1).max(3600).default(60),
-    maxEvents: z.number().int().min(10).max(10_000).default(500),
-  })
-  .strict();
-export type DebugSessionsConfig = z.input<typeof DebugSessionsSchema>;
+import { DebugSessionsConfig, DebugSessionsSchema, ERR_DEBUG_ABORTED } from './schemas/debug-sessions.js';
+export { DebugSessionsConfig, DebugSessionsSchema, ERR_DEBUG_ABORTED } from './schemas/debug-sessions.js';
 type Cfg = z.output<typeof DebugSessionsSchema>;
 
 const Match = z.object({ servers: z.array(z.string()).optional(), tools: z.array(z.string()).optional(), clients: z.array(z.string()).optional() }).strict();

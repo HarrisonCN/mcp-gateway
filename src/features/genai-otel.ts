@@ -37,19 +37,8 @@ import { registerFeature } from '../gateway/features.js';
 import { registerCallHook, type HookCall } from '../gateway/hooks.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { VERSION } from '../utils/version.js';
-
-export const GenaiTelemetrySchema = z
-  .object({
-    enabled: z.boolean().default(true),
-    systems: z.record(z.string().min(1)).default({}),
-    modelArg: z.string().min(1).default('model'),
-    captureContent: z.boolean().default(false),
-    otlpEndpoint: z.string().url().optional(),
-    exportIntervalMs: z.number().int().min(1000).max(600_000).default(10_000),
-    serviceName: z.string().min(1).default('mcp-gateway'),
-  })
-  .strict();
-export type GenaiTelemetryConfig = z.input<typeof GenaiTelemetrySchema>;
+import { GenaiTelemetryConfig, GenaiTelemetrySchema } from './schemas/genai-otel.js';
+export { GenaiTelemetryConfig, GenaiTelemetrySchema } from './schemas/genai-otel.js';
 type Cfg = z.output<typeof GenaiTelemetrySchema>;
 
 /** Recommended explicit bucket boundaries (GenAI semconv). */

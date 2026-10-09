@@ -35,35 +35,8 @@ import { registerCallHook } from '../gateway/hooks.js';
 import { DETECTORS } from '../policy/compliance.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig } from '../utils/types.js';
-
-export const LEVELS = ['public', 'internal', 'confidential', 'restricted'] as const;
-export type Level = (typeof LEVELS)[number];
-export type Strategy = 'redact' | 'mask' | 'hash' | 'block';
-export const ERR_DLP_BLOCKED = -32013;
-
-const TenantPolicy = z.object({ clearance: z.enum(LEVELS).optional(), strategy: z.enum(['redact', 'mask', 'hash', 'block']).optional(), salt: z.string().optional() }).strict();
-export const DlpSchema = z
-  .object({
-    enabled: z.boolean().default(true),
-    scope: z.enum(['arguments', 'results', 'both']).default('results'),
-    servers: z.array(z.string()).optional(),
-    default: TenantPolicy.default({}),
-    tenants: z.record(TenantPolicy).default({}),
-    levels: z.record(z.enum(LEVELS)).default({}),
-    detectors: z
-      .array(
-        z
-          .object({
-            name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
-            pattern: z.string().min(1).refine((p) => { try { new RegExp(p); return true; } catch { return false; } }, 'invalid regular expression'),
-            level: z.enum(LEVELS).default('confidential'),
-          })
-          .strict(),
-      )
-      .default([]),
-  })
-  .strict();
-export type DlpConfig = z.input<typeof DlpSchema>;
+import { DlpConfig, DlpSchema, ERR_DLP_BLOCKED, LEVELS, Level, Strategy, TenantPolicy } from './schemas/dlp.js';
+export { DlpConfig, DlpSchema, ERR_DLP_BLOCKED, LEVELS, Level, Strategy } from './schemas/dlp.js';
 type Resolved = z.output<typeof DlpSchema>;
 
 /** Built-in category levels. */
