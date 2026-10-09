@@ -118,7 +118,7 @@ describe('ToolInvoker failover', () => {
       },
     };
     const inv = new ToolInvoker({ proxy: proxy as never, metrics: new MetricsCollector(), requestLog: () => false, balancer: lb(servers) });
-    const run = () => inv.invoke({ serverId: 'svc', name: 'echo', kind: 'tool', method: 'tools/call', params: {}, via: 'rest' });
+    const run = () => inv.invoke({ serverId: 'svc', name: 'echo', kind: 'tool', method: 'tools/call', params: {}, via: 'rest', principal: { kind: 'system', id: 'system:test' } });
     return { run, calls };
   }
   const ok = () => ({ success: true, durationMs: 1, result: 'ok' });

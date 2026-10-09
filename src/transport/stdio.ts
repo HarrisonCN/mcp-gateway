@@ -17,23 +17,16 @@ import { spawn, type ChildProcess } from 'child_process';
 import type { McpServerConfig } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { expandEnv, expandRecord, type ChannelOptions, type JsonRpcMessage, type UpstreamChannel } from './channel.js';
+import { childEnv } from './isolation.js';
 
 const MAX_BUFFER_CHARS = 16 * 1024 * 1024;
 
-/** Gateway-private environment variables (API keys, admin key, Redis URL, …) never inherited by upstream servers. */
-const PRIVATE_ENV = /^MCP_GATEWAY_/i;
-
 /**
- * Environment for a stdio upstream (10.1 hardening): the gateway's environment minus its own
- * `MCP_GATEWAY_*` secrets, plus the server's configured `env` (which may still pass any of them
- * explicitly, e.g. `env: { MCP_GATEWAY_URL: "${MCP_GATEWAY_URL}" }`). Upstream MCP servers are
- * third-party code and must not see the gateway's credentials by default.
+ * Environment for a stdio upstream: since 10.9.1 an allowlist (see transport/isolation) — the minimal
+ * `PATH` / `HOME` / locale / `TMPDIR` set, plus `security.stdioEnvPassthrough` and the server's `envPassthrough`,
+ * then its explicit `env`. Upstream MCP servers are third-party code and see none of the gateway's credentials.
  */
-export function childEnv(base: NodeJS.ProcessEnv, extra: Record<string, string>): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  for (const [k, v] of Object.entries(base)) if (!PRIVATE_ENV.test(k)) env[k] = v;
-  return { ...env, ...extra };
-}
+export { childEnv } from './isolation.js';
 
 export class StdioChannel implements UpstreamChannel {
   readonly kind = 'stdio';
@@ -57,7 +50,7 @@ export class StdioChannel implements UpstreamChannel {
 
     // ${VAR} is expanded in args too (the examples pass e.g. ${DATABASE_URL} as an argument).
     const proc = spawn(config.command, (config.args ?? []).map(expandEnv), {
-      env: childEnv(process.env, expandRecord(config.env)),
+      env: childEnv(process.env, expandRecord(config.env), [...(this.options.envPassthrough ?? []), ...(config.envPassthrough ?? [])]),
       shell: false, // never interpret command / args through a shell
       stdio: ['pipe', 'pipe', 'pipe'],
     });

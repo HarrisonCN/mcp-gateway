@@ -32,6 +32,49 @@ features:
 
 Tokens are compact HS256 JWS (`typ: agent+jwt`) with `iss`, `sub`, `act`, `agent`, `scope`, `iat`, `exp`, `jti`.
 
+## Authorization model (11.1)
+
+A delegation token never grants more than the client that requested it may call. The effective permission of every
+agent call is the intersection of
+
+1. the **original caller's current scope** — its API key `servers` / `tools` (re-resolved on every call; a removed key
+   may call nothing) or, for JWT / OAuth clients, the scope snapshot taken at issuance (`dsc` claim);
+2. its **tenant** confinement and write role (viewers cannot call tools);
+3. the **token grant** (agent `tools` ∩ requested `tools` ∩ parent token for sub-agents);
+4. the server's tool filter and the configured tool **policy**.
+
+The check runs in the gateway's single authorization point (`authorize()` in the invoker), the same one REST, `/mcp`,
+chains, task graphs and plugins use.
+
+**Strict narrowing.** A requested entry is granted only when it is (a) identical to an allowed pattern, (b) a literal
+`server/tool` an allowed pattern matches, or (c) any other glob, resolved to the concrete tools currently known that
+both match. `vault/read*` is therefore never granted from `vault/read?` — only the existing `vault/readX`-style tools.
+A restricted delegator's grant is always a list of concrete tool names.
+
+## Revocation (11.2)
+
+Revocations (`POST /api/v1/admin/agent-identity/revoke`) and issued-token records are stored in the gateway's shared
+state store with a TTL equal to the token's expiry, so a revoked token stays revoked across restarts and on every
+instance:
+
+| `store.backend` | Use |
+|---|---|
+| `redis` | several instances / Kubernetes |
+| `sqlite`, `eventlog` | one node, durable across restarts |
+| `memory` | development only (the gateway logs a posture notice) |
+
+```yaml
+features:
+  agentIdentity:
+    revocation:
+      failureMode: closed   # default: store unreachable → agent calls (and sub-token exchange, introspection) answer 503
+```
+
+`failureMode: open` accepts tokens while the store is down (answering from the local cache). Both cases are counted
+and logged at error level; alert on `mcp_gateway_agent_revocation_store_errors_total` and
+`mcp_gateway_agent_store_unavailable_total{decision}` (Prometheus, `monitor.prometheus: true`).
+`GET /api/v1/admin/agent-identity` reports `revocation: { store, failureMode, shared, … }`.
+
 ## Operators
 
 | | |

@@ -12,12 +12,13 @@ import { fileURLToPath } from 'url';
 import type { GatewayConfig, McpServerConfig, RequestMetric } from '../utils/types.js';
 import { ServerRegistry } from '../registry/index.js';
 import { McpProxy } from '../proxy/index.js';
-import { MetricsCollector } from '../monitor/index.js';
+import { MetricsCollector, registerMetricSource } from '../monitor/index.js';
 import { createApiRouter, serverStateSamples, type ApiRouter, type ToolCallResponse } from './api.js';
 import { createOpenAIRouter } from '../bridges/openai.js';
 import { createAdminRouter } from './admin.js';
 import { createEdgeControlRouter } from './edge-control.js';
-import { createFeatureRouter, featureSections } from './features.js';
+import { createFeatureRouter, featureSections, principalOf, clientIdOf } from './features.js';
+import { clientPrincipal, deniedPrincipal, systemPrincipal, type Principal } from '../auth/authorizer.js';
 import '../features/index.js';
 import { deprecate } from '../utils/deprecations.js';
 import { createA2ARouter } from '../bridges/a2a.js';
@@ -96,6 +97,12 @@ export class Gateway {
   private readonly featureStops: Array<() => void | Promise<void>> = [];
   /** 10.9: feature router (mounts modules that become active on reload). */
   private featureRouter?: import('express').Router & { sync?: () => string[] };
+
+  /** Current principal of a client id (11.1): api-key scope + tenants re-resolved; unknown or unresolvable ids may call nothing. */
+  principalFor(clientId: string | undefined): Principal {
+    const r = this.router?.resolveClient(clientId);
+    return r?.known ? clientPrincipal(clientId, r.scope) : deniedPrincipal(clientId);
+  }
   private readonly reloadLock = new Mutex();
   /** Developer portal keys (3.8). */
   readonly portal: PortalStore;
@@ -115,8 +122,8 @@ export class Gateway {
   /** 4.2: tool chains. */
   readonly chains = new ChainService({
     config: () => this.config.chains,
-    invoke: (serverId, name, params, clientId, via) =>
-      this.invoker!.invoke({ serverId, name, kind: 'tool', method: 'tools/call', params, clientId, via, timeoutMs: this.registry.getServer(serverId)?.timeout }),
+    invoke: (serverId, name, params, clientId, via, scope) =>
+      this.invoker!.invoke({ serverId, name, kind: 'tool', method: 'tools/call', params, clientId, principal: clientPrincipal(clientId, scope), via, timeoutMs: this.registry.getServer(serverId)?.timeout }),
   });
   private readonly plugins = new PluginHost({
     resolveSecret: (ref, plugin) => this.secrets.get(ref, { user: `plugin:${plugin}` }),
@@ -136,7 +143,7 @@ export class Gateway {
     private readonly options: GatewayOptions = {},
   ) {
     this.registry = new ServerRegistry(config.health?.intervalMs ?? 30_000);
-    this.proxy = new McpProxy();
+    this.proxy = new McpProxy({ stdio: () => ({ envPassthrough: this.config.security?.stdioEnvPassthrough }) });
     this.metrics = new MetricsCollector(config.monitor);
     this.portal = new PortalStore(() => this.config.portal, {
       baseDir: () => this.config.configDir,
@@ -214,6 +221,11 @@ export class Gateway {
 
     this.tracer = await createTracer(this.config.observability?.tracing);
     if (this.tracer.enabled) logger.info(`Tracing enabled (${this.config.observability?.tracing?.exporter ?? 'otlp-http'})`);
+    registerMetricSource('authz', () => [
+      '# HELP mcp_gateway_authz_denials_total Calls refused by the central authorizer',
+      '# TYPE mcp_gateway_authz_denials_total counter',
+      `mcp_gateway_authz_denials_total ${this.invoker?.authzDenials ?? 0}`,
+    ]);
     this.invoker = new ToolInvoker({
       proxy: this.proxy,
       metrics: this.metrics,
@@ -230,6 +242,7 @@ export class Gateway {
       serverConfig: (id) => this.registry.getServer(id),
       compliance: new ComplianceEngine(() => this.config.compliance),
       config: () => this.config,
+      exposed: (serverId, tool) => this.registry.isToolExposed(serverId, tool),
       federation: (this.federation = new Federation({
         config: () => this.config.federation,
         version: VERSION,
@@ -396,8 +409,11 @@ export class Gateway {
         context: {
           config: () => this.config,
           tools: () => this.registry.getAllTools(),
-          invoke: (serverId, name, args, clientId) =>
-            this.invoker!.invoke({ serverId, name, kind: 'tool', method: 'tools/call', params: args, clientId: clientId ?? 'feature', via: 'rest', timeoutMs: this.registry.getServer(serverId)?.timeout }),
+          invoke: (serverId, name, args, principal, clientId) =>
+            this.invoker!.invoke({ serverId, name, kind: 'tool', method: 'tools/call', params: args, clientId: clientId ?? principal?.id ?? 'feature', principal, via: 'rest', timeoutMs: this.registry.getServer(serverId)?.timeout }),
+          principalFor: (clientId) => this.principalFor(clientId),
+          store: () => this.stateStore,
+          resolveScope: (clientId) => this.router?.resolveClient(clientId),
           recent: (limit) => this.metrics.getRecent(limit),
           onlineServers: () => this.registry.getAllServers().filter((s) => this.registry.getHealth(s.id)?.status === 'online').map((s) => s.id),
           onStop: (fn) => void this.featureStops.push(fn),
@@ -421,8 +437,11 @@ export class Gateway {
     // 10.5: kernel plugin SDK routes.
     this.plugins.setRouteEnv({
       tools: () => this.registry.getAllTools().map((t) => ({ serverId: t.serverId, name: t.name, description: t.description })),
-      invoke: (serverId, name, args, clientId) =>
-        this.invoker!.invoke({ serverId, name, kind: 'tool', method: 'tools/call', params: args, clientId: clientId ?? 'plugin', via: 'rest', timeoutMs: this.registry.getServer(serverId)?.timeout }),
+      invoke: (serverId, name, args, caller, plugin) => {
+        const principal = caller === undefined ? systemPrincipal(`plugin:${plugin}`) : typeof caller === 'string' ? this.principalFor(caller) : principalOf(caller);
+        const clientId = typeof caller === 'string' ? caller : caller ? clientIdOf(caller) : `plugin:${plugin}`;
+        return this.invoker!.invoke({ serverId, name, kind: 'tool', method: 'tools/call', params: args, clientId, principal, via: 'rest', timeoutMs: this.registry.getServer(serverId)?.timeout });
+      },
     });
     const operatorGuard: express.RequestHandler = (req, res, next) =>
       this.router!.isOperator(req) ? next() : void res.status(403).json({ error: 'Forbidden', message: 'The admin API is for operators (unscoped keys)' });

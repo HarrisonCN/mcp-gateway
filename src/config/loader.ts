@@ -109,6 +109,7 @@ const McpServerSchema = z.object({
   args: z.array(z.string()).optional(),
   url: z.string().url().optional(),
   env: z.record(z.string()).optional(),
+  envPassthrough: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*\*?$/, 'an environment variable name or PREFIX_* glob')).optional(),
   headers: z.record(z.string()).optional(),
   subprotocol: z.string().optional(),
   reconnect: ReconnectSchema.optional(),
@@ -321,6 +322,7 @@ const SecuritySchema = z
     insecure: z.boolean().optional(),
     maxBodyBytes: z.number().int().min(1024).default(10 * 1024 * 1024),
     maxToolArgumentsBytes: z.number().int().min(0).default(0),
+    stdioEnvPassthrough: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*\*?$/, 'an environment variable name or PREFIX_* glob')).optional(),
     authLockout: z.union([z.boolean(), LockoutSchema]).optional(),
     redactPatterns: z
       .array(z.string().min(1))
@@ -986,7 +988,9 @@ const GatewayConfigSchema = z.object({
     .optional(),
   state: z
     .object({
-      store: z.enum(['memory', 'redis', 'eventlog']).default('memory'),
+      store: z.enum(['memory', 'redis', 'eventlog', 'sqlite']).default('memory'),
+      // 11.2: durable single-node store on node:sqlite.
+      sqlite: z.object({ path: z.string().min(1).default('.mcp-gateway/state.db') }).strict().optional(),
       // 9.0: event-sourced store (append-only log + snapshots).
       eventlog: z
         .object({

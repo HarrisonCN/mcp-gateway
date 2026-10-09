@@ -41,7 +41,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, unlin
 import { createHash } from 'crypto';
 import { join, resolve } from 'path';
 import { z } from 'zod';
-import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
+import { registerFeature, objectBody, badRequest, principalOf } from '../gateway/features.js';
 import { registerCallHook } from '../gateway/hooks.js';
 import { redactValue } from '../security/redact.js';
 import { jsonDiff } from '../gateway/replay.js';
@@ -435,7 +435,7 @@ registerFeature({
         if (execute) {
           if (c.argsTruncated || c.args === undefined) item.replay = { skipped: 'arguments were not journaled (truncated)' };
           else {
-            const r = await ctx.invoke(c.serverId, c.tool, c.args, `replay:${c.clientId ?? 'anonymous'}`);
+            const r = await ctx.invoke(c.serverId, c.tool, c.args, principalOf(req), `replay:${c.clientId ?? 'anonymous'}`);
             const now = r.success ? redactValue(r.result) : undefined;
             item.replay = {
               success: r.success,

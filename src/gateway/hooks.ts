@@ -18,6 +18,8 @@ export interface HookCall {
   /** First tenant of the caller, when tenants are configured. */
   tenant?: string;
   args: Record<string, unknown>;
+  /** Who the call is made for (11.1), already authorized by the central authorizer. */
+  principal?: import('../auth/authorizer.js').Principal;
 }
 
 /** `serverId` (7.5) routes the call to another upstream (operator-configured, e.g. a canary). `respond` (7.4) answers the call without the upstream (e.g. a cache hit); later `before` hooks are skipped, `after` hooks still run. */
