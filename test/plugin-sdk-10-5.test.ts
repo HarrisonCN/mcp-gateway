@@ -51,7 +51,7 @@ describe('kernel plugin SDK (10.5)', () => {
     await expect(host.beforeCall(call)).rejects.toThrow(/onToolCall timed out after 50 ms/);
     expect(Date.now() - t0).toBeLessThan(400);
     await host.close();
-    const base = { version: 10, servers: [] } as Record<string, unknown>;
+    const base = { version: 11, servers: [] } as Record<string, unknown>;
     expect(() => validateConfig({ ...base, plugins: [{ module: './x.mjs', timeoutMs: 100 }] })).not.toThrow();
     expect(() => validateConfig({ ...base, plugins: [{ component: './x.wasm', timeoutMs: 100 }] })).toThrow(/timeoutMs/);
   });

@@ -24,9 +24,9 @@ const call = async () => {
 
 describe('confidential computing / TEE (9.3)', () => {
   it('validates rules and canonicalises JSON', () => {
-    expect(() => validateConfig({ version: 10, servers: [], features: { confidential: { servers: [{ match: '*', measurements: [M], trustedKeys: ['nope'] }] } } })).toThrow(/not a PEM public key/);
-    expect(() => validateConfig({ version: 10, servers: [], features: { confidential: { servers: [{ match: '*', measurements: ['XYZ'], trustedKeys: [pem(vendor)] }] } } })).toThrow(/lower-case hex/);
-    expect(validateConfig({ version: 10, servers: [], features: { confidential: { servers: [{ match: 'pay-*', platforms: ['tdx'], measurements: [M], trustedKeys: [pem(vendor)] }] } } }).confidential).toBeDefined();
+    expect(() => validateConfig({ version: 11, servers: [], features: { confidential: { servers: [{ match: '*', measurements: [M], trustedKeys: ['nope'] }] } } })).toThrow(/not a PEM public key/);
+    expect(() => validateConfig({ version: 11, servers: [], features: { confidential: { servers: [{ match: '*', measurements: ['XYZ'], trustedKeys: [pem(vendor)] }] } } })).toThrow(/lower-case hex/);
+    expect(validateConfig({ version: 11, servers: [], features: { confidential: { servers: [{ match: 'pay-*', platforms: ['tdx'], measurements: [M], trustedKeys: [pem(vendor)] }] } } }).confidential).toBeDefined();
     expect(canonicalJson({ b: 1, a: [{ d: 2, c: 'x' }] })).toBe('{"a":[{"c":"x","d":2}],"b":1}');
     expect(ERR_ATTESTATION_REQUIRED).toBe(-32024);
   });

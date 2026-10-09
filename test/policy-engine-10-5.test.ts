@@ -117,9 +117,9 @@ describe('policy engine (10.5)', () => {
   };
 
   it('schema: validates Cedar at config time and needs a policy source', () => {
-    expect(() => validateConfig({ version: 10, servers: [], features: { policyEngine: { cedar: 'permit(principal, action, resource);' } } })).not.toThrow();
-    expect(() => validateConfig({ version: 10, servers: [], features: { policyEngine: { cedar: 'permit(principal, action);' } } })).toThrow(/Cedar syntax error/);
-    expect(() => validateConfig({ version: 10, servers: [], features: { policyEngine: {} } })).toThrow(/configure cedar, cedarFiles or opa/);
+    expect(() => validateConfig({ version: 11, servers: [], features: { policyEngine: { cedar: 'permit(principal, action, resource);' } } })).not.toThrow();
+    expect(() => validateConfig({ version: 11, servers: [], features: { policyEngine: { cedar: 'permit(principal, action);' } } })).toThrow(/Cedar syntax error/);
+    expect(() => validateConfig({ version: 11, servers: [], features: { policyEngine: {} } })).toThrow(/configure cedar, cedarFiles or opa/);
   });
 
   it('OPA: boolean and { allow, reason } results, undefined = deny, errors follow onError', async () => {

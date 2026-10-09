@@ -180,7 +180,7 @@ describe('post-quantum signatures (10.8)', () => {
     expect(verifyArtifact(art, { ...hybrid, mldsa: signArtifact('other', ed.privateKey, 'k', ml).mldsa }, [keyH])).toMatchObject({ ok: false, reason: 'bad ml-dsa-65 signature' });
     expect(verifyArtifact(art, classical, [{ id: 'k', publicKey: ed.publicKey }])).toEqual({ ok: true, keyId: 'k' });
     expect(verifyArtifact(art, classical, [{ id: 'k', publicKey: ed.publicKey }], { requirePostQuantum: true })).toMatchObject({ ok: false });
-    expect(validateConfig({ version: 10, servers: [], features: { pluginTrust: { requirePostQuantum: true, keys: [keyH] } } }).pluginTrust).toBeDefined();
+    expect(validateConfig({ version: 11, servers: [], features: { pluginTrust: { requirePostQuantum: true, keys: [keyH] } } }).pluginTrust).toBeDefined();
   });
 
   it('gateway: signed identity document and tool manifest, hash-chained audit log with signed checkpoints, tamper detection', async () => {

@@ -34,8 +34,8 @@ describe('global tool registry (9.4)', () => {
     expect(satisfies('1.2.7', '1.2.x')).toBe(true);
     expect(satisfies('2.0.0-rc.1', '*')).toBe(false);
     expect(satisfies('3.0.0', '>=1.0.0')).toBe(true);
-    expect(() => validateConfig({ version: 10, servers: [], features: { toolRegistry: { pins: { 'acme/search': 'one' } } } })).toThrow(/invalid version range/);
-    expect(() => validateConfig({ version: 10, servers: [], features: { toolRegistry: { trustedPublishers: { acme: 'x' } } } })).toThrow(/PEM/);
+    expect(() => validateConfig({ version: 11, servers: [], features: { toolRegistry: { pins: { 'acme/search': 'one' } } } })).toThrow(/invalid version range/);
+    expect(() => validateConfig({ version: 11, servers: [], features: { toolRegistry: { trustedPublishers: { acme: 'x' } } } })).toThrow(/PEM/);
   });
 
   it('publishes signed manifests, refuses forgeries and rewrites, searches, resolves pins, persists', async () => {

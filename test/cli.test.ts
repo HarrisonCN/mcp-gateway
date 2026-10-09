@@ -128,7 +128,7 @@ describe('cli', () => {
     expect(run(['init'], d).code).toBe(0);
     const strict = run(['validate', '-c', 'mcp-gateway.yml', '--strict'], d);
     expect(strict.code, strict.out + strict.err).toBe(0);
-    writeFileSync(join(d, 'open.yml'), 'version: 10\nhost: 0.0.0.0\nport: 45999\nservers: []\n');
+    writeFileSync(join(d, 'open.yml'), 'version: 11\nhost: 0.0.0.0\nport: 45999\nservers: []\n');
     const refused = run(['start', '-c', 'open.yml', '--no-watch'], d);
     expect(refused.code).toBe(1);
     expect(refused.out + refused.err).toMatch(/Refusing to start: authentication is disabled/);

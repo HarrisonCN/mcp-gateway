@@ -20,7 +20,7 @@ describe('data lineage (8.6)', () => {
     ]);
     expect(fingerprint('x')).toHaveLength(24);
     expect(() => validateConfig({ servers: [], features: { dataLineage: { scope: 'planet' } } })).toThrow();
-    expect(validateConfig({ version: 10, servers: [], features: { dataLineage: {} } }).dataLineage).toBeDefined();
+    expect(validateConfig({ version: 11, servers: [], features: { dataLineage: {} } }).dataLineage).toBeDefined();
   });
 
   it('links outputs to later inputs within the scope; graph up and down', () => {

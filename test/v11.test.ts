@@ -1,13 +1,15 @@
-// 10.9: v11 deprecations, `migrate --to 11`, schema v11 (lazy feature-module activation) readable ahead of 11.0.
+// 11.0: schema v11 only, lazy modular kernel by default, workflows removed; `migrate --to 11` from v10 configs.
 import { describe, it, expect, afterEach } from 'vitest';
 import { parse } from 'yaml';
-import { validateConfig } from '../src/config/loader.js';
-import { configDeprecations, removedConfigKeys } from '../src/utils/deprecations.js';
+import { validateConfig, generateDefaultConfig } from '../src/config/loader.js';
+import { configDeprecations, removedConfigKeys, DEPRECATIONS } from '../src/utils/deprecations.js';
 import { migrateConfigText, workflowToTaskGraph } from '../src/config/migrate.js';
 import { isFeatureActive, moduleMode, FEATURE_ACTIVATION, FEATURE_CONFIG_KEYS } from '../src/gateway/features.js';
+import { distributedConfig } from '../src/gateway/control-plane.js';
 import { listFeatures } from '../src/features/index.js';
 import { taskRuns } from '../src/features/task-graphs.js';
 import { resetJournal } from '../src/features/time-travel.js';
+import * as root from '../src/index.js';
 import { startFeatureGw, type FeatureGw } from './helpers/feature-gw.js';
 import type { GatewayConfig } from '../src/utils/types.js';
 
@@ -33,22 +35,37 @@ features:
   chaos: { enabled: false }
 `;
 
-describe('10.9: v11 deprecations and schema v11', () => {
-  it('schema v10 / versionless and features.workflows are deprecated; v11 is clean and refuses workflows', () => {
-    expect(configDeprecations({ version: 10 }).map((d) => d.id)).toEqual(['config-schema-v10']);
-    expect(configDeprecations({}).map((d) => d.detail)).toEqual(['no `version` key: 11.0 reads the file as schema v11']);
-    expect(configDeprecations({ version: 10, features: { workflows: [] } }).map((d) => d.id)).toEqual(['config-schema-v10', 'features-workflows']);
-    expect(configDeprecations({ version: 11 })).toEqual([]);
-    expect(removedConfigKeys({ version: 11, features: { workflows: [] } })[0]).toMatch(/features.workflows: not part of schema v11 — use `features.taskGraphs`; run `mcp-gateway migrate --to 11`/);
-    expect(validateConfig({ version: 11, servers: [] }).version).toBe(11);
-    expect(validateConfig({ version: 10, servers: [] }).deprecations?.[0]).toMatchObject({ removedIn: '11.0', replacement: expect.stringMatching(/migrate --to 11/) });
+describe('11.0: schema v11 only', () => {
+  it('refuses schema v10 and workflows with a message naming migrate --to 11; nothing is deprecated', () => {
+    expect(() => validateConfig({ version: 10, servers: [] })).toThrow(/version: config schema v10 was removed in 11.0 — use `version: 11`; run `mcp-gateway migrate --to 11`/);
+    expect(() => validateConfig({ version: 11, servers: [], features: { workflows: [] } })).toThrow(/features.workflows: removed in 11.0 — use `features.taskGraphs`; run `mcp-gateway migrate --to 11`/);
+    expect(removedConfigKeys({ features: { workflows: [] } })).toEqual([expect.stringMatching(/^features.workflows: removed in 11.0/)]);
+    expect(() => validateConfig({ version: 9, servers: [] })).toThrow(/use `version: 11`/);
+    expect(() => validateConfig({ version: 12, servers: [] })).toThrow(/11.0 reads `version: 11`/);
+    expect(validateConfig({ version: 11, servers: [] }).deprecations).toBeUndefined();
+    expect(validateConfig({ servers: [] }).deprecations).toBeUndefined(); // no version = v11
+    expect(configDeprecations({})).toEqual([]);
+    expect(DEPRECATIONS).toEqual({});
+    expect(parse(generateDefaultConfig()).version).toBe(11);
+    expect(distributedConfig({ servers: [], port: 1 }).version).toBe(11);
   });
 
-  it('module activation: eager on v10, lazy on v11, kernel.modules overrides; every keyed module maps to a real section', () => {
-    expect(moduleMode({ servers: [] } as GatewayConfig)).toBe('eager');
+  it('the workflow engine is gone: no module, no config key, no root exports; topoLayers moved to task graphs', () => {
+    expect(listFeatures().map((f) => f.id)).not.toContain('workflows');
+    expect((FEATURE_CONFIG_KEYS as readonly string[]).includes('workflows')).toBe(false);
+    expect(FEATURE_ACTIVATION.workflows).toBeUndefined();
+    const r = root as Record<string, unknown>;
+    expect(r.runWorkflow).toBeUndefined();
+    expect(r.WorkflowsSchema).toBeUndefined();
+    expect((r.topoLayers as (n: unknown[]) => string[][])([{ id: 'a', needs: [] }, { id: 'b', needs: ['a'] }])).toEqual([['a'], ['b']]);
+  });
+});
+
+describe('11.0: lazy modular kernel', () => {
+  it('lazy by default, kernel.modules: eager restores 10.x; every keyed module maps to a real section', () => {
+    expect(moduleMode({ servers: [] } as GatewayConfig)).toBe('lazy');
     expect(moduleMode({ version: 11, servers: [] } as GatewayConfig)).toBe('lazy');
     expect(moduleMode({ version: 11, kernel: { modules: 'eager' }, servers: [] } as GatewayConfig)).toBe('eager');
-    expect(moduleMode({ version: 10, kernel: { modules: 'lazy' }, servers: [] } as GatewayConfig)).toBe('lazy');
     const lazy = { version: 11, servers: [], timeTravel: {} } as unknown as GatewayConfig;
     expect(isFeatureActive(lazy, 'time-travel')).toBe(true);
     expect(isFeatureActive(lazy, 'chaos')).toBe(false);
@@ -61,37 +78,35 @@ describe('10.9: v11 deprecations and schema v11', () => {
     }
   });
 
-  it('lazy gateway: unconfigured modules answer 404, configured ones work, reload activates a module, features list shows activity', async () => {
+  it('unconfigured modules answer 404 (after auth), configured ones work, reload mounts and unmounts', async () => {
     fx = await startFeatureGw({ version: 11, timeTravel: {} } as never);
     expect((await fx.admin('time-travel')).status).toBe(200);
     const off = await fx.admin('realtime-budgets');
     expect(off.status).toBe(404);
     expect(off.body.message).toMatch(/kernel.modules is lazy and features.realtimeBudgets is not configured/);
+    expect((await fx.admin('realtime-budgets', undefined, 'GET', {})).status).toBe(401); // auth runs first
     expect((await fx.admin('kernel')).status).toBe(200);
     const list = await fx.admin('features');
     expect(list.body.modules).toBe('lazy');
     expect(list.body.features.find((f: { id: string }) => f.id === 'chaos').active).toBe(false);
-    // the journal hook runs (module active) …
     await fetch(`${fx.base}/api/v1/tools/call`, { method: 'POST', headers: { authorization: 'Bearer op', 'content-type': 'application/json' }, body: JSON.stringify({ server: 'fake', tool: 'echo', arguments: {} }) });
     expect((await fx.admin('time-travel')).body.calls).toBe(1);
-    // … and a section added by hot reload mounts its module
     await fx.gw.reload({ ...(fx.gw as any).config, realtimeBudgets: { budgets: [{ name: 'b', metric: 'cost', limit: 1 }] } } as never); // eslint-disable-line @typescript-eslint/no-explicit-any
     expect((await fx.admin('realtime-budgets')).status).toBe(200);
-    // removing it deactivates the routes again
     await fx.gw.reload({ ...(fx.gw as any).config, realtimeBudgets: undefined } as never); // eslint-disable-line @typescript-eslint/no-explicit-any
     expect((await fx.admin('realtime-budgets')).status).toBe(404);
   });
 
-  it('v10 gateways stay eager (10.x behaviour unchanged)', async () => {
-    fx = await startFeatureGw();
+  it('kernel.modules: eager mounts every module (10.x behaviour)', async () => {
+    fx = await startFeatureGw({ version: 11, kernel: { modules: 'eager' } } as never);
     expect((await fx.admin('realtime-budgets')).status).toBe(400); // mounted, "not configured"
     expect((await fx.admin('features')).body.modules).toBe('eager');
   });
 });
 
-describe('10.9: migrate --to 11', () => {
+describe('11.0: migrate --to 11 (from a 10.x config)', () => {
   it('sets version 11, converts workflows into task graphs, keeps other comments, notes API and activation changes', () => {
-    const r = migrateConfigText(WF, 'yaml', 11);
+    const r = migrateConfigText(WF, 'yaml');
     expect(r.changes).toEqual(['version: 10 → 11', 'features.workflows (1) → features.taskGraphs.graphs']);
     expect(r.notes.join('\n')).toMatch(/POST \/api\/v1\/admin\/task-graphs\/run/);
     expect(r.notes.join('\n')).toMatch(/kernel: \{ modules: eager \}/);
@@ -99,7 +114,6 @@ describe('10.9: migrate --to 11', () => {
     const cfg = validateConfig(parse(r.text));
     expect(cfg.version).toBe(11);
     expect(cfg.deprecations).toBeUndefined();
-    expect(cfg.workflows).toBeUndefined();
     expect(cfg.chaos).toBeDefined();
     const g = (cfg.taskGraphs as { graphs: Array<Record<string, any>> }).graphs[0]!; // eslint-disable-line @typescript-eslint/no-explicit-any
     expect(g).toMatchObject({ id: 'enrich', concurrency: 2, output: '{{nodes.b.text}}' });
@@ -109,7 +123,7 @@ describe('10.9: migrate --to 11', () => {
     expect(migrateConfigText('version: 11\nservers: []\n', 'yaml', 11).changed).toBe(false);
   });
 
-  it('does not overwrite an existing task graph with the same id; JSON files; default target is 11', () => {
+  it('does not overwrite an existing task graph with the same id; JSON files', () => {
     const r = migrateConfigText(JSON.stringify({ version: 10, servers: [], features: { workflows: [{ id: 'x', nodes: [{ id: 'n', tool: 's/t' }] }], taskGraphs: { graphs: [{ id: 'x', nodes: [{ id: 'm', tool: 's/u' }] }] } } }), 'json');
     expect(r.notes.join(' ')).toMatch(/task graph "x" already exists/);
     const out = JSON.parse(r.text);
@@ -118,7 +132,7 @@ describe('10.9: migrate --to 11', () => {
     expect(workflowToTaskGraph({ id: 'w', nodes: [{ id: 'n', tool: 's/t' }] })).toEqual({ id: 'w', nodes: [{ id: 'n', tool: 's/t' }] });
   });
 
-  it('a converted workflow runs as a task graph with the same result', async () => {
+  it('a converted workflow runs as a task graph', async () => {
     const r = migrateConfigText(WF.replace('version: 10\nservers: []\n', 'version: 10\n'), 'yaml', 11);
     const migrated = validateConfig({ ...parse(r.text), servers: [] });
     fx = await startFeatureGw({ version: 11, taskGraphs: migrated.taskGraphs } as never);

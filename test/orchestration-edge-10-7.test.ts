@@ -38,7 +38,7 @@ describe('task graphs (10.7)', () => {
     expect(() => graph({ id: 'g', nodes: [{ id: 'a', tool: 's/t', needs: ['b'] }] })).toThrow(/unknown node b/);
     expect(() => graph({ id: 'g', nodes: [{ id: 'a', tool: 's/t', needs: ['b'] }, { id: 'b', tool: 's/t', needs: ['a'] }] })).toThrow(/cycle/);
     expect(() => TaskGraphsSchema.parse({ graphs: [{ id: 'g', nodes: [{ id: 'a', tool: 's/t' }] }, { id: 'g', nodes: [{ id: 'a', tool: 's/t' }] }] })).toThrow(/duplicate task graph/);
-    expect(validateConfig({ version: 10, servers: [], features: { taskGraphs: { graphs: [{ id: 'g', nodes: [{ id: 'a', tool: 's/t' }] }] } } }).taskGraphs).toBeDefined();
+    expect(validateConfig({ version: 11, servers: [], features: { taskGraphs: { graphs: [{ id: 'g', nodes: [{ id: 'a', tool: 's/t' }] }] } } }).taskGraphs).toBeDefined();
   });
 
   it('backoff: exponential, capped, full jitter', () => {
