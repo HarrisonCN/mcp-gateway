@@ -1,7 +1,7 @@
 {
   "name": "@winstonsayno/mcp-gateway",
   "version": "10.2.0",
-  "description": "A lightweight, open-source gateway for managing, routing, and monitoring multiple MCP (Model Context Protocol) servers.",
+  "description": "Gateway for Model Context Protocol (MCP) servers: one authenticated, observable endpoint with routing, scopes, rate limits and metrics.",
   "keywords": [
     "mcp",
     "model-context-protocol",
