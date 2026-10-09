@@ -65,3 +65,7 @@ servers:
     url: ws://localhost:8081
     subprotocol: mcp # set to "" if the server rejects subprotocols
     enabled: false
+
+# Browser clients: list the origins allowed to call /mcp (none here; non-browser MCP clients are unaffected).
+mcp:
+  allowedOrigins: []

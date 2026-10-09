@@ -58,7 +58,14 @@ jobs:
         run: |
           node dist/cli.js --version
           node dist/cli.js init -o /tmp/mcp-gateway.yml
-          node dist/cli.js validate -c /tmp/mcp-gateway.yml
+          node dist/cli.js validate -c /tmp/mcp-gateway.yml --strict
+      - name: Validate examples (--strict fails on security warnings)
+        run: |
+          for f in examples/*/mcp-gateway.yml; do
+            echo "::group::$f"
+            (cd "$(dirname "$f")" && node "$GITHUB_WORKSPACE/dist/cli.js" validate -c mcp-gateway.yml --strict)
+            echo "::endgroup::"
+          done
       - name: Package contents
         run: npm pack --dry-run
       - name: Upload coverage report

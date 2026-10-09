@@ -310,6 +310,8 @@ const SecuritySchema = z
     allowedHosts: z.array(z.string().min(1)).optional(),
     // 10.2: unset = on automatically for a loopback-bound gateway without auth (see effectiveRebindingProtection).
     dnsRebindingProtection: z.boolean().optional(),
+    // 10.3: allow starting without auth on a non-loopback address (same as `start --insecure`).
+    insecure: z.boolean().optional(),
     maxBodyBytes: z.number().int().min(1024).default(10 * 1024 * 1024),
     maxToolArgumentsBytes: z.number().int().min(0).default(0),
     authLockout: z.union([z.boolean(), LockoutSchema]).optional(),
@@ -1166,7 +1168,9 @@ export function generateDefaultConfig(): string {
 
 version: 10
 port: 4000
-host: 0.0.0.0
+# Loopback only. To listen on every interface (0.0.0.0) configure auth first: since 10.3 the gateway refuses to
+# start without auth on a non-loopback address unless started with --insecure.
+host: 127.0.0.1
 logLevel: info
 
 # Authentication (optional; keys can be changed without a restart)
