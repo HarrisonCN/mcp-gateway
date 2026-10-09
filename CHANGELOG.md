@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.4.0] - 2026-10-09
+
+Supply chain and incident response — the last hardening release of the 10.1 → 10.4 series. No new features and no
+runtime behaviour change.
+
+### Security
+- **Container images are signed with cosign keyless** (Sigstore; identity = this repository's `docker.yml` workflow,
+  issuer `https://token.actions.githubusercontent.com`), by digest, and the signature is verified in the same run.
+  BuildKit SLSA provenance and SBOM attestations stay on.
+- **Trivy** in CI on every pull request (new *Supply chain* job): filesystem scan of all lockfiles (blocking on fixable
+  HIGH / CRITICAL) and a scan of the freshly built image (blocking on fixable CRITICAL; fixable HIGH printed — today
+  they come from the npm CLI bundled in the `node:22-alpine` base image). After each release the published image is
+  scanned again and the report uploaded to code scanning.
+- Container smoke test in CI: the image must refuse to start without auth and answer `401` / `200` with
+  `MCP_GATEWAY_API_KEYS`.
+- **SBOMs**: CycloneDX 1.5 and SPDX 2.3 (`npm sbom --omit dev`) plus `SHA256SUMS` are attached to every GitHub
+  Release next to the npm tarball; CI checks that SBOM generation works.
+- **Dependabot** now also covers the Python client (pip) and the Go client (gomod), in addition to npm (gateway and
+  JS client), Gradle, GitHub Actions and the Docker base image.
+
+### Documentation
+- New [docs/security/supply-chain.md](docs/security/supply-chain.md): what each artifact carries, `cosign verify`,
+  BuildKit attestation inspection, checking the npm tarball against the release checksums, scanning, known gaps
+  (no npm provenance for the main package while it is published outside CI).
+- New [docs/security/incident-response.md](docs/security/incident-response.md): reporting, triage targets by
+  severity, fix / disclosure process, compromised-artifact playbook (npm deprecate, GHCR re-tag, credential
+  rotation) and an operator checklist.
+- SECURITY.md links both; README mentions signed images.
+- ROADMAP: 10.x hardening complete; the feature line is mapped to 10.5 – 10.8 (plugin SDK + policy-as-code 2.0;
+  replay / time travel + cost & carbon budgets; multi-agent orchestration 2.0 + edge autonomy; privacy computing +
+  post-quantum identity, the latter three EXPERIMENTAL).
+
 ## [10.3.0] - 2026-10-09
 
 Honest labelling and secure defaults. No new features. **One behaviour change inside the 10.x LTS line**, made as a

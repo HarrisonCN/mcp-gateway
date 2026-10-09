@@ -77,6 +77,68 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  supply-chain:
+    name: Supply chain (Trivy, SBOM)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Trivy — dependencies and lockfiles (blocking on fixable high / critical)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          skip-dirs: node_modules,clients/js/node_modules,dist
+      - uses: docker/setup-buildx-action@v4
+      - name: Build the container image (linux/amd64, not pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: mcp-gateway:ci
+          cache-from: type=gha
+      - name: Trivy — container image (blocking on fixable critical)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: mcp-gateway:ci
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Trivy — container image high findings (report only)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: mcp-gateway:ci
+          severity: HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+          skip-setup-trivy: true
+      - name: Image smoke test (refuses to start without auth, starts with a key)
+        run: |
+          if docker run --rm mcp-gateway:ci start; then echo "::error::started without auth"; exit 1; fi
+          docker run -d --name gw -p 4000:4000 -e MCP_GATEWAY_API_KEYS=ci-key mcp-gateway:ci start
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4000/api/v1/health/live && break; sleep 1; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/api/v1/tools)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer ci-key' http://127.0.0.1:4000/api/v1/tools)" = 200
+          docker rm -f gw
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: SBOM (CycloneDX + SPDX) for the npm package
+        run: |
+          npm ci --ignore-scripts
+          npm sbom --omit dev --sbom-format cyclonedx > sbom.cdx.json
+          npm sbom --omit dev --sbom-format spdx > sbom.spdx.json
+          node -e 'const b=require("./sbom.cdx.json"); if(b.bomFormat!=="CycloneDX"||!b.components?.length) process.exit(1); console.log(b.components.length+" components")'
+
   js-client:
     name: JS client (Node ${{ matrix.node }})
     runs-on: ubuntu-latest

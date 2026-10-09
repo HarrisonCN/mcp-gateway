@@ -14,6 +14,8 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write          # cosign keyless signing (Sigstore Fulcio certificate from the workflow's OIDC token)
+  security-events: write   # upload the Trivy report to code scanning
 
 concurrency:
   group: docker-${{ github.event.release.tag_name || inputs.tag }}
@@ -49,7 +51,8 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},value=${{ github.event.release.tag_name || inputs.tag }}
             type=semver,pattern={{major}},value=${{ github.event.release.tag_name || inputs.tag }}
 
-      - uses: docker/build-push-action@v7
+      - id: build
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -60,3 +63,35 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: true
           sbom: true
+
+      - uses: sigstore/cosign-installer@v4.1.2
+      - name: Sign the image (cosign keyless, by digest)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/mcp-gateway
+        run: cosign sign --yes "${IMAGE,,}@${DIGEST}"
+      - name: Verify the signature
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/mcp-gateway
+        run: |
+          cosign verify "${IMAGE,,}@${DIGEST}" \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/docker.yml@" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+          echo "signature verified for ${IMAGE,,}@${DIGEST}"
+
+      - name: Trivy scan of the published image (report to code scanning)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository_owner }}/mcp-gateway@${{ steps.build.outputs.digest }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-image.sarif
+          exit-code: '0'
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles('trivy-image.sarif') != ''
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
