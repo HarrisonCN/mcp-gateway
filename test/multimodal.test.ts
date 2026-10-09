@@ -4,6 +4,7 @@ import { startFeatureGw, type FeatureGw } from './helpers/feature-gw.js';
 import { validateConfig } from '../src/config/loader.js';
 import { applyMultimodal, base64Bytes, multimodalState, ERR_MEDIA_REFUSED } from '../src/features/multimodal.js';
 import type { GatewayConfig, ProxyResponse } from '../src/utils/types.js';
+import { fingerprint } from '../src/auth/middleware.js';
 
 let h: FeatureGw | undefined;
 beforeEach(() => multimodalState.reset());
@@ -50,7 +51,7 @@ describe('multimodal tools (9.1)', () => {
     h = await startFeatureGw({ multimodal: { offloadAboveBytes: 1000 } } as never);
     const data = Buffer.alloc(200_000);
     for (let i = 0; i < data.length; i++) data[i] = i % 251;
-    const out = applyMultimodal(res({ type: 'image', data: data.toString('base64'), mimeType: 'image/jpeg' }), 'fake', 'cam', cfg({ offloadAboveBytes: 1000 }))!;
+    const out = applyMultimodal(res({ type: 'image', data: data.toString('base64'), mimeType: 'image/jpeg' }), 'fake', 'cam', cfg({ offloadAboveBytes: 1000 }), Date.now(), { clientId: `key:${fingerprint('scoped')}` })!;
     const link = (out.result as any).content[0];
     expect(link.type).toBe('resource_link');
     expect(link.size).toBe(200_000);

@@ -12,7 +12,7 @@ import { chainTargets, chainToolResult, parseTarget, runChain, type ChainConfig,
 
 export interface ChainServiceDeps {
   config: () => ChainsConfig | undefined;
-  invoke: (serverId: string, tool: string, args: Record<string, unknown>, clientId: string | undefined, via: 'rest' | 'mcp') => Promise<ProxyResponse>;
+  invoke: (serverId: string, tool: string, args: Record<string, unknown>, clientId: string | undefined, via: 'rest' | 'mcp', scope: AccessScope | undefined) => Promise<ProxyResponse>;
 }
 
 export class ChainService {
@@ -55,7 +55,7 @@ export class ChainService {
     if (!chain) return undefined;
     const missing = this.missing(chain, scope);
     if (missing.length) return { forbidden: missing };
-    const r = await runChain(chain, input, (s, t, a) => this.deps.invoke(s, t, a, clientId, via));
+    const r = await runChain(chain, input, (s, t, a) => this.deps.invoke(s, t, a, clientId, via, scope));
     this.recent.unshift(r);
     this.recent.length = Math.min(this.recent.length, 50);
     return r;

@@ -42,7 +42,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import { registerFeature, objectBody, badRequest, clientIdOf } from '../gateway/features.js';
+import { registerFeature, objectBody, badRequest, clientIdOf, principalOf } from '../gateway/features.js';
 import { registerCallHook } from '../gateway/hooks.js';
 import { readPath, stepValue } from '../orchestration/chains.js';
 import { globToRegExp } from '../utils/tool-filter.js';
@@ -215,7 +215,7 @@ async function runLocal(ctx: Ctx, req: import('express').Request, c: Parsed, tar
   if (!isToolInScope(scope, target.server, target.tool)) return { status: 403, body: { error: 'Forbidden', message: `"${target.server}/${target.tool}" is outside this key's scope` } };
   const args = target.arguments && typeof target.arguments === 'object' && !Array.isArray(target.arguments) ? { ...(target.arguments as Record<string, unknown>) } : {};
   internal.add(args);
-  const res = await ctx.invoke(target.server, target.tool, args, clientIdOf(req));
+  const res = await ctx.invoke(target.server, target.tool, args, principalOf(req));
   if (!res.success) return { status: 502, body: { error: 'Tool Execution Failed', message: res.error?.message ?? 'failed', code: res.error?.code } };
   const v = stepValue(res.result);
   let json: unknown;

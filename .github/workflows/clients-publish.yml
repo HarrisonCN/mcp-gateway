@@ -39,6 +39,7 @@ jobs:
       - if: env.NODE_AUTH_TOKEN != ''
         run: |
           V="${{ inputs.version || github.event.release.tag_name }}"; V="${V#v}"
+          case "$V" in 10.*) echo "::notice::10.x LTS gateway release — client SDKs are not republished"; exit 0;; esac
           npm version "$V" --no-git-tag-version --allow-same-version
           TAG=latest; case "$V" in *-*) TAG=next;; esac
           npm publish --access public --provenance --tag "$TAG" || echo "::warning::npm publish failed (version may already exist)"
@@ -69,6 +70,7 @@ jobs:
         if: env.CENTRAL_USER != '' && env.ORG_GRADLE_PROJECT_signingKey != ''
         run: |
           V="${{ inputs.version || github.event.release.tag_name }}"; V="${V#v}"
+          case "$V" in 10.*) echo "::notice::10.x LTS gateway release — client SDKs are not republished"; exit 0;; esac
           ./gradlew test publishAllPublicationsToStagingRepository -PreleaseVersion="$V" --no-daemon
       - name: Upload bundle to the Central Portal
         if: env.CENTRAL_USER != '' && env.ORG_GRADLE_PROJECT_signingKey != ''

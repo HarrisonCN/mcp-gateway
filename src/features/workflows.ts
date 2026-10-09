@@ -29,7 +29,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
+import { registerFeature, objectBody, badRequest, principalOf } from '../gateway/features.js';
 import { parseTarget, readPath, render, stepValue } from '../orchestration/chains.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 
@@ -206,9 +206,11 @@ registerFeature({
       const wf = workflows(ctx.config()).find((w) => w.id === b.workflow);
       if (!wf) return void res.status(404).json({ error: 'Not Found', message: `no workflow "${String(b.workflow)}"` });
       if (b.input !== undefined && (typeof b.input !== 'object' || b.input === null || Array.isArray(b.input))) return badRequest(res, '"input" must be an object');
+      // 10.9.1: nodes run as the caller that started the workflow (re-authorized per call by the central authorizer)
+      const principal = principalOf(req);
       const run: WorkflowRun = { runId: randomUUID(), workflow: wf.id, status: 'running', startedAt: new Date().toISOString(), nodes: [] };
       history.add(run);
-      const done = runWorkflow(wf, (b.input as Record<string, unknown>) ?? {}, (s, t, a) => ctx.invoke(s, t, a, `workflow:${wf.id}`), { run });
+      const done = runWorkflow(wf, (b.input as Record<string, unknown>) ?? {}, (s, t, a) => ctx.invoke(s, t, a, principal, `workflow:${wf.id}`), { run });
       if (b.wait === true) return void res.json(await done);
       res.status(202).json({ runId: run.runId, status: run.status });
     });

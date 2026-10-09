@@ -38,6 +38,7 @@ import { originAllowed } from '../middleware/cors.js';
 import { isLoopbackOrigin, isSameOrigin } from '../security/network.js';
 import type { AuthedRequest } from '../auth/middleware.js';
 import { filterToolsByScope, isToolInScope, type AccessScope } from '../auth/scopes.js';
+import { clientPrincipal } from '../auth/authorizer.js';
 import { canCall } from '../auth/tenants.js';
 import { logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
@@ -923,6 +924,7 @@ export class McpEndpoint {
       params: params as Record<string, unknown>,
       timeoutMs: server.timeout,
       clientId: (req as AuthedRequest).clientId,
+      principal: clientPrincipal((req as AuthedRequest).clientId, (req as AuthedRequest).scope),
       via: 'mcp',
       signal,
       traceparent: traceparentOf(req),
@@ -1101,6 +1103,7 @@ export class McpEndpoint {
       params: args,
       timeoutMs: server.timeout,
       clientId: (req as AuthedRequest).clientId,
+      principal: clientPrincipal((req as AuthedRequest).clientId, session.auth.scope),
       via: 'mcp',
       signal,
       onProgress,

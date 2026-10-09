@@ -30,6 +30,7 @@
 
 import { z } from 'zod';
 import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
+import { systemPrincipal } from '../auth/authorizer.js';
 import { registerCallHook } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { logger } from '../utils/logger.js';
@@ -180,7 +181,7 @@ registerFeature({
       if (to === activeColor(d)) return void res.json({ id: d.id, active: to, changed: false });
       let probe: { ok: boolean; error?: unknown } | undefined;
       if (d.probe) {
-        const r = await ctx.invoke(serverOf(d, to), d.probe.tool, d.probe.arguments, 'blue-green');
+        const r = await ctx.invoke(serverOf(d, to), d.probe.tool, d.probe.arguments, systemPrincipal('blue-green'), 'blue-green');
         probe = r.success ? { ok: true } : { ok: false, error: r.error };
         if (!r.success && b.force !== true) return void res.status(409).json({ error: 'Conflict', message: `probe "${d.probe.tool}" failed on ${to} (${serverOf(d, to)}); not switching`, probe });
       }

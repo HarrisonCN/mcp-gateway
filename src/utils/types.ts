@@ -61,8 +61,10 @@ export interface McpServerConfig {
   subprotocol?: string;
   /** Per-server overrides for automatic reconnect */
   reconnect?: Partial<ReconnectConfig>;
-  /** Environment variables to pass to the server process */
+  /** Environment variables to pass to the server process (explicit values; `${VAR}` expanded) */
   env?: Record<string, string>;
+  /** 10.9.1: variables (names or `PREFIX_*` globs) copied from the gateway's environment, on top of the minimal allowlist */
+  envPassthrough?: string[];
   /** Tags for grouping and filtering */
   tags?: string[];
   /** Whether this server is enabled */
@@ -483,7 +485,9 @@ export interface ObservabilityConfig {
 /** `state` — where rate-limit windows, lockouts and MCP session metadata live. */
 export interface StateConfig {
   /** `memory` (default, single instance), `redis` (shared between instances) or `eventlog` (9.0, durable, single instance). */
-  store?: 'memory' | 'redis' | 'eventlog';
+  store?: 'memory' | 'redis' | 'eventlog' | 'sqlite';
+  /** SQLite store (11.2): durable, single node (several processes on one host may share the file). */
+  sqlite?: { path?: string };
   /** Event-sourced store (9.0): append-only `events.log` + `snapshot.json` in `dir` (relative to the config file). */
   eventlog?: { dir?: string; snapshotEvery?: number; fsync?: boolean };
   redis?: {
@@ -533,6 +537,8 @@ export interface SecurityConfig {
   maxBodyBytes?: number;
   /** Maximum size of a tool call's / prompt's `arguments` as JSON, in bytes (default 0 = no limit). */
   maxToolArgumentsBytes?: number;
+  /** 10.9.1: extra variables (names or `PREFIX_*` globs) every stdio server inherits on top of the minimal allowlist. */
+  stdioEnvPassthrough?: string[];
   /** 10.3: allow auth off on a non-loopback bind address (`start --insecure`). */
   insecure?: boolean;
   /** Lock out IPs after repeated authentication failures (off unless set; `true` = defaults). */

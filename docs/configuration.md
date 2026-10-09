@@ -810,7 +810,7 @@ Schema v9 (the 8.x `state` block was removed in 9.0; `mcp-gateway migrate --to 9
 
 ```yaml
 store:
-  backend: redis               # memory (default) | redis | eventlog — restart required
+  backend: redis               # memory (default) | redis | eventlog | sqlite — restart required
   redis:
     url: "redis://:${REDIS_PASSWORD}@redis:6379/0"   # rediss:// for TLS; env MCP_GATEWAY_REDIS_URL also works
     keyPrefix: "mcp-gateway:"  # namespace several gateways in one Redis
@@ -845,6 +845,22 @@ Every mutation is appended to `events.log` as one JSON line with absolute expiry
 Every `snapshotEvery` events (and on shutdown) the live state is written to a new snapshot and the log is truncated.
 A torn last line after a crash is skipped. `GET /api/v1/admin/store` reports keys, events and snapshots;
 `POST /api/v1/admin/store/compact` compacts on demand. See [the guide](guides/event-sourced-store.md).
+
+### SQLite store (11.2)
+
+`backend: sqlite` keeps the shared state in one SQLite file on Node's built-in `node:sqlite` (Node 22.5+, no extra
+dependency): durable across restarts, shareable by several gateway processes **on one host** (WAL mode). Use Redis
+when instances run on several hosts (Kubernetes).
+
+```yaml
+store:
+  backend: sqlite
+  sqlite:
+    path: .mcp-gateway/state.db   # relative to the config file
+```
+
+Agent-token revocations (`features.agentIdentity`) live in this store (11.2) — see
+[agent identity](guides/agent-identity.md#revocation-11-2).
 
 The Redis client is built in (RESP2, pipelined, `AUTH` / `SELECT` / TLS); no extra dependency. Embedders can pass any
 `StateStore` implementation: `new Gateway(config, { stateStore })`.

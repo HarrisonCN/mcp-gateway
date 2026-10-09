@@ -28,7 +28,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { registerFeature, objectBody, badRequest, clientIdOf } from '../gateway/features.js';
+import { registerFeature, objectBody, badRequest, clientIdOf, principalOf } from '../gateway/features.js';
 import { registerCallHook } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { redactValue } from '../security/redact.js';
@@ -346,7 +346,7 @@ registerFeature({
       if (!cap) return void res.status(404).json({ error: 'Not Found', message: `call "${req.params.callId}" was not captured by this session` });
       const user = userOf(req);
       emit(s, c.maxEvents, { type: 'replay', callId: String(req.params.callId), user, data: { tool: `${cap.serverId}/${cap.tool}` } });
-      const r = await ctx.invoke(cap.serverId, cap.tool, cap.args, `debug:${s.id}`);
+      const r = await ctx.invoke(cap.serverId, cap.tool, cap.args, principalOf(req), `debug:${s.id}`);
       res.json({ replayOf: req.params.callId, ...r });
     });
   },

@@ -109,6 +109,7 @@ export {
   JWT_SERVERS_CLAIM,
   JWT_TOOLS_CLAIM,
 } from './auth/scopes.js';
+export { authorize, clientPrincipal, systemPrincipal, deniedPrincipal, grantCovers, principalChain, ERR_FORBIDDEN as ERR_AUTHZ_FORBIDDEN, type Principal, type Delegation, type AuthzCall, type AuthzDenial } from './auth/authorizer.js';
 export type { AccessScope } from './auth/scopes.js';
 export { PROTOCOL_VERSIONS, supports as protocolSupports, negotiateVersion, adaptTool, adaptToolResult } from './mcp/compat.js';
 export { McpEndpoint, DOWNSTREAM_PROTOCOL_VERSIONS, ERR_RATE_LIMITED, LOG_LEVELS } from './mcp/endpoint.js';

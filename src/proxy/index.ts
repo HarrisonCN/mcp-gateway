@@ -169,6 +169,8 @@ export interface ProxyOptions {
   killGraceMs?: number;
   /** Override how channels are created (for tests or custom transports). */
   channelFactory?: ChannelFactory;
+  /** 10.9.1: stdio settings read at spawn time (`security.stdioEnvPassthrough`). */
+  stdio?: () => { envPassthrough?: string[] };
 }
 
 /** Client capabilities the gateway announces upstream for the relayed features. */
@@ -217,7 +219,9 @@ export class McpProxy extends EventEmitter {
     super();
     this.killGraceMs = options.killGraceMs ?? 2_000;
     this.channelFactory = options.channelFactory ?? defaultChannelFactory;
+    this.stdioOptions = options.stdio;
   }
+  private readonly stdioOptions?: () => { envPassthrough?: string[] };
 
   private getSpawnLock(serverId: string): Mutex {
     let lock = this.spawnLocks.get(serverId);
@@ -239,7 +243,7 @@ export class McpProxy extends EventEmitter {
       }
 
       const timeout = config.timeout ?? DEFAULT_TIMEOUT_MS;
-      const options: ChannelOptions = { connectTimeoutMs: timeout, killGraceMs: this.killGraceMs };
+      const options: ChannelOptions = { connectTimeoutMs: timeout, killGraceMs: this.killGraceMs, ...(this.stdioOptions?.() ?? {}) };
       const channel = this.channelFactory(config, options);
       const session: Session = {
         config,
