@@ -1,7 +1,7 @@
 {
   "name": "@winstonsayno/mcp-gateway",
-  "version": "10.2.0",
-  "description": "Gateway for Model Context Protocol (MCP) servers: one authenticated, observable endpoint with routing, scopes, rate limits and metrics.",
+  "version": "10.3.0",
+  "description": "MCP gateway for AI models (OpenAI, Grok, DeepSeek, Claude and other function-calling LLMs) and for web pages and apps: one authenticated, observable endpoint in front of your MCP servers with routing, scopes, rate limits and metrics.",
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -12,7 +12,12 @@
     "ai",
     "developer-tools",
     "observability",
-    "typescript"
+    "typescript",
+    "openai",
+    "function-calling",
+    "deepseek",
+    "grok",
+    "claude"
   ],
   "homepage": "https://github.com/HarrisonCN/mcp-gateway",
   "bugs": {

@@ -9,6 +9,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.3.0] - 2026-10-09
+
+Honest labelling and secure defaults. No new features. **One behaviour change inside the 10.x LTS line**, made as a
+security default — see *Upgrade notes*.
+
+### Upgrade notes (behaviour change)
+- **A gateway without authentication now refuses to start on a non-loopback address.** Before 10.3, `auth.strategy:
+  none` with `host: 0.0.0.0` (the schema default when `host` is omitted) started with a warning; anyone who could
+  reach the port could call every tool and the admin API. `start` (and hot reload) now exit with
+  `Refusing to start: authentication is disabled while listening on 0.0.0.0, …`. To migrate, do one of:
+  1. turn auth on — `MCP_GATEWAY_API_KEYS=<key>` (or `sha256:` digests from `mcp-gateway gen-key`), or an `auth:`
+     block (`api-key`, `jwt`, `oauth2`);
+  2. bind to loopback — `host: 127.0.0.1`;
+  3. only on a trusted network, opt out explicitly — `mcp-gateway start --insecure` or `security.insecure: true`
+     (a warning is logged at every start).
+  Data planes (`controlPlane.role: data`) are exempt; they take auth from the control plane. Docker: `docker run`
+  without a config or `MCP_GATEWAY_API_KEYS` now exits instead of serving an open gateway — pass
+  `-e MCP_GATEWAY_API_KEYS=…`.
+- **Helm chart 10.3.0 requires an API key.** `helm install` / `helm template` / `helm upgrade` fail at render time
+  with `mcp-gateway: an API key is required (chart >= 10.3.0) …` unless `existingSecret` (a Secret containing
+  `MCP_GATEWAY_API_KEYS`, recommended), `apiKeys` (new: chart-managed Secret) or `config.auth` is set. Releases that
+  ran without a key must add one on upgrade, or keep the old behaviour explicitly with `--set security.insecure=true`
+  (the gateway starts with `--insecure` and the install NOTES print a warning).
+- Why inside an LTS line: the old default exposed every upstream tool to the network without credentials. The
+  config schema stays v10 and every config that has auth, or binds to loopback, behaves exactly as in 10.2.
+
+### Security
+- Refuse to start / reload without auth on a non-loopback bind address unless `--insecure` / `security.insecure`
+  (new optional schema key; `validate` explains the refusal in its `auth-disabled-public-bind` warning).
+- `mcp-gateway init` writes `host: 127.0.0.1` instead of `0.0.0.0`.
+- Helm chart: fail-fast auth check, `apiKeys` value (chart-managed Secret with an `api-keys-hash` pod annotation so
+  a key change rolls the pods), `security.insecure` opt-out passed as `--insecure`, new `NOTES.txt` (loud warning
+  when running without auth), new chart README; chart version / appVersion 10.3.0.
+
+### Changed
+- **TEE attestation (`features.confidential`) and post-quantum TLS (`features.postQuantumTls`) are labelled
+  EXPERIMENTAL** at startup (logged as `Experimental: …`), in `validate` and in `GET /api/v1/security`, each stating
+  what is verified and what is not (no native SEV-SNP / TDX / Nitro / SGX evidence or vendor chains, no TLS channel
+  binding; PQ groups only on upstream HTTPS, not the gateway's own listener or WebSocket upstreams).
+- CI: `validate --strict` on the `init` output and on every `examples/*/mcp-gateway.yml`; the Helm workflow asserts
+  that default values fail with the API-key message and renders the configured cases (existing Secret, `apiKeys`,
+  JWT config, `--insecure`, all optional resources).
+- Examples bind `127.0.0.1` where they have no auth.
+
+### Documentation
+- README: new sections **Use with any LLM** (OpenAI, DeepSeek, xAI Grok via OpenAI-compatible function calling with
+  `GET /api/v1/tools?format=openai|openai-responses`, Anthropic Claude via `format=anthropic`, executed with
+  `POST /api/v1/tools/call`; the OpenAI-compatible bridge as an in-gateway alternative) and **Use from web pages and
+  apps** (REST and the JS / Kotlin / Swift / Python / Go clients; no long-lived keys in bundles — backend proxy or
+  short-lived scoped JWTs with `requireExp`, `maxTokenAgeSeconds`, `mcp_servers` / `mcp_tools`, plus
+  `cors.origins` / `mcp.allowedOrigins` / `security.allowedHosts`).
+- New runnable example `examples/llm-tools` (OpenAI SDK loop; switch provider with `LLM_BASE_URL`). Only the
+  gateway side and a local OpenAI-compatible mock were exercised — no provider was called.
+- Kubernetes guide, deployment guide and security checklist describe the API-key requirement; package description
+  and keywords broadened; Chinese README pitch updated.
+
 ## [10.2.0] - 2026-10-09
 
 Test-depth release — property / fuzz tests, an admin authorization matrix and regression tests, plus the fixes they
