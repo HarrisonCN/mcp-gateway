@@ -24,7 +24,7 @@ afterEach(async () => {
 
 describe('9.0: schema v9', () => {
   it('reads only schema v9; `state` and v8 are refused with the migration hint; nothing deprecated', () => {
-    expect(Object.keys(DEPRECATIONS)).toEqual(['schemaV9', 'topLevelFeatures']); // 9.9
+    expect(Object.keys(DEPRECATIONS)).toEqual([]); // 10.0
     expect(configDeprecations({ version: 8, state: {} })).toEqual([]);
     expect(() => validateConfig({ version: 8, servers: [] })).toThrow(/version: config schema v8 was removed in 9.0 — use `version: 10`; run `mcp-gateway migrate --to 10`/);
     expect(() => validateConfig({ version: 10, servers: [], state: { store: 'memory' } })).toThrow(/state: removed in 9.0 — use `store: \{ backend, … \}` \(`state.store` → `store.backend`\)/);
@@ -32,16 +32,16 @@ describe('9.0: schema v9', () => {
     expect(() => validateConfig({ version: 11, servers: [] })).toThrow(/10.0 reads `version: 10`/);
     const v9 = validateConfig({ version: 10, servers: [], store: { backend: 'redis', redis: { url: 'redis://r:6379' }, failureMode: 'closed' } });
     expect(v9.state).toEqual({ store: 'redis', redis: { url: 'redis://r:6379' }, failureMode: 'closed' });
-    expect(v9.deprecations?.map((d) => d.id)).toEqual(['schema-v9']); // 9.9
+    expect(v9.deprecations?.map((d) => d.id)).toBeUndefined(); // 10.0: nothing deprecated
     expect(validateConfig({ servers: [], store: { backend: 'memory' } }).state?.store).toBe('memory'); // version optional
     expect(() => validateConfig({ version: 10, servers: [], store: { backend: 'redis' } })).toThrow(/store.redis.url is required/);
     expect(() => validateConfig({ version: 10, servers: [], store: { backend: 'sqlite' } })).toThrow();
-    expect(removedConfigKeys({ version: 9 })).toEqual([]);
+    expect(removedConfigKeys({ version: 10 })).toEqual([]);
     expect(normalizeStoreV9({ a: 1 })).toEqual({ a: 1 });
-    expect(parse(generateDefaultConfig()).version).toBe(9);
+    expect(parse(generateDefaultConfig()).version).toBe(10);
   });
 
-  it('eventlog backend: defaults, validation, round trip through portableConfig; data planes get v9', () => {
+  it('eventlog backend: defaults, validation, round trip through portableConfig; data planes get v10 (10.0)', () => {
     const c = validateConfig({ version: 10, servers: [], store: { backend: 'eventlog' } });
     expect(c.state).toEqual({ store: 'eventlog', failureMode: 'open' });
     const e = validateConfig({ version: 10, servers: [], store: { backend: 'eventlog', eventlog: { dir: '/data/s', fsync: true } } });
@@ -54,23 +54,24 @@ describe('9.0: schema v9', () => {
     expect(validateConfig(p).state).toEqual(e.state);
     // no `version` in the file: still converted (8.9 only converted v9 files, so a re-validate of such configs broke).
     expect(portableConfig(validateConfig({ servers: [], store: { backend: 'memory' } })).store).toEqual({ backend: 'memory', failureMode: 'open' });
-    expect(distributedConfig({ servers: [] }).version).toBe(9);
+    expect(distributedConfig({ servers: [] }).version).toBe(10); // 10.0
   });
 
   it('MCP_GATEWAY_REDIS_URL sets store.backend: redis on a v9 file (8.9 wrote the conflicting `state` block)', async () => {
     const dir = tmp();
-    writeFileSync(join(dir, 'mcp-gateway.yml'), 'version: 9\nstore: { failureMode: closed }\nservers: []\n');
+    writeFileSync(join(dir, 'mcp-gateway.yml'), 'version: 10\nstore: { failureMode: closed }\nservers: []\n');
     process.env.MCP_GATEWAY_REDIS_URL = 'redis://env:6379';
     const cfg = await loadConfig(join(dir, 'mcp-gateway.yml'));
     expect(cfg.state).toMatchObject({ store: 'redis', redis: { url: 'redis://env:6379' }, failureMode: 'closed' });
   });
 
-  it('migrate --to 9 (default) produces a file 9.0 loads', () => {
+  it('migrate --to 9 still writes schema v9 (10.0 loads it after --to 10)', () => {
     const src = '# gw\nversion: 8\nstate:\n  store: redis # shared\n  redis: { url: "redis://r:6379" }\nservers: []\n';
     const r = migrateConfigText(src, undefined, 9); // 9.9: the default is --to 10
     expect(r.changes).toEqual(['version: 8 → 9', 'state → store (store → backend)']);
     expect(r.text).toContain('backend: redis # shared');
-    expect(validateConfig(parse(r.text)).state?.store).toBe('redis');
+    expect(() => validateConfig(parse(r.text))).toThrow(/schema v9 was removed in 10.0/); // 10.0
+    expect(validateConfig(parse(migrateConfigText(r.text).text)).state?.store).toBe('redis');
     expect(() => validateConfig(parse(src))).toThrow(/schema v8 was removed in 9.0/);
     expect(migrateConfigText(r.text, undefined, 9).changed).toBe(false);
     expect(migrateConfigText('version: 6\nadmin: { configApi: true }\nservers: []\n', undefined, 9).changes).toEqual(['version: 6 → 9', 'admin.configApi → controlPlane.configApi']);

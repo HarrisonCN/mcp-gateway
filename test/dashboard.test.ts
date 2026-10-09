@@ -176,11 +176,11 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     expect(((await (await f('/api/v1/portal/keys/pend0001/approve', { method: 'POST' })).json()) as any).status).toBe('active');
   });
 
-  it('lists the 9.9 config deprecations, the event-sourced store and the data planes of the control plane', async () => {
+  it('lists no config deprecations (10.0), the event-sourced store and the data planes of the control plane', async () => {
     const f = demoFetch();
     const r = (await (await f('/api/v1/admin/deprecations')).json()) as any;
     expect(r.runtime).toEqual([]);
-    expect(r.config.map((d: any) => `${d.id}@${d.removedIn}`)).toEqual(['schema-v9@10.0.0']); // 9.9
+    expect(r.config).toEqual([]); // 10.0: demo config on schema v10
     const st = (await (await f('/api/v1/admin/store')).json()) as any;
     expect(st.backend).toBe('eventlog');
     expect(st.eventlog.keys).toBe(38);
@@ -235,7 +235,8 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
   it('backs the config editor: get, validate, diff, dry run and apply (4.6)', async () => {
     const f = demoFetch();
     const { config } = (await (await f('/api/v1/admin/config')).json()) as any;
-    expect(config.version).toBe(9);
+    expect(config.version).toBe(10);
+    expect(config.features.sla).toBeDefined(); // 10.0
     const bad = { ...config, servers: [...config.servers, { id: 'x y', transport: 'sse', url: 'nope' }] };
     const v = (await (await f('/api/v1/admin/config/validate', { method: 'POST', body: JSON.stringify(bad) })).json()) as any;
     expect(v.valid).toBe(false);

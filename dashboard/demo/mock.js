@@ -20,7 +20,7 @@
   ];
   // One held tool call so the approvals card can be tried out.
   let demoConfig = {
-    version: 9, port: 4000, logLevel: 'info',
+    version: 10, port: 4000, logLevel: 'info',
     auth: { strategy: 'api-key', apiKeys: ['<redacted>', { key: '<redacted>', name: 'aura', scope: { servers: ['github', 'fs-*'] } }] },
     rateLimit: { limit: 120, windowSeconds: 60 },
     mcp: { toolNaming: 'auto' },
@@ -30,6 +30,8 @@
       { id: 'filesystem', name: 'Filesystem', transport: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '/data'] },
       { id: 'search', name: 'Search', transport: 'streamable-http', url: 'https://search.internal:8443/mcp', tls: { spiffeId: 'spiffe://example.org/ns/tools/*' } },
     ],
+    // 10.0: schema v10 — feature-module sections live under `features`.
+    features: { sla: { targets: [{ id: 'gold', availability: 99.9 }] } },
   };
   let demoApprovals = [{ id: 'demo-approval-1', status: 'pending', serverId: 'github', tool: 'create_issue', clientId: 'key:aura', via: 'mcp', rule: 'review-github-writes', arguments: { repo: 'HarrisonCN/aura', title: 'Crash on launch' }, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600e3).toISOString() }];
   const demoCache = { entries: 42, maxEntries: 1000, hits: 318, misses: 127, deduped: 9, evictions: 0 };
@@ -784,12 +786,10 @@
     if (p === '/admin/kernel') return json({ version: VERSION, schema: 10, lts: { line: '10.x', codename: 'Kernel', lts: true, activeUntil: '2027-10-31', maintenanceUntil: '2028-10-31', status: 'active' },
       modules: DEMO_FEATURES.map((m) => ({ ...m, path: `/api/v1/admin/${m.id}` })),
       hooks: ['chaos', 'multimodal', 'confidential', 'sla', 'self-healing'].map((id, i) => ({ order: i + 1, id, before: id !== 'multimodal' && id !== 'sla', after: id !== 'confidential' })),
-      features: [{ section: 'features.sla', configured: true }, { section: 'features.selfHealing', configured: true }, { section: 'features.chaos', configured: false }] });
+      features: ['sla', 'selfHealing', 'chaos'].map((k) => ({ section: `features.${k}`, configured: !!(demoConfig.features && demoConfig.features[k]) })) });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
-    // 9.9: the demo config is still on schema v9 (`mcp-gateway migrate --to 10`).
-    if (p === '/admin/deprecations') return json({ runtime: [], config: [
-      { id: 'schema-v9', removedIn: '10.0.0', replacement: 'version: 10', message: 'config schema v9 is deprecated; `mcp-gateway migrate --to 10` writes `version: 10`', detail: 'version: 9', source: 'config' },
-    ] });
+    // 10.0: nothing is deprecated (the demo config is on schema v10).
+    if (p === '/admin/deprecations') return json({ runtime: [], config: [] });
     // 9.0: event-sourced store.
     if (p === '/admin/store/compact' && method === 'POST') return json({ compacted: true, eventlog: { kind: 'eventlog', dir: '/data/store', keys: 38, eventsSinceSnapshot: 0, totalEvents: 4212, snapshots: 3, lastSnapshotAt: new Date().toISOString(), replayed: 117 } });
     if (p === '/admin/store') return json({ backend: 'eventlog', failureMode: 'open', eventlog: { kind: 'eventlog', dir: '/data/store', keys: 38, eventsSinceSnapshot: 212, totalEvents: 4212, snapshots: 2, lastSnapshotAt: new Date(Date.now() - 3600000).toISOString(), replayed: 117 } });

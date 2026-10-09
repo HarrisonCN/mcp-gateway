@@ -29,9 +29,9 @@ plugins:
 describe('schema v8 (8.0)', () => {
   it('reads version 8 (or none) with servers[].timeoutMs (internally timeout)', () => {
     const cfg = validateConfig({ version: 10, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', timeoutMs: 1234 }] });
-    expect(cfg.version).toBe(9);
+    expect(cfg.version).toBe(10);
     expect(cfg.servers[0]!.timeout).toBe(1234);
-    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['schema-v9']); // 9.9
+    expect(cfg.deprecations?.map((d) => d.id)).toBeUndefined(); // 10.0: nothing deprecated
     expect(validateConfig({ servers: [{ id: 'b', name: 'b', transport: 'stdio', command: 'x' }] }).servers[0]!.timeout).toBe(30000);
   });
 
@@ -58,7 +58,7 @@ describe('schema v8 (8.0)', () => {
     const mod = (await import('../src/utils/deprecations.js')) as Record<string, unknown>;
     expect(mod.normalizeV4Preview).toBeUndefined();
     expect(mod.normalizeControlPlane).toBeUndefined();
-    expect(Object.values(DEPRECATIONS).map((d) => d.id)).toEqual(['schema-v9', 'top-level-features']); // 9.9
+    expect(Object.values(DEPRECATIONS).map((d) => d.id)).toEqual([]); // 10.0
   });
 });
 
