@@ -50,6 +50,12 @@ interface ServerCounters {
 /** Bucket bounds (seconds) of `mcp_gateway_request_duration_seconds`. */
 export const LATENCY_BUCKETS_SECONDS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30];
 
+/** Extra Prometheus lines from feature modules (11.2), keyed by source id (re-registering replaces). */
+const metricSources = new Map<string, () => string[]>();
+export function registerMetricSource(id: string, fn: () => string[]): void {
+  metricSources.set(id, fn);
+}
+
 export class MetricsCollector extends EventEmitter {
   private metrics: RequestMetric[] = [];
   private readonly retentionMs: number;
@@ -335,6 +341,13 @@ export class MetricsCollector extends EventEmitter {
     }
     lines.push('');
 
+    for (const src of metricSources.values()) {
+      try {
+        lines.push(...src());
+      } catch {
+        /* a failing source never breaks /metrics */
+      }
+    }
     return lines.join('\n');
   }
 

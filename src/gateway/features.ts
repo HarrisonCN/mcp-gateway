@@ -26,6 +26,8 @@ export interface FeatureContext {
   invoke: (serverId: string, tool: string, args: Record<string, unknown>, principal: Principal, clientId?: string) => Promise<ProxyResponse>;
   /** Current principal of a client id (api keys; tenant confinement applied). Unknown / unresolvable ids may call nothing (11.1). */
   principalFor?: (clientId: string | undefined) => Principal;
+  /** Shared state store (`store.backend`: memory | redis | eventlog | sqlite) (11.2). */
+  store?: () => import('../state/store.js').StateStore | undefined;
   /** Current scope of a client id: `{known:false}` for a removed key; undefined when scopes travel with the credential (JWT/OAuth) (11.1). */
   resolveScope?: (clientId: string | undefined) => { known: boolean; scope?: AccessScope } | undefined;
   /** Most recent request metrics, newest first. */
