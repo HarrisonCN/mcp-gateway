@@ -4,9 +4,11 @@
 
 | Version | Supported |
 |---|---|
-| 1.2.x | ✅ |
-| 1.0.x – 1.1.x | security fixes until 2027-04 |
-| < 1.0 | ❌ — please upgrade |
+| 10.x (LTS) | ✅ bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |
+| < 10.0 | ❌ — please upgrade (`mcp-gateway migrate --to 10`, see [Migrating to 10.0](docs/guides/migrating-to-v10.md)) |
+
+10.x is the first long-term-support line: config schema v10 stays stable across every 10.x minor release, and
+`ltsStatus()` / `GET /api/v1/admin/kernel` report where the running release is in its support window.
 
 ## Reporting a vulnerability
 
