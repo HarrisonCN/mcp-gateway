@@ -32,6 +32,25 @@ features:
 
 Tokens are compact HS256 JWS (`typ: agent+jwt`) with `iss`, `sub`, `act`, `agent`, `scope`, `iat`, `exp`, `jti`.
 
+## Authorization model (11.1)
+
+A delegation token never grants more than the client that requested it may call. The effective permission of every
+agent call is the intersection of
+
+1. the **original caller's current scope** — its API key `servers` / `tools` (re-resolved on every call; a removed key
+   may call nothing) or, for JWT / OAuth clients, the scope snapshot taken at issuance (`dsc` claim);
+2. its **tenant** confinement and write role (viewers cannot call tools);
+3. the **token grant** (agent `tools` ∩ requested `tools` ∩ parent token for sub-agents);
+4. the server's tool filter and the configured tool **policy**.
+
+The check runs in the gateway's single authorization point (`authorize()` in the invoker), the same one REST, `/mcp`,
+chains, task graphs and plugins use.
+
+**Strict narrowing.** A requested entry is granted only when it is (a) identical to an allowed pattern, (b) a literal
+`server/tool` an allowed pattern matches, or (c) any other glob, resolved to the concrete tools currently known that
+both match. `vault/read*` is therefore never granted from `vault/read?` — only the existing `vault/readX`-style tools.
+A restricted delegator's grant is always a list of concrete tool names.
+
 ## Operators
 
 | | |

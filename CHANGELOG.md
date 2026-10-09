@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [11.1.0] - 2026-10-09
+
+**Security release.** Every upstream call now passes through one non-bypassable authorization decision point, and
+agent delegation can no longer exceed the delegating client's own permissions. Upgrade recommended for every
+deployment that uses `features.agentIdentity` or scoped API keys / JWTs.
+
+### Security
+- **P0 — agent delegation could bypass the original client's permissions.** `POST /api/v1/features/agent-identity/token`
+  minted tokens from the agent's `tools` + `delegators` without intersecting the delegating client's own `servers` /
+  `tools` scopes or tenant role, and `…/call` ran the call through the pipeline without a client-scope check; a
+  restricted key could obtain an agent token broader than itself. Fixed: tokens never grant more than the delegator may
+  call (restricted delegators get concrete `server/tool` names), and every delegated call is authorized as
+  *original caller's current scope ∩ tenant (incl. write role) ∩ token grant ∩ server tool filter ∩ policy*. API-key
+  delegators are re-resolved on every call (removed key → nothing allowed); JWT/OAuth delegators use the scope snapshot
+  taken at issuance (`dsc` claim). Tokens minted by ≤ 11.0 are bounded the same way at call time.
+- **P1 — agent scope narrowing could widen the tool set.** `narrowScope()` tested an allowed glob against the requested
+  *pattern string*; `vault/read?` matches the string `vault/read*`, which admits longer names. Narrowing is now strict:
+  a requested entry is granted only when it is identical to an allowed pattern, a literal `server/tool` an allowed
+  pattern matches, or — for any other glob — the concrete tools currently known that both patterns match (re-checked at
+  call time by the central authorizer). Sub-agent tokens (`subjectToken`) use the same rule. Property-based fuzz tests.
+
+### Added
+- `src/auth/authorizer.ts`: `authorize(principal, call)` — the single authorization decision, called first by
+  `ToolInvoker.invoke()` for REST, `/mcp`, OpenAI and A2A bridges, chains, task graphs, agent identity, plugins
+  (routes and hooks), federation, edge autonomy, replays and the edge runtime. A call without a principal is refused
+  (`-32003`, fail-closed). Exported: `authorize`, `clientPrincipal`, `systemPrincipal`, `deniedPrincipal`, `Principal`.
+- `InvokeContext.principal` (required) and `HookCall.principal`; the audit span carries the delegation chain
+  (`mcp.principal.chain`). Edge-autonomy outbox entries and task-graph runs record the principal that queued / started
+  them and replay under it.
+
+### Changed
+- **Feature module SDK:** `FeatureContext.invoke(server, tool, args, principal, clientId?)` — `principal` is now
+  required (`principalOf(req)`, `ctx.principalFor(clientId)` or `systemPrincipal(name)`); the 4th argument is no longer
+  a client id. `ctx.principalFor` / `ctx.resolveScope` added.
+- **Plugin route SDK:** `ctx.invoke(server, tool, args, caller?)` — pass `req` or a client id and that caller's scope
+  applies; without a caller the call runs as `system:plugin:<name>`. Previously client scopes were not applied.
+- The server tool filter (`servers[].tools`) is enforced centrally for every caller (previously only on REST / `/mcp`).
+
 ## [11.0.0] - 2026-10-09
 
 **Breaking release.** Config schema v11 is the only schema, the modular kernel loads feature modules lazily, and the
