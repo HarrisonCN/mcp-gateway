@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.0.0] - 2026-10-09
+
+### Breaking
+- **Config schema v9 only.** `version: 8` is refused with a hint to run `mcp-gateway migrate --to 9` (8.9 reads both).
+- **`state` removed** — the shared store is configured as `store: { backend: memory | redis | eventlog, redis, eventlog,
+  failureMode }` (`state.store` → `store.backend`). `GatewayConfig.state` stays the internal (embedder) name.
+- Data planes always receive `version: 9`; `GET /api/v1/admin/config` always returns `store`.
+
+### Added
+- **Event-sourced state store** (`store.backend: eventlog`): every `set` / `incr` / `del` is appended to
+  `<dir>/events.log` with absolute expiry; on start the gateway loads `snapshot.json` and replays the log, so rate-limit
+  windows, lockouts and MCP session metadata survive a restart of a single instance. Compaction every `snapshotEvery`
+  events (default 10 000), on shutdown and on `POST /api/v1/admin/store/compact`; `fsync: true` for durable appends;
+  a torn last line after a crash is skipped. `GET /api/v1/admin/store` reports the backend and log stats.
+  `EventLogStateStore` is exported. [Guide](docs/guides/event-sourced-store.md).
+- Pages demo: store status (event log) and empty deprecations.
+- New roadmap for 9.1 → 10.0 in [docs/ROADMAP.md](docs/ROADMAP.md).
+
+### Changed
+- Nothing is deprecated in 9.0 (`DEPRECATIONS` is empty).
+
+### Fixed
+- `MCP_GATEWAY_REDIS_URL` wrote the `state` block, which 8.9 refused next to a `version: 9` / `store` file; it now sets
+  `store.backend: redis`.
+- `portableConfig()` converted `state` → `store` only for files that declared `version: 9`, so a config without
+  `version` could not round-trip through the config API once v9 was the only schema; it now always writes `store`.
+- `docs/deployment.md` and `docs/benchmarks.md` still showed the `state` block.
+- Pages demo test for the config editor still expected the demo config on `version: 8`.
+
+See [docs/guides/migrating-to-v9.md](docs/guides/migrating-to-v9.md).
+
 ## [8.9.0] - 2026-10-08
 
 ### Added
