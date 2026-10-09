@@ -84,6 +84,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./gateway": {
+      "types": "./dist/gateway/public.d.ts",
+      "import": "./dist/gateway/public.js"
+    },
     "./edge": {
       "types": "./dist/edge/entry.d.ts",
       "import": "./dist/edge/entry.js"
