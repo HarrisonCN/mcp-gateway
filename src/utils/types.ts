@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** SLA monitoring & credit reports (9.5). */
+  sla?: import('../features/sla.js').SlaConfig;
   /** Global tool registry (9.4). */
   toolRegistry?: import('../features/tool-registry.js').ToolRegistryConfig;
   /** Confidential computing / TEE (9.3). */

@@ -39,5 +39,6 @@ import './multimodal.js';
 import './edge-runtime.js';
 import './confidential.js';
 import './tool-registry.js';
+import './sla.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

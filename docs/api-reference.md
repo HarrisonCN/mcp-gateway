@@ -511,6 +511,9 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/tool-registry/:publisher/:name` · `…/resolve?range=` | Versions of a tool / highest version matching a range or the pin (9.4) |
 | `POST` | `/admin/tool-registry/publish` · `/admin/tool-registry/sync` | Publish `{ manifest, signature }` / pull every mirror now (9.4) |
 | `GET` | `/features/tool-registry/index.json` | This gateway's registry for mirrors (any authenticated client) (9.4) |
+| `GET` | `/admin/sla` | SLA targets: calls, availability, p95, error budget, met, breaches, credit (9.5) |
+| `GET` | `/admin/sla/report?target=&format=json\|csv` | Service-credit report per target and tenant (9.5) |
+| `POST` | `/admin/sla/reset` | Clear the SLA counters (9.5) |
 
 ## Bridges
 
