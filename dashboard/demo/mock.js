@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '9.6.0';
+  const VERSION = '9.7.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -76,6 +76,7 @@
     { id: "tool-registry", since: "9.4.0", summary: "Global tool registry: signed tool manifests, search, cross-gateway mirrors, immutable versions and version pins" },
     { id: "sla", since: "9.5.0", summary: "SLA monitoring: availability / p95 latency objectives per server and tenant, error budgets, breaches and service-credit reports" },
     { id: "self-healing", since: "9.6.0", summary: "Self-healing: eject / fail over, roll back or throttle unhealthy upstreams automatically, lifted after a cool-down" },
+    { id: "pq-tls", since: "9.7.0", summary: "Post-quantum TLS: hybrid X25519MLKEM768 key exchange for upstream HTTPS, PQ handshake probes and a certificate policy" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -763,6 +764,11 @@
     ], servers: [{ id: 'search', calls: 210, errors: 2, errorRate: 0.0095, p95: 310 }, { id: 'github', calls: 64, errors: 1, errorRate: 0.0156, p95: 4210 }], history: [
       { at: new Date(Date.now() - 20000).toISOString(), rule: 'github-slow', server: 'github', action: 'throttle', event: 'triggered', reason: 'p95 4210ms > 3000ms over 64 calls' },
       { at: new Date(Date.now() - 7200000).toISOString(), rule: 'search-down', server: 'search', action: 'eject', event: 'lifted', reason: 'cool-down elapsed' },
+    ] });
+    // 9.7: post-quantum TLS.
+    if (p === '/admin/pq-tls') return json({ configured: true, mode: 'prefer', supported: true, openssl: '3.5.4', groups: 'X25519MLKEM768:X25519:P-256', certificatePolicy: { minRsaBits: 3072, allowedKeyTypes: ['ec', 'ed25519', 'ed448', 'rsa', 'rsa-pss', 'ml-dsa'], maxValidityDays: 398, rejectSha1: true }, servers: [
+      { id: 'search', url: 'https://search.internal:8443/mcp', lastProbe: { server: 'search', host: 'search.internal', port: 8443, pq: true, pqError: null, protocol: 'TLSv1.3', classicalGroup: 'X25519', certificate: { subject: 'CN=search.internal', keyType: 'ec', bits: null, signature: null, validTo: new Date(Date.now() + 80 * 86400000).toISOString(), validityDays: 90 }, violations: [], at: new Date(Date.now() - 600000).toISOString() } },
+      { id: 'postgres', url: 'https://pg-mcp.internal/mcp', lastProbe: { server: 'postgres', host: 'pg-mcp.internal', port: 443, pq: false, pqError: 'ssl/tls alert handshake failure', protocol: 'TLSv1.3', classicalGroup: 'X25519', certificate: { subject: 'CN=pg-mcp.internal', keyType: 'rsa', bits: 2048, signature: null, validTo: new Date(Date.now() + 300 * 86400000).toISOString(), validityDays: 365 }, violations: ['RSA key of 2048 bits < 3072'], at: new Date(Date.now() - 600000).toISOString() } },
     ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 9.0: nothing is deprecated (schema v8 and the `state` block were removed).

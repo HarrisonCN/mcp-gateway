@@ -41,5 +41,6 @@ import './confidential.js';
 import './tool-registry.js';
 import './sla.js';
 import './self-healing.js';
+import './pq-tls.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';

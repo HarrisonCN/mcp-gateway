@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.7.0] - 2026-10-09
+
+### Added
+- **Post-quantum TLS** (`postQuantumTls`): upstream HTTPS connections (streamable HTTP / SSE, with or without mTLS)
+  offer the hybrid post-quantum group **X25519MLKEM768** (ML-KEM, FIPS 203) first — `mode: prefer` keeps classical
+  fallback (`classicalGroups`), `mode: require` never downgrades. `POST /api/v1/admin/pq-tls/probe` handshakes every
+  matching upstream with PQ groups only and classically and checks its certificate against `certificatePolicy`
+  (allowed key types incl. `ml-dsa`, `minRsaBits`, `maxValidityDays`, `rejectSha1`, expiry);
+  `GET /api/v1/admin/pq-tls` reports support (OpenSSL 3.5+), effective groups and the last probes.
+  [Guide](docs/guides/pq-tls.md).
+- Pages demo: post-quantum TLS status.
+
+### Changed
+- `security/mtls`: upstream connections take the key-exchange groups from `postQuantumTls` (`setUpstreamTlsGroups`).
+
+### Fixed
+- README / CHANGELOG linked the 9.3 TEE guide as `docs/guides/confidential-computing.md`; the guide is
+  [docs/guides/confidential.md](docs/guides/confidential.md).
+
 ## [9.6.0] - 2026-10-09
 
 ### Added
@@ -50,7 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   single-use gateway `nonce`, `issuedAt`, `debug`) verified against `trustedKeys` (Ed25519 / ECDSA / RSA PEM), the
   platform list and the measurement allowlist, honoured for `validitySeconds`. Until then calls are refused with
   JSON-RPC **-32024**. `POST /api/v1/admin/confidential/:server/nonce` · `…/attest` · `DELETE …/:server`;
-  `GET /api/v1/admin/confidential` shows attestation state and the last rejection. [Guide](docs/guides/confidential-computing.md).
+  `GET /api/v1/admin/confidential` shows attestation state and the last rejection. [Guide](docs/guides/confidential.md).
 - Pages demo: attested TEE servers.
 
 ## [9.2.0] - 2026-10-09

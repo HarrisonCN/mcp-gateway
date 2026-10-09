@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Post-quantum TLS (9.7). */
+  postQuantumTls?: import('../features/pq-tls.js').PqTlsConfig;
   /** Self-healing (9.6). */
   selfHealing?: import('../features/self-healing.js').SelfHealingConfig;
   /** SLA monitoring & credit reports (9.5). */

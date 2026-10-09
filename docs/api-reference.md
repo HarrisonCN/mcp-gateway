@@ -516,6 +516,8 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `POST` | `/admin/sla/reset` | Clear the SLA counters (9.5) |
 | `GET` | `/admin/self-healing` | Self-healing rules, active actions, per-server window stats, history (9.6) |
 | `POST` | `/admin/self-healing/:id/trigger` · `/admin/self-healing/:id/clear` | Trigger a rule for `{ server }` / lift it (`{ server? }`) (9.6) |
+| `GET` | `/admin/pq-tls` | Post-quantum TLS: mode, OpenSSL support, effective groups, last probe per HTTPS upstream (9.7) |
+| `POST` | `/admin/pq-tls/probe` | Probe HTTPS upstreams `{ server? }`: PQ handshake, classical handshake, certificate policy (9.7) |
 
 ## Bridges
 
