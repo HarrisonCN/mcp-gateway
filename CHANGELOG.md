@@ -9,6 +9,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.9.1] - 2026-10-09
+
+**10.x LTS security release.** Backports the P0/P1 fixes of 11.1, 11.2 and 12.0 to the 10.x line, adapted to config
+schema v10 (v10 and v11 files keep loading; no `migrate` needed). Upgrade recommended for every 10.x deployment.
+npm: `npm i @winstonsayno/mcp-gateway@v10-lts` (`latest` stays on the current major); container tags `10`, `10.9`,
+`10.9.1`.
+
+### Security
+- **P0 — agent delegation could bypass the original client's permissions** (fixed in 11.1.0). Agent tokens never grant
+  more than the delegating client may call, and every delegated call is authorized as *original caller's current scope
+  ∩ tenant (incl. write role) ∩ token grant ∩ server tool filter ∩ policy*. API-key delegators are re-resolved on every
+  call; JWT/OAuth delegators use the scope snapshot taken at issuance (`dsc` claim).
+- **Central authorizer** (11.1.0): `src/auth/authorizer.ts` `authorize(principal, call)` is called first by
+  `ToolInvoker.invoke()` for REST, `/mcp`, OpenAI and A2A bridges, chains, task graphs, **workflows** (10.x only: nodes run
+  as the caller that started the workflow), agent identity, plugins, federation, edge autonomy, replays and the edge
+  runtime. A call without a principal is refused (`-32003`, fail-closed). The server tool filter (`servers[].tools`) is
+  enforced for every caller. A static call-site test (`test/authz-11-1.test.ts`) fails if a new invoke path skips it.
+- **P1 — scope narrowing could widen the tool set** (11.1.0). `narrowScope()` is strict: a requested entry is granted
+  only when it is identical to an allowed pattern, a literal `server/tool` an allowed pattern matches, or the concrete
+  known tools both patterns match. Sub-agent tokens use the same rule.
+- **P1 — multimodal blobs lacked caller-ownership checks** (11.2.0). Blobs are bound to the owning principal, tenant and
+  `server/tool`; reads are re-authorized and answer `404` to everyone else; ids are 192-bit random. New byte budgets for
+  held blobs (`maxStoredBytes` 256 MiB, `maxTenantStoredBytes` 64 MiB) with expiry + LRU eviction.
+- **P1 — token revocation lived only in process memory** (11.2.0). Revocations and issued-token records live in the shared
+  state store (Redis / event log / new `store.backend: sqlite`) with TTL = token expiry;
+  `features.agentIdentity.revocation.failureMode` defaults to **closed** (store unreachable → `503`). Posture notice
+  `agent-revocation-in-memory`.
+- **P1 — stdio servers inherited the gateway's environment** (12.0.0). The `MCP_GATEWAY_*` exclusion is replaced by an
+  **allowlist**: `PATH`, `HOME`, `LANG`/`LANGUAGE`/`LC_*`, `TZ`, `TMPDIR`, `TERM` (+ the Windows essentials), then
+  `security.stdioEnvPassthrough`, the server's `envPassthrough`, then its explicit `env`. Credential-looking passthrough
+  is flagged by the posture check (`stdio-secret-passthrough`).
+
+### Upgrade notes (behaviour changes in a patch release, for security)
+- stdio servers that relied on inherited variables (`AWS_*`, `OPENAI_API_KEY`, `DATABASE_URL`, …) need them in `env`
+  (`FOO: ${FOO}`) or in `envPassthrough` / `security.stdioEnvPassthrough`.
+- `FeatureContext.invoke(server, tool, args, principal, clientId?)` takes a principal (`principalOf(req)`,
+  `ctx.principalFor(id)` or `systemPrincipal(name)`); plugin routes `ctx.invoke(…, caller?)` apply the caller's scope.
+- Agent identity on a shared store that becomes unreachable answers `503` (set `revocation.failureMode: open` to keep the
+  10.9.0 behaviour).
+- Not backported (12.x/13.x only): stdio uid/gid / cwd / sandbox wrappers, lower multimodal per-item defaults,
+  transactional hot reload, the modular kernel.
+
+### CI
+- Container base image, Redis service, Swift container, BuildKit and QEMU binfmt come from the Amazon ECR Public mirror of
+  the Docker Official Images (Docker Hub pull rate limits); release images of the 10.x line never move `latest`.
+
+
 ## [10.9.0] - 2026-10-09
 
 Bridge release to 11.0: **config schema v11** and the **lazy modular kernel** are available now, and everything 11.0
