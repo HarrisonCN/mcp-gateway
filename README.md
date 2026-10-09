@@ -17,8 +17,17 @@ mcp-gateway sits between AI clients (Claude Code, Cursor, your own agents) and t
 authenticating to every server, clients connect once — over MCP Streamable HTTP at `/mcp` or a plain REST API — and
 the gateway routes each call to the right upstream with one place for keys, scopes, rate limits, logs and metrics.
 
+It is not tied to one model vendor or one kind of client:
+
+- **Any LLM with function calling** — OpenAI, xAI Grok, DeepSeek and other OpenAI-compatible APIs, or Anthropic
+  Claude: fetch the tools in the provider's format and execute the model's tool calls through the gateway
+  ([Use with any LLM](#use-with-any-llm)).
+- **Web pages and apps** — browser front-ends, mobile and desktop apps reach the same tools over REST or the client
+  libraries (JS, Kotlin/Android, Swift/iOS, Python, Go), with keys kept out of the bundle
+  ([Use from web pages and apps](#use-from-web-pages-and-apps)).
+
 ```
- Claude Code · Cursor · agents · scripts
+ Claude Code · Cursor · agents · LLM apps (OpenAI, Grok, DeepSeek, Claude) · web / mobile apps
                  │  /mcp (Streamable HTTP)  ·  /api/v1 (REST)
                  ▼
  ┌──────────────── mcp-gateway ────────────────┐
@@ -94,8 +103,9 @@ stdio-only clients can bridge with [`mcp-remote`](https://www.npmjs.com/package/
 `npx mcp-remote http://localhost:4000/mcp --header "Authorization: Bearer <key>"`. The dashboard is at
 `http://localhost:4000/dashboard`.
 
-> `init` writes `host: 0.0.0.0` with auth commented out. Either enable auth or bind to `127.0.0.1` before exposing
-> the port — `validate` and `start` warn when auth is off on a non-loopback address.
+> `init` writes `host: 127.0.0.1` with auth commented out. Without auth the gateway **refuses to start** on a
+> non-loopback address: configure auth before binding to `0.0.0.0`, or — only on a trusted network — pass
+> `start --insecure` (`security.insecure: true`).
 
 ### Docker
 
@@ -120,13 +130,99 @@ The chart lives in this repository (it is not published to a chart registry):
 
 ```bash
 git clone https://github.com/HarrisonCN/mcp-gateway.git && cd mcp-gateway
-kubectl create secret generic gw-secrets --from-literal=MCP_GATEWAY_API_KEYS=change-me
+kubectl create secret generic gw-secrets --from-literal=MCP_GATEWAY_API_KEYS=sha256:<hash from gen-key>
 helm install gw ./deploy/helm/mcp-gateway --set existingSecret=gw-secrets
 ```
+
+An API key is required: without `existingSecret` (or `apiKeys` / `config.auth`) the chart fails at install time with
+a message explaining how to provide one. `--set security.insecure=true` is the explicit, warned opt-out for trusted
+networks. See the [chart README](deploy/helm/mcp-gateway/README.md).
 
 Gateway config goes in the chart's `config:` value. Pods run non-root with a read-only root filesystem; HPA, PDB,
 `ServiceMonitor` and an optional operator (`McpGateway` CRD) are off by default. Liveness / readiness probes use
 `/api/v1/health/live` and `/api/v1/health/ready`. See the [Kubernetes guide](docs/guides/kubernetes.md).
+
+## Use with any LLM
+
+The gateway does not call a model itself; your code does. `GET /api/v1/tools?format=…` returns the tools the caller's
+key may use in the provider's function-calling format, plus a `mapping` from the (sanitized) LLM tool name to the
+gateway `{ server, tool }`. Execute each tool call the model makes with `POST /api/v1/tools/call` — scopes, policy,
+rate limits and the audit log apply exactly as for any other client.
+
+| Provider | Tools format | API |
+|---|---|---|
+| OpenAI | `format=openai` (Chat Completions) or `format=openai-responses` (Responses API) | `https://api.openai.com/v1` |
+| DeepSeek | `format=openai` (OpenAI-compatible Chat Completions) | `https://api.deepseek.com` |
+| xAI Grok | `format=openai-responses` (xAI's recommended Responses API) or `format=openai` (Chat Completions) | `https://api.x.ai/v1` |
+| Anthropic Claude | `format=anthropic` (Messages API `tools`) | Anthropic SDK |
+| other OpenAI-compatible APIs | `format=openai` | their base URL |
+
+A complete loop with the OpenAI SDK — switch provider by changing `LLM_BASE_URL` / `LLM_MODEL`
+([examples/llm-tools](examples/llm-tools)):
+
+```js
+import OpenAI from 'openai';
+const gw = (path, init = {}) => fetch(`http://127.0.0.1:4000/api/v1${path}`, { ...init,
+  headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.GATEWAY_KEY}` } });
+
+const llm = new OpenAI({ apiKey: process.env.LLM_API_KEY, baseURL: process.env.LLM_BASE_URL }); // e.g. https://api.deepseek.com
+const { tools, mapping } = await (await gw('/tools?format=openai')).json();
+const messages = [{ role: 'user', content: 'List the files in /tmp' }];
+for (let round = 0; round < 8; round++) {
+  const msg = (await llm.chat.completions.create({ model: process.env.LLM_MODEL, messages, tools })).choices[0].message;
+  messages.push(msg);
+  if (!msg.tool_calls?.length) { console.log(msg.content); break; }
+  for (const call of msg.tool_calls) {
+    const { server, tool } = mapping[call.function.name];
+    const out = await (await gw('/tools/call', { method: 'POST',
+      body: JSON.stringify({ server, tool, arguments: JSON.parse(call.function.arguments || '{}') }) })).json();
+    messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(out.result ?? out) });
+  }
+}
+```
+
+Alternatives: the JS client wraps this as `toolSchemas()` / `callLlmTool()` ([clients/js](clients/js)), and the
+[OpenAI-compatible bridge](docs/guides/bridges.md) (`openai:` with `upstream.baseUrl`) can run the whole loop inside
+the gateway — point any OpenAI-compatible SDK at `http://<gateway>/openai/v1` and the gateway injects its tools,
+executes them and returns the final answer. Model names change often; check each provider's documentation. These
+are plain HTTP integrations, not partnerships with or endorsements by any model vendor.
+
+## Use from web pages and apps
+
+Front-ends and apps call the gateway like any other client: REST under `/api/v1` (or `/mcp`), directly or through
+the client libraries — [JS / TypeScript](clients/js) (browsers, React Native, Node, Deno, Bun),
+[Kotlin / Android](clients/kotlin), [Swift / iOS / macOS](clients/swift), [Python](clients/python) and
+[Go](clients/go).
+
+**Never ship a long-lived API key in a browser bundle or an app binary** — anyone can extract it and call every tool
+in its scope. Use one of these instead:
+
+1. **Your backend in the middle** (simplest): the page / app talks to your server, which holds the gateway key and
+   calls the gateway.
+2. **Short-lived, scoped JWTs**: your backend signs in the user and mints a token the gateway verifies; the app
+   sends it as `Authorization: Bearer <jwt>`.
+
+```yaml
+auth:
+  strategy: jwt
+  jwt:
+    jwksUrl: https://auth.example.com/.well-known/jwks.json   # or publicKey / jwtSecret
+    issuer: https://auth.example.com/
+    audience: mcp-gateway
+    requireExp: true             # reject tokens without "exp"
+    maxTokenAgeSeconds: 900      # and tokens issued more than 15 minutes ago
+# token claims mcp_servers / mcp_tools narrow what each token may call, like a scoped key
+cors:
+  origins: ["https://app.example.com"]        # browser origins allowed to call /api/v1
+mcp:
+  allowedOrigins: ["https://app.example.com"]  # browser origins allowed on /mcp
+security:
+  allowedHosts: ["gateway.example.com"]        # reject other Host headers
+  authLockout: true
+```
+
+Server-side API keys can also carry scopes (`servers`, `tools`), their own `rateLimit` and an `expiresAt` — see
+[Configuration](docs/configuration.md#per-key-scopes). Terminate TLS in front of the gateway.
 
 ## Features
 
@@ -163,7 +259,8 @@ OpenAI / A2A bridges, control plane / data plane, multi-region, workflows, SLA a
 are compact implementations with unit tests, but they have seen far less real-world use than the core; read the guide
 and test in your environment before depending on one.
 
-**Experimental (interface-level)**
+**Experimental (interface-level)** — `validate`, startup and `GET /api/v1/security` print an EXPERIMENTAL notice
+when either is enabled.
 - **Confidential computing / TEE attestation** ([guide](docs/guides/confidential.md)): the gateway checks a signed
   JSON attestation report from a key you trust, plus measurement allowlists and single-use nonces. It does **not**
   verify native SEV-SNP / TDX / Nitro / SGX evidence or vendor certificate chains, and the report is not bound to the
@@ -192,7 +289,8 @@ Things to know before deploying:
 
 - **Operators are root-equivalent.** Any unrestricted client can change config, including which commands stdio
   servers run. Give end users scoped keys or tenant roles.
-- **Auth is off by default.** Turn it on (`auth.strategy`, or `MCP_GATEWAY_API_KEYS`), or bind to loopback.
+- **No auth means loopback only.** Turn auth on (`auth.strategy`, or `MCP_GATEWAY_API_KEYS`); without it the
+  gateway refuses to start on a non-loopback address unless you pass `--insecure`. The Helm chart requires an API key.
 - `mcp-gateway validate --strict` fails on security warnings; `GET /api/v1/security` reports the running posture.
 - stdio servers do not inherit `MCP_GATEWAY_*` variables, so third-party servers can't read the gateway's own keys.
 
@@ -212,12 +310,15 @@ behaviour, config schema v10, CLI commands and flags, root library exports and P
 in backward-compatible ways. Deep imports, log format, the dashboard and the audit database schema are not covered —
 see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
-## What's New in v10.2
+## What's New in v10.3
 
-Test-depth release, no new features: fast-check property tests, an authorization matrix over every admin route and
-regression tests — plus the fixes they found (replica secrets in `GET /api/v1/servers`, URL credentials in
-`GET /api/v1/admin/config`, deep-nesting redaction, and DNS-rebinding protection now on by default for a loopback
-gateway without auth). Full history: [CHANGELOG.md](CHANGELOG.md).
+Honest labelling and secure defaults, no new features. Without authentication the gateway now **refuses to start on a
+non-loopback address** (`--insecure` / `security.insecure: true` is the explicit opt-out), `init` writes
+`host: 127.0.0.1`, and the **Helm chart requires an API key** (`existingSecret` with `MCP_GATEWAY_API_KEYS`) — it
+fails at install time with instructions otherwise. TEE attestation and post-quantum TLS print an EXPERIMENTAL notice
+saying what is and isn't verified. This is a deliberate behaviour change inside the LTS line; the
+[upgrade notes](CHANGELOG.md) explain the migration. Also new: guides for [any LLM](#use-with-any-llm) and for
+[web pages and apps](#use-from-web-pages-and-apps). Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 
