@@ -4,7 +4,8 @@ import { parse } from 'yaml';
 import { validateConfig, generateDefaultConfig } from '../src/config/loader.js';
 import { migrateConfigText } from '../src/config/migrate.js';
 import { configDeprecations, removedConfigKeys, DEPRECATIONS } from '../src/utils/deprecations.js';
-import { portableConfig } from '../src/gateway/admin.js';
+import { portableConfig, featureSection, withFeatureSection } from '../src/gateway/admin.js';
+import { desktopConfig } from '../src/features/offline.js';
 import { distributedConfig } from '../src/gateway/control-plane.js';
 import { CONFIG_SCHEMA_VERSION, LTS, ltsStatus } from '../src/features/kernel.js';
 import { startFeatureGw, type FeatureGw } from './helpers/feature-gw.js';
@@ -64,5 +65,16 @@ describe('10.0: schema v10, unified kernel, LTS', () => {
     expect(k.body.hooks[0].order).toBe(1);
     expect(k.body.features.find((f: any) => f.section === 'features.chaos').configured).toBe(true);
     expect(k.body.features.find((f: any) => f.section === 'features.sla').configured).toBe(false);
+  });
+  it('schema-form helpers and generated configs use `features` (10.0 fixes)', () => {
+    const p = portableConfig(validateConfig({ servers: [], features: { chaos } }));
+    expect(featureSection(p, 'chaos')).toEqual(p.features && (p.features as any).chaos);
+    const q = withFeatureSection(p, 'rollouts', [{ id: 'r', server: 'a', percent: 10 }]);
+    expect((q.features as any).rollouts).toHaveLength(1);
+    expect(q).not.toHaveProperty('rollouts');
+    expect(withFeatureSection(withFeatureSection(p, 'chaos', undefined), 'x', undefined)).not.toHaveProperty('features');
+    const d = desktopConfig({ apiKey: 'k' }).config;
+    expect(d).toMatchObject({ version: 10, features: { offline: { mode: 'auto' } } });
+    expect(validateConfig(d).offline).toMatchObject({ mode: 'auto' });
   });
 });
