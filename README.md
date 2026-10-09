@@ -334,16 +334,13 @@ The project follows [Semantic Versioning](https://semver.org/). Within a major l
 Prometheus metric names change only in backward-compatible ways. Deep imports, log format, the dashboard and the
 audit database schema are not covered — see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
-## What's New in v11.0
+## What's New in v11.1
 
-Breaking release on top of the 10.x LTS line: **config schema v11** is the only schema, the modular kernel loads a
-feature module only when its `features.*` section is configured (`kernel: { modules: eager }` keeps the 10.x
-behaviour), and the 6.2 workflow engine is gone — durable task graphs replace it. Upgrade a config with
-`npx @winstonsayno/mcp-gateway@11 migrate --write` (workflows become task graphs, comments are kept); the
-[migration guide](docs/guides/migrating-to-v11.md) lists every change. 10.x keeps its LTS dates. The 10.x line
-brought secure defaults and supply-chain signing (10.1 – 10.4), the plugin SDK and Cedar / OPA (10.5), time-travel
-replay and real-time budgets (10.6), task graphs and edge autonomy (10.7), privacy computing and post-quantum
-identity (10.8). Full history: [CHANGELOG.md](CHANGELOG.md).
+**Security release.** One authorization decision point for every tool call: REST, `/mcp`, bridges, chains, task
+graphs, agent delegation, plugins, federation and edge all go through `authorize()` inside the invoker, and a call
+without a principal is refused. Agent delegation tokens are now bounded by the delegating client's own scope (P0), and
+scope narrowing is strict — no glob can widen a grant (P1). Feature-module and plugin authors: `ctx.invoke` takes a
+principal. Details: [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 

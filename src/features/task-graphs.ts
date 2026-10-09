@@ -53,7 +53,8 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
-import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
+import { registerFeature, objectBody, badRequest, principalOf } from '../gateway/features.js';
+import { deniedPrincipal, type Principal } from '../auth/authorizer.js';
 import { parseTarget, readPath, render, stepValue } from '../orchestration/chains.js';
 import { A2aFederationSchema, sendToRemote } from './a2a-federation.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
@@ -140,6 +141,8 @@ export interface TaskRun {
   definition: GraphCfg;
   input: Record<string, unknown>;
   clientId?: string;
+  /** Principal that started the run (11.1): every node call is authorized as this caller. */
+  principal?: Principal;
   status: TaskRunStatus;
   startedAt: string;
   updatedAt: string;
@@ -398,8 +401,9 @@ registerFeature({
   summary: 'Multi-agent orchestration 2.0: cross-gateway task graphs with checkpoints, resume, retry with backoff and saga compensation',
   mount: (router, ctx) => {
     const dirOf = (c: Parsed) => (c.dir ? resolve(ctx.config().configDir ?? process.cwd(), c.dir) : undefined);
-    const exec = (): TaskExecutor => ({
-      tool: (s, t, a, client) => ctx.invoke(s, t, a, client ?? 'task-graph'),
+    // 11.1: nodes run as the principal that started the run (re-authorized per call), else the client's current scope.
+    const exec = (run: TaskRun): TaskExecutor => ({
+      tool: (s, t, a, client) => ctx.invoke(s, t, a, run.principal ?? (ctx.principalFor ?? deniedPrincipal)(client), client ?? 'task-graph'),
       remote: async (gw, skill, args, client) => {
         const raw = ctx.config().a2aFederation;
         if (!raw) return { success: false, durationMs: 0, error: { code: -32603, message: 'features.a2aFederation is not configured (needed for remote nodes)' } };
@@ -420,7 +424,7 @@ registerFeature({
     };
     const start = (run: TaskRun, c: Parsed) => {
       const st = { cancel: false, done: undefined as unknown as Promise<TaskRun> };
-      st.done = executeRun(run, exec(), { checkpoint: (r) => taskRuns.save(r, dirOf(c)), cancelled: () => st.cancel }).finally(() => active.delete(run.id));
+      st.done = executeRun(run, exec(run), { checkpoint: (r) => taskRuns.save(r, dirOf(c)), cancelled: () => st.cancel }).finally(() => active.delete(run.id));
       active.set(run.id, st);
       return st.done;
     };
@@ -440,6 +444,7 @@ registerFeature({
       if (!g) return void res.status(404).json({ error: 'Not Found', message: `unknown task graph ${JSON.stringify(b.graph)}` });
       if (b.input !== undefined && (typeof b.input !== 'object' || b.input === null || Array.isArray(b.input))) return badRequest(res, '"input" must be an object');
       const run = newRun(g, (b.input as Record<string, unknown>) ?? {}, (req as { clientId?: string }).clientId);
+      run.principal = principalOf(req);
       const done = start(run, c);
       if (b.wait === true) return void res.json(await done);
       res.status(202).json({ runId: run.id, status: run.status });

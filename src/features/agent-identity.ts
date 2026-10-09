@@ -28,8 +28,11 @@
 
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
-import { registerFeature, objectBody, badRequest, clientIdOf } from '../gateway/features.js';
+import { registerFeature, objectBody, badRequest, clientIdOf, principalOf } from '../gateway/features.js';
+import { authorize, clientPrincipal, deniedPrincipal, grantCovers, type Principal } from '../auth/authorizer.js';
+import { isRestricted, type AccessScope } from '../auth/scopes.js';
 import { registerCallHook } from '../gateway/hooks.js';
+import { ERR_FORBIDDEN } from '../auth/authorizer.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig } from '../utils/types.js';
 
@@ -84,6 +87,12 @@ export interface AgentTokenClaims {
   iat: number;
   exp: number;
   jti: string;
+  /**
+   * Delegator scope snapshot at issuance (11.1): used at call time when the delegator's current scope cannot be
+   * re-resolved (JWT / OAuth clients). API-key delegators are always re-resolved, so a removed or narrowed key
+   * narrows its agents' tokens immediately.
+   */
+  dsc?: AccessScope;
 }
 
 const settings = (cfg: GatewayConfig): Cfg | undefined => {
@@ -129,10 +138,50 @@ export const chainOf = (a: Actor | undefined): string[] => (a ? [a.sub, ...chain
 
 const matchAny = (globs: string[], s: string) => globs.some((g) => globToRegExp(g).test(s));
 
-/** Scope narrowing: requested globs kept only when every tool they could match is inside `allowed` (exact containment by glob test). */
-export function narrowScope(allowed: string[], requested?: string[]): string[] {
+const isGlob = (p: string) => /[*?]/.test(p);
+
+/**
+ * Strict scope narrowing (11.1). A requested entry is granted only when
+ *  (a) it is exactly identical to an allowed pattern, or
+ *  (b) it is a literal `server/tool` name that an allowed pattern matches (a one-element set — containment is exact), or
+ *  (c) otherwise it is resolved against the concrete tool catalog (`server/tool` names currently known): the grant is
+ *      the concrete tools matched by BOTH the requested and an allowed pattern — never the requested glob itself.
+ *
+ * Testing an allowed glob against the requested *pattern string* (≤ 11.0) is unsound: `vault/read?` matches the string
+ * `vault/read*`, yet `vault/read*` admits longer names. Glob-vs-glob containment is not used.
+ */
+export function narrowScope(allowed: readonly string[], requested?: readonly string[], catalog: readonly string[] = []): string[] {
   if (!requested?.length) return [...allowed];
-  return requested.filter((r) => allowed.includes(r) || matchAny(allowed, r));
+  const out = new Set<string>();
+  for (const r of requested) {
+    if (allowed.includes(r)) out.add(r);
+    else if (!isGlob(r)) {
+      if (matchAny([...allowed], r)) out.add(r);
+    } else {
+      const re = globToRegExp(r);
+      for (const n of catalog) if (re.test(n) && matchAny([...allowed], n)) out.add(n);
+    }
+  }
+  return [...out];
+}
+
+/** Intersect a grant with what `p` may call (concrete expansion of patterns when `p` is restricted). */
+export function restrictToPrincipal(grant: readonly string[], p: Principal, catalog: readonly string[]): string[] {
+  if (p.kind === 'system' || !isRestricted(p.scope)) return [...grant];
+  const ok = (n: string) => {
+    const i = n.indexOf('/');
+    return i > 0 && !authorize(p, { serverId: n.slice(0, i), name: n.slice(i + 1), kind: 'tool' });
+  };
+  const out = new Set<string>();
+  for (const g of grant) {
+    if (!isGlob(g)) {
+      if (ok(g)) out.add(g);
+    } else {
+      const re = globToRegExp(g);
+      for (const n of catalog) if (re.test(n) && ok(n)) out.add(n);
+    }
+  }
+  return [...out];
 }
 
 interface Issued {
@@ -166,6 +215,10 @@ function prune(now = Date.now()) {
 
 export interface IssueRequest {
   agent: string;
+  /** Delegator's principal (scope) — the token never grants more than it may call (11.1). Default: unrestricted. */
+  principal?: Principal;
+  /** Concrete `server/tool` names currently known (for strict narrowing of glob requests). */
+  catalog?: readonly string[];
   /** Authenticated client asking for the token (the user, or an agent presenting `subjectToken`). */
   clientId: string;
   tools?: string[];
@@ -186,17 +239,19 @@ export function issueAgentToken(c: Cfg, req: IssueRequest, now = Date.now()): { 
     if (agentState.revoked.has(v.claims.jti)) return { status: 401, error: 'subjectToken: revoked' };
     sub = v.claims.sub;
     act = { sub: `agent:${agent.id}`, act: v.claims.act };
-    const parent = v.claims.scope;
-    allowed = agent.tools.filter((t) => parent.includes(t) || matchAny(parent, t));
+    // 11.1: strict — agent patterns identical to a parent entry, else concrete tools in both.
+    allowed = narrowScope(v.claims.scope, agent.tools, req.catalog);
+    if (v.claims.dsc) req = { ...req, principal: clientPrincipal(v.claims.sub, v.claims.dsc) };
     if (chainDepth(act) > c.maxDelegationDepth) return { status: 403, error: `delegation chain longer than maxDelegationDepth (${c.maxDelegationDepth})` };
   } else if (!matchAny(agent.delegators, req.clientId)) {
     return { status: 403, error: `client "${req.clientId}" may not delegate to agent "${agent.id}"` };
   }
-  const scope = narrowScope(allowed, req.tools);
-  if (!scope.length) return { status: 403, error: 'requested tools are outside the agent\'s scope' };
+  const delegator = req.principal ?? clientPrincipal(sub, undefined);
+  const scope = restrictToPrincipal(narrowScope(allowed, req.tools, req.catalog), delegator, req.catalog ?? []);
+  if (!scope.length) return { status: 403, error: 'requested tools are outside the agent\'s scope or the delegator\'s own permissions' };
   const ttl = Math.min(req.ttlSeconds ?? c.tokenTtlSeconds, c.tokenTtlSeconds);
   const iat = Math.floor(now / 1000);
-  const claims: AgentTokenClaims = { iss: c.issuer, sub, act, agent: agent.id, scope, iat, exp: iat + ttl, jti: randomUUID() };
+  const claims: AgentTokenClaims = { iss: c.issuer, sub, act, agent: agent.id, scope, iat, exp: iat + ttl, jti: randomUUID(), ...(delegator.scope ? { dsc: delegator.scope } : {}) };
   prune(now);
   agentState.issued.set(claims.jti, { jti: claims.jti, agent: agent.id, sub, chain: chainOf(act), scope, issuedAt: new Date(iat * 1000).toISOString(), expiresAt: new Date(claims.exp * 1000).toISOString(), calls: 0 });
   return { token: signAgentToken(claims, c.signingKey), claims };
@@ -217,10 +272,21 @@ registerCallHook({
     if (!c || !c.requireAgentFor.length) return;
     const name = `${call.serverId}/${call.tool}`;
     if (!matchAny(c.requireAgentFor, name)) return;
-    if (call.clientId?.startsWith('agent:')) return;
+    if (call.principal?.delegation?.length) return;
     return { refuse: { code: ERR_AGENT_REQUIRED, message: `Tool "${name}" requires an agent delegation token (agentIdentity.requireAgentFor)`, data: { tool: name } } };
   },
 });
+
+/**
+ * Principal of a delegated call (11.1): the ORIGINAL caller (`sub`) with its current scope — re-resolved for API keys,
+ * the issuance snapshot (`dsc`) otherwise; an unknown / removed key may call nothing — plus the token's grant as a
+ * delegation hop. The central authorizer intersects both on every call.
+ */
+export function delegatedPrincipal(ctx: { resolveScope?: (id: string | undefined) => { known: boolean; scope?: AccessScope } | undefined }, k: AgentTokenClaims, _token?: string): Principal {
+  const r = ctx.resolveScope?.(k.sub);
+  const base = r ? (r.known ? clientPrincipal(k.sub, r.scope) : deniedPrincipal(k.sub)) : clientPrincipal(k.sub, k.dsc ?? { servers: [], tools: [] });
+  return { ...base, delegation: [{ agent: chainOf(k.act).join(' > '), tools: k.scope, jti: k.jti }] };
+}
 
 registerFeature({
   id: 'agent-identity',
@@ -267,7 +333,7 @@ registerFeature({
       if (!b) return;
       if (typeof b.agent !== 'string') return badRequest(res, 'Body must be { "agent": "<id>", "tools"?: [...], "ttlSeconds"?, "subjectToken"? }');
       if (b.tools !== undefined && (!Array.isArray(b.tools) || b.tools.some((t) => typeof t !== 'string'))) return badRequest(res, '"tools" must be an array of strings');
-      const r = issueAgentToken(c, { agent: b.agent, clientId: clientIdOf(req) ?? 'anonymous', tools: b.tools as string[] | undefined, ttlSeconds: typeof b.ttlSeconds === 'number' ? b.ttlSeconds : undefined, subjectToken: typeof b.subjectToken === 'string' ? b.subjectToken : undefined });
+      const r = issueAgentToken(c, { agent: b.agent, clientId: clientIdOf(req) ?? 'anonymous', principal: principalOf(req), catalog: ctx.tools().map((t) => `${t.serverId}/${t.name}`), tools: b.tools as string[] | undefined, ttlSeconds: typeof b.ttlSeconds === 'number' ? b.ttlSeconds : undefined, subjectToken: typeof b.subjectToken === 'string' ? b.subjectToken : undefined });
       if (!r.token) return void res.status(r.status ?? 400).json({ error: r.status === 404 ? 'Not Found' : r.status === 401 ? 'Unauthorized' : 'Forbidden', message: r.error });
       res.json({ access_token: r.token, token_type: 'agent+jwt', issued_token_type: 'urn:ietf:params:oauth:token-type:jwt', expires_in: r.claims!.exp - r.claims!.iat, scope: r.claims!.scope.join(' '), sub: r.claims!.sub, act: r.claims!.act, jti: r.claims!.jti });
     });
@@ -281,11 +347,13 @@ registerFeature({
       if (!v.claims) return void res.status(401).json({ error: 'Unauthorized', message: v.error });
       if (agentState.revoked.has(v.claims.jti)) return void res.status(401).json({ error: 'Unauthorized', message: 'token revoked' });
       const name = `${b.server}/${b.tool}`;
-      if (!matchAny(v.claims.scope, name)) return void res.status(403).json({ error: 'Forbidden', message: `"${name}" is outside the token's scope`, scope: v.claims.scope });
+      if (!grantCovers(v.claims.scope, b.server, b.tool)) return void res.status(403).json({ error: 'Forbidden', message: `"${name}" is outside the token's scope`, scope: v.claims.scope });
       const args = b.arguments && typeof b.arguments === 'object' && !Array.isArray(b.arguments) ? (b.arguments as Record<string, unknown>) : {};
       const rec = agentState.issued.get(v.claims.jti);
       if (rec) rec.calls++;
-      const r = await ctx.invoke(b.server, b.tool, args, `agent:${v.claims.agent}`);
+      // 11.1: authorized centrally as delegator scope ∩ token grant (∩ tenant ∩ server filter ∩ policy).
+      const r = await ctx.invoke(b.server, b.tool, args, delegatedPrincipal(ctx, v.claims, b.token), `agent:${v.claims.agent}`);
+      if (!r.success && r.error?.code === ERR_FORBIDDEN) return void res.status(403).json({ error: 'Forbidden', message: r.error.message, scope: v.claims.scope });
       res.status(r.success ? 200 : 502).json({ ...r, onBehalfOf: v.claims.sub, chain: chainOf(v.claims.act) });
     });
   },

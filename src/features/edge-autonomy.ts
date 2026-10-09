@@ -46,6 +46,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { registerFeature, badRequest, objectBody, type FeatureContext } from '../gateway/features.js';
+import { deniedPrincipal, type Principal } from '../auth/authorizer.js';
 import { registerCallHook, type HookCall } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { EdgeRuntimeSchema, callEdgeTool } from './edge-runtime.js';
@@ -93,6 +94,8 @@ export interface OutboxEntry {
   id: string;
   at: string;
   clientId?: string;
+  /** Principal of the queued call (11.1): the replay is authorized as this caller again. */
+  principal?: Principal;
   serverId: string;
   tool: string;
   args: Record<string, unknown>;
@@ -244,7 +247,7 @@ export async function localDecision(c: Parsed, cfg: GatewayConfig, call: HookCal
         edgeState.decide({ ...base, action: 'deny', detail: 'outbox full' });
         return { success: false, durationMs: 0, error: { code: ERR_EDGE_DENIED, message: `Edge outbox is full (${c.outboxLimit} queued calls); "${call.serverId}" is unreachable (${reason})` } };
       }
-      const e: OutboxEntry = { id: `ob-${randomUUID()}`, at: new Date().toISOString(), clientId: call.clientId, serverId: call.serverId, tool: call.tool, args: call.args, status: 'queued', attempts: 0 };
+      const e: OutboxEntry = { id: `ob-${randomUUID()}`, at: new Date().toISOString(), clientId: call.clientId, ...(call.principal ? { principal: call.principal } : {}), serverId: call.serverId, tool: call.tool, args: call.args, status: 'queued', attempts: 0 };
       edgeState.outbox.push(e);
       edgeState.persist('outbox');
       edgeState.decide({ ...base, action: 'queue', detail: e.id });
@@ -257,7 +260,7 @@ export async function localDecision(c: Parsed, cfg: GatewayConfig, call: HookCal
 }
 
 /** Replay queued calls whose server is connected again. */
-export async function reconcile(cfg: GatewayConfig, invoke: FeatureContext['invoke']): Promise<{ applied: number; failed: number; conflicts: number; pending: number }> {
+export async function reconcile(cfg: GatewayConfig, invoke: FeatureContext['invoke'], principalFor: (clientId: string | undefined) => Principal = deniedPrincipal): Promise<{ applied: number; failed: number; conflicts: number; pending: number }> {
   const c = edgeAutonomyOf(cfg);
   const out = { applied: 0, failed: 0, conflicts: 0, pending: 0 };
   if (!c || edgeState.reconciling) return out;
@@ -274,7 +277,8 @@ export async function reconcile(cfg: GatewayConfig, invoke: FeatureContext['invo
       replaying.add(args);
       let r: ProxyResponse;
       try {
-        r = await invoke(e.serverId, e.tool, args, e.clientId);
+        // 11.1: replayed under the principal that queued the call (re-authorized now), else the client's current scope.
+        r = await invoke(e.serverId, e.tool, args, e.principal ?? principalFor(e.clientId), e.clientId);
       } catch (err) {
         r = { success: false, durationMs: 0, error: { code: -32603, message: (err as Error).message } };
       }
@@ -354,7 +358,7 @@ registerFeature({
     let stopped = false;
     const loop = async () => {
       const c = edgeAutonomyOf(ctx.config());
-      if (c && edgeState.outbox.some((e) => e.status === 'queued')) await reconcile(ctx.config(), ctx.invoke).catch((e: unknown) => logger.warn(`edge-autonomy: reconcile failed: ${(e as Error).message}`));
+      if (c && edgeState.outbox.some((e) => e.status === 'queued')) await reconcile(ctx.config(), ctx.invoke, ctx.principalFor).catch((e: unknown) => logger.warn(`edge-autonomy: reconcile failed: ${(e as Error).message}`));
       if (!stopped) {
         timer = setTimeout(() => void loop(), c?.reconcile.intervalMs ?? 5000);
         timer.unref?.();
@@ -411,7 +415,7 @@ registerFeature({
     });
     router.post('/reconcile', async (_req, res) => {
       if (!conf(res)) return;
-      res.json(await reconcile(ctx.config(), ctx.invoke));
+      res.json(await reconcile(ctx.config(), ctx.invoke, ctx.principalFor));
     });
     router.post('/outbox/:id/retry', (req, res) => {
       if (!conf(res)) return;

@@ -10,12 +10,24 @@
 import express, { type Request, type RequestHandler, type Router } from 'express';
 import type { GatewayConfig, ToolInfo, RequestMetric, ProxyResponse } from '../utils/types.js';
 import { VERSION } from '../utils/version.js';
+import { clientPrincipal, type Principal } from '../auth/authorizer.js';
+import type { AccessScope } from '../auth/scopes.js';
+export type { Principal };
 
 export interface FeatureContext {
   config: () => GatewayConfig;
   tools: () => ToolInfo[];
-  /** Call a tool through the full invoker pipeline (policy, cache, costs, audit). */
-  invoke: (serverId: string, tool: string, args: Record<string, unknown>, clientId?: string) => Promise<ProxyResponse>;
+  /**
+   * Call a tool through the full invoker pipeline (authorization, policy, cache, costs, audit). 11.1: `principal` is
+   * required — it is authorized by the gateway's single authorization point (use {@link principalOf} for the request's
+   * caller, `ctx.principalFor(clientId)` for a stored client id, `systemPrincipal()` for operator-configured work);
+   * `clientId` only labels the call in metrics and audit (defaults to the principal id).
+   */
+  invoke: (serverId: string, tool: string, args: Record<string, unknown>, principal: Principal, clientId?: string) => Promise<ProxyResponse>;
+  /** Current principal of a client id (api keys; tenant confinement applied). Unknown / unresolvable ids may call nothing (11.1). */
+  principalFor?: (clientId: string | undefined) => Principal;
+  /** Current scope of a client id: `{known:false}` for a removed key; undefined when scopes travel with the credential (JWT/OAuth) (11.1). */
+  resolveScope?: (clientId: string | undefined) => { known: boolean; scope?: AccessScope } | undefined;
   /** Most recent request metrics, newest first. */
   recent: (limit?: number) => RequestMetric[];
   /** Base URL of this gateway when listening (for self-tests). */
@@ -45,6 +57,9 @@ export interface FeatureModule {
 
 /** Client id of an authenticated request (7.7). */
 export const clientIdOf = (req: Request): string | undefined => (req as Request & { clientId?: string }).clientId;
+
+/** Principal of an authenticated request: its client id and effective scope (11.1). */
+export const principalOf = (req: Request): Principal => clientPrincipal(clientIdOf(req), (req as Request & { scope?: AccessScope }).scope);
 
 const registry: FeatureModule[] = [];
 
