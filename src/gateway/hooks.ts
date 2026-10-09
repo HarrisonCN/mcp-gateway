@@ -32,10 +32,11 @@ export interface CallHook {
 
 const hooks: CallHook[] = [];
 
-/** Register (or replace by id) a call hook. */
-export function registerCallHook(h: CallHook): void {
+/** Register (or replace by id) a call hook. `first` puts a new hook ahead of the others (10.7: edge autonomy). */
+export function registerCallHook(h: CallHook, opts: { first?: boolean } = {}): void {
   const i = hooks.findIndex((x) => x.id === h.id);
   if (i >= 0) hooks[i] = h;
+  else if (opts.first) hooks.unshift(h);
   else hooks.push(h);
 }
 

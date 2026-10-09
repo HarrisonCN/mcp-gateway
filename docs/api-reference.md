@@ -525,6 +525,8 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/kernel` | Unified kernel: config schema, LTS status, feature modules, call-hook pipeline, configured `features.*` sections (10.0) |
 | `GET` | `/admin/time-travel` | Time-travel journal status; `/state?at=`, `/calls`, `/chain/:id`, `/config-diff`, `POST /replay`, `POST /reset` (10.6) |
 | `GET` | `/admin/realtime-budgets` | Real-time cost / carbon budgets and usage; `/alerts`, `POST /estimate`, `POST /reset` (10.6) |
+| `GET` | `/admin/task-graphs` | Durable task graphs; `POST /run`, `/runs`, `/runs/:id`, `POST /runs/:id/resume`, `POST /runs/:id/cancel` (10.7) |
+| `GET` | `/admin/edge-autonomy` | Edge autonomy (EXPERIMENTAL): connectivity, `/decisions`, `POST /connectivity`, `/outbox`, `POST /reconcile` (10.7) |
 
 ## Bridges
 

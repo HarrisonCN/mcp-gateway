@@ -159,6 +159,10 @@ export interface GatewayConfig {
   timeTravel?: import('../features/time-travel.js').TimeTravelConfig;
   /** Real-time (sliding-window) cost and carbon budgets (10.6). */
   realtimeBudgets?: import('../features/realtime-budgets.js').RealtimeBudgetsConfig;
+  /** Multi-agent orchestration 2.0: durable task graphs (10.7). */
+  taskGraphs?: import('../features/task-graphs.js').TaskGraphsConfig;
+  /** Edge autonomy, EXPERIMENTAL (10.7). */
+  edgeAutonomy?: import('../features/edge-autonomy.js').EdgeAutonomyConfig;
   /** Post-quantum TLS (9.7). */
   postQuantumTls?: import('../features/pq-tls.js').PqTlsConfig;
   /** Self-healing (9.6). */

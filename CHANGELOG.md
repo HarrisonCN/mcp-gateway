@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.7.0] - 2026-10-09
+
+Third release of the 10.5 – 10.8 feature line: **multi-agent orchestration 2.0** (durable, cross-gateway task graphs)
+and **edge autonomy** (EXPERIMENTAL). Both are opt-in under `features:`; config schema v10 is unchanged apart from the
+new optional `features.taskGraphs` and `features.edgeAutonomy` sections.
+
+### Added
+- **Task graphs** (`features.taskGraphs`, [guide](docs/guides/task-graphs.md)): DAGs whose nodes call a local tool
+  (full pipeline) or hand an A2A task to an agent behind another gateway (`remote: { gateway, skill }` via
+  `features.a2aFederation`); per-node retry with capped exponential backoff and optional full jitter, per-attempt
+  `timeoutMs`, `if`, `onError`; **checkpoints** written atomically after every state change (`dir`); runs in flight
+  at shutdown load as `interrupted`; **resume** continues from the checkpoint without re-executing succeeded nodes;
+  **saga compensation** (`compensate: { tool, args }`, `{{self.*}}` = the node's output) runs in reverse completion
+  order when a run fails or is cancelled. Admin API `/api/v1/admin/task-graphs` (`/run`, `/runs`,
+  `/runs/:id/resume`, `/runs/:id/cancel`). Delivery is at-least-once — make node tools idempotent.
+- **Edge autonomy** (`features.edgeAutonomy`, EXPERIMENTAL, [guide](docs/guides/edge-autonomy.md)): while an
+  upstream is unreachable (health registry, `features.offline`, operator override, or a not-connected / timeout
+  failure) matching calls are answered from the last good result for the same arguments (`cache`), by a local
+  `features.edgeRuntime` WASM tool (`wasm`), accepted into a persisted outbox with a receipt (`queue`) or refused
+  (`deny`, `-32018`) — always after local policy. The outbox is replayed through the full pipeline on reconnect (as
+  the original client, optional idempotency key argument); replays that keep failing become `conflict`s for an
+  operator. Admin API `/api/v1/admin/edge-autonomy`. Listed in the EXPERIMENTAL notices of `validate`, startup and
+  `GET /api/v1/security`.
+- `registerCallHook(hook, { first: true })` places a hook ahead of the others.
+
 ## [10.6.0] - 2026-10-09
 
 Second release of the 10.5 – 10.8 feature line: **full-chain replay / time-travel debugging** and **real-time cost and

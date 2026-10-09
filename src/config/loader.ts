@@ -52,6 +52,8 @@ import { EcosystemSchema } from '../features/ecosystem.js';
 import { PolicyEngineSchema } from '../features/policy-engine.js';
 import { TimeTravelSchema } from '../features/time-travel.js';
 import { RealtimeBudgetsSchema } from '../features/realtime-budgets.js';
+import { TaskGraphsSchema } from '../features/task-graphs.js';
+import { EdgeAutonomySchema } from '../features/edge-autonomy.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
@@ -533,6 +535,9 @@ const GatewayConfigSchema = z.object({
   // 10.6: journal + time-travel debugging; sliding-window cost / carbon budgets
   timeTravel: TimeTravelSchema.optional(),
   realtimeBudgets: RealtimeBudgetsSchema.optional(),
+  // 10.7: durable cross-gateway task graphs; edge autonomy (EXPERIMENTAL)
+  taskGraphs: TaskGraphsSchema.optional(),
+  edgeAutonomy: EdgeAutonomySchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   audit: z
