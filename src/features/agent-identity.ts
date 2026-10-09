@@ -32,6 +32,8 @@ import { registerFeature, objectBody, badRequest, clientIdOf, principalOf } from
 import { authorize, clientPrincipal, deniedPrincipal, grantCovers, type Principal } from '../auth/authorizer.js';
 import { isRestricted, type AccessScope } from '../auth/scopes.js';
 import { registerCallHook } from '../gateway/hooks.js';
+import { logger } from '../utils/logger.js';
+import { registerMetricSource } from '../monitor/index.js';
 import { ERR_FORBIDDEN } from '../auth/authorizer.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig } from '../utils/types.js';
@@ -58,6 +60,13 @@ export const AgentIdentitySchema = z
     maxDelegationDepth: z.number().int().min(1).max(8).default(2),
     requireAgentFor: z.array(z.string().min(1)).default([]),
     agents: z.array(Agent).default([]),
+    /**
+     * Token revocation (11.2): revocations and issued-token records live in the shared state store (`store.backend`:
+     * redis for several instances / Kubernetes, sqlite or eventlog for a durable single node, memory for development
+     * only) with TTL = token expiry. `failureMode: closed` (default) denies token-authenticated agent calls while the
+     * store is unreachable; `open` accepts them (logged + counted).
+     */
+    revocation: z.object({ failureMode: z.enum(['closed', 'open']).default('closed') }).strict().default({}),
   })
   .strict()
   .superRefine((c, ctx) => {
@@ -195,15 +204,91 @@ interface Issued {
   calls: number;
 }
 
-/** Runtime state (issued tokens and revocations); exported for tests. */
+/**
+ * Runtime state; exported for tests. `issued` / `revoked` are this instance's local cache and listing; the shared
+ * state store (11.2) is authoritative for revocation across instances and restarts.
+ */
 export const agentState = {
   issued: new Map<string, Issued>(),
   revoked: new Set<string>(),
+  stats: { revocationChecks: 0, revokedHits: 0, storeErrors: 0, deniedStoreUnavailable: 0, allowedStoreUnavailable: 0 },
   reset() {
     this.issued.clear();
     this.revoked.clear();
+    this.stats = { revocationChecks: 0, revokedHits: 0, storeErrors: 0, deniedStoreUnavailable: 0, allowedStoreUnavailable: 0 };
   },
 };
+
+type Store = import('../state/store.js').StateStore;
+const RKEY = (jti: string) => `agent-identity:revoked:${jti}`;
+const IKEY = (jti: string) => `agent-identity:issued:${jti}`;
+let lastAlert = 0;
+function storeAlert(what: string, err: unknown): void {
+  agentState.stats.storeErrors++;
+  const t = Date.now();
+  if (t - lastAlert > 10_000) {
+    lastAlert = t;
+    logger.error(`agent-identity: revocation store unavailable (${what}): ${err instanceof Error ? err.message : String(err)} — ALERT: token-authenticated agent calls are affected (metric mcp_gateway_agent_revocation_store_errors_total)`);
+  }
+}
+
+/** Revoke `jti` in the shared store until `expSec` (unix seconds; + 60 s slack). Throws when the store fails. */
+export async function revokeToken(store: Store | undefined, jti: string, expSec: number, now = Date.now()): Promise<void> {
+  agentState.revoked.add(jti);
+  if (!store) return;
+  const ttl = Math.max(1_000, expSec * 1000 - now + 60_000);
+  try {
+    await store.set(RKEY(jti), '1', ttl);
+  } catch (err) {
+    storeAlert('revoke', err);
+    throw err;
+  }
+}
+
+/**
+ * Whether `jti` is revoked: `true` / `false`, or `'unavailable'` when the store cannot answer and the failure
+ * policy is `closed` (callers deny). With `open` an unreachable store answers from the local cache.
+ */
+export async function isRevoked(store: Store | undefined, jti: string, failureMode: 'closed' | 'open' = 'closed'): Promise<boolean | 'unavailable'> {
+  agentState.stats.revocationChecks++;
+  if (agentState.revoked.has(jti)) return (agentState.stats.revokedHits++, true);
+  if (!store) return false;
+  try {
+    const v = await store.get(RKEY(jti));
+    if (v !== undefined) {
+      agentState.revoked.add(jti);
+      agentState.stats.revokedHits++;
+      return true;
+    }
+    return false;
+  } catch (err) {
+    storeAlert('check', err);
+    if (failureMode === 'closed') return (agentState.stats.deniedStoreUnavailable++, 'unavailable');
+    agentState.stats.allowedStoreUnavailable++;
+    return false;
+  }
+}
+
+registerMetricSource('agent-identity', () => {
+  const s = agentState.stats;
+  return [
+    '# HELP mcp_gateway_agent_revocation_checks_total Agent-token revocation checks',
+    '# TYPE mcp_gateway_agent_revocation_checks_total counter',
+    `mcp_gateway_agent_revocation_checks_total ${s.revocationChecks}`,
+    '# HELP mcp_gateway_agent_revocation_store_errors_total Revocation store failures (alert on any increase)',
+    '# TYPE mcp_gateway_agent_revocation_store_errors_total counter',
+    `mcp_gateway_agent_revocation_store_errors_total ${s.storeErrors}`,
+    '# HELP mcp_gateway_agent_store_unavailable_total Agent calls decided while the revocation store was unreachable',
+    '# TYPE mcp_gateway_agent_store_unavailable_total counter',
+    `mcp_gateway_agent_store_unavailable_total{decision="deny"} ${s.deniedStoreUnavailable}`,
+    `mcp_gateway_agent_store_unavailable_total{decision="allow"} ${s.allowedStoreUnavailable}`,
+  ];
+});
+
+async function recordIssued(store: Store | undefined, rec: Issued, expSec: number): Promise<void> {
+  if (!store) return;
+  await store.set(IKEY(rec.jti), JSON.stringify(rec), Math.max(1_000, expSec * 1000 - Date.now() + 3_600_000)).catch((err: unknown) => storeAlert('record', err));
+}
 
 function prune(now = Date.now()) {
   for (const [k, v] of agentState.issued) if (Date.parse(v.expiresAt) < now - 3_600_000) agentState.issued.delete(k);
@@ -306,34 +391,59 @@ registerFeature({
         requireAgentFor: c.requireAgentFor,
         agents: c.agents.map((a) => ({ id: a.id, name: a.name ?? a.id, tools: a.tools, delegators: a.delegators, enabled: a.enabled, activeTokens: all.filter((t) => t.agent === a.id && Date.parse(t.expiresAt) > now && !agentState.revoked.has(t.jti)).length })),
         tokens: { issued: all.length, active: all.filter((t) => Date.parse(t.expiresAt) > now && !agentState.revoked.has(t.jti)).length, revoked: agentState.revoked.size },
+        revocation: { store: ctx.store?.()?.kind ?? 'memory', failureMode: c.revocation.failureMode, shared: (ctx.store?.()?.kind ?? 'memory') !== 'memory', ...agentState.stats },
         recent: all.slice(-20).reverse().map((t) => ({ ...t, revoked: agentState.revoked.has(t.jti) })),
       });
     });
-    router.post('/introspect', (req, res) => {
+    router.post('/introspect', async (req, res) => {
       const c = settings(ctx.config());
       if (!c) return badRequest(res, 'agentIdentity is not configured');
       const b = objectBody(req, res);
       if (!b) return;
       if (typeof b.token !== 'string') return badRequest(res, 'Body must be { "token": "<agent token>" }');
+      const v = verifyAgentToken(b.token, c.signingKey, c.issuer);
+      if (v.claims) {
+        const r = await isRevoked(ctx.store?.(), v.claims.jti, c.revocation.failureMode);
+        if (r === 'unavailable') return void res.status(503).json({ error: 'Service Unavailable', message: 'revocation store unavailable (agentIdentity.revocation.failureMode: closed)' });
+      }
       res.json(introspect(c, b.token));
     });
-    router.post('/revoke', (req, res) => {
+    router.post('/revoke', async (req, res) => {
       const b = objectBody(req, res);
       if (!b) return;
       if (typeof b.jti !== 'string' || !b.jti) return badRequest(res, 'Body must be { "jti": "<token id>" }');
-      agentState.revoked.add(b.jti);
-      res.json({ revoked: b.jti, known: agentState.issued.has(b.jti) });
+      const c = settings(ctx.config());
+      const store = ctx.store?.();
+      let rec = agentState.issued.get(b.jti);
+      if (!rec && store) rec = await store.get(IKEY(b.jti)).then((v) => (v ? (JSON.parse(v) as Issued) : undefined)).catch(() => undefined);
+      // Unknown expiry: keep the revocation for the longest lifetime a token can have.
+      const exp = rec ? Math.ceil(Date.parse(rec.expiresAt) / 1000) : Math.ceil(Date.now() / 1000) + (c?.tokenTtlSeconds ?? 86_400);
+      try {
+        await revokeToken(store, b.jti, exp);
+      } catch (err) {
+        return void res.status(503).json({ error: 'Service Unavailable', message: `revocation not persisted: ${(err as Error).message}`, revokedLocally: true });
+      }
+      res.json({ revoked: b.jti, known: !!rec, shared: (store?.kind ?? 'memory') !== 'memory' });
     });
   },
   mountClient(router, ctx) {
-    router.post('/token', (req, res) => {
+    router.post('/token', async (req, res) => {
       const c = settings(ctx.config());
       if (!c) return void res.status(404).json({ error: 'Not Found', message: 'agentIdentity is not configured' });
       const b = objectBody(req, res);
       if (!b) return;
       if (typeof b.agent !== 'string') return badRequest(res, 'Body must be { "agent": "<id>", "tools"?: [...], "ttlSeconds"?, "subjectToken"? }');
       if (b.tools !== undefined && (!Array.isArray(b.tools) || b.tools.some((t) => typeof t !== 'string'))) return badRequest(res, '"tools" must be an array of strings');
+      if (typeof b.subjectToken === 'string') {
+        const sv = verifyAgentToken(b.subjectToken, c.signingKey, c.issuer);
+        if (sv.claims) {
+          const rv = await isRevoked(ctx.store?.(), sv.claims.jti, c.revocation.failureMode);
+          if (rv === 'unavailable') return void res.status(503).json({ error: 'Service Unavailable', message: 'revocation store unavailable (agentIdentity.revocation.failureMode: closed)' });
+          if (rv) return void res.status(401).json({ error: 'Unauthorized', message: 'subjectToken: revoked' });
+        }
+      }
       const r = issueAgentToken(c, { agent: b.agent, clientId: clientIdOf(req) ?? 'anonymous', principal: principalOf(req), catalog: ctx.tools().map((t) => `${t.serverId}/${t.name}`), tools: b.tools as string[] | undefined, ttlSeconds: typeof b.ttlSeconds === 'number' ? b.ttlSeconds : undefined, subjectToken: typeof b.subjectToken === 'string' ? b.subjectToken : undefined });
+      if (r.claims) await recordIssued(ctx.store?.(), agentState.issued.get(r.claims.jti)!, r.claims.exp);
       if (!r.token) return void res.status(r.status ?? 400).json({ error: r.status === 404 ? 'Not Found' : r.status === 401 ? 'Unauthorized' : 'Forbidden', message: r.error });
       res.json({ access_token: r.token, token_type: 'agent+jwt', issued_token_type: 'urn:ietf:params:oauth:token-type:jwt', expires_in: r.claims!.exp - r.claims!.iat, scope: r.claims!.scope.join(' '), sub: r.claims!.sub, act: r.claims!.act, jti: r.claims!.jti });
     });
@@ -345,7 +455,9 @@ registerFeature({
       if (typeof b.token !== 'string' || typeof b.server !== 'string' || typeof b.tool !== 'string') return badRequest(res, 'Body must be { "token", "server", "tool", "arguments"? }');
       const v = verifyAgentToken(b.token, c.signingKey, c.issuer);
       if (!v.claims) return void res.status(401).json({ error: 'Unauthorized', message: v.error });
-      if (agentState.revoked.has(v.claims.jti)) return void res.status(401).json({ error: 'Unauthorized', message: 'token revoked' });
+      const rv = await isRevoked(ctx.store?.(), v.claims.jti, c.revocation.failureMode);
+      if (rv === 'unavailable') return void res.status(503).json({ error: 'Service Unavailable', message: 'revocation store unavailable: agent calls are denied (agentIdentity.revocation.failureMode: closed)' });
+      if (rv) return void res.status(401).json({ error: 'Unauthorized', message: 'token revoked' });
       const name = `${b.server}/${b.tool}`;
       if (!grantCovers(v.claims.scope, b.server, b.tool)) return void res.status(403).json({ error: 'Forbidden', message: `"${name}" is outside the token's scope`, scope: v.claims.scope });
       const args = b.arguments && typeof b.arguments === 'object' && !Array.isArray(b.arguments) ? (b.arguments as Record<string, unknown>) : {};

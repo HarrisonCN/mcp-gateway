@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 import type { GatewayConfig, McpServerConfig, RequestMetric } from '../utils/types.js';
 import { ServerRegistry } from '../registry/index.js';
 import { McpProxy } from '../proxy/index.js';
-import { MetricsCollector } from '../monitor/index.js';
+import { MetricsCollector, registerMetricSource } from '../monitor/index.js';
 import { createApiRouter, serverStateSamples, type ApiRouter, type ToolCallResponse } from './api.js';
 import { createOpenAIRouter } from '../bridges/openai.js';
 import { createAdminRouter } from './admin.js';
@@ -221,6 +221,11 @@ export class Gateway {
 
     this.tracer = await createTracer(this.config.observability?.tracing);
     if (this.tracer.enabled) logger.info(`Tracing enabled (${this.config.observability?.tracing?.exporter ?? 'otlp-http'})`);
+    registerMetricSource('authz', () => [
+      '# HELP mcp_gateway_authz_denials_total Calls refused by the central authorizer',
+      '# TYPE mcp_gateway_authz_denials_total counter',
+      `mcp_gateway_authz_denials_total ${this.invoker?.authzDenials ?? 0}`,
+    ]);
     this.invoker = new ToolInvoker({
       proxy: this.proxy,
       metrics: this.metrics,
@@ -407,6 +412,7 @@ export class Gateway {
           invoke: (serverId, name, args, principal, clientId) =>
             this.invoker!.invoke({ serverId, name, kind: 'tool', method: 'tools/call', params: args, clientId: clientId ?? principal?.id ?? 'feature', principal, via: 'rest', timeoutMs: this.registry.getServer(serverId)?.timeout }),
           principalFor: (clientId) => this.principalFor(clientId),
+          store: () => this.stateStore,
           resolveScope: (clientId) => this.router?.resolveClient(clientId),
           recent: (limit) => this.metrics.getRecent(limit),
           onlineServers: () => this.registry.getAllServers().filter((s) => this.registry.getHealth(s.id)?.status === 'online').map((s) => s.id),

@@ -112,6 +112,14 @@ export function securityWarnings(config: GatewayConfig, now = Date.now()): Secur
   const loopback = isLoopbackHost(config.host ?? '0.0.0.0');
   const sec = config.security ?? {};
 
+  if (config.agentIdentity && (config.state?.store ?? 'memory') === 'memory') {
+    add(
+      'agent-revocation-in-memory',
+      'features.agentIdentity keeps token revocations in memory (store.backend: memory): a revoked token becomes valid again after a restart and on other instances. ' +
+        'Use store.backend redis (several instances / Kubernetes), sqlite or eventlog (single node).',
+      'info',
+    );
+  }
   if (strategy === 'none' && !loopback) {
     add(
       'auth-disabled-public-bind',

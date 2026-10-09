@@ -984,7 +984,9 @@ const GatewayConfigSchema = z.object({
     .optional(),
   state: z
     .object({
-      store: z.enum(['memory', 'redis', 'eventlog']).default('memory'),
+      store: z.enum(['memory', 'redis', 'eventlog', 'sqlite']).default('memory'),
+      // 11.2: durable single-node store on node:sqlite.
+      sqlite: z.object({ path: z.string().min(1).default('.mcp-gateway/state.db') }).strict().optional(),
       // 9.0: event-sourced store (append-only log + snapshots).
       eventlog: z
         .object({

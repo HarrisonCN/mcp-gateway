@@ -51,6 +51,30 @@ chains, task graphs and plugins use.
 both match. `vault/read*` is therefore never granted from `vault/read?` — only the existing `vault/readX`-style tools.
 A restricted delegator's grant is always a list of concrete tool names.
 
+## Revocation (11.2)
+
+Revocations (`POST /api/v1/admin/agent-identity/revoke`) and issued-token records are stored in the gateway's shared
+state store with a TTL equal to the token's expiry, so a revoked token stays revoked across restarts and on every
+instance:
+
+| `store.backend` | Use |
+|---|---|
+| `redis` | several instances / Kubernetes |
+| `sqlite`, `eventlog` | one node, durable across restarts |
+| `memory` | development only (the gateway logs a posture notice) |
+
+```yaml
+features:
+  agentIdentity:
+    revocation:
+      failureMode: closed   # default: store unreachable → agent calls (and sub-token exchange, introspection) answer 503
+```
+
+`failureMode: open` accepts tokens while the store is down (answering from the local cache). Both cases are counted
+and logged at error level; alert on `mcp_gateway_agent_revocation_store_errors_total` and
+`mcp_gateway_agent_store_unavailable_total{decision}` (Prometheus, `monitor.prometheus: true`).
+`GET /api/v1/admin/agent-identity` reports `revocation: { store, failureMode, shared, … }`.
+
 ## Operators
 
 | | |

@@ -71,7 +71,7 @@ describe('agent identity (8.1)', () => {
     const list = await h.admin('agent-identity');
     expect(list.body.tokens).toEqual({ issued: 1, active: 1, revoked: 0 });
     expect(list.body.recent[0]).toMatchObject({ agent: 'helper', calls: 1 });
-    expect((await h.admin('agent-identity/revoke', { jti: tok.body.jti })).body).toEqual({ revoked: tok.body.jti, known: true });
+    expect((await h.admin('agent-identity/revoke', { jti: tok.body.jti })).body).toMatchObject({ revoked: tok.body.jti, known: true });
     expect((await feat('alice-key', 'call', { token: tok.body.access_token, server: 'fake', tool: 'echo' })).status).toBe(401);
     expect((await fetch(`${h.base}/api/v1/admin/agent-identity`, { headers: { authorization: 'Bearer alice-key' } })).status).toBe(403);
   });

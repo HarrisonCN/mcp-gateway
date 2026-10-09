@@ -35,7 +35,8 @@ describe('9.0: schema v9', () => {
     expect(v9.deprecations?.map((d) => d.id)).toBeUndefined(); // 11.0: nothing deprecated
     expect(validateConfig({ servers: [], store: { backend: 'memory' } }).state?.store).toBe('memory'); // version optional
     expect(() => validateConfig({ version: 11, servers: [], store: { backend: 'redis' } })).toThrow(/store.redis.url is required/);
-    expect(() => validateConfig({ version: 11, servers: [], store: { backend: 'sqlite' } })).toThrow();
+    expect(validateConfig({ version: 11, servers: [], store: { backend: 'sqlite' } }).state?.store).toBe('sqlite'); // 11.2
+    expect(() => validateConfig({ version: 11, servers: [], store: { backend: 'mongo' } })).toThrow();
     expect(removedConfigKeys({ version: 11 })).toEqual([]);
     expect(normalizeStoreV9({ a: 1 })).toEqual({ a: 1 });
     expect(parse(generateDefaultConfig()).version).toBe(11);
