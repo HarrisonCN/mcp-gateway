@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v10.2
+
+| Change | |
+|--------|---|
+| **Test depth** | fast-check property / fuzz tests, admin authorization matrix over every `/api/v1/admin/*` route, DNS-rebinding / Origin / body-size / redaction regression tests |
+| **Fixes found** | replica secrets in `GET /servers`; loopback gateway without auth now protected against DNS rebinding and drive-by requests by default; URL credentials in `GET /admin/config`; deep-nesting redaction; config `TypeError` on non-array sections |
+
 ## What's New in v10.1
 
 | Change | |
