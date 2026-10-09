@@ -586,6 +586,13 @@ await gateway.start();
 process.on('SIGTERM', () => gateway.stop());
 ```
 
+## What's New in v9.9
+
+| Change | |
+|--------|---|
+| **Schema v10 preview** | `version: 10` nests feature sections under `features` — `mcp-gateway migrate --to 10` ([guide](docs/guides/migrating-to-v10.md)) |
+| **Deprecations** | schema v9 and top-level feature sections (removed in 10.0) |
+
 ## What's New in v9.8
 
 | Feature | |
