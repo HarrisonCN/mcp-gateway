@@ -9,11 +9,13 @@ import { isAbsolute, resolve } from 'node:path';
 import { MemoryStateStore, PrefixedStateStore, type StateStore } from './store.js';
 import { RedisStateStore } from './redis.js';
 import { EventLogStateStore } from './eventlog.js';
+import { SqliteStateStore } from './sqlite.js';
 
 export { MemoryStateStore, PrefixedStateStore } from './store.js';
 export type { StateStore } from './store.js';
 export { RedisStateStore, RedisClient, RespParser, encodeCommand } from './redis.js';
 export { EventLogStateStore } from './eventlog.js';
+export { SqliteStateStore } from './sqlite.js';
 export type { EventLogOptions, EventLogStats } from './eventlog.js';
 export { createStoreRateLimiter, StoreAuthLockout } from './shared.js';
 
@@ -32,6 +34,10 @@ export function createStateStore(config: StateConfig | undefined, baseDir: strin
   if (config.store === 'eventlog') {
     const dir = config.eventlog?.dir ?? '.mcp-gateway/store';
     return new EventLogStateStore({ dir: isAbsolute(dir) ? dir : resolve(baseDir, dir), snapshotEvery: config.eventlog?.snapshotEvery, fsync: config.eventlog?.fsync });
+  }
+  if (config.store === 'sqlite') {
+    const p = config.sqlite?.path ?? '.mcp-gateway/state.db';
+    return new SqliteStateStore(p === ':memory:' || isAbsolute(p) ? p : resolve(baseDir, p));
   }
   throw new Error(`Unknown store.backend "${String(config.store)}"`);
 }

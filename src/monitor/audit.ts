@@ -66,18 +66,18 @@ export function matchesQuery(m: RequestMetric, q: AuditQuery): boolean {
 
 // ─── node:sqlite ──────────────────────────────────────────────────────────────
 
-interface SqliteStatement {
+export interface SqliteStatement {
   run(...params: unknown[]): { changes: number | bigint };
   all(...params: unknown[]): Array<Record<string, unknown>>;
 }
-interface SqliteDatabase {
+export interface SqliteDatabase {
   exec(sql: string): void;
   prepare(sql: string): SqliteStatement;
   close(): void;
 }
-type SqliteModule = { DatabaseSync: new (path: string) => SqliteDatabase };
+export type SqliteModule = { DatabaseSync: new (path: string) => SqliteDatabase };
 
-function loadSqlite(): SqliteModule | undefined {
+export function loadSqlite(): SqliteModule | undefined {
   try {
     const getBuiltin = (process as unknown as { getBuiltinModule?: (id: string) => unknown }).getBuiltinModule;
     const mod = getBuiltin ? getBuiltin('node:sqlite') : createRequire(import.meta.url)('node:sqlite');
