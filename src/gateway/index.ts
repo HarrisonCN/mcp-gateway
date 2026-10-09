@@ -143,7 +143,7 @@ export class Gateway {
     private readonly options: GatewayOptions = {},
   ) {
     this.registry = new ServerRegistry(config.health?.intervalMs ?? 30_000);
-    this.proxy = new McpProxy();
+    this.proxy = new McpProxy({ stdio: () => ({ envPassthrough: this.config.security?.stdioEnvPassthrough, baseDir: this.config.configDir }) });
     this.metrics = new MetricsCollector(config.monitor);
     this.portal = new PortalStore(() => this.config.portal, {
       baseDir: () => this.config.configDir,

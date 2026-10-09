@@ -78,6 +78,10 @@ export interface ChannelOptions {
   connectTimeoutMs: number;
   /** Grace period used by the stdio channel between stdin close / SIGTERM / SIGKILL. */
   killGraceMs: number;
+  /** 12.0: gateway-wide stdio env passthrough (`security.stdioEnvPassthrough`). */
+  envPassthrough?: string[];
+  /** 12.0: base directory for relative `isolation.cwd` (the config file's directory). */
+  baseDir?: string;
 }
 
 export type ChannelFactory = (config: McpServerConfig, options: ChannelOptions) => UpstreamChannel;
