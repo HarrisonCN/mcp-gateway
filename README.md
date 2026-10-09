@@ -275,6 +275,13 @@ and test in your environment before depending on one.
 - **Edge autonomy** ([guide](docs/guides/edge-autonomy.md)): while an upstream is unreachable, answers matching calls
   from the last good result or a local WASM tool, queues them into an outbox, or refuses them, and replays the outbox
   on reconnect. No conflict resolution (rejected replays are parked for an operator), at-least-once replay.
+- **Privacy computing** ([guide](docs/guides/privacy.md)): protected tools answer only Laplace-noised aggregates
+  (count / sum / mean / histogram) with per-client ε budgets, and federated queries combine noisy results from peer
+  gateways so raw rows stay in their domain. The guarantee assumes one row per person and data-independent bounds.
+- **Post-quantum identity** ([guide](docs/guides/pq-identity.md)): Ed25519 + ML-DSA hybrid signatures for a gateway
+  identity document, a signed tool manifest, a hash-chained audit log with signed checkpoints, and plugin artifacts.
+  ML-DSA uses `node:crypto` where the runtime has it, otherwise `@noble/post-quantum` (not independently audited); no
+  X.509 hybrid certificates.
 
 **Client libraries** — TypeScript ([`clients/js`](clients/js), published as `@winstonsayno/mcp-gateway-client`),
 Kotlin / JVM / Android ([`clients/kotlin`](clients/kotlin)), Python ([`clients/python`](clients/python)),
@@ -320,15 +327,15 @@ behaviour, config schema v10, CLI commands and flags, root library exports and P
 in backward-compatible ways. Deep imports, log format, the dashboard and the audit database schema are not covered —
 see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
-## What's New in v10.7
+## What's New in v10.8
 
-Feature line continues (opt-in, schema v10 compatible): **durable task graphs** orchestrate tools and agents across
-gateways (A2A) with checkpoints, resume after a crash, retry with backoff and saga compensation; **edge autonomy**
-(EXPERIMENTAL) keeps an edge gateway answering while an upstream is unreachable — cached results, local WASM tools, a
-queued outbox or a clear refusal, after local policy — and replays the outbox on reconnect. See the
-[task graphs](docs/guides/task-graphs.md) and [edge autonomy](docs/guides/edge-autonomy.md) guides. Earlier in 10.x:
-time-travel replay and real-time budgets (10.6), plugin SDK and Cedar / OPA (10.5), signed images and SBOMs (10.4),
-secure defaults (10.3). Full history: [CHANGELOG.md](CHANGELOG.md).
+Feature line completes (opt-in, schema v10 compatible, both EXPERIMENTAL): **privacy computing** lets agents query
+differentially private aggregates of sensitive tools — and federate them across gateways — without raw rows leaving
+their domain; **post-quantum identity** signs the gateway's identity, its tool manifest, a hash-chained audit log and
+plugin artifacts with Ed25519 + ML-DSA hybrid signatures. See the [privacy](docs/guides/privacy.md) and
+[post-quantum identity](docs/guides/pq-identity.md) guides for exactly what is and is not guaranteed. Earlier in 10.x:
+task graphs and edge autonomy (10.7), time-travel replay and real-time budgets (10.6), plugin SDK and Cedar / OPA
+(10.5), signed images and SBOMs (10.4), secure defaults (10.3). Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 

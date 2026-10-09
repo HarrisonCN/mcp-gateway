@@ -345,7 +345,7 @@ export async function checkSignature(cfg: PluginConfig, baseDir: string, trust?:
     if (t.requireSigned) throw new Error(`Plugin "${label}" is not signed (no ${sigFile}) and pluginTrust.requireSigned is on`);
     return undefined;
   }
-  const r = verifyArtifact(await readFile(file), sig, t.keys);
+  const r = verifyArtifact(await readFile(file), sig, t.keys, { requirePostQuantum: t.requirePostQuantum });
   if (!r.ok) throw new Error(`Plugin "${label}" failed signature verification: ${r.reason}`);
   return r.keyId;
 }

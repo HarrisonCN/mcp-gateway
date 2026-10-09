@@ -690,6 +690,26 @@ features:
 [Task graphs](guides/task-graphs.md). `edgeAutonomy` (EXPERIMENTAL): local cache / WASM / queue / deny decisions while
 an upstream is unreachable, outbox reconcile on reconnect — see [Edge autonomy](guides/edge-autonomy.md).
 
+### Privacy computing and post-quantum identity (10.8, EXPERIMENTAL)
+
+```yaml
+features:
+  privacy:
+    protect: ["hr/*"]                          # only DP aggregates of these tools leave the gateway
+    maxEpsilonPerQuery: 1
+    budget: { epsilon: 10, windowSeconds: 86400 }
+    peers: [{ id: eu, url: https://eu-gw.example.com, token: ${EU_GATEWAY_KEY} }]
+  pqIdentity:
+    keyFile: keys/gateway.hybrid.json          # mcp-gateway pq keygen
+    keyId: gw-2026
+    auditLog: { dir: .mcp-gateway/pq-audit, checkpointEvery: 100 }
+  pluginTrust:
+    requirePostQuantum: true                   # plugin signatures must be Ed25519 + ML-DSA hybrids
+    keys: [{ id: acme, publicKey: "…", mldsa: { kty: ML-DSA, alg: ml-dsa-65, pub: "…" } }]
+```
+
+See [Privacy computing](guides/privacy.md) and [Post-quantum identity](guides/pq-identity.md).
+
 ## Plugins
 
 ```yaml

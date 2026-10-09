@@ -18,11 +18,25 @@
 
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from 'node:crypto';
 import { z } from 'zod';
+import { mlDsaSign, mlDsaVerify, type MlDsaKey, type MlDsaPublicKey } from '../security/pq.js';
 
 export const PluginTrustSchema = z
   .object({
     requireSigned: z.boolean().default(false),
-    keys: z.array(z.object({ id: z.string().min(1), publicKey: z.string().min(1) }).strict()).default([]),
+    /** 10.8 (EXPERIMENTAL): refuse signatures without a valid ML-DSA part (hybrid only). */
+    requirePostQuantum: z.boolean().default(false),
+    keys: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            publicKey: z.string().min(1),
+            /** 10.8: ML-DSA public key `{ kty: "ML-DSA", alg, pub }` — with it, signatures from this key must be hybrid. */
+            mldsa: z.object({ kty: z.literal('ML-DSA'), alg: z.enum(['ml-dsa-44', 'ml-dsa-65', 'ml-dsa-87']), pub: z.string().min(1) }).strict().optional(),
+          })
+          .strict(),
+      )
+      .default([]),
   })
   .strict();
 export type PluginTrustConfig = z.input<typeof PluginTrustSchema>;
@@ -32,6 +46,8 @@ export interface PluginSignature {
   sha256: string;
   /** base64 Ed25519 signature. */
   signature: string;
+  /** 10.8: base64 ML-DSA signature over the same message (hybrid). */
+  mldsa?: string;
 }
 
 export const sha256Hex = (bytes: Uint8Array | string): string => createHash('sha256').update(bytes).digest('hex');
@@ -44,15 +60,20 @@ export function generateSigningKey(): { publicKey: string; privateKey: string } 
 }
 
 /** Sign an artifact's bytes. */
-export function signArtifact(bytes: Uint8Array | string, privateKeyPem: string, keyId: string): PluginSignature {
+export function signArtifact(bytes: Uint8Array | string, privateKeyPem: string, keyId: string, mldsaKey?: MlDsaKey): PluginSignature {
   const digest = sha256Hex(bytes);
-  return { keyId, sha256: digest, signature: sign(null, message(digest), createPrivateKey(privateKeyPem)).toString('base64') };
+  return {
+    keyId,
+    sha256: digest,
+    signature: sign(null, message(digest), createPrivateKey(privateKeyPem)).toString('base64'),
+    ...(mldsaKey ? { mldsa: mlDsaSign(mldsaKey, message(digest)) } : {}),
+  };
 }
 
 export type VerifyResult = { ok: true; keyId: string } | { ok: false; reason: string };
 
 /** Verify bytes against a signature and a set of trusted keys. */
-export function verifyArtifact(bytes: Uint8Array | string, sig: unknown, keys: ReadonlyArray<{ id: string; publicKey: string }>): VerifyResult {
+export function verifyArtifact(bytes: Uint8Array | string, sig: unknown, keys: ReadonlyArray<{ id: string; publicKey: string; mldsa?: MlDsaPublicKey }>, opts: { requirePostQuantum?: boolean } = {}): VerifyResult {
   const s = sig as Partial<PluginSignature> | null;
   if (!s || typeof s.keyId !== 'string' || typeof s.signature !== 'string' || typeof s.sha256 !== 'string') return { ok: false, reason: 'malformed signature file' };
   const digest = sha256Hex(bytes);
@@ -60,7 +81,14 @@ export function verifyArtifact(bytes: Uint8Array | string, sig: unknown, keys: R
   const key = keys.find((k) => k.id === s.keyId);
   if (!key) return { ok: false, reason: `untrusted key "${s.keyId}"` };
   try {
-    return verify(null, message(digest), createPublicKey(key.publicKey), Buffer.from(s.signature, 'base64')) ? { ok: true, keyId: key.id } : { ok: false, reason: 'bad signature' };
+    if (!verify(null, message(digest), createPublicKey(key.publicKey), Buffer.from(s.signature, 'base64'))) return { ok: false, reason: 'bad signature' };
+    // 10.8 hybrid: a key with an ML-DSA part only accepts signatures carrying a valid ML-DSA signature too.
+    if (key.mldsa || opts.requirePostQuantum) {
+      if (!key.mldsa) return { ok: false, reason: `key "${key.id}" has no ML-DSA public key and pluginTrust.requirePostQuantum is on` };
+      if (typeof s.mldsa !== 'string') return { ok: false, reason: `key "${key.id}" requires a hybrid signature (no "mldsa" in the signature file)` };
+      if (!mlDsaVerify(key.mldsa, message(digest), s.mldsa)) return { ok: false, reason: `bad ${key.mldsa.alg} signature` };
+    }
+    return { ok: true, keyId: key.id };
   } catch (e) {
     return { ok: false, reason: `invalid key "${key.id}": ${(e as Error).message}` };
   }

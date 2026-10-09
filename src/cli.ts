@@ -511,10 +511,17 @@ pluginCmd
   .description('Sign a plugin file (writes <file>.sig)')
   .requiredOption('-k, --key <file>', 'Private key PEM')
   .requiredOption('--key-id <id>', 'Key id recorded in the signature (matches pluginTrust.keys[].id)')
+  .option('--pq-key <file>', 'Also sign with ML-DSA (hybrid, EXPERIMENTAL): a key from `mcp-gateway pq keygen` (.hybrid.json)')
   .action(async (file: string, options) => {
     const { signArtifact } = await import('./plugins/trust.js');
     const { readFileSync, writeFileSync } = await import('fs');
-    const sig = signArtifact(readFileSync(file), readFileSync(options.key, 'utf8'), options.keyId);
+    let pq: import('./security/pq.js').MlDsaKey | undefined;
+    if (options.pqKey) {
+      const { parseMlDsaKey } = await import('./security/pq.js');
+      const raw = JSON.parse(readFileSync(options.pqKey, 'utf8')) as { mldsa?: unknown };
+      pq = parseMlDsaKey(raw.mldsa ?? raw, true) as import('./security/pq.js').MlDsaKey;
+    }
+    const sig = signArtifact(readFileSync(file), readFileSync(options.key, 'utf8'), options.keyId, pq);
     writeFileSync(`${file}.sig`, JSON.stringify(sig, null, 2) + '\n');
     console.log(`Signed ${file} (sha256 ${sig.sha256}) → ${file}.sig`);
   });
@@ -532,6 +539,32 @@ pluginCmd
     const r = verifyArtifact(readFileSync(file), sig, [{ id: options.keyId, publicKey: readFileSync(options.pub, 'utf8') }]);
     if (!r.ok) { logger.error(`✗ ${file}: ${r.reason}`); process.exit(1); }
     console.log(`✓ ${file} signed by ${r.keyId}`);
+  });
+
+// ─── post-quantum keys (10.8, EXPERIMENTAL) ──────────────────────────────────
+
+const pqCmd = program.command('pq').description('Post-quantum (ML-DSA) hybrid keys — EXPERIMENTAL');
+pqCmd
+  .command('keygen')
+  .description('Generate an Ed25519 + ML-DSA hybrid key (features.pqIdentity.keyFile, plugin sign --pq-key)')
+  .option('-o, --out <prefix>', 'Output prefix (writes <prefix>.hybrid.json and <prefix>.pub.json)', 'gateway')
+  .option('--alg <alg>', 'ml-dsa-44 | ml-dsa-65 | ml-dsa-87', 'ml-dsa-65')
+  .action(async (options) => {
+    const { hybridKeygen, ML_DSA_LEVELS, pqBackend } = await import('./security/pq.js');
+    if (!ML_DSA_LEVELS.includes(options.alg)) { logger.error(`--alg must be one of ${ML_DSA_LEVELS.join(', ')}`); process.exit(1); }
+    const { writeFileSync } = await import('fs');
+    const k = hybridKeygen(options.alg);
+    writeFileSync(`${options.out}.hybrid.json`, JSON.stringify(k.privateKey, null, 2) + '\n', { mode: 0o600 });
+    writeFileSync(`${options.out}.pub.json`, JSON.stringify(k.publicKey, null, 2) + '\n');
+    console.log(`Wrote ${options.out}.hybrid.json (secret) and ${options.out}.pub.json (Ed25519 + ${options.alg}). Backend: ${pqBackend().note}`);
+  });
+pqCmd
+  .command('info')
+  .description('Show which ML-DSA implementation this runtime uses')
+  .action(async () => {
+    const { pqBackend } = await import('./security/pq.js');
+    const b = pqBackend();
+    console.log(`${b.backend}: ${b.note}`);
   });
 
 // ─── conformance (5.1) ────────────────────────────────────────────────────────
