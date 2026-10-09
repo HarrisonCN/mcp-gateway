@@ -256,6 +256,7 @@ Server-side API keys can also carry scopes (`servers`, `tools`), their own `rate
 
 **Extended modules** — opt-in under `features:` in the config, each documented in [`docs/guides`](docs/guides):
 policy as code and approvals, [Cedar / OPA policies](docs/guides/policy-engine.md) with tests and impact analysis,
+[time-travel replay](docs/guides/time-travel.md), [real-time cost / carbon budgets](docs/guides/realtime-budgets.md),
 DLP and prompt-injection sanitising, result and semantic caching, plugins (signed, WASM, and the
 [kernel plugin SDK](docs/guides/plugin-sdk.md) for hooks + config + routes),
 OpenAI / A2A bridges, control plane / data plane, multi-region, workflows, SLA and cost reporting, and more. These

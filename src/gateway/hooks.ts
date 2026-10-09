@@ -26,6 +26,8 @@ export interface CallHook {
   id: string;
   before?: (call: HookCall, cfg: GatewayConfig) => BeforeOutcome | Promise<BeforeOutcome>;
   after?: (call: HookCall, result: ProxyResponse, cfg: GatewayConfig) => ProxyResponse | void | Promise<ProxyResponse | void>;
+  /** Observe a tool call the gateway refused without contacting the upstream (policy, quota, budget, hook refusal) (10.6). Must not throw. */
+  refused?: (call: HookCall, error: { code: number; message: string; data?: Record<string, unknown> }, cfg: GatewayConfig) => void;
 }
 
 const hooks: CallHook[] = [];

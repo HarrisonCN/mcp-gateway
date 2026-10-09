@@ -654,6 +654,22 @@ features:
 Runs after `policy.rules` (both must allow). Admin API `/api/v1/admin/policy-engine` (`/evaluate`, `/test`,
 `/impact`); `mcp-gateway policy test` runs the tests. See [Policy-as-code 2.0](guides/policy-engine.md).
 
+### Time-travel journal and real-time budgets (10.6)
+
+```yaml
+features:
+  timeTravel: { dir: .mcp-gateway/journal, retentionDays: 7, maxEntries: 20000, results: true, maxBytes: 16384 }
+  realtimeBudgets:
+    carbon: { gridIntensity: 400, perCallWh: 0.02 }       # estimates, see the guide
+    budgets:
+      - { name: hourly, metric: cost, per: client, windowSeconds: 3600, limit: 2, warnAt: [0.8], onExceed: reject }
+```
+
+`timeTravel` journals configs and calls (incl. refused calls) for state-at-an-instant, call chains, config diffs and
+replay — see [Time-travel debugging](guides/time-travel.md). `realtimeBudgets` are sliding-window cost / carbon
+budgets per client, tenant or globally; `reject` answers REST `429` + `Retry-After` and JSON-RPC `-32013` — see
+[Real-time budgets](guides/realtime-budgets.md).
+
 ## Plugins
 
 ```yaml

@@ -44,6 +44,8 @@ import './self-healing.js';
 import './pq-tls.js';
 import './ecosystem.js';
 import './policy-engine.js';
+import './time-travel.js';
+import './realtime-budgets.js';
 import './kernel.js';
 
 export { listFeatures, registerFeature, createFeatureRouter } from '../gateway/features.js';
