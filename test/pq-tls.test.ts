@@ -31,8 +31,8 @@ const cfg = (pq: Record<string, unknown>, list: Array<{ id: string; url: string 
 
 describe('post-quantum TLS (9.7)', () => {
   it('validates the config and computes the groups', () => {
-    expect(() => validateConfig({ version: 10, servers: [], features: { postQuantumTls: { mode: 'always' } } })).toThrow();
-    expect(() => validateConfig({ version: 10, servers: [], features: { postQuantumTls: { groups: ['bad group'] } } })).toThrow();
+    expect(() => validateConfig({ version: 11, servers: [], features: { postQuantumTls: { mode: 'always' } } })).toThrow();
+    expect(() => validateConfig({ version: 11, servers: [], features: { postQuantumTls: { groups: ['bad group'] } } })).toThrow();
     expect(groupsSupported(['X25519'])).toBe(true);
     expect(groupsSupported(['NOPE-KEM'])).toBe(false);
     const p = PqTlsSchema.parse({});

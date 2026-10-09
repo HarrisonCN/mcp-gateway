@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [11.0.0] - 2026-10-09
+
+**Breaking release.** Config schema v11 is the only schema, the modular kernel loads feature modules lazily, and the
+10.x deprecations are removed. A config that 10.9 loads without deprecation warnings runs unchanged; otherwise run
+`npx @winstonsayno/mcp-gateway@10.9 migrate --write` (or `@11 migrate --write`). Guide:
+[Migrating to 11.0](docs/guides/migrating-to-v11.md). 10.x stays LTS (fixes until 2027-10-31, security until 2028-10-31).
+
+### Breaking
+- **Schema v11 only**: `version: 10` is a validation error naming `mcp-gateway migrate --to 11`; a file without
+  `version` is read as v11. Older versions (4 – 9) point at `version: 11` and `migrate --to 11`.
+- **Lazy modules by default** (`kernel.modules: lazy`): a feature module (admin / client routes, timers, call hooks)
+  is mounted only while its `features.*` section is configured; others answer `404` (after authentication) naming
+  the section. Modules that worked without a section (e.g. session recordings next to `replay.enabled`) need one —
+  `features: { sessions: {} }`. `kernel: { modules: eager }` restores the 10.x behaviour. Also applies to embedded
+  `new Gateway(config)`.
+- **Workflow engine removed** (6.2, deprecated in 10.9): `features.workflows`, `/api/v1/admin/workflows*`, the
+  `workflows` feature module and the root exports `WorkflowsSchema`, `runWorkflow`, `WorkflowRuns`, `WorkflowsConfig`,
+  `WorkflowRun`, `NodeRun`. Use task graphs (`features.taskGraphs`); `migrate --to 11` converts workflows.
+  `topoLayers` stays exported (from the task-graph module).
+- `GatewayConfig.version` is `11`; data planes always receive `version: 11`; no config deprecations remain.
+
+### Changed
+- `GET /api/v1/admin/kernel`: `schema: 11`, new `line` (`11.x`, not LTS), `moduleMode` and per-module `active`;
+  `lts` keeps describing the 10.x window. `CONFIG_SCHEMA_VERSION` = 11; new export `RELEASE_LINE`.
+- Helm chart 11.0.0 (`appVersion` 11.0.0, `config.version: 11`). Container tags `11`, `11.0`, `11.0.0` and `latest`
+  move to 11.0.0; `10` stays on the last 10.x release.
+- SECURITY.md / README: 11.x current, 10.x LTS dates unchanged; README refreshed for 11.0.
+
 ## [10.9.0] - 2026-10-09
 
 Bridge release to 11.0: **config schema v11** and the **lazy modular kernel** are available now, and everything 11.0

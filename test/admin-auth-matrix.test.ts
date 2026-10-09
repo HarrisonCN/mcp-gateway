@@ -44,6 +44,7 @@ describe('admin API authorization matrix', () => {
     const srv = (id: string) => ({ id, name: id, transport: 'stdio' as const, command: process.execPath, args: [fixture], timeout: 5000 });
     gw = new Gateway({
       port: 0, host: '127.0.0.1', logLevel: 'error', monitor: { requestLog: false },
+      kernel: { modules: 'eager' }, // 11.0: mount every feature module so the matrix covers all of them
       auth: {
         strategy: 'api-key',
         apiKeys: [

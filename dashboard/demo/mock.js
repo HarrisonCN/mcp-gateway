@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '10.9.0';
+  const VERSION = '11.0.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -49,7 +49,6 @@
     { id: "dlp", since: "5.6.0", summary: "Data loss prevention: sensitivity levels, per-tenant clearance and masking" },
     { id: "adaptive", since: "5.8.0", summary: "Adaptive routing 2.0: pick upstream / model by quality, cost and latency (Thompson sampling)" },
     { id: "api-upstreams", since: "6.1.0", summary: "GraphQL and gRPC (Connect / JSON transcoding) upstreams exposed as tools" },
-    { id: "workflows", since: "6.2.0", summary: "Workflow engine: multi-tool DAGs with dependencies, parallelism, conditions and retries" },
     { id: "genai-otel", since: "6.3.0", summary: "OpenTelemetry GenAI semantic conventions: execute_tool spans, operation duration and token usage metrics, OTLP export" },
     { id: "identity", since: "6.4.0", summary: "Enterprise SSO (OIDC ID tokens) and SCIM 2.0 user / group provisioning mapped to tenant roles" },
     { id: "policy-sim", since: "6.5.0", summary: "Policy simulation and dry-run: replay history against a candidate policy, shadow policies on live traffic" },
@@ -600,16 +599,6 @@
       { name: 'billing.getInvoice', upstream: 'billing', kind: 'grpc', description: 'billing.v1.Invoices/Get', inputSchema: { type: 'object', properties: { id: { type: 'string' } } } },
     ] });
     if (p === '/admin/api-upstreams/call' && method === 'POST') { await sleep(60); return json({ tool: 'shop.product', success: true, result: { product: { id: 'p-1', title: 'Demo mug', price: 12 } }, durationMs: 58 }); }
-    // 6.2: workflow engine.
-    if (p === '/admin/workflows') return json({ workflows: [{ id: 'enrich-lead', description: 'Look up a company, search news, score it, notify', concurrency: 4, nodes: [
-      { id: 'company', tool: 'crm/lookup', needs: [], onError: 'fail' }, { id: 'news', tool: 'search/web', needs: [], onError: 'fail' },
-      { id: 'score', tool: 'llm/score', needs: ['company', 'news'], onError: 'fail' }, { id: 'notify', tool: 'slack/post', needs: ['score'], if: 'nodes.score.structuredContent.hot', onError: 'continue' },
-    ], layers: [['company', 'news'], ['score'], ['notify']] }] });
-    if (p === '/admin/workflows/run' && method === 'POST') { await sleep(120); return json({ runId: 'run-demo-1', workflow: 'enrich-lead', status: 'succeeded', startedAt: iso(Date.now() - 120), finishedAt: iso(Date.now()), output: { score: 87, hot: true }, nodes: [
-      { id: 'company', status: 'succeeded', attempts: 1, durationMs: 41 }, { id: 'news', status: 'succeeded', attempts: 2, durationMs: 77 },
-      { id: 'score', status: 'succeeded', attempts: 1, durationMs: 33 }, { id: 'notify', status: 'succeeded', attempts: 1, durationMs: 9 },
-    ] }); }
-    if (p === '/admin/workflows/runs') return json({ runs: [{ runId: 'run-demo-1', workflow: 'enrich-lead', status: 'succeeded', startedAt: iso(Date.now() - 60e3), finishedAt: iso(Date.now() - 59.8e3) }] });
     // 6.3: OpenTelemetry GenAI semantic conventions.
     if (p === '/admin/genai-otel') return json({ enabled: true, systems: { llm: 'openai' }, captureContent: false, otlpEndpoint: 'http://otel-collector:4318', spans: 412,
       'gen_ai.client.operation.duration': [{ attributes: { 'gen_ai.operation.name': 'chat', 'gen_ai.provider.name': 'openai', 'gen_ai.request.model': 'gpt-mini', 'gen_ai.tool.name': 'complete' }, count: 128, sum: 61.4, min: 0.21, max: 2.9 }, { attributes: { 'gen_ai.operation.name': 'execute_tool', 'gen_ai.tool.name': 'search_issues' }, count: 284, sum: 34.1, min: 0.03, max: 0.8 }],
@@ -783,7 +772,7 @@
       { id: 'globex', name: 'Globex', domain: 'globex.example', keyIds: ['gx-1'], verified: false, verifiedAt: null },
     ], listings: [] });
     // 10.0: unified kernel.
-    if (p === '/admin/kernel') return json({ version: VERSION, schema: 10, lts: { line: '10.x', codename: 'Kernel', lts: true, activeUntil: '2027-10-31', maintenanceUntil: '2028-10-31', status: 'active' },
+    if (p === '/admin/kernel') return json({ version: VERSION, schema: 11, line: { line: '11.x', lts: false }, moduleMode: 'lazy', lts: { line: '10.x', codename: 'Kernel', lts: true, activeUntil: '2027-10-31', maintenanceUntil: '2028-10-31', status: 'active' },
       modules: DEMO_FEATURES.map((m) => ({ ...m, path: `/api/v1/admin/${m.id}` })),
       hooks: ['chaos', 'multimodal', 'confidential', 'sla', 'self-healing'].map((id, i) => ({ order: i + 1, id, before: id !== 'multimodal' && id !== 'sla', after: id !== 'confidential' })),
       features: ['sla', 'selfHealing', 'chaos'].map((k) => ({ section: `features.${k}`, configured: !!(demoConfig.features && demoConfig.features[k]) })) });

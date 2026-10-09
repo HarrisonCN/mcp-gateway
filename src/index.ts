@@ -146,8 +146,7 @@ export { AdaptiveSchema, AdaptiveRouter, adaptiveRouter, sampleBeta } from './fe
 export type { AdaptiveConfig, CandidateStats } from './features/adaptive.js';
 export { ApiUpstreamsSchema, apiUpstreamTools, callApiUpstream, graphqlVariables } from './features/api-upstreams.js';
 export type { ApiUpstreamsConfig, ApiUpstreamTool } from './features/api-upstreams.js';
-export { WorkflowsSchema, runWorkflow, topoLayers, WorkflowRuns } from './features/workflows.js';
-export type { WorkflowsConfig, WorkflowRun, NodeRun } from './features/workflows.js';
+export { topoLayers } from './features/task-graphs.js';
 export { GenaiTelemetrySchema, GenaiRecorder, genaiRecorder, genaiAttributes, extractUsage, GENAI_DURATION_BUCKETS, GENAI_TOKEN_BUCKETS } from './features/genai-otel.js';
 export type { GenaiTelemetryConfig, GenaiSpan } from './features/genai-otel.js';
 export { IdentitySchema, ScimDirectory, scimFilter, resolveMemberships, verifyIdToken, authorizeUrl } from './features/identity.js';

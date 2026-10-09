@@ -49,11 +49,11 @@ export const clientIdOf = (req: Request): string | undefined => (req as Request 
 const registry: FeatureModule[] = [];
 
 /** Top-level config sections owned by feature modules; all hot reload (5.2+). */
-export const FEATURE_CONFIG_KEYS = ['regions', 'edgeFleet', 'pluginTrust', 'marketplace', 'sessions', 'dlp', 'adaptive', 'apiUpstreams', 'workflows', 'genaiTelemetry', 'identity', 'policyShadow', 'anomaly', 'billing', 'console', 'sanitize', 'semanticCache', 'rollouts', 'offline', 'approvalFlows', 'complianceReports', 'agentIdentity', 'a2aFederation', 'debugSessions', 'costAdvisor', 'blueGreen', 'dataLineage', 'configAssistant', 'chaos', 'multimodal', 'edgeRuntime', 'confidential', 'toolRegistry', 'sla', 'selfHealing', 'postQuantumTls', 'ecosystem', 'policyEngine', 'timeTravel', 'realtimeBudgets', 'taskGraphs', 'edgeAutonomy', 'privacy', 'pqIdentity'] as const satisfies ReadonlyArray<keyof GatewayConfig>;
+export const FEATURE_CONFIG_KEYS = ['regions', 'edgeFleet', 'pluginTrust', 'marketplace', 'sessions', 'dlp', 'adaptive', 'apiUpstreams', 'genaiTelemetry', 'identity', 'policyShadow', 'anomaly', 'billing', 'console', 'sanitize', 'semanticCache', 'rollouts', 'offline', 'approvalFlows', 'complianceReports', 'agentIdentity', 'a2aFederation', 'debugSessions', 'costAdvisor', 'blueGreen', 'dataLineage', 'configAssistant', 'chaos', 'multimodal', 'edgeRuntime', 'confidential', 'toolRegistry', 'sla', 'selfHealing', 'postQuantumTls', 'ecosystem', 'policyEngine', 'timeTravel', 'realtimeBudgets', 'taskGraphs', 'edgeAutonomy', 'privacy', 'pqIdentity'] as const satisfies ReadonlyArray<keyof GatewayConfig>;
 
 /**
  * Config section(s) that activate each feature module (10.9). In `lazy` mode (`kernel.modules`; the schema-v11
- * default) a module listed here is mounted — routes, timers, call hooks — only while one of its sections is
+ * default since 11.0) a module listed here is mounted — routes, timers, call hooks — only while one of its sections is
  * configured; modules not listed (`kernel`, `conformance`, `k8s`, `terraform`, `policy-sim`) are always active.
  */
 export const FEATURE_ACTIVATION: Readonly<Record<string, readonly (keyof GatewayConfig)[]>> = {
@@ -66,11 +66,11 @@ export const FEATURE_ACTIVATION: Readonly<Record<string, readonly (keyof Gateway
   'policy-engine': ['policyEngine'], 'pq-identity': ['pqIdentity'], 'pq-tls': ['postQuantumTls'], privacy: ['privacy'],
   'realtime-budgets': ['realtimeBudgets'], regions: ['regions'], rollouts: ['rollouts'], sanitize: ['sanitize'],
   'self-healing': ['selfHealing'], 'semantic-cache': ['semanticCache'], sessions: ['sessions'], sla: ['sla'],
-  'task-graphs': ['taskGraphs'], 'time-travel': ['timeTravel'], 'tool-registry': ['toolRegistry'], workflows: ['workflows'],
+  'task-graphs': ['taskGraphs'], 'time-travel': ['timeTravel'], 'tool-registry': ['toolRegistry'],
 };
 
-/** Effective module activation mode: `kernel.modules`, else lazy on schema v11 and eager on v10. */
-export const moduleMode = (cfg: GatewayConfig): 'eager' | 'lazy' => cfg.kernel?.modules ?? (cfg.version === 11 ? 'lazy' : 'eager');
+/** Effective module activation mode: `kernel.modules`, else lazy (11.0 default; 10.x was eager). */
+export const moduleMode = (cfg: GatewayConfig): 'eager' | 'lazy' => cfg.kernel?.modules ?? 'lazy';
 
 /** Whether a feature module (or a call hook with that id) is active under `cfg`. */
 export function isFeatureActive(cfg: GatewayConfig, id: string): boolean {

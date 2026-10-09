@@ -12,7 +12,7 @@ What is produced for each release, how it is checked, and how to verify it yours
 ## Verify the container image
 
 ```bash
-cosign verify ghcr.io/harrisoncn/mcp-gateway:10 \
+cosign verify ghcr.io/harrisoncn/mcp-gateway:11 \
   --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -23,8 +23,8 @@ certificate also names the tag / commit that triggered it). Pin the digest it pr
 BuildKit attestations (provenance and image SBOM):
 
 ```bash
-docker buildx imagetools inspect ghcr.io/harrisoncn/mcp-gateway:10 --format '{{ json .Provenance }}'
-docker buildx imagetools inspect ghcr.io/harrisoncn/mcp-gateway:10 --format '{{ json .SBOM }}'
+docker buildx imagetools inspect ghcr.io/harrisoncn/mcp-gateway:11 --format '{{ json .Provenance }}'
+docker buildx imagetools inspect ghcr.io/harrisoncn/mcp-gateway:11 --format '{{ json .SBOM }}'
 ```
 
 ## Verify the npm package against the release

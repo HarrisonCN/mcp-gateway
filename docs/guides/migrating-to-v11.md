@@ -44,8 +44,12 @@ features:                               features:
 
 | Mode | Default on | Behaviour |
 |------|-----------|-----------|
-| `lazy` | schema v11 | A feature module (routes under `/api/v1/admin/<id>` and `/api/v1/features/<id>`, timers, call hooks) is mounted only while one of its `features.*` sections is configured. Unconfigured modules answer `404` with a message naming the section. Adding a section with a hot reload mounts the module; removing it turns the routes off again. |
-| `eager` | schema v10 (10.9) | Every module is mounted at start, as in 10.x (unconfigured modules answer `400 not configured`). |
+| `lazy` | 11.0 (and `version: 11` files on 10.9) | A feature module (routes under `/api/v1/admin/<id>` and `/api/v1/features/<id>`, timers, call hooks) is mounted only while one of its `features.*` sections is configured. Unconfigured modules answer `404` with a message naming the section. Adding a section with a hot reload mounts the module; removing it turns the routes off again. |
+| `eager` | — (10.x behaviour; 10.9 used it for `version: 10` files) | Every module is mounted at start, as in 10.x (unconfigured modules answer `400 not configured`). |
+
+Modules that used to work without their own section must now get one, even if empty — for example session
+recordings next to `replay.enabled` need `features: { sessions: {} }`, and the marketplace / identity / edge-fleet
+status endpoints answer only when their section exists.
 
 Modules that have no config section (`kernel`, `conformance`, `k8s`, `terraform`, `policy-sim`) and call hooks
 registered by plugins are always active. `GET /api/v1/admin/features` shows the mode (`modules`) and each module's
@@ -79,4 +83,10 @@ Behavioural differences:
 - `mcp-gateway init` and the desktop config write `version: 11` (since 10.9).
 - Data planes receive the schema version of the control plane's file (10 or 11 in 10.9; always 11 in 11.0).
 - Embedders: `GatewayConfig.version` is `10 | 11` in 10.9 and `11` in 11.0; the new `GatewayConfig.kernel` holds
-  `modules`. The workflow exports (`runWorkflow`, `WorkflowConfig`, …) are removed in 11.0.
+  `modules`. The workflow exports (`WorkflowsSchema`, `runWorkflow`, `WorkflowRuns`, `WorkflowsConfig`, `WorkflowRun`,
+  `NodeRun`) are removed in 11.0; `topoLayers` is still exported (now from the task-graph module). An embedded
+  `new Gateway(config)` is lazy too unless `kernel: { modules: 'eager' }` is passed.
+- `GET /api/v1/admin/kernel` reports `schema: 11`, `line: { line: '11.x', lts: false }`, `moduleMode` and each module's
+  `active` flag; `lts` still describes the 10.x LTS window.
+- Container images: `ghcr.io/harrisoncn/mcp-gateway:11` / `latest` point at 11.x; `:10` stays on the last 10.x release.
+- Helm chart 11.0.0 renders `config.version: 11`. If you override `config`, migrate it too.

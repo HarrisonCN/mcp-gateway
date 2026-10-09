@@ -17,9 +17,9 @@ const cfg = (multimodal: Record<string, unknown>) => ({ servers: [], multimodal 
 
 describe('multimodal tools (9.1)', () => {
   it('validates the policy', () => {
-    expect(() => validateConfig({ version: 10, servers: [], features: { multimodal: { maxItemBytes: 10, maxTotalBytes: 5 } } })).toThrow(/maxItemBytes must not exceed/);
-    expect(() => validateConfig({ version: 10, servers: [], features: { multimodal: { onViolation: 'drop' } } })).toThrow();
-    expect(validateConfig({ version: 10, servers: [], features: { multimodal: { allowedTypes: ['image/png'] } } }).multimodal).toBeDefined();
+    expect(() => validateConfig({ version: 11, servers: [], features: { multimodal: { maxItemBytes: 10, maxTotalBytes: 5 } } })).toThrow(/maxItemBytes must not exceed/);
+    expect(() => validateConfig({ version: 11, servers: [], features: { multimodal: { onViolation: 'drop' } } })).toThrow();
+    expect(validateConfig({ version: 11, servers: [], features: { multimodal: { allowedTypes: ['image/png'] } } }).multimodal).toBeDefined();
     expect(ERR_MEDIA_REFUSED).toBe(-32022);
     expect(base64Bytes(b64(10))).toBe(10);
     expect(base64Bytes(b64(11))).toBe(11);

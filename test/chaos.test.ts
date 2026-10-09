@@ -20,7 +20,7 @@ describe('chaos testing (8.8)', () => {
   it('validates experiments', () => {
     expect(() => validateConfig({ servers: [], features: { chaos: { experiments: [{ id: 'x', fault: {} }] } } })).toThrow(/a fault needs/);
     expect(() => validateConfig({ servers: [], features: { chaos: { experiments: [{ id: 'x', fault: { latencyMs: 1 } }, { id: 'x', fault: { latencyMs: 1 } }] } } })).toThrow(/duplicate experiment id/);
-    expect(validateConfig({ version: 10, servers: [], features: { chaos: { experiments: [{ id: 'x', fault: { errorRate: 0.5 }, every: 'daily' }] } } }).chaos).toBeDefined();
+    expect(validateConfig({ version: 11, servers: [], features: { chaos: { experiments: [{ id: 'x', fault: { errorRate: 0.5 }, every: 'daily' }] } } }).chaos).toBeDefined();
     expect(ERR_CHAOS_INJECTED).toBe(-32021);
   });
 

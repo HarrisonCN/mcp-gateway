@@ -12,14 +12,14 @@
  * @module features/kernel
  */
 
-import { registerFeature, listFeatures, FEATURE_CONFIG_KEYS } from '../gateway/features.js';
+import { registerFeature, listFeatures, FEATURE_CONFIG_KEYS, isFeatureActive, moduleMode } from '../gateway/features.js';
 import { callHooks } from '../gateway/hooks.js';
 import { VERSION } from '../utils/version.js';
 
 /** Config schema version read by this release line. */
-export const CONFIG_SCHEMA_VERSION = 10;
+export const CONFIG_SCHEMA_VERSION = 11;
 
-/** Long-term support of the 10.x line. */
+/** Long-term support of the 10.x line (11.x is the current, non-LTS line; 10.x keeps its LTS dates). */
 export const LTS = {
   line: '10.x',
   codename: 'Kernel',
@@ -30,7 +30,10 @@ export const LTS = {
   maintenanceUntil: '2028-10-31',
 } as const;
 
-/** LTS status of a release line on a date. */
+/** Current release line (11.0). */
+export const RELEASE_LINE = { line: '11.x', lts: false } as const;
+
+/** LTS status of the 10.x line on a date. */
 export function ltsStatus(now = new Date()): 'active' | 'maintenance' | 'end-of-life' {
   const d = now.toISOString().slice(0, 10);
   if (d <= LTS.activeUntil) return 'active';
@@ -41,15 +44,17 @@ export function ltsStatus(now = new Date()): 'active' | 'maintenance' | 'end-of-
 registerFeature({
   id: 'kernel',
   since: '10.0.0',
-  summary: 'Unified gateway kernel: config schema v10, feature modules, call-hook pipeline and LTS status in one view',
+  summary: 'Unified gateway kernel: config schema v11, lazily activated feature modules, call-hook pipeline and support status in one view',
   mount(router, ctx) {
     router.get('/', (_req, res) => {
       const cfg = ctx.config() as unknown as Record<string, unknown>;
       res.json({
         version: VERSION,
         schema: CONFIG_SCHEMA_VERSION,
+        line: RELEASE_LINE,
         lts: { ...LTS, status: ltsStatus() },
-        modules: listFeatures().map((m) => ({ ...m, path: `/api/v1/admin/${m.id}` })),
+        moduleMode: moduleMode(ctx.config()),
+        modules: listFeatures().map((m) => ({ ...m, path: `/api/v1/admin/${m.id}`, active: isFeatureActive(ctx.config(), m.id) })),
         hooks: callHooks().map((h, i) => ({ order: i + 1, id: h.id, before: !!h.before, after: !!h.after })),
         features: FEATURE_CONFIG_KEYS.map((k) => ({ section: `features.${k}`, configured: cfg[k] !== undefined })),
       });

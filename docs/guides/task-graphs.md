@@ -1,7 +1,8 @@
 # Multi-agent orchestration 2.0: durable task graphs (10.7)
 
 `features.taskGraphs` runs graphs of tool calls and agent tasks that can span gateways and survive restarts.
-Compared with [workflows](workflows.md) (6.2, in-memory DAGs of local tools) task graphs add cross-gateway nodes,
+Task graphs replaced the 6.2 workflow engine in 11.0 (`mcp-gateway migrate --to 11` converts workflows — see
+[Migrating to 11.0](migrating-to-v11.md)). Compared with those in-memory DAGs of local tools, task graphs add cross-gateway nodes,
 checkpoints, resume, retry with capped exponential backoff and saga-style compensation.
 
 ```yaml

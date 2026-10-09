@@ -120,7 +120,7 @@ describe('enterprise SSO and SCIM (6.4)', () => {
   });
 
   it('404s SSO endpoints without oidc', async () => {
-    h = await startFeatureGw({});
+    h = await startFeatureGw({ kernel: { modules: 'eager' } } as never); // 11.0: eager, so the unconfigured module is mounted
     expect((await h.admin('identity/sso/authorize-url')).status).toBe(404);
     expect((await h.admin('identity/sso/verify', { idToken: 'x' })).status).toBe(404);
     expect((await h.admin('identity')).body.oidc).toBeNull();

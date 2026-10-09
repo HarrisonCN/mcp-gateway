@@ -1,7 +1,7 @@
 /**
  * Multi-agent orchestration 2.0: durable task graphs (10.7).
  *
- * Workflows (6.2) are in-memory DAGs of local tools. Task graphs add what long-running multi-agent work needs:
+ * Task graphs (10.7; the 6.2 workflow engine they replaced was removed in 11.0) add what long-running multi-agent work needs:
  *
  * - **Cross-gateway nodes** — a node either calls a tool on this gateway (`tool: server/tool`, full invoker pipeline)
  *   or hands a task to an agent behind another gateway (`remote: { gateway, skill }`, via `features.a2aFederation`
@@ -55,7 +55,6 @@ import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
 import { parseTarget, readPath, render, stepValue } from '../orchestration/chains.js';
-import { topoLayers } from './workflows.js';
 import { A2aFederationSchema, sendToRemote } from './a2a-federation.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
@@ -485,3 +484,17 @@ registerFeature({
     });
   },
 });
+
+/** Kahn layering: nodes in each layer depend only on earlier layers; `undefined` on a cycle. */
+export function topoLayers(nodes: ReadonlyArray<{ id: string; needs: readonly string[] }>): string[][] | undefined {
+  const left = new Map(nodes.map((n) => [n.id, new Set(n.needs)]));
+  const layers: string[][] = [];
+  while (left.size) {
+    const ready = [...left].filter(([, d]) => d.size === 0).map(([id]) => id);
+    if (!ready.length) return undefined;
+    layers.push(ready);
+    for (const id of ready) left.delete(id);
+    for (const d of left.values()) for (const id of ready) d.delete(id);
+  }
+  return layers;
+}

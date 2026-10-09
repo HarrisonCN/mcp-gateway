@@ -26,22 +26,8 @@ export interface Deprecation {
   replacement?: string;
 }
 
-/** Active deprecations (10.9: what 11.0 removes). */
-export const DEPRECATIONS: Record<string, Deprecation> = {
-  'config-schema-v10': {
-    id: 'config-schema-v10',
-    message:
-      'Config schema v10 (`version: 10` or no version) is deprecated — 11.0 reads schema v11 only, where feature modules activate lazily (only configured `features.*` sections are mounted; `kernel.modules: eager` restores 10.x behaviour)',
-    removedIn: '11.0',
-    replacement: 'version: 11 — run `mcp-gateway migrate --to 11` (see docs/guides/migrating-to-v11.md)',
-  },
-  'features-workflows': {
-    id: 'features-workflows',
-    message: '`features.workflows` (6.2) is deprecated — task graphs (`features.taskGraphs`, 10.7) do the same and add checkpoints, resume and compensation; 11.0 removes workflows and `/api/v1/admin/workflows`',
-    removedIn: '11.0',
-    replacement: 'features.taskGraphs — `mcp-gateway migrate --to 11` converts each workflow into a task graph',
-  },
-};
+/** Active deprecations (11.0: none — schema v10 and workflows were removed). */
+export const DEPRECATIONS: Record<string, Deprecation> = {};
 
 /** Feature sections (config keys owned by feature modules) present at the top level of a raw config. */
 export const topLevelFeatureKeys = (r: Record<string, unknown>): string[] => FEATURE_CONFIG_KEYS.filter((k) => r[k] !== undefined);
@@ -71,21 +57,22 @@ export function removedConfigKeys(raw: unknown): string[] {
     .filter(([k]) => r[k] !== undefined)
     .map(([k, v]) => `${k}: removed in 3.0 — use \`${v}\` (see docs/guides/migrating-to-v3.md)`);
   if (r.version === 3) out.push(`version: config schema v3 was removed in 4.0 — use \`version: 4\`; ${GUIDE4}`);
-  else if (r.version === 4) out.push(`version: config schema v4 was removed in 5.0 — use \`version: 10\`; ${GUIDE10}`);
-  else if (r.version === 5) out.push(`version: config schema v5 was removed in 6.0 — use \`version: 10\`; ${GUIDE10}`);
-  else if (r.version === 6) out.push(`version: config schema v6 was removed in 7.0 — use \`version: 10\`; ${GUIDE10}`);
-  else if (r.version === 7) out.push(`version: config schema v7 was removed in 8.0 — use \`version: 10\`; ${GUIDE10}`);
-  else if (r.version === 8) out.push(`version: config schema v8 was removed in 9.0 — use \`version: 10\`; ${GUIDE10}`);
-  else if (r.version === 9) out.push(`version: config schema v9 was removed in 10.0 — use \`version: 10\`; ${GUIDE10}`);
-  else if (r.version !== undefined && r.version !== 10 && r.version !== 11) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 10.9 reads \`version: 10\` and \`version: 11\` (see docs/guides/migrating-to-v11.md)`);
-  // 10.9: schema v11 drops features.workflows (task graphs replace it).
-  if (r.version === 11 && (r.features as { workflows?: unknown } | undefined)?.workflows !== undefined) out.push(`features.workflows: not part of schema v11 — use \`features.taskGraphs\`; ${GUIDE11}`);
+  else if (r.version === 4) out.push(`version: config schema v4 was removed in 5.0 — use \`version: 11\`; ${GUIDE11}`);
+  else if (r.version === 5) out.push(`version: config schema v5 was removed in 6.0 — use \`version: 11\`; ${GUIDE11}`);
+  else if (r.version === 6) out.push(`version: config schema v6 was removed in 7.0 — use \`version: 11\`; ${GUIDE11}`);
+  else if (r.version === 7) out.push(`version: config schema v7 was removed in 8.0 — use \`version: 11\`; ${GUIDE11}`);
+  else if (r.version === 8) out.push(`version: config schema v8 was removed in 9.0 — use \`version: 11\`; ${GUIDE11}`);
+  else if (r.version === 9) out.push(`version: config schema v9 was removed in 10.0 — use \`version: 11\`; ${GUIDE11}`);
+  else if (r.version === 10) out.push(`version: config schema v10 was removed in 11.0 — use \`version: 11\`; ${GUIDE11}`);
+  else if (r.version !== undefined && r.version !== 11) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 11.0 reads \`version: 11\` (see docs/guides/migrating-to-v11.md)`);
+  // 11.0: the 6.2 workflow engine was removed (task graphs replace it).
+  if ((r.features as { workflows?: unknown } | undefined)?.workflows !== undefined || r.workflows !== undefined) out.push(`features.workflows: removed in 11.0 — use \`features.taskGraphs\`; ${GUIDE11}`);
   // 10.0: feature modules live under `features`; top-level feature sections were removed.
   for (const k of topLevelFeatureKeys(r)) out.push(`${k}: removed in 10.0 — move under \`features: { … }\` (\`features.${k}\`); ${GUIDE10}`);
   if (r.features !== undefined) {
     if (!r.features || typeof r.features !== 'object' || Array.isArray(r.features)) out.push('features: must be an object');
     else {
-      const unknown = Object.keys(r.features as object).filter((k) => !(FEATURE_CONFIG_KEYS as readonly string[]).includes(k));
+      const unknown = Object.keys(r.features as object).filter((k) => k !== 'workflows' && !(FEATURE_CONFIG_KEYS as readonly string[]).includes(k));
       if (unknown.length) out.push(`features: unknown feature section(s) ${unknown.join(', ')} — known: ${FEATURE_CONFIG_KEYS.join(', ')}`);
     }
   }
@@ -117,15 +104,10 @@ export function removedConfigKeys(raw: unknown): string[] {
   return out;
 }
 
-/** Deprecated keys used in a raw config object (10.9: schema v10, features.workflows). */
+/** Deprecated keys used in a raw config object (11.0: none). */
 export function configDeprecations(raw: unknown): Array<Deprecation & { detail?: string }> {
   if (typeof raw !== 'object' || raw === null) return [];
-  const r = raw as Record<string, unknown>;
-  const out: Array<Deprecation & { detail?: string }> = [];
-  if (r.version === undefined || r.version === 10) out.push({ ...DEPRECATIONS['config-schema-v10']!, detail: r.version === undefined ? 'no `version` key: 11.0 reads the file as schema v11' : 'version: 10' });
-  const wf = (r.features as { workflows?: unknown } | undefined)?.workflows;
-  if (wf !== undefined) out.push({ ...DEPRECATIONS['features-workflows']!, detail: `${Array.isArray(wf) ? wf.length : 0} workflow(s)` });
-  return out;
+  return [];
 }
 
 /** Schema v10: `features: { chaos, sla, … }` → the internal top-level sections. */

@@ -19,7 +19,6 @@ import { SessionsSchema } from '../features/sessions.js';
 import { DlpSchema } from '../features/dlp.js';
 import { AdaptiveSchema } from '../features/adaptive.js';
 import { ApiUpstreamsSchema } from '../features/api-upstreams.js';
-import { WorkflowsSchema } from '../features/workflows.js';
 import { GenaiTelemetrySchema } from '../features/genai-otel.js';
 import { IdentitySchema } from '../features/identity.js';
 import { PolicyRuleSchema } from '../policy/rule-schema.js';
@@ -490,9 +489,9 @@ const GatewayConfigSchema = z.object({
     })
     .optional(),
   servers: z.array(McpServerSchema).default([]),
-  version: z.union([z.literal(10), z.literal(11)]).optional(),
-  // 10.9: how feature modules are activated. v11 default: lazy (only modules whose section is configured);
-  // v10 default: eager (every module mounted, as before).
+  version: z.literal(11).optional(),
+  // 10.9: how feature modules are activated. 11.0 default: lazy (only modules whose section is configured);
+  // eager mounts every module (10.x behaviour).
   kernel: z.object({ modules: z.enum(['eager', 'lazy']).optional() }).strict().optional(),
   cors: z.object({ origins: z.array(z.string()).optional() }).strict().optional(),
   health: z.object({ intervalMs: z.number().int().min(1000).optional() }).strict().optional(),
@@ -506,7 +505,6 @@ const GatewayConfigSchema = z.object({
   dlp: DlpSchema.optional(),
   adaptive: AdaptiveSchema.optional(),
   apiUpstreams: ApiUpstreamsSchema.optional(),
-  workflows: WorkflowsSchema.optional(),
   genaiTelemetry: GenaiTelemetrySchema.optional(),
   identity: IdentitySchema.optional(),
   policyShadow: PolicyShadowSchema.optional(),

@@ -78,7 +78,7 @@ describe('managed edge fleet (5.3)', () => {
   });
 
   it('404s a push without managed nodes', async () => {
-    h = await startFeatureGw();
+    h = await startFeatureGw({ kernel: { modules: 'eager' } } as never); // 11.0: eager, so the unconfigured module is mounted
     expect((await h.admin('edge-fleet')).body.nodes).toEqual([]);
     expect((await h.admin('edge-fleet/push', {})).status).toBe(404);
   });

@@ -151,9 +151,9 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
-  /** Config schema version (10.9: 10 or 11). */
-  version?: 10 | 11;
-  /** 10.9: feature-module activation (`lazy` = only configured modules; default lazy on schema v11, eager on v10). */
+  /** Config schema version (11.0: 11). */
+  version?: 11;
+  /** Feature-module activation (10.9; `lazy` = only configured modules — the 11.0 default; `eager` = all, as in 10.x). */
   kernel?: { modules?: 'eager' | 'lazy' };
   /** Ecosystem marketplace GA (9.8). */
   ecosystem?: import('../features/ecosystem.js').EcosystemConfig;
@@ -225,8 +225,6 @@ export interface GatewayConfig {
   identity?: import('../features/identity.js').IdentityConfig;
   /** OpenTelemetry GenAI semantic conventions (6.3). */
   genaiTelemetry?: import('../features/genai-otel.js').GenaiTelemetryConfig;
-  /** Workflow engine (multi-tool DAG) (6.2). */
-  workflows?: import('../features/workflows.js').WorkflowsConfig;
   /** GraphQL / gRPC upstreams (6.1). */
   apiUpstreams?: import('../features/api-upstreams.js').ApiUpstreamsConfig;
   /** Adaptive routing 2.0 (5.8). */
