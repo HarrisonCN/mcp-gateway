@@ -51,6 +51,34 @@ const registry: FeatureModule[] = [];
 /** Top-level config sections owned by feature modules; all hot reload (5.2+). */
 export const FEATURE_CONFIG_KEYS = ['regions', 'edgeFleet', 'pluginTrust', 'marketplace', 'sessions', 'dlp', 'adaptive', 'apiUpstreams', 'workflows', 'genaiTelemetry', 'identity', 'policyShadow', 'anomaly', 'billing', 'console', 'sanitize', 'semanticCache', 'rollouts', 'offline', 'approvalFlows', 'complianceReports', 'agentIdentity', 'a2aFederation', 'debugSessions', 'costAdvisor', 'blueGreen', 'dataLineage', 'configAssistant', 'chaos', 'multimodal', 'edgeRuntime', 'confidential', 'toolRegistry', 'sla', 'selfHealing', 'postQuantumTls', 'ecosystem', 'policyEngine', 'timeTravel', 'realtimeBudgets', 'taskGraphs', 'edgeAutonomy', 'privacy', 'pqIdentity'] as const satisfies ReadonlyArray<keyof GatewayConfig>;
 
+/**
+ * Config section(s) that activate each feature module (10.9). In `lazy` mode (`kernel.modules`; the schema-v11
+ * default) a module listed here is mounted — routes, timers, call hooks — only while one of its sections is
+ * configured; modules not listed (`kernel`, `conformance`, `k8s`, `terraform`, `policy-sim`) are always active.
+ */
+export const FEATURE_ACTIVATION: Readonly<Record<string, readonly (keyof GatewayConfig)[]>> = {
+  'a2a-federation': ['a2aFederation'], adaptive: ['adaptive'], 'agent-identity': ['agentIdentity'], anomaly: ['anomaly'],
+  'api-upstreams': ['apiUpstreams'], 'approval-flows': ['approvalFlows'], billing: ['billing'], 'blue-green': ['blueGreen'],
+  chaos: ['chaos'], 'compliance-reports': ['complianceReports'], confidential: ['confidential'], 'config-assistant': ['configAssistant'],
+  console: ['console'], 'cost-advisor': ['costAdvisor'], 'data-lineage': ['dataLineage'], 'debug-sessions': ['debugSessions'],
+  dlp: ['dlp'], ecosystem: ['ecosystem'], 'edge-autonomy': ['edgeAutonomy'], 'edge-fleet': ['edgeFleet'], 'edge-runtime': ['edgeRuntime'],
+  'genai-otel': ['genaiTelemetry'], identity: ['identity'], marketplace: ['marketplace'], multimodal: ['multimodal'], offline: ['offline'],
+  'policy-engine': ['policyEngine'], 'pq-identity': ['pqIdentity'], 'pq-tls': ['postQuantumTls'], privacy: ['privacy'],
+  'realtime-budgets': ['realtimeBudgets'], regions: ['regions'], rollouts: ['rollouts'], sanitize: ['sanitize'],
+  'self-healing': ['selfHealing'], 'semantic-cache': ['semanticCache'], sessions: ['sessions'], sla: ['sla'],
+  'task-graphs': ['taskGraphs'], 'time-travel': ['timeTravel'], 'tool-registry': ['toolRegistry'], workflows: ['workflows'],
+};
+
+/** Effective module activation mode: `kernel.modules`, else lazy on schema v11 and eager on v10. */
+export const moduleMode = (cfg: GatewayConfig): 'eager' | 'lazy' => cfg.kernel?.modules ?? (cfg.version === 11 ? 'lazy' : 'eager');
+
+/** Whether a feature module (or a call hook with that id) is active under `cfg`. */
+export function isFeatureActive(cfg: GatewayConfig, id: string): boolean {
+  if (moduleMode(cfg) === 'eager') return true;
+  const keys = FEATURE_ACTIVATION[id];
+  return !keys || keys.some((k) => cfg[k] !== undefined);
+}
+
 /** Copy the feature-owned config sections of `next` (for hot reload). */
 export function featureSections(next: GatewayConfig): Partial<GatewayConfig> {
   return Object.fromEntries(FEATURE_CONFIG_KEYS.map((k) => [k, next[k]])) as Partial<GatewayConfig>;
@@ -81,18 +109,53 @@ export function createFeatureRouter(deps: FeatureRouterDeps): express.Router {
     deps.isOperator(req) ? next() : void res.status(403).json({ error: 'Forbidden', message: 'The admin API is for operators (unscoped keys)' });
   const mods = deps.features ?? registry;
   router.get('/admin/features', deps.authenticate, operator, (_req, res) => {
-    res.json({ version: VERSION, features: mods.map(({ id, since, summary }) => ({ id, since, summary, path: `/api/v1/admin/${id}` })) });
+    const cfg = deps.context.config();
+    res.json({ version: VERSION, modules: moduleMode(cfg), features: mods.map(({ id, since, summary }) => ({ id, since, summary, path: `/api/v1/admin/${id}`, active: isFeatureActive(cfg, id) })) });
   });
+  // 10.9: modules are mounted when they become active (at start, on reload via `sync()`, or on first request);
+  // inactive modules answer 404 in lazy mode.
+  const mounted = new Map<string, { admin: express.Router; client?: express.Router }>();
+  const ensure = (m: FeatureModule) => {
+    let r = mounted.get(m.id);
+    if (!r) {
+      const admin = express.Router();
+      m.mount(admin, deps.context);
+      let client: express.Router | undefined;
+      if (m.mountClient) {
+        client = express.Router();
+        m.mountClient(client, deps.context);
+      }
+      r = { admin, client };
+      mounted.set(m.id, r);
+    }
+    return r;
+  };
+  const inactive = (m: FeatureModule, res: express.Response) =>
+    void res.status(404).json({
+      error: 'Not Found',
+      message: `Feature module "${m.id}" is not active: kernel.modules is lazy and ${FEATURE_ACTIVATION[m.id]!.map((k) => `features.${String(k)}`).join(' / ')} is not configured`,
+    });
   for (const m of mods) {
-    const sub = express.Router();
-    m.mount(sub, deps.context);
-    router.use(`/admin/${m.id}`, deps.authenticate, operator, sub);
+    if (isFeatureActive(deps.context.config(), m.id)) ensure(m);
+    router.use(`/admin/${m.id}`, deps.authenticate, operator, (req, res, next) => {
+      if (!isFeatureActive(deps.context.config(), m.id)) return inactive(m, res);
+      ensure(m).admin(req, res, next);
+    });
     if (m.mountClient) {
-      const pub = express.Router();
-      m.mountClient(pub, deps.context);
-      router.use(`/features/${m.id}`, deps.authenticate, pub);
+      router.use(`/features/${m.id}`, deps.authenticate, (req, res, next) => {
+        if (!isFeatureActive(deps.context.config(), m.id)) return inactive(m, res);
+        ensure(m).client!(req, res, next);
+      });
     }
   }
+  /** Mount modules that became active (call after a config reload). */
+  (router as express.Router & { sync?: () => string[] }).sync = () => {
+    const added: string[] = [];
+    for (const m of mods) if (!mounted.has(m.id) && isFeatureActive(deps.context.config(), m.id)) (ensure(m), added.push(m.id));
+    return added;
+  };
+  /** Ids of mounted modules. */
+  (router as express.Router & { mountedIds?: () => string[] }).mountedIds = () => [...mounted.keys()];
   return router;
 }
 

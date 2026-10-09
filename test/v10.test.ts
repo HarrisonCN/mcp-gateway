@@ -19,19 +19,19 @@ afterEach(async () => {
 
 describe('10.0: schema v10, unified kernel, LTS', () => {
   it('reads schema v10 only; v9 and top-level feature sections are refused with the migration hint', () => {
-    expect(Object.keys(DEPRECATIONS)).toEqual([]);
-    expect(configDeprecations({ version: 10, features: { chaos } })).toEqual([]);
+    expect(Object.keys(DEPRECATIONS)).toEqual(['config-schema-v10', 'features-workflows']); // 10.9
+    expect(configDeprecations({ version: 11, features: { chaos } })).toEqual([]);
     expect(() => validateConfig({ version: 9, servers: [] })).toThrow(/config schema v9 was removed in 10.0 — use `version: 10`; run `mcp-gateway migrate --to 10`/);
     expect(() => validateConfig({ version: 8, servers: [] })).toThrow(/use `version: 10`/);
     expect(() => validateConfig({ servers: [], chaos })).toThrow(/chaos: removed in 10.0 — move under `features: \{ … \}`/);
-    expect(() => validateConfig({ version: 11, servers: [] })).toThrow(/10.0 reads `version: 10`/);
+    expect(() => validateConfig({ version: 12, servers: [] })).toThrow(/reads `version: 10` and `version: 11`/);
     expect(() => validateConfig({ version: 10, servers: [], features: { nope: {} } })).toThrow(/unknown feature section\(s\) nope/);
     const cfg = validateConfig({ version: 10, servers: [], features: { chaos } });
     expect(cfg.chaos).toBeDefined();
-    expect(cfg.deprecations).toBeUndefined();
+    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['config-schema-v10']);
     expect(validateConfig({ servers: [], features: { chaos } }).chaos).toBeDefined(); // version may be omitted
     expect(removedConfigKeys({ version: 10 })).toEqual([]);
-    expect(parse(generateDefaultConfig()).version).toBe(10);
+    expect(parse(generateDefaultConfig()).version).toBe(11); // 10.9: init writes schema v11
   });
 
   it('round trips through the config API and data planes always get version 10', () => {
@@ -44,7 +44,7 @@ describe('10.0: schema v10, unified kernel, LTS', () => {
   });
 
   it('migrate --to 10 still upgrades 9.x files', () => {
-    const r = migrateConfigText('version: 9\nsla:\n  targets: [{ id: gold, availability: 99.9 }] # gold\nservers: []\n');
+    const r = migrateConfigText('version: 9\nsla:\n  targets: [{ id: gold, availability: 99.9 }] # gold\nservers: []\n', 'yaml', 10);
     expect(r.changes).toEqual(['version: 9 → 10', 'sla → features.sla']);
     expect(r.text).toContain('# gold');
     expect(validateConfig(parse(r.text)).sla).toBeDefined();
@@ -74,7 +74,7 @@ describe('10.0: schema v10, unified kernel, LTS', () => {
     expect(q).not.toHaveProperty('rollouts');
     expect(withFeatureSection(withFeatureSection(p, 'chaos', undefined), 'x', undefined)).not.toHaveProperty('features');
     const d = desktopConfig({ apiKey: 'k' }).config;
-    expect(d).toMatchObject({ version: 10, features: { offline: { mode: 'auto' } } });
+    expect(d).toMatchObject({ version: 11, features: { offline: { mode: 'auto' } } });
     expect(validateConfig(d).offline).toMatchObject({ mode: 'auto' });
   });
 });

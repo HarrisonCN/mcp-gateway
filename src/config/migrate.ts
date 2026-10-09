@@ -1,5 +1,9 @@
 /**
- * To v10 (9.9, the default): everything for v9, then `version: 10` and every top-level feature section (`chaos`, `sla`,
+ * To v11 (10.9, the default): everything for v10, then `version: 11` and `features.workflows` → `features.taskGraphs`
+ * (each workflow becomes a task graph with the same nodes). Schema v11 activates feature modules lazily — a note
+ * suggests `kernel: { modules: eager }` for the 10.x behaviour. 10.9 reads v10 and v11; 11.0 reads v11 only.
+ *
+ * To v10 (9.9): everything for v9, then `version: 10` and every top-level feature section (`chaos`, `sla`,
  * `dlp`, … — {@link FEATURE_CONFIG_KEYS}) moves under `features`. 9.9 reads v9 and v10; 10.0 reads v10 only.
  *
  * To v9 (8.9): everything for v8, then `version: 9` and `state` → `store` (`state.store` → `store.backend`).
@@ -49,8 +53,8 @@ export interface MigrationResult {
 export const SCOPE_FIELDS = ['servers', 'tools', 'rateLimit'] as const;
 
 /** Migrate a config file's text. `format` is guessed from the content when omitted. */
-export function migrateConfigText(text: string, format?: 'yaml' | 'json', to = 10): MigrationResult {
-  if (![4, 5, 6, 7, 8, 9, 10].includes(to)) throw new Error(`Only migration to schema v4, v5, v6, v7, v8, v9 or v10 is supported (got ${to})`);
+export function migrateConfigText(text: string, format?: 'yaml' | 'json', to = 11): MigrationResult {
+  if (![4, 5, 6, 7, 8, 9, 10, 11].includes(to)) throw new Error(`Only migration to schema v4, v5, v6, v7, v8, v9, v10 or v11 is supported (got ${to})`);
   const fmt = format ?? (/^\s*[{[]/.test(text) ? 'json' : 'yaml');
   const doc = parseDocument(text, { keepSourceTokens: true });
   if (doc.errors.length) throw new Error(`Cannot parse the config: ${doc.errors[0]!.message}`);
@@ -221,6 +225,46 @@ function migrateDoc(doc: Document, changes: string[], notes: string[], to: numbe
     }
   }
 
+  if (to >= 11) {
+    // 10.9 → 11.0: features.workflows (6.2) → features.taskGraphs (10.7).
+    const features = doc.get('features');
+    const wf = isMap(features) ? features.get('workflows') : undefined;
+    if (isMap(features) && wf !== undefined) {
+      const list = (isSeq(wf) ? (wf.toJSON() as unknown[]) : []) as Array<Record<string, unknown>>;
+      const graphs = list.map(workflowToTaskGraph);
+      let tg = features.get('taskGraphs');
+      if (tg !== undefined && !isMap(tg)) notes.push('features.taskGraphs is not a mapping: move the converted workflows by hand.');
+      else {
+        if (!isMap(tg)) {
+          tg = doc.createNode({ graphs: [] });
+          features.set('taskGraphs', tg);
+        }
+        let gs = (tg as YAMLMap).get('graphs');
+        if (!isSeq(gs)) {
+          gs = doc.createNode([]);
+          (tg as YAMLMap).set('graphs', gs);
+        }
+        const existing = new Set(((gs as { toJSON(): unknown }).toJSON() as Array<{ id?: string }>).map((g) => g.id));
+        for (const g of graphs) {
+          if (existing.has(g.id as string)) {
+            notes.push(`task graph "${String(g.id)}" already exists: workflow "${String(g.id)}" was not converted — merge it by hand.`);
+            continue;
+          }
+          (gs as { items: unknown[] }).items.push(doc.createNode(g));
+        }
+        features.delete('workflows');
+        changes.push(`features.workflows (${graphs.length}) → features.taskGraphs.graphs`);
+        notes.push(
+          'Workflows are now task graphs: run them with POST /api/v1/admin/task-graphs/run `{ graph, input, wait }` (was /admin/workflows/run `{ workflow, … }`); ' +
+            'calls run as the client that started the run (workflows used `workflow:<id>`) — adjust policy rules that matched `workflow:*`. Comments inside `workflows` were not carried over.',
+        );
+      }
+    }
+    if (!doc.hasIn(['kernel', 'modules'])) {
+      notes.push('Schema v11 activates feature modules lazily: only configured `features.*` sections are mounted (others answer 404). Add `kernel: { modules: eager }` to keep the 10.x behaviour.');
+    }
+  }
+
   const plugins = doc.get('plugins');
   if (to >= 8 && isSeq(plugins)) {
     plugins.items.forEach((p, i) => {
@@ -242,8 +286,24 @@ function migrateDoc(doc: Document, changes: string[], notes: string[], to: numbe
   }
 }
 
+/** One 6.2 workflow → a 10.7 task graph (same nodes; retry backoff keeps doubling, uncapped as before). */
+export function workflowToTaskGraph(w: Record<string, unknown>): Record<string, unknown> {
+  const nodes = (Array.isArray(w.nodes) ? w.nodes : []) as Array<Record<string, unknown>>;
+  return {
+    id: w.id,
+    ...(w.description !== undefined ? { description: w.description } : {}),
+    ...(w.concurrency !== undefined ? { concurrency: w.concurrency } : {}),
+    nodes: nodes.map((n) => {
+      const { retry, ...rest } = n;
+      const r = retry as { attempts?: number; backoffMs?: number } | undefined;
+      return { ...rest, ...(r ? { retry: { ...(r.attempts !== undefined ? { attempts: r.attempts } : {}), ...(r.backoffMs !== undefined ? { backoffMs: r.backoffMs } : {}), factor: 2, maxBackoffMs: 3_600_000 } } : {}) };
+    }),
+    ...(w.output !== undefined ? { output: w.output } : {}),
+  };
+}
+
 /** Plain-object variant (for validation / tests). */
-export function migrateConfigObject(raw: Record<string, unknown>, to = 10): { config: Record<string, unknown>; changes: string[] } {
+export function migrateConfigObject(raw: Record<string, unknown>, to = 11): { config: Record<string, unknown>; changes: string[] } {
   const r = migrateConfigText(JSON.stringify(raw), 'json', to);
   return { config: JSON.parse(r.text) as Record<string, unknown>, changes: r.changes };
 }

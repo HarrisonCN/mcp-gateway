@@ -94,6 +94,8 @@ export class Gateway {
   private jsonParser: express.RequestHandler;
   /** 5.2: cleanups registered by feature modules. */
   private readonly featureStops: Array<() => void | Promise<void>> = [];
+  /** 10.9: feature router (mounts modules that become active on reload). */
+  private featureRouter?: import('express').Router & { sync?: () => string[] };
   private readonly reloadLock = new Mutex();
   /** Developer portal keys (3.8). */
   readonly portal: PortalStore;
@@ -388,9 +390,7 @@ export class Gateway {
     });
     this.app.use('/api/v1', edgeControl);
     // 5.1: feature modules under /api/v1/admin/<id> (src/features).
-    this.app.use(
-      '/api/v1',
-      createFeatureRouter({
+    this.featureRouter = createFeatureRouter({
         authenticate: this.router.authenticate,
         isOperator: (req) => this.router!.isOperator(req),
         context: {
@@ -416,8 +416,8 @@ export class Gateway {
             return `http://${host}:${a.port}`;
           },
         },
-      }),
-    );
+      });
+    this.app.use('/api/v1', this.featureRouter);
     // 10.5: kernel plugin SDK routes.
     this.plugins.setRouteEnv({
       tools: () => this.registry.getAllTools().map((t) => ({ serverId: t.serverId, name: t.name, description: t.description })),
@@ -780,8 +780,13 @@ export class Gateway {
         openai: next.openai ? { ...next.openai, path: this.config.openai?.path } : next.openai,
         a2a: next.a2a,
         ...featureSections(next),
+        // 10.9: schema version and module activation hot reload (newly active modules are mounted below)
+        version: next.version,
+        kernel: next.kernel,
         configDir: next.configDir ?? this.config.configDir,
       };
+      const activated = this.featureRouter?.sync?.() ?? [];
+      if (activated.length) applied.push(`modules (${activated.join(', ')})`);
       if (!same(prevCatalog, next.catalog)) {
         await this.catalog.refresh();
         applied.push('catalog');

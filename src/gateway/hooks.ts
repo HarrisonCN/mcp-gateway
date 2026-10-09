@@ -9,6 +9,7 @@
  */
 
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
+import { isFeatureActive } from './features.js';
 
 export interface HookCall {
   serverId: string;
@@ -38,6 +39,11 @@ export function registerCallHook(h: CallHook, opts: { first?: boolean } = {}): v
   if (i >= 0) hooks[i] = h;
   else if (opts.first) hooks.unshift(h);
   else hooks.push(h);
+}
+
+/** Hooks of active feature modules under `cfg` (10.9 lazy activation; hooks of unknown ids, e.g. plugins, always run). */
+export function activeCallHooks(cfg: GatewayConfig): readonly CallHook[] {
+  return hooks.filter((h) => isFeatureActive(cfg, h.id === 'policy-shadow' ? 'policy-sim' : h.id));
 }
 
 export function callHooks(): readonly CallHook[] {

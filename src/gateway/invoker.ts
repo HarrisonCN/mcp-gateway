@@ -9,7 +9,7 @@
  * @module gateway/invoker
  */
 
-import { callHooks, type HookCall } from './hooks.js';
+import { activeCallHooks, type HookCall } from './hooks.js';
 import type { McpProxy, ProgressUpdate, RelayCaller } from '../proxy/index.js';
 import type { MetricsCollector } from '../monitor/index.js';
 import type { McpServerConfig, ProxyResponse, ToolPolicyConfig } from '../utils/types.js';
@@ -156,7 +156,7 @@ export class ToolInvoker {
     const hookCfg = ctx.kind === 'tool' ? this.deps.config?.() : undefined;
     if (hookCfg) {
       const call: HookCall = { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params };
-      for (const h of callHooks()) {
+      for (const h of activeCallHooks(hookCfg)) {
         try {
           h.refused?.(call, { code, message, data }, hookCfg);
         } catch (err) {
@@ -249,7 +249,7 @@ export class ToolInvoker {
     const hookCall = (): HookCall => ({ serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params });
     let preset: ProxyResponse | undefined;
     if (hookCfg && ctx.kind === 'tool') {
-      for (const h of callHooks()) {
+      for (const h of activeCallHooks(hookCfg)) {
         if (!h.before) continue;
         const out = await h.before(hookCall(), hookCfg);
         if (out?.refuse) return this.refuse(ctx, out.refuse.code, out.refuse.message, { decision: h.id, ...(out.refuse.data ?? {}) }, span);
@@ -317,7 +317,7 @@ export class ToolInvoker {
     }
     // 5.6: feature call hooks (after).
     if (hookCfg && ctx.kind === 'tool') {
-      for (const h of callHooks()) {
+      for (const h of activeCallHooks(hookCfg)) {
         if (!h.after) continue;
         const out = await h.after(hookCall(), result, hookCfg);
         if (out) result = out;

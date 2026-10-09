@@ -40,17 +40,17 @@ describe('4.0 removals (were 3.9 deprecations)', () => {
     expect(errs[1]).toMatch(/auth.apiKeys.0: servers directly on an API key was removed in 4.0/);
     expect(errs[2]).toMatch(/servers.0.loadBalancing.strategy: least-latency was removed/);
     expect(() => validateConfig(raw)).toThrow(/mcp-gateway migrate/);
-    expect(configDeprecations(raw)).toEqual([]);
+    expect(configDeprecations(raw).map((d) => d.id)).toEqual(['config-schema-v10']); // 10.9: v10 / versionless is deprecated
   });
 
   it('reads nested key scope (schema v7 or version omitted)', () => {
     const cfg = validateConfig({ version: 10, servers: [], auth: { strategy: 'api-key', apiKeys: [{ name: 'ci', key: 'k', scope: { servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } } }] } });
     expect(cfg.auth!.apiKeys![0]).toMatchObject({ name: 'ci', servers: ['github'], rateLimit: { limit: 1, windowSeconds: 1 } });
-    expect(cfg.deprecations?.map((d) => d.id)).toBeUndefined(); // 10.0: nothing deprecated
+    expect(cfg.deprecations?.map((d) => d.id)).toEqual(['config-schema-v10']); // 10.9
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', servers: ['a'], scope: { servers: ['b'] } }] } })).toThrow(/removed in 4.0/);
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', scope: { nope: 1 } }] } })).toThrow(/unknown key/);
-    expect(() => validateConfig({ version: 11, servers: [] })).toThrow(/not supported/);
-    expect(validateConfig({ servers: [] }).deprecations).toBeUndefined();
+    expect(() => validateConfig({ version: 12, servers: [] })).toThrow(/not supported/);
+    expect(validateConfig({ version: 11, servers: [] }).deprecations).toBeUndefined();
   });
 });
 
@@ -80,11 +80,11 @@ describe('mcp-gateway migrate', () => {
 
   it('handles JSON and files without a version', () => {
     const { config, changes } = migrateConfigObject({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', tools: ['a*'] }] } });
-    expect(changes[0]).toBe('version: (none) → 10');
+    expect(changes[0]).toBe('version: (none) → 11');
     expect(Object.keys(config)[0]).toBe('version');
     expect((config.auth as { apiKeys: Array<Record<string, unknown>> }).apiKeys[0]).toEqual({ key: 'k', scope: { tools: ['a*'] } });
     expect(() => migrateConfigText('a: [', 'yaml')).toThrow(/Cannot parse/);
-    expect(() => migrateConfigText('version: 3', 'yaml', 11)).toThrow(/v4, v5, v6, v7, v8, v9 or v10/);
+    expect(() => migrateConfigText('version: 3', 'yaml', 12)).toThrow(/v4, v5, v6, v7, v8, v9, v10 or v11/);
     expect(() => migrateConfigText('version: 5', 'yaml', 4)).toThrow(/downgrading/);
   });
 });
