@@ -460,6 +460,12 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
     const c = (await (await f('/api/v1/admin/chaos')).json()) as any;
     expect(c.experiments.map((e: any) => e.state)).toEqual(['running', 'aborted']);
   });
+  it('reports the multimodal policy and held blobs (9.1)', async () => {
+    const f = demoFetch();
+    const m = (await (await f('/api/v1/admin/multimodal')).json()) as any;
+    expect(m.policy.allowedTypes).toEqual(['image/*', 'audio/*']);
+    expect(m.blobs.map((b: any) => b.mimeType)).toEqual(['image/png', 'audio/mpeg']);
+  });
 });
 
 describe('dashboard replay dialog (3.2)', () => {

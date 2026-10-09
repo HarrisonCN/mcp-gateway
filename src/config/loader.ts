@@ -41,6 +41,7 @@ import { BlueGreenSchema } from '../features/blue-green.js';
 import { DataLineageSchema } from '../features/data-lineage.js';
 import { ConfigAssistantSchema } from '../features/config-assistant.js';
 import { ChaosSchema } from '../features/chaos.js';
+import { MultimodalSchema } from '../features/multimodal.js';
 import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
@@ -506,6 +507,7 @@ const GatewayConfigSchema = z.object({
   dataLineage: DataLineageSchema.optional(),
   configAssistant: ConfigAssistantSchema.optional(),
   chaos: ChaosSchema.optional(),
+  multimodal: MultimodalSchema.optional(),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   reconnect: ReconnectSchema.optional(),
   audit: z

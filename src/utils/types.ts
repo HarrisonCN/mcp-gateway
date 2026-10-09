@@ -151,6 +151,8 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
+  /** Multimodal tools (9.1). */
+  multimodal?: import('../features/multimodal.js').MultimodalConfig;
   /** Chaos testing (8.8). */
   chaos?: import('../features/chaos.js').ChaosConfig;
   /** Natural-language config assistant (8.7). */

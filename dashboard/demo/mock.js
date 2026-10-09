@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '9.0.0';
+  const VERSION = '9.1.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -70,6 +70,7 @@
     { id: "data-lineage", since: "8.6.0", summary: "Data lineage: value fingerprints link tool outputs to later tool inputs (graph, trace by value, OpenLineage export)" },
     { id: "config-assistant", since: "8.7.0", summary: "Natural-language config assistant: plain-words changes \u2192 validated config patch, diff (dry run), apply" },
     { id: "chaos", since: "8.8.0", summary: "Chaos testing: scheduled or on-demand latency / error / timeout / corruption injection with a steady-state guard" },
+    { id: "multimodal", since: "9.1.0", summary: "Multimodal tools: content-type policy and size limits for image / audio / blob results, offloaded and streamed in chunks" },
   ];
 
   // ─── Catalog ────────────────────────────────────────────────────────────────
@@ -721,6 +722,11 @@
     if (p === '/admin/chaos') return json({ experiments: [
       { id: 'slow-search', servers: ['search'], tools: ['*'], clients: ['key:staging-*'], percent: 25, fault: { latencyMs: 1500, timeoutMs: 30000 }, every: 'daily', state: 'running', reason: null, startedAt: new Date(Date.now() - 120000).toISOString(), remainingSeconds: 180, injected: { latency: 212, error: 0, timeout: 0, corrupt: 0 }, calls: 847, errors: 4 },
       { id: 'github-flaky', servers: ['github'], tools: ['*'], clients: ['*'], percent: 10, fault: { errorRate: 0.5, timeoutMs: 30000 }, every: null, state: 'aborted', reason: 'steady-state guard: error rate 0.31 > 0.3', startedAt: new Date(Date.now() - 86400000).toISOString(), remainingSeconds: 0, injected: { latency: 0, error: 19, timeout: 0, corrupt: 0 }, calls: 61, errors: 19 },
+    ] });
+    // 9.1: multimodal tools.
+    if (p === '/admin/multimodal') return json({ enabled: true, policy: { enabled: true, allowedTypes: ['image/*', 'audio/*'], maxItemBytes: 10485760, maxTotalBytes: 33554432, onViolation: 'refuse', offloadAboveBytes: 262144, blobTtlSeconds: 600, maxBlobs: 256, servers: ['*'] }, stats: { results: 1840, items: 412, bytes: 96468992, refused: 3, stripped: 0, offloaded: 57 }, blobs: [
+      { id: '6f0c2a9e-demo', mimeType: 'image/png', bytes: 1843200, serverId: 'browser', tool: 'screenshot', expiresAt: new Date(Date.now() + 420000).toISOString() },
+      { id: '9b1d77c3-demo', mimeType: 'audio/mpeg', bytes: 3145728, serverId: 'speech', tool: 'synthesize', expiresAt: new Date(Date.now() + 180000).toISOString() },
     ] });
     if (p === '/policy') return json({ rules: 3, default: 'allow', approval: { pending: demoApprovals.length, timeoutSeconds: 300 }, outputFilter: { enabled: true, action: 'redact', findings: { email: 4, 'aws-key': 1 } } });
     // 9.0: nothing is deprecated (schema v8 and the `state` block were removed).

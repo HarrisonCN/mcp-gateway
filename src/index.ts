@@ -194,6 +194,8 @@ export { ConfigAssistantSchema, parseInstruction } from './features/config-assis
 export type { ConfigAssistantConfig } from './features/config-assistant.js';
 export { ChaosSchema, ERR_CHAOS_INJECTED } from './features/chaos.js';
 export type { ChaosConfig } from './features/chaos.js';
+export { MultimodalSchema, ERR_MEDIA_REFUSED, applyMultimodal } from './features/multimodal.js';
+export type { MultimodalConfig } from './features/multimodal.js';
 export type {
   GatewayConfig,
   McpServerConfig,
