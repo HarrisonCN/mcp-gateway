@@ -175,7 +175,7 @@ location / {
 - Behind a reverse proxy set `security.trustProxy` to the proxy's address (not `true`) so `req.ip`, rate limits,
   lockout and `ipAllowlist` see real client addresses; add `security.hsts: true` when TLS terminates there.
 - Restrict who can connect: `security.ipAllowlist` (CIDRs) and `security.allowedHosts` (your public hostname).
-- A local gateway without auth: enable `security.dnsRebindingProtection`.
+- A local gateway without auth: bind it to `127.0.0.1` — since 10.2 `security.dnsRebindingProtection` is then on by default (Host + Origin checks, loopback-only CORS).
 - Cap payloads with `security.maxBodyBytes` / `maxToolArgumentsBytes`.
 - Keep secrets in the environment (`${VAR}`), not in the config file; `/servers` redacts env / header values and
   secret-looking args, and logs / the request log mask token-shaped strings (add your own with

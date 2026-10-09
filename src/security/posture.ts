@@ -9,6 +9,7 @@
 import { isIP } from 'net';
 import type { GatewayConfig } from '../utils/types.js';
 import { normalizeApiKeys, isHashedKey, keyExpiry } from '../auth/middleware.js';
+import { effectiveRebindingProtection } from './network.js';
 
 export interface SecurityWarning {
   /** Stable identifier (for tests, docs and the dashboard). */
@@ -40,15 +41,16 @@ export function securityWarnings(config: GatewayConfig, now = Date.now()): Secur
         'Set auth.strategy (api-key or jwt) or bind to 127.0.0.1.',
     );
   }
-  if (strategy === 'none' && loopback && !sec.dnsRebindingProtection && !sec.allowedHosts) {
+  const rebinding = effectiveRebindingProtection(config);
+  if (strategy === 'none' && loopback && !rebinding && !sec.allowedHosts) {
     add(
       'dns-rebinding',
       'Authentication is disabled and DNS-rebinding protection is off: a malicious web page could reach this local gateway ' +
-        'through a rebound DNS name. Enable security.dnsRebindingProtection or configure auth.',
+        'through a rebound DNS name. Remove security.dnsRebindingProtection: false (it is on by default here) or configure auth.',
     );
   }
   const mcpOrigins = config.mcp?.allowedOrigins ?? config.cors?.origins;
-  if (config.mcp?.enabled !== false && (!mcpOrigins || mcpOrigins.includes('*')) && !sec.dnsRebindingProtection) {
+  if (config.mcp?.enabled !== false && (!mcpOrigins || mcpOrigins.includes('*')) && !rebinding) {
     add(
       'mcp-any-origin',
       'The /mcp endpoint accepts browser requests from any Origin. Set mcp.allowedOrigins (or cors.origins), ' +

@@ -13,6 +13,18 @@ const SECRET_KEYS = /^(apiKeys?|key|secret|password|token|clientSecret|signingKe
 /** Maps whose every value is secret (env vars, HTTP headers). */
 const SECRET_MAPS = /^(env|headers)$/;
 
+const SECRET_QUERY = /token|key|secret|sig|signature|password|passwd|pwd|auth|credential|code/i;
+
+/** Whether a URL carries credentials (userinfo, or a secret-looking query parameter). */
+export function urlHasSecret(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return !!(u.username || u.password) || [...u.searchParams.keys()].some((k) => SECRET_QUERY.test(k));
+  } catch {
+    return false;
+  }
+}
+
 /** Deep copy with secrets replaced by `<redacted>`. */
 export function redactConfig<T>(value: T): T {
   const walk = (v: unknown, key?: string): unknown => {
@@ -23,6 +35,8 @@ export function redactConfig<T>(value: T): T {
     if (key !== undefined && SECRET_MAPS.test(key) && v && typeof v === 'object' && !Array.isArray(v)) {
       return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, typeof x === 'string' ? REDACTED : walk(x, k)]));
     }
+    // 10.2: credentials in URLs (`https://user:pass@…`, `?token=…`) — the whole URL is masked so a GET → PUT round trip restores it.
+    if (key !== undefined && /url$/i.test(key) && typeof v === 'string' && urlHasSecret(v)) return REDACTED;
     if (Array.isArray(v)) return v.map((x) => walk(x));
     if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, walk(x, k)]));
     return v;

@@ -38,6 +38,9 @@ export const REMOVED_IN_3: Record<string, string> = {
   healthCheckIntervalMs: 'health: { intervalMs: ... }',
 };
 
+/** `value` when it is an array, else `[]` (10.2: non-array input is reported by the schema, never crashes the pre-checks). */
+const arr = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+
 const GUIDE4 = 'run `mcp-gateway migrate` (see docs/guides/migrating-to-v4.md)';
 const GUIDE5 = 'run `mcp-gateway migrate` (see docs/guides/migrating-to-v5.md)';
 const GUIDE7 = 'run `mcp-gateway migrate --to 7` (see docs/guides/migrating-to-v7.md)';
@@ -72,24 +75,24 @@ export function removedConfigKeys(raw: unknown): string[] {
   // 9.0: the shared store is `store: { backend, … }`; the 8.x `state` block was removed.
   if (r.state !== undefined) out.push(`state: removed in 9.0 — use \`store: { backend, … }\` (\`state.store\` → \`store.backend\`); ${GUIDE9}`);
   // 8.0: core-ABI WASM plugins (`plugins[].wasm`) were removed — plugin API v5 components only.
-  ((r.plugins as unknown[] | undefined) ?? []).forEach((p, i) => {
+  arr(r.plugins).forEach((p, i) => {
     if (p && typeof p === 'object' && (p as Record<string, unknown>).wasm !== undefined) out.push(`plugins.${i}.wasm: removed in 8.0 — rebuild against wit/mcp-gateway-plugin.wit (plugin API v5) and use \`component\`; ${GUIDE8}`);
   });
   // 7.0: `admin` / `dashboard` moved under `controlPlane`.
   if (r.admin !== undefined) out.push(`admin: removed in 7.0 — use \`controlPlane.configApi\`; ${GUIDE7}`);
   if (r.dashboard !== undefined) out.push(`dashboard: removed in 7.0 — use \`controlPlane.dashboard\`; ${GUIDE7}`);
-  if ((r.compliance as { pii?: unknown } | undefined)?.pii !== undefined) out.push(`compliance.pii: removed in 6.0 — use \`dlp\`; ${GUIDE7}`);
-  ((r.servers as unknown[] | undefined) ?? []).forEach((s, i) => {
+  if ((r.compliance as { pii?: unknown } | null | undefined)?.pii !== undefined) out.push(`compliance.pii: removed in 6.0 — use \`dlp\`; ${GUIDE7}`);
+  arr(r.servers).forEach((s, i) => {
     if (!s || typeof s !== 'object') return;
     if ((s as Record<string, unknown>).timeout !== undefined) out.push(`servers.${i}.timeout: removed in 5.0 — use \`timeoutMs\`; ${GUIDE5}`);
   });
-  const keys = (r.auth as { apiKeys?: unknown[] } | undefined)?.apiKeys ?? [];
+  const keys = arr((r.auth as { apiKeys?: unknown } | null | undefined)?.apiKeys);
   keys.forEach((k, i) => {
     if (!k || typeof k !== 'object') return;
     const flat = ['servers', 'tools', 'rateLimit'].filter((f) => f in (k as object));
     if (flat.length) out.push(`auth.apiKeys.${i}: ${flat.join(', ')} directly on an API key was removed in 4.0 — nest under \`scope: { servers, tools, rateLimit }\`; ${GUIDE4}`);
   });
-  ((r.servers as unknown[] | undefined) ?? []).forEach((s, i) => {
+  arr(r.servers).forEach((s, i) => {
     if ((s as { loadBalancing?: { strategy?: string } })?.loadBalancing?.strategy === 'least-latency') {
       out.push(`servers.${i}.loadBalancing.strategy: least-latency was removed in 4.0 — use \`strategy: smart\` with \`score: { latency: 1, errorRate: 0, cost: 0 }\`; ${GUIDE4}`);
     }
@@ -139,8 +142,8 @@ export function normalizeApiKeyScopes(raw: unknown): { raw: unknown; errors: str
   if (typeof raw !== 'object' || raw === null) return { raw, errors: [] };
   const r = { ...(raw as Record<string, unknown>) };
   const errors: string[] = [];
-  const auth = r.auth as { apiKeys?: unknown[] } | undefined;
-  if (auth?.apiKeys) {
+  const auth = r.auth as { apiKeys?: unknown[] } | null | undefined;
+  if (auth && typeof auth === 'object' && Array.isArray(auth.apiKeys)) {
     r.auth = {
       ...auth,
       apiKeys: auth.apiKeys.map((k, i) => {

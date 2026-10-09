@@ -308,7 +308,8 @@ const SecuritySchema = z
       })
       .optional(),
     allowedHosts: z.array(z.string().min(1)).optional(),
-    dnsRebindingProtection: z.boolean().default(false),
+    // 10.2: unset = on automatically for a loopback-bound gateway without auth (see effectiveRebindingProtection).
+    dnsRebindingProtection: z.boolean().optional(),
     maxBodyBytes: z.number().int().min(1024).default(10 * 1024 * 1024),
     maxToolArgumentsBytes: z.number().int().min(0).default(0),
     authLockout: z.union([z.boolean(), LockoutSchema]).optional(),
@@ -1193,7 +1194,7 @@ logLevel: info
 #   hsts: false                    # true behind HTTPS
 #   trustProxy: false              # e.g. 1 or ["10.0.0.0/8"] behind a reverse proxy (affects req.ip)
 #   ipAllowlist: ["10.0.0.0/8", "127.0.0.1"]
-#   dnsRebindingProtection: false  # true: Host must be localhost / allowedHosts, /mcp only same-origin + loopback origins
+#   dnsRebindingProtection: true   # Host must be localhost / allowedHosts, /mcp only same-origin + loopback origins (default: on for loopback + no auth)
 #   allowedHosts: ["gateway.example.com"]
 #   maxBodyBytes: 10485760
 #   maxToolArgumentsBytes: 0       # 0 = no limit

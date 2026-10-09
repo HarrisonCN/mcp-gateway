@@ -207,10 +207,14 @@ describe('securityWarnings', () => {
 
   it('flags auth off on a public bind, DNS rebinding and any-origin /mcp', () => {
     expect(ids({ ...base, host: '0.0.0.0' })).toContain('auth-disabled-public-bind');
-    expect(ids(base)).toContain('dns-rebinding');
-    expect(ids(base)).toContain('mcp-any-origin');
+    // 10.2: protection is on by default for a loopback gateway without auth — warn only when it was switched off.
+    expect(ids(base)).not.toContain('dns-rebinding');
+    expect(ids(base)).not.toContain('mcp-any-origin');
+    const off = { ...base, security: { dnsRebindingProtection: false } };
+    expect(ids(off)).toContain('dns-rebinding');
+    expect(ids(off)).toContain('mcp-any-origin');
     expect(ids({ ...base, security: { dnsRebindingProtection: true } })).not.toContain('dns-rebinding');
-    expect(ids({ ...base, mcp: { allowedOrigins: ['https://app'] } })).not.toContain('mcp-any-origin');
+    expect(ids({ ...off, mcp: { allowedOrigins: ['https://app'] } })).not.toContain('mcp-any-origin');
   });
 
   it('flags key hygiene, JWT settings and other risky switches', () => {

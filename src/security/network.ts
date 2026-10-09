@@ -8,6 +8,7 @@
 import { BlockList, isIP } from 'net';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { logger } from '../utils/logger.js';
+import { isLoopbackHost } from './posture.js';
 
 /** Strip the IPv4-mapped IPv6 prefix (`::ffff:1.2.3.4` → `1.2.3.4`). */
 export function normalizeIp(ip: string): string {
@@ -140,6 +141,48 @@ export function isSameOrigin(origin: string, host: string | undefined): boolean 
   if (!host) return false;
   try {
     return new URL(origin).host.toLowerCase() === host.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Effective DNS-rebinding protection (10.2 secure default): an explicit `security.dnsRebindingProtection` wins;
+ * when it is unset, protection is on for a gateway bound to a loopback address with authentication off — the setup
+ * where any web page the user visits could otherwise drive the gateway through the browser.
+ */
+export function effectiveRebindingProtection(config: { host?: string; auth?: { strategy?: string }; security?: { dnsRebindingProtection?: boolean } }): boolean {
+  const explicit = config.security?.dnsRebindingProtection;
+  if (explicit !== undefined) return explicit;
+  const authOff = !config.auth?.strategy || config.auth.strategy === 'none';
+  return authOff && isLoopbackHost(config.host ?? '0.0.0.0');
+}
+
+/** Loopback origins (`http(s)://localhost|127.0.0.1|[::1][:port]`) as a CORS origin pattern. */
+export const LOOPBACK_ORIGIN_PATTERN = '/^https?:\\/\\/(?:localhost|127\\.0\\.0\\.1|\\[::1\\])(?::\\d+)?$/';
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * Cross-site request guard (10.2): with DNS-rebinding protection on, a state-changing request (not GET / HEAD /
+ * OPTIONS) that carries an `Origin` other than the gateway itself, a loopback origin or an explicitly configured
+ * CORS origin is refused. Browsers send "simple" cross-site POSTs without a preflight, so CORS headers alone do
+ * not stop them from triggering side effects.
+ */
+export function crossSiteGuardMiddleware(active: () => boolean, configuredOrigins: () => readonly string[] | undefined): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const origin = req.headers.origin;
+    if (!origin || SAFE_METHODS.has(req.method) || !active()) return next();
+    const configured = (configuredOrigins() ?? []).filter((o) => o !== '*');
+    if (isSameOrigin(origin, req.headers.host) || isLoopbackOrigin(origin) || configured.some((o) => o === origin || (o.startsWith('/') && o.endsWith('/') && o.length > 1 && safeTest(o.slice(1, -1), origin)))) return next();
+    logger.warn(`Rejected cross-site ${req.method} ${req.path} from Origin ${origin}`);
+    res.status(403).json({ error: 'Forbidden', message: 'Cross-site request not allowed' });
+  };
+}
+
+function safeTest(re: string, s: string): boolean {
+  try {
+    return new RegExp(re).test(s);
   } catch {
     return false;
   }

@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.2.0] - 2026-10-09
+
+Test-depth release — property / fuzz tests, an admin authorization matrix and regression tests, plus the fixes they
+found. No new features.
+
+### Security
+- **Replica secrets leaked through `GET /api/v1/servers`.** Any authenticated client (not only operators) received
+  `servers[].replicas[]` with their URL credentials / query tokens, `headers` (e.g. `Authorization`), `env` and `args`
+  unredacted. Replicas are now redacted like the primary server.
+- **Drive-by / DNS-rebinding requests against a local gateway without auth.** A gateway bound to a loopback address
+  with `auth.strategy: none` accepted any `Host` and answered CORS with `*`, so a web page — directly or through DNS
+  rebinding — could call tools and admin endpoints through the user's browser (simple cross-site POSTs need no
+  preflight). In that setup `security.dnsRebindingProtection` is now **on by default**: the `Host` must be a loopback
+  name (or `allowedHosts`), CORS defaults to loopback origins, `/mcp` accepts only same-origin / loopback / listed
+  origins and state-changing requests carrying a foreign `Origin` get `403`. Gateways with auth, or bound to other
+  addresses, are unchanged. Set `security.dnsRebindingProtection: false` (or `cors.origins`) to opt out.
+- `GET /api/v1/admin/config` returned server URLs containing `user:pass@` or secret query parameters verbatim; they are
+  now `<redacted>` and restored on `PUT`.
+- Redaction (logs, request / audit log, API output) returned values nested deeper than 20 levels unredacted; they are
+  masked now.
+
+### Fixed
+- Config validation crashed with `TypeError: … forEach is not a function` for a non-array `servers`, `plugins` or
+  `auth.apiKeys` (e.g. `servers: {}` in YAML); these are reported as validation errors now.
+
+### Added
+- Property / fuzz tests with fast-check (`test/property.test.ts`): config parsing (zod + YAML, alias bombs), JSON-RPC
+  framing (stdio line splitting, `/mcp` bodies never 5xx), tool-argument size limits (UTF-8 bytes), JWT / bearer
+  parsing (forged / `alg: none` / malformed tokens always 401), scope claims, Host and SAN parsing. `FC_RUNS` raises
+  the run count.
+- Admin authorization matrix (`test/admin-auth-matrix.test.ts`): every mounted `/api/v1/admin/*` route (enumerated
+  from the router) × no credentials / invalid key / server- or tool-scoped key / tenant owner / cross-tenant owner
+  must answer 401 / 403.
+- Regression tests for DNS rebinding, Host / Origin bypass, oversized and gzip-bomb bodies, chunked uploads and
+  redaction leaks (`test/regressions-10-2.test.ts`).
+- Threat model: 10.2 audit log.
+
+### Upgrade notes
+- A loopback-bound gateway without auth now rejects requests whose `Host` is not `localhost` / `127.0.0.1` / `[::1]`
+  and browser requests from non-loopback origins. Browser apps on other origins: list them in `cors.origins`, enable
+  auth, or set `security.dnsRebindingProtection: false`.
+
 ## [10.1.0] - 2026-10-09
 
 Security baseline release — hardening, tests and docs only, no new features.

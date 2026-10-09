@@ -81,16 +81,23 @@ export function isSecretKey(key: string): boolean {
 }
 
 /** Deep copy of `value` with secret keys masked and secret-looking strings redacted. */
-export function redactValue<T>(value: T, depth = 0): T {
-  if (depth > 20) return value;
+export function redactValue<T>(value: T, depth = 0, seen: WeakSet<object> = new WeakSet()): T {
+  // 10.2: past the depth limit nothing is returned unredacted (deeply nested secrets leaked before).
+  if (depth > 20) return (typeof value === 'object' && value !== null ? REDACTED : typeof value === 'string' ? redactString(value) : value) as T;
   if (typeof value === 'string') return redactString(value) as T;
-  if (Array.isArray(value)) return value.map((v) => redactValue(v, depth + 1)) as T;
   if (value && typeof value === 'object' && !(value instanceof Date)) {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = isSecretKey(k) && v !== undefined && v !== null && v !== '' ? REDACTED : redactValue(v, depth + 1);
+    if (seen.has(value)) return '[Circular]' as T;
+    seen.add(value);
+    try {
+      if (Array.isArray(value)) return value.map((v) => redactValue(v, depth + 1, seen)) as T;
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        out[k] = isSecretKey(k) && v !== undefined && v !== null && v !== '' ? REDACTED : redactValue(v, depth + 1, seen);
+      }
+      return out as T;
+    } finally {
+      seen.delete(value);
     }
-    return out as T;
   }
   return value;
 }

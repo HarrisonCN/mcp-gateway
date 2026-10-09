@@ -44,7 +44,7 @@ describe('Logger', () => {
     circular.self = circular;
     l.info('c', circular);
     expect(out[0]).toMatch(/m \{"n":"1","s":"x"\}/);
-    expect(out[1]).toMatch(/c \[unserializable meta\]/);
+    expect(out[1]).toMatch(/c \{"self":"\[Circular\]"\}/); // 10.2: cycles are cut by redaction
   });
 });
 
