@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.0.0] - 2026-10-09
+
+### Breaking
+- **Config schema v10 only.** `version: 9` is refused with a hint to run `mcp-gateway migrate --to 10` (9.9 reads both).
+- **Feature sections live under `features`.** Every section owned by a feature module (`chaos`, `sla`, `dlp`,
+  `sessions`, `rollouts`, `selfHealing`, `postQuantumTls`, `ecosystem`, …) is configured as `features: { … }`; the same
+  keys at the top level are validation errors. Core sections (`servers`, `auth`, `policy`, `store`, `controlPlane`,
+  `mtls`, …) are unchanged. `GatewayConfig` keeps the sections top-level internally (no code changes for embedders).
+- Data planes always receive `version: 10`; `GET /api/v1/admin/config` always returns `features`.
+
+### Added
+- **Unified gateway kernel**: `GET /api/v1/admin/kernel` describes the running gateway in one view — config schema
+  version, every feature module and its mount point, the call-hook pipeline in execution order and which `features.*`
+  sections are configured. `CONFIG_SCHEMA_VERSION`, `LTS` and `ltsStatus()` are exported.
+- **Long-term support**: 10.x is the first LTS line — active support until 2027-10-31, security fixes until
+  2028-10-31; schema v10 stays stable across 10.x. See [SECURITY.md](SECURITY.md) and [docs/ROADMAP.md](docs/ROADMAP.md).
+- New roadmap for 10.1 → 11.0 (in Chinese) in [docs/ROADMAP.md](docs/ROADMAP.md).
+- Pages demo: kernel view; demo config on schema v10.
+
+### Changed
+- Nothing is deprecated in 10.0 (`DEPRECATIONS` is empty).
+- Examples, Helm values, the default config and every guide use schema v10 (`features:`).
+
+### Fixed
+- `SECURITY.md` supported-versions table still listed 1.2.x as the supported line; it now lists 10.x (LTS).
+- `mcp-gateway desktop` (`desktopConfig()`) wrote `version: 9` with a top-level `offline` section — now schema v10
+  (`features: { offline }`).
+- Console org writes, `rollouts … ?persist=true` and compliance bundles (`config.redacted.json`) read and wrote their
+  sections at the top level of the schema-form config; with schema v10 they use `features.console`,
+  `features.rollouts` and drop `features.complianceReports` (new `featureSection()` / `withFeatureSection()` helpers).
+- Dashboard config editor: the raw-JSON label said "schema v4" and the read-only hint named `admin.configApi`
+  (now "schema v10" and `controlPlane.configApi`).
+- Helm `values.yaml`, `docs/guides/kubernetes.md`, the examples and every guide still used schema v9.
+
+See [docs/guides/migrating-to-v10.md](docs/guides/migrating-to-v10.md).
+
 ## [9.9.0] - 2026-10-09
 
 ### Added
