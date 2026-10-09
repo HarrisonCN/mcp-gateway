@@ -12,6 +12,8 @@ import type { GatewayConfig, ToolInfo, RequestMetric, ProxyResponse } from '../u
 import { VERSION } from '../utils/version.js';
 import { clientPrincipal, type Principal } from '../auth/authorizer.js';
 import type { AccessScope } from '../auth/scopes.js';
+import { FEATURE_MANIFEST, manifestEntry } from '../features/manifest.js';
+import { loadFeature, loadRecord, dependencyOrder, dependentsOf, markRuntimeFailed, clearRuntimeFailed, failureOf } from './kernel-runtime.js';
 export type { Principal };
 
 export interface FeatureContext {
@@ -44,6 +46,29 @@ export interface FeatureContext {
   capturedCalls?: () => import('./replay.js').CapturedCall[];
   /** Validate a full config (schema form) and hot-apply it unless `dryRun`; throws when invalid (7.1). */
   applyConfig?: (raw: Record<string, unknown>, dryRun?: boolean) => Promise<{ changes: import('../config/diff.js').ConfigChange[] }>;
+  /** Module states of this gateway's kernel (13.0; set by {@link createFeatureRouter}). */
+  kernel?: () => KernelModuleView[];
+}
+
+/** Health a module reports (13.0 lifecycle). */
+export interface ModuleHealth {
+  status: 'ok' | 'degraded' | 'failed';
+  detail?: string;
+  [k: string]: unknown;
+}
+
+/** One module as `GET /admin/kernel` shows it (13.0). */
+export interface KernelModuleView {
+  id: string;
+  since: string;
+  summary: string;
+  /** inactive: not configured (lazy) · available: may be used, not evaluated yet · active · disabled: was active, section removed · failed. */
+  state: 'inactive' | 'available' | 'active' | 'disabled' | 'failed';
+  evaluated: boolean;
+  dependsOn: readonly string[];
+  loadMs?: number;
+  error?: string;
+  health?: ModuleHealth;
 }
 
 export interface FeatureModule {
@@ -55,6 +80,18 @@ export interface FeatureModule {
   mount: (router: Router, ctx: FeatureContext) => void;
   /** Routes for any authenticated client (not only operators) under `/api/v1/features/<id>` (7.7). */
   mountClient?: (router: Router, ctx: FeatureContext) => void;
+  /**
+   * Lifecycle (13.0, all optional). The kernel calls them in dependency order — `init` once when the module becomes
+   * active (before its routes are mounted), `reconfigure` on every config reload while it stays active, `disable`
+   * when its section is removed (lazy mode), `dispose` when the gateway stops (reverse dependency order) — and
+   * `health` for `GET /admin/kernel`. A throw marks the module (and the modules depending on it) failed: its routes
+   * answer 503, its call hooks are skipped, the rest of the gateway keeps running.
+   */
+  init?: (ctx: FeatureContext) => void | Promise<void>;
+  reconfigure?: (next: GatewayConfig, prev: GatewayConfig, ctx: FeatureContext) => void | Promise<void>;
+  disable?: (ctx: FeatureContext) => void | Promise<void>;
+  dispose?: () => void | Promise<void>;
+  health?: () => ModuleHealth;
 }
 
 /** Client id of an authenticated request (7.7). */
@@ -73,18 +110,9 @@ export const FEATURE_CONFIG_KEYS = ['regions', 'edgeFleet', 'pluginTrust', 'mark
  * default since 11.0) a module listed here is mounted — routes, timers, call hooks — only while one of its sections is
  * configured; modules not listed (`kernel`, `conformance`, `k8s`, `terraform`, `policy-sim`) are always active.
  */
-export const FEATURE_ACTIVATION: Readonly<Record<string, readonly (keyof GatewayConfig)[]>> = {
-  'a2a-federation': ['a2aFederation'], adaptive: ['adaptive'], 'agent-identity': ['agentIdentity'], anomaly: ['anomaly'],
-  'api-upstreams': ['apiUpstreams'], 'approval-flows': ['approvalFlows'], billing: ['billing'], 'blue-green': ['blueGreen'],
-  chaos: ['chaos'], 'compliance-reports': ['complianceReports'], confidential: ['confidential'], 'config-assistant': ['configAssistant'],
-  console: ['console'], 'cost-advisor': ['costAdvisor'], 'data-lineage': ['dataLineage'], 'debug-sessions': ['debugSessions'],
-  dlp: ['dlp'], ecosystem: ['ecosystem'], 'edge-autonomy': ['edgeAutonomy'], 'edge-fleet': ['edgeFleet'], 'edge-runtime': ['edgeRuntime'],
-  'genai-otel': ['genaiTelemetry'], identity: ['identity'], marketplace: ['marketplace'], multimodal: ['multimodal'], offline: ['offline'],
-  'policy-engine': ['policyEngine'], 'pq-identity': ['pqIdentity'], 'pq-tls': ['postQuantumTls'], privacy: ['privacy'],
-  'realtime-budgets': ['realtimeBudgets'], regions: ['regions'], rollouts: ['rollouts'], sanitize: ['sanitize'],
-  'self-healing': ['selfHealing'], 'semantic-cache': ['semanticCache'], sessions: ['sessions'], sla: ['sla'],
-  'task-graphs': ['taskGraphs'], 'time-travel': ['timeTravel'], 'tool-registry': ['toolRegistry'],
-};
+export const FEATURE_ACTIVATION: Readonly<Record<string, readonly (keyof GatewayConfig)[]>> = Object.fromEntries(
+  FEATURE_MANIFEST.filter((e) => e.activation?.length).map((e) => [e.id, e.activation!]),
+);
 
 /** Effective module activation mode: `kernel.modules`, else lazy (11.0 default; 10.x was eager). */
 export const moduleMode = (cfg: GatewayConfig): 'eager' | 'lazy' => cfg.kernel?.modules ?? 'lazy';
@@ -108,9 +136,15 @@ export function registerFeature(f: FeatureModule): void {
   else registry.push(f);
 }
 
+/** Every known module: the manifest (evaluated or not, 13.0) then modules registered at runtime. */
 export function listFeatures(): ReadonlyArray<Pick<FeatureModule, 'id' | 'since' | 'summary'>> {
-  return registry.map(({ id, since, summary }) => ({ id, since, summary }));
+  const out = FEATURE_MANIFEST.map(({ id, since, summary }) => ({ id, since, summary }));
+  for (const m of registry) if (!manifestEntry(m.id)) out.push({ id: m.id, since: m.since, summary: m.summary });
+  return out;
 }
+
+/** Registered (evaluated) module by id. */
+export const registeredFeature = (id: string): FeatureModule | undefined => registry.find((m) => m.id === id);
 
 export interface FeatureRouterDeps {
   authenticate: RequestHandler;
@@ -119,60 +153,244 @@ export interface FeatureRouterDeps {
   features?: FeatureModule[];
 }
 
-/** Router for `/api/v1`: `GET /admin/features` and every module under `/admin/<id>`. */
-export function createFeatureRouter(deps: FeatureRouterDeps): express.Router {
-  const router = express.Router();
+/** The `/api/v1` feature router plus this gateway's kernel (13.0). */
+export type FeatureRouter = express.Router & {
+  /** Load → init → mount every module that runs from the start under the current config (dependency order). */
+  activate: () => Promise<string[]>;
+  /** After a config reload (`prev` = the config before it): reconfigure, disable and activate modules. Returns the newly activated ids. */
+  reconcile: (prev: GatewayConfig) => Promise<string[]>;
+  /** 10.9 name of {@link activate}. */
+  sync: () => Promise<string[]>;
+  /** Dispose every module that was activated (reverse dependency order). */
+  dispose: () => Promise<void>;
+  /** Kernel view of every module. */
+  modules: () => KernelModuleView[];
+  /** Ids of mounted modules. */
+  mountedIds: () => string[];
+};
+
+const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/**
+ * Router for `/api/v1`: `GET /admin/features` and every module under `/admin/<id>` (client routes under
+ * `/features/<id>`).
+ *
+ * 13.0: modules are evaluated on demand. A module whose activation section is configured (or that registers a call
+ * hook that has work to do) is loaded, initialised and mounted by {@link FeatureRouter.activate} at start; modules
+ * without an activation section (kernel, conformance, k8s, terraform, policy-sim) are loaded on their first request;
+ * modules that are not configured are never evaluated (lazy mode). `kernel.modules: eager` loads everything at start.
+ */
+export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
+  const router = express.Router() as FeatureRouter;
   const operator: RequestHandler = (req, res, next) =>
     deps.isOperator(req) ? next() : void res.status(403).json({ error: 'Forbidden', message: 'The admin API is for operators (unscoped keys)' });
-  const mods = deps.features ?? registry;
-  router.get('/admin/features', deps.authenticate, operator, (_req, res) => {
-    const cfg = deps.context.config();
-    res.json({ version: VERSION, modules: moduleMode(cfg), features: mods.map(({ id, since, summary }) => ({ id, since, summary, path: `/api/v1/admin/${id}`, active: isFeatureActive(cfg, id) })) });
-  });
-  // 10.9: modules are mounted when they become active (at start, on reload via `sync()`, or on first request);
-  // inactive modules answer 404 in lazy mode.
+  const explicit = deps.features;
+  const cfg = () => deps.context.config();
+  const ids = (): string[] => (explicit ? explicit.map((m) => m.id) : listFeatures().map((f) => f.id));
+  const moduleOf = (id: string): FeatureModule | undefined => (explicit ? explicit.find((m) => m.id === id) : registeredFeature(id));
+  const states = new Map<string, { state: 'active' | 'disabled' | 'failed'; error?: string }>();
+  const activating = new Map<string, Promise<boolean>>();
+  const activatedOrder: string[] = [];
+  const ctx: FeatureContext = { ...deps.context, kernel: () => views() };
+
   // Each module gets a fixed holder router in the stack (so route listings and the auth matrix see every mounted
   // route); the module's own routers are added to its holder once it is active.
-  const holders = new Map<string, { admin: express.Router; client?: express.Router }>();
+  const holders = new Map<string, { admin: express.Router; client: express.Router }>();
   const mounted = new Set<string>();
-  const ensure = (m: FeatureModule) => {
+  const holder = (id: string) => {
+    let h = holders.get(id);
+    if (!h) holders.set(id, (h = { admin: express.Router(), client: express.Router() }));
+    return h;
+  };
+  const mount = (m: FeatureModule) => {
     if (mounted.has(m.id)) return;
-    const h = holders.get(m.id)!;
+    const h = holder(m.id);
     const admin = express.Router();
-    m.mount(admin, deps.context);
+    m.mount(admin, ctx);
     h.admin.use(admin);
-    if (m.mountClient && h.client) {
+    if (m.mountClient) {
       const client = express.Router();
-      m.mountClient(client, deps.context);
+      m.mountClient(client, ctx);
       h.client.use(client);
     }
     mounted.add(m.id);
   };
-  const inactive = (m: FeatureModule, res: express.Response) =>
-    void res.status(404).json({
-      error: 'Not Found',
-      message: `Feature module "${m.id}" is not active: kernel.modules is lazy and ${FEATURE_ACTIVATION[m.id]!.map((k) => `features.${String(k)}`).join(' / ')} is not configured`,
+
+  const fail = (id: string, error: string) => {
+    states.set(id, { state: 'failed', error });
+    markRuntimeFailed(id, error);
+    for (const d of explicit ? [] : dependentsOf(id)) {
+      if (states.get(d)?.state === 'active') {
+        states.set(d, { state: 'failed', error: `dependency "${id}" failed` });
+        markRuntimeFailed(d, `dependency "${id}" failed`);
+      }
+    }
+  };
+
+  const activateOne = (id: string): Promise<boolean> => {
+    const st = states.get(id);
+    if (st?.state === 'active') return Promise.resolve(true);
+    if (st?.state === 'failed') return Promise.resolve(false);
+    let p = activating.get(id);
+    if (p) return p;
+    p = (async () => {
+      const entry = explicit ? undefined : manifestEntry(id);
+      // dependencies first: evaluated always, initialised when they are active themselves
+      for (const d of entry?.dependsOn ?? []) {
+        if (isFeatureActive(cfg(), d) && !(await activateOne(d))) {
+          fail(id, `dependency "${d}" failed: ${states.get(d)?.error ?? failureOf(d) ?? 'unknown error'}`);
+          return false;
+        }
+      }
+      if (!explicit && !(await loadFeature(id))) {
+        fail(id, loadRecord(id)?.error ?? 'failed to load');
+        return false;
+      }
+      const m = moduleOf(id);
+      if (!m) {
+        fail(id, 'the module did not register itself');
+        return false;
+      }
+      try {
+        await m.init?.(ctx);
+        mount(m);
+      } catch (e) {
+        fail(id, `init: ${errText(e)}`);
+        return false;
+      }
+      states.set(id, { state: 'active' });
+      clearRuntimeFailed(id);
+      if (!activatedOrder.includes(id)) activatedOrder.push(id);
+      return true;
+    })();
+    activating.set(id, p);
+    void p.finally(() => activating.delete(id));
+    return p;
+  };
+
+  /** Modules that run from the start (rather than on first request) under `c`. */
+  const startIds = (c: GatewayConfig): string[] =>
+    ids().filter((id) => {
+      if (!isFeatureActive(c, id)) return false;
+      if (explicit || moduleMode(c) === 'eager') return true;
+      const e = manifestEntry(id);
+      if (!e) return true;
+      if (e.activation?.length) return true;
+      return !!e.hook && (!e.hookWhen || c[e.hookWhen] !== undefined);
     });
-  for (const m of mods) {
-    const h = { admin: express.Router(), client: m.mountClient ? express.Router() : undefined };
-    holders.set(m.id, h);
-    if (isFeatureActive(deps.context.config(), m.id)) ensure(m);
-    const gate: express.RequestHandler = (_req, res, next) => {
-      if (!isFeatureActive(deps.context.config(), m.id)) return inactive(m, res);
-      ensure(m);
-      next();
-    };
-    router.use(`/admin/${m.id}`, deps.authenticate, operator, gate, h.admin);
-    if (h.client) router.use(`/features/${m.id}`, deps.authenticate, gate, h.client);
-  }
-  /** Mount modules that became active (call after a config reload). */
-  (router as express.Router & { sync?: () => string[] }).sync = () => {
+
+  const order = (list: string[]) => {
+    if (explicit) return list;
+    const known = list.filter((id) => manifestEntry(id));
+    return [...dependencyOrder(known).filter((id) => list.includes(id) || isFeatureActive(cfg(), id)), ...list.filter((id) => !manifestEntry(id))];
+  };
+
+  router.activate = async () => {
     const added: string[] = [];
-    for (const m of mods) if (!mounted.has(m.id) && isFeatureActive(deps.context.config(), m.id)) (ensure(m), added.push(m.id));
+    for (const id of order(startIds(cfg()))) {
+      const before = states.get(id)?.state;
+      if ((await activateOne(id)) && before !== 'active') added.push(id);
+    }
     return added;
   };
-  /** Ids of mounted modules. */
-  (router as express.Router & { mountedIds?: () => string[] }).mountedIds = () => [...mounted.keys()];
+  router.sync = router.activate;
+
+  router.reconcile = async (prev: GatewayConfig) => {
+    const next = cfg();
+    for (const id of order([...states.keys()])) {
+      const st = states.get(id);
+      if (st?.state !== 'active') continue;
+      const m = moduleOf(id);
+      if (!isFeatureActive(next, id)) {
+        try {
+          await m?.disable?.(ctx);
+          states.set(id, { state: 'disabled' });
+        } catch (e) {
+          fail(id, `disable: ${errText(e)}`);
+        }
+        continue;
+      }
+      try {
+        await m?.reconfigure?.(next, prev, ctx);
+      } catch (e) {
+        fail(id, `reconfigure: ${errText(e)}`);
+      }
+    }
+    for (const [id, st] of states) if (st.state === 'disabled' && isFeatureActive(next, id)) states.delete(id);
+    return router.activate();
+  };
+
+  router.dispose = async () => {
+    for (const id of [...activatedOrder].reverse()) {
+      const m = moduleOf(id);
+      await Promise.resolve(m?.dispose?.()).catch(() => {});
+      clearRuntimeFailed(id);
+    }
+    for (const [id, st] of states) if (st.state === 'failed') clearRuntimeFailed(id);
+    states.clear();
+    activatedOrder.length = 0;
+  };
+
+  const views = (): KernelModuleView[] =>
+    ids().map((id) => {
+      const e = manifestEntry(id);
+      const m = moduleOf(id);
+      const st = states.get(id);
+      const rec = loadRecord(id);
+      const state: KernelModuleView['state'] = st?.state ?? (failureOf(id) ? 'failed' : isFeatureActive(cfg(), id) ? 'available' : 'inactive');
+      let health: ModuleHealth | undefined;
+      if (st?.state === 'active' && m?.health) {
+        try {
+          health = m.health();
+        } catch (err) {
+          health = { status: 'failed', detail: errText(err) };
+        }
+      }
+      return {
+        id,
+        since: e?.since ?? m?.since ?? '',
+        summary: e?.summary ?? m?.summary ?? '',
+        state,
+        evaluated: explicit ? true : e ? rec?.status === 'loaded' : true,
+        dependsOn: e?.dependsOn ?? [],
+        ...(rec?.loadMs !== undefined ? { loadMs: rec.loadMs } : {}),
+        ...(st?.error ?? failureOf(id) ? { error: st?.error ?? failureOf(id) } : {}),
+        ...(health ? { health } : {}),
+      };
+    });
+  router.modules = views;
+  router.mountedIds = () => [...mounted.keys()];
+
+  router.get('/admin/features', deps.authenticate, operator, (_req, res) => {
+    const c = cfg();
+    const list = explicit ? explicit.map(({ id, since, summary }) => ({ id, since, summary })) : listFeatures();
+    res.json({ version: VERSION, modules: moduleMode(c), features: list.map(({ id, since, summary }) => ({ id, since, summary, path: `/api/v1/admin/${id}`, active: isFeatureActive(c, id) && states.get(id)?.state !== 'failed' })) });
+  });
+
+  const inactive = (id: string, res: express.Response) =>
+    void res.status(404).json({
+      error: 'Not Found',
+      message: `Feature module "${id}" is not active: kernel.modules is lazy and ${(FEATURE_ACTIVATION[id] ?? []).map((k) => `features.${String(k)}`).join(' / ')} is not configured`,
+    });
+  const failed = (id: string, res: express.Response) =>
+    void res.status(503).json({ error: 'Service Unavailable', message: `Feature module "${id}" failed: ${states.get(id)?.error ?? failureOf(id) ?? 'unknown error'}` });
+
+  const gateFor = (id: string): RequestHandler => (_req, res, next) => {
+    if (!isFeatureActive(cfg(), id) || states.get(id)?.state === 'disabled') return inactive(id, res);
+    if (states.get(id)?.state === 'active') return next();
+    activateOne(id).then((ok) => (ok ? next() : failed(id, res)), next);
+  };
+  // Holders for every known module (manifest + registered) at creation; modules registered later are reached through
+  // the catch-all below.
+  const known = new Set<string>();
+  const route = (id: string) => {
+    if (known.has(id)) return;
+    known.add(id);
+    const h = holder(id);
+    router.use(`/admin/${id}`, deps.authenticate, operator, gateFor(id), h.admin);
+    router.use(`/features/${id}`, deps.authenticate, gateFor(id), h.client);
+  };
+  for (const id of ids()) route(id);
   return router;
 }
 

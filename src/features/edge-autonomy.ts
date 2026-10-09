@@ -49,13 +49,17 @@ import { registerFeature, badRequest, objectBody, type FeatureContext } from '..
 import { deniedPrincipal, type Principal } from '../auth/authorizer.js';
 import { registerCallHook, type HookCall } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
-import { EdgeRuntimeSchema, callEdgeTool } from './edge-runtime.js';
-import { OfflineSchema, isOffline, isRemote } from './offline.js';
 import { ERR_NOT_CONNECTED, ERR_TIMEOUT } from '../proxy/index.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { ERR_EDGE_DENIED, EdgeAutonomyConfig, EdgeAutonomySchema, Rule } from './schemas/edge-autonomy.js';
 export { ERR_EDGE_DENIED, EdgeAutonomyConfig, EdgeAutonomySchema } from './schemas/edge-autonomy.js';
+import { EdgeRuntimeSchema } from './schemas/edge-runtime.js';
+import { OfflineSchema } from './schemas/offline.js';
+import { requireDependency } from '../gateway/kernel-runtime.js';
+// 13.0: declared dependencies (manifest dependsOn) instead of static imports of other feature modules.
+const { callEdgeTool } = await requireDependency<typeof import('./edge-runtime.js')>('edge-autonomy', 'edge-runtime');
+const { isOffline, isRemote } = await requireDependency<typeof import('./offline.js')>('edge-autonomy', 'offline');
 type Parsed = z.output<typeof EdgeAutonomySchema>;
 type RuleCfg = Parsed['rules'][number];
 

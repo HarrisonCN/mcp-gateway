@@ -10,6 +10,8 @@
 
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { isFeatureActive } from './features.js';
+import { FEATURE_MANIFEST, hookOwner } from '../features/manifest.js';
+import { failureOf } from './kernel-runtime.js';
 
 export interface HookCall {
   serverId: string;
@@ -34,18 +36,43 @@ export interface CallHook {
 }
 
 const hooks: CallHook[] = [];
+const firsts = new Set<string>();
+
+/**
+ * Pipeline position of a hook (13.0): modules are evaluated on demand, so registration order no longer says anything;
+ * built-in hooks run in manifest order, `first` hooks ahead of them, unknown hooks (plugins, tests) after them in
+ * registration order.
+ */
+const rank = (id: string): number => {
+  if (firsts.has(id)) return -1;
+  const owner = hookOwner(id);
+  const i = owner ? FEATURE_MANIFEST.findIndex((e) => e.id === owner) : -1;
+  return i >= 0 ? i : FEATURE_MANIFEST.length;
+};
 
 /** Register (or replace by id) a call hook. `first` puts a new hook ahead of the others (10.7: edge autonomy). */
 export function registerCallHook(h: CallHook, opts: { first?: boolean } = {}): void {
   const i = hooks.findIndex((x) => x.id === h.id);
-  if (i >= 0) hooks[i] = h;
-  else if (opts.first) hooks.unshift(h);
-  else hooks.push(h);
+  if (i >= 0) {
+    hooks[i] = h;
+    return;
+  }
+  if (opts.first) firsts.add(h.id);
+  const r = rank(h.id);
+  const at = hooks.findIndex((x) => rank(x.id) > r);
+  if (at < 0) hooks.push(h);
+  else hooks.splice(at, 0, h);
 }
 
-/** Hooks of active feature modules under `cfg` (10.9 lazy activation; hooks of unknown ids, e.g. plugins, always run). */
+/**
+ * Hooks of active feature modules under `cfg` (10.9 lazy activation; hooks of unknown ids, e.g. plugins, always
+ * run). 13.0: hooks of a module that failed (load, init, reconfigure or a failed dependency) are skipped.
+ */
 export function activeCallHooks(cfg: GatewayConfig): readonly CallHook[] {
-  return hooks.filter((h) => isFeatureActive(cfg, h.id === 'policy-shadow' ? 'policy-sim' : h.id));
+  return hooks.filter((h) => {
+    const owner = hookOwner(h.id) ?? h.id;
+    return isFeatureActive(cfg, owner) && !failureOf(owner);
+  });
 }
 
 export function callHooks(): readonly CallHook[] {

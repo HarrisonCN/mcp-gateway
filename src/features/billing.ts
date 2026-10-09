@@ -31,11 +31,13 @@ import { dirname } from 'node:path';
 import { z } from 'zod';
 import { registerFeature } from '../gateway/features.js';
 import { registerCallHook } from '../gateway/hooks.js';
-import { extractUsage } from './genai-otel.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig } from '../utils/types.js';
 import { BillingConfig, BillingSchema, Money } from './schemas/billing.js';
 export { BillingConfig, BillingSchema } from './schemas/billing.js';
+import { requireDependency } from '../gateway/kernel-runtime.js';
+// 13.0: declared dependency (manifest dependsOn) instead of a static import of another feature module.
+const { extractUsage } = await requireDependency<typeof import('./genai-otel.js')>('billing', 'genai-otel');
 type Cfg = z.output<typeof BillingSchema>;
 type Price = Cfg['priceBook'][number];
 

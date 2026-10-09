@@ -56,11 +56,14 @@ import { z } from 'zod';
 import { registerFeature, objectBody, badRequest, principalOf } from '../gateway/features.js';
 import { deniedPrincipal, type Principal } from '../auth/authorizer.js';
 import { parseTarget, readPath, render, stepValue } from '../orchestration/chains.js';
-import { A2aFederationSchema, sendToRemote } from './a2a-federation.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { GraphSchema, Id, NodeSchema, Retry, Target, TaskGraphsConfig, TaskGraphsSchema, topoLayers } from './schemas/task-graphs.js';
 export { TaskGraphsConfig, TaskGraphsSchema, topoLayers } from './schemas/task-graphs.js';
+import { A2aFederationSchema } from './schemas/a2a-federation.js';
+import { requireDependency } from '../gateway/kernel-runtime.js';
+// 13.0: declared dependency (manifest dependsOn) instead of a static import of another feature module.
+const { sendToRemote } = await requireDependency<typeof import('./a2a-federation.js')>('task-graphs', 'a2a-federation');
 type Parsed = z.output<typeof TaskGraphsSchema>;
 export type GraphCfg = z.output<typeof GraphSchema>;
 type NodeCfg = z.output<typeof NodeSchema>;
