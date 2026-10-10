@@ -265,7 +265,8 @@ export class ToolInvoker {
     if (this.deps.requestLog?.() !== false) logger.info(`${ctx.name} → ${ctx.serverId} refused (${decisionOf(data) ?? 'refused'}): ${message}`);
     const hookCfg = ctx.kind === 'tool' ? this.deps.config?.() : undefined;
     if (hookCfg) {
-      const call: HookCall = { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params };
+      // 13.4.0: refused hooks get the same identity context as before / after hooks (subject + principal)
+      const call: HookCall = { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params, principal: ctx.principal };
       for (const h of callHookPlan(hookCfg, this.deps.moduleFailure).hooks) {
         try {
           h.refused?.(call, { code, message, data }, hookCfg);
