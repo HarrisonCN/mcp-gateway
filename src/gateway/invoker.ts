@@ -11,10 +11,11 @@
 
 import { callHookPlan, closedFor, isGuardHook, type CallHook, type CallHookPlan, type FailureLookup, type HookCall } from './hooks.js';
 import { authorize, principalChain, type Principal } from '../auth/authorizer.js';
+import { actorOf, identityOf, type CallIdentity } from '../auth/identity.js';
 import type { McpProxy, ProgressUpdate, RelayCaller } from '../proxy/index.js';
 import type { MetricsCollector } from '../monitor/index.js';
 import type { McpServerConfig, ProxyResponse, ToolPolicyConfig } from '../utils/types.js';
-import { evaluatePolicy } from '../policy/tool-policy.js';
+import { evaluateActorPolicy, evaluatePolicy } from '../policy/tool-policy.js';
 import { ApprovalQueue } from '../policy/approvals.js';
 import { OutputFilter } from '../policy/output-filter.js';
 
@@ -91,6 +92,12 @@ export interface InvokeContext {
   principal: Principal;
   /** Set by the invoker (13.1): the target of the last successful authorization. Callers must not set it. */
   authorizedTarget?: AuthorizedTarget;
+  /**
+   * Set by the invoker (13.1.2) from `principal` — callers must not set it. `clientId` is rewritten to
+   * `identity.subject`, so every module (policy, tenancy, quotas, budgets, residency, credentials, caches, audit)
+   * sees the same caller: the original one, never the agent that acts for it (see auth/identity).
+   */
+  identity?: CallIdentity;
 }
 
 export interface InvokeResult extends ProxyResponse {
@@ -187,6 +194,13 @@ export class ToolInvoker {
     return this.filter.filter;
   }
 
+  /** Delegation / origin fields of the audit record (13.1.2): absent for plain direct calls. */
+  private auditOf(ctx: InvokeContext): { actor?: string; chain?: string[] } {
+    const id = ctx.identity;
+    if (!id || (!id.actors.length && !id.origin)) return {};
+    return { actor: actorOf(id), chain: id.origin ? [...id.chain, id.origin] : id.chain };
+  }
+
   /** Refuse a call without contacting the upstream server (still recorded). */
   private refuse(ctx: InvokeContext, code: number, message: string, data: Record<string, unknown>, span: ReturnType<Tracer['startSpan']>): InvokeResult {
     this.deps.metrics.record({
@@ -197,6 +211,7 @@ export class ToolInvoker {
       errorMessage: message,
       clientId: ctx.clientId,
       via: ctx.via,
+      ...this.auditOf(ctx),
     });
     if (this.deps.requestLog?.() !== false) logger.info(`${ctx.name} → ${ctx.serverId} refused: ${message}`);
     const hookCfg = ctx.kind === 'tool' ? this.deps.config?.() : undefined;
@@ -226,7 +241,13 @@ export class ToolInvoker {
   private async policyDenial(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>): Promise<FinalDenial | undefined> {
     const policy = this.deps.policy?.();
     if (!policy || ctx.kind !== 'tool') return undefined;
-    const decision = evaluatePolicy(policy, { clientId: ctx.clientId, serverId: ctx.serverId, tool: ctx.name, args: ctx.params });
+    let decision: import('../policy/tool-policy.js').PolicyDecision = evaluatePolicy(policy, { clientId: ctx.clientId, serverId: ctx.serverId, tool: ctx.name, args: ctx.params });
+    // 13.1.2: rules naming an actor of a delegated call (agent:<id>) may restrict it further, never widen it.
+    const actors = ctx.identity?.actors ?? [];
+    if (actors.length && decision.effect !== 'deny') {
+      const a = evaluateActorPolicy(policy, actors, { clientId: ctx.clientId, serverId: ctx.serverId, tool: ctx.name, args: ctx.params });
+      if (a && (a.effect === 'deny' || decision.effect === 'allow')) decision = { effect: a.effect, rule: a.rule, message: a.message ?? (a.effect === 'deny' ? `Tool call denied by policy (rule ${a.rule}, actor ${a.actor})` : undefined) };
+    }
     if (decision.effect === 'allow') return undefined;
     if (decision.effect === 'deny') {
       const message = decision.message ?? `Tool call denied by policy${decision.rule ? ` (rule ${decision.rule})` : ''}`;
@@ -345,6 +366,10 @@ export class ToolInvoker {
   }
 
   async invoke(ctx: InvokeContext): Promise<InvokeResult> {
+    // 13.1.2: one identity context. The principal is authoritative: `clientId` becomes the call's subject (the original
+    // caller of a delegated call); a different label from the call site is kept only as the audit origin.
+    const identity = identityOf(ctx.principal, ctx.clientId);
+    ctx = { ...ctx, clientId: identity.subject, identity };
     const span = this.tracer().startSpan(`mcp.${ctx.method} ${ctx.name}`, {
       parent: ctx.traceparent,
       kind: 'server',
@@ -363,6 +388,8 @@ export class ToolInvoker {
       return this.refuse(ctx, denied.code, denied.message, { ...denied.data, chain: principalChain(ctx.principal) }, span);
     }
     if (ctx.principal.delegation?.length) span.setAttribute('mcp.principal.chain', principalChain(ctx.principal).join(' > '));
+    const actor = actorOf(identity);
+    if (actor) span.setAttribute('mcp.actor', actor);
     ctx = { ...ctx, authorizedTarget: Object.freeze({ serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, principal: ctx.principal.id }) };
     const plugins = this.deps.plugins && this.deps.plugins.size > 0 ? this.deps.plugins : undefined;
     const call: PluginCall | undefined = plugins
@@ -694,6 +721,7 @@ export class ToolInvoker {
       clientId: ctx.clientId,
       via: ctx.via,
       ...(ctx.kind === 'tool' ? {} : { kind: ctx.kind }),
+      ...this.auditOf(ctx),
     });
     this.deps.recorder?.capture({
       id: record.id,
