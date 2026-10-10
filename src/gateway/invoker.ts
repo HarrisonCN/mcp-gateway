@@ -46,6 +46,8 @@ export { ERR_QUOTA_EXCEEDED };
 import { NOOP_TRACER, type Tracer } from '../observability/tracing.js';
 import { ERR_FORBIDDEN as ERR_FORBIDDEN_TARGET } from '../auth/authorizer.js';
 import type { ReplayRecorder } from './replay.js';
+import { argsDigest, makeSnapshot, snapshotMismatch, type FinalCallSnapshot } from './final-call.js';
+export type { FinalCallSnapshot } from './final-call.js';
 
 export type CallKind = 'tool' | 'resource' | 'prompt';
 
@@ -98,6 +100,13 @@ export interface InvokeContext {
    * sees the same caller: the original one, never the agent that acts for it (see auth/identity).
    */
   identity?: CallIdentity;
+  /**
+   * Set by the invoker (13.1.3) — callers must not set it: the final security snapshot (principal, upstream server,
+   * tool, approved business arguments, credential target). The upstream send refuses a call that differs from it.
+   */
+  snapshot?: FinalCallSnapshot;
+  /** Set by the invoker (13.1.3): argument names the credential injection added, and the server they belong to. */
+  injected?: { target: string; arguments: readonly string[] };
 }
 
 export interface InvokeResult extends ProxyResponse {
@@ -164,6 +173,21 @@ interface FinalDenial {
   data: Record<string, unknown>;
 }
 
+/** What the target-dependent and argument-dependent checks saw before the final authorization (13.1.3). */
+interface CheckedState {
+  /** Digest of the arguments the tool policy evaluated. */
+  policyDigest?: string;
+  /** The policy asked for an approval hold: held on the FINAL arguments in the final authorization. */
+  approvalPending?: boolean;
+  /** Guard hooks: target and argument digest each one approved. */
+  guards?: Map<string, { serverId: string; digest: string }>;
+  /** Hooks that rewrote the arguments after the policy check. */
+  argsChangedBy?: string[];
+}
+
+/** Rounds of re-checking when guard hooks keep rewriting the arguments of each other (13.1.3). */
+const MAX_FINAL_ROUNDS = 3;
+
 export class ToolInvoker {
   readonly approvals: ApprovalQueue;
   private filter?: { config: unknown; filter: OutputFilter };
@@ -211,9 +235,11 @@ export class ToolInvoker {
       errorMessage: message,
       clientId: ctx.clientId,
       via: ctx.via,
+      errorCode: code,
+      decision: decisionOf(data) ?? 'refused',
       ...this.auditOf(ctx),
     });
-    if (this.deps.requestLog?.() !== false) logger.info(`${ctx.name} → ${ctx.serverId} refused: ${message}`);
+    if (this.deps.requestLog?.() !== false) logger.info(`${ctx.name} → ${ctx.serverId} refused (${decisionOf(data) ?? 'refused'}): ${message}`);
     const hookCfg = ctx.kind === 'tool' ? this.deps.config?.() : undefined;
     if (hookCfg) {
       const call: HookCall = { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params };
@@ -232,13 +258,13 @@ export class ToolInvoker {
   }
 
   /** Policy rules + approval hold. Returns a refusal, or undefined to proceed. */
-  private async checkPolicy(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>): Promise<InvokeResult | undefined> {
-    const d = await this.policyDenial(ctx, span);
+  private async checkPolicy(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>, defer?: { pending: boolean }): Promise<InvokeResult | undefined> {
+    const d = await this.policyDenial(ctx, span, { deferApproval: defer });
     return d ? this.refuse(ctx, d.code, d.message, d.data, span) : undefined;
   }
 
   /** Policy rules + approval hold for `ctx`'s target (undefined = allowed). */
-  private async policyDenial(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>): Promise<FinalDenial | undefined> {
+  private async policyDenial(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>, opts: { deferApproval?: { pending: boolean } } = {}): Promise<FinalDenial | undefined> {
     const policy = this.deps.policy?.();
     if (!policy || ctx.kind !== 'tool') return undefined;
     let decision: import('../policy/tool-policy.js').PolicyDecision = evaluatePolicy(policy, { clientId: ctx.clientId, serverId: ctx.serverId, tool: ctx.name, args: ctx.params });
@@ -252,6 +278,11 @@ export class ToolInvoker {
     if (decision.effect === 'deny') {
       const message = decision.message ?? `Tool call denied by policy${decision.rule ? ` (rule ${decision.rule})` : ''}`;
       return { code: ERR_POLICY_DENIED, message, data: { decision: 'deny', rule: decision.rule } };
+    }
+    // 13.1.3: the hold is placed in the final authorization, on the arguments the upstream will receive.
+    if (opts.deferApproval) {
+      opts.deferApproval.pending = true;
+      return undefined;
     }
     logger.info(`${ctx.name} → ${ctx.serverId} held for approval (rule ${decision.rule ?? 'default'})`);
     const status = await this.approvals.request(
@@ -294,12 +325,20 @@ export class ToolInvoker {
   private async finalAuthorization(
     ctx: InvokeContext,
     span: ReturnType<Tracer['startSpan']>,
-    reroute: { by: string[]; guardsSeen?: Map<string, string>; plan?: CallHookPlan },
+    reroute: { by: string[]; guardsSeen?: Map<string, { serverId: string; digest: string }>; plan?: CallHookPlan; checked?: CheckedState },
   ): Promise<{ ctx: InvokeContext } | { denial: FinalDenial }> {
     const prev = ctx.authorizedTarget;
     const changed = !prev || prev.serverId !== ctx.serverId || prev.name !== ctx.name || prev.kind !== ctx.kind;
+    const checked = reroute.checked;
+    // 13.1.3: arguments rewritten after the policy check (by a call hook) are checked again, also without a reroute.
+    const argsChanged = ctx.kind === 'tool' && !!checked && checked.policyDigest !== undefined && checked.policyDigest !== argsDigest(ctx.params);
+    const changedBy = argsChanged ? (checked?.argsChangedBy ?? []) : [];
     const wrap = (d: FinalDenial): FinalDenial => {
-      if (!changed) return d;
+      const withArgs = changedBy.length ? { ...d, data: { ...d.data, argsChangedBy: changedBy } } : d;
+      if (!changed) {
+        if (argsChanged) logger.warn(`audit: ${ctx.name} -> ${ctx.serverId} refused for ${ctx.principal?.id} after its arguments were rewritten by ${changedBy.join(', ') || 'a call hook'}: ${d.message}`);
+        return withArgs;
+      }
       this.rerouteDenials++;
       const from = prev?.serverId ?? '(unauthorized)';
       logger.warn(`audit: rerouted call ${ctx.name} ${from} -> ${ctx.serverId} (by ${reroute.by.join(', ') || 'unknown'}) refused for ${ctx.principal?.id}: ${d.message}`);
@@ -307,7 +346,7 @@ export class ToolInvoker {
       return {
         code: d.code,
         message: `Rerouted call refused: ${d.message} (route "${from}" -> "${ctx.serverId}" by ${reroute.by.join(', ') || 'unknown'})`,
-        data: { ...d.data, decision: 'reroute-denied', reason: d.data.reason ?? d.data.decision ?? null, from, to: ctx.serverId, reroutedBy: reroute.by, chain: principalChain(ctx.principal) },
+        data: { ...withArgs.data, decision: 'reroute-denied', reason: d.data.reason ?? d.data.decision ?? null, from, to: ctx.serverId, reroutedBy: reroute.by, chain: principalChain(ctx.principal) },
       };
     };
     const denied = authorize(ctx.principal, { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind }, { exposed: this.deps.exposed });
@@ -315,11 +354,11 @@ export class ToolInvoker {
       this.authzDenials++;
       return { denial: wrap({ code: denied.code, message: denied.message, data: { ...denied.data, chain: principalChain(ctx.principal) } }) };
     }
-    if (changed && ctx.kind === 'tool') {
-      // 13.1.1: a failed `closed` module that governs the NEW target refuses the moved call.
+    if (ctx.kind === 'tool' && (changed || argsChanged || checked?.approvalPending)) {
       const cfgNow = this.deps.config?.();
-      if (cfgNow) {
-        const plan = reroute.plan ?? callHookPlan(cfgNow, this.deps.moduleFailure);
+      const plan = cfgNow ? (reroute.plan ?? callHookPlan(cfgNow, this.deps.moduleFailure)) : undefined;
+      if (changed && plan) {
+        // 13.1.1: a failed `closed` module that governs the NEW target refuses the moved call.
         const closed = closedFor(plan, { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], principal: ctx.principal });
         if (closed.length) {
           this.moduleFailureDenials++;
@@ -328,34 +367,61 @@ export class ToolInvoker {
           return { denial: wrap({ code: ERR_MODULE_UNAVAILABLE, message: `Security module unavailable: ${ids.join(', ')} failed and its failure policy is closed; the call was refused`, data: { decision: 'module-failed', failurePolicy: 'closed', modules: ids } }) };
         }
       }
-      const pol = await this.policyDenial(ctx, span);
-      if (pol) return { denial: wrap(pol) };
-      const res = this.residencyDenial(ctx);
-      if (res) return { denial: wrap(res) };
-      const hookCfg = this.deps.config?.();
-      if (hookCfg) {
-        const plan = reroute.plan ?? callHookPlan(hookCfg, this.deps.moduleFailure);
-        const call: HookCall = { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params, principal: ctx.principal };
-        for (const h of plan.hooks) {
-          if (!h.before || !isGuardHook(h.id) || reroute.guardsSeen?.get(h.id) === ctx.serverId) continue;
-          let out: Awaited<ReturnType<NonNullable<CallHook['before']>>>;
-          try {
-            out = await h.before(call, hookCfg);
-          } catch (err) {
-            return { denial: wrap({ code: ERR_MODULE_UNAVAILABLE, message: `security module ${h.id} failed: ${err instanceof Error ? err.message : String(err)}`, data: { decision: 'module-failed', module: h.id } }) };
-          }
-          if (out?.refuse) return { denial: wrap({ code: out.refuse.code, message: out.refuse.message, data: { decision: h.id, ...(out.refuse.data ?? {}) } }) };
-          if (out?.args) {
-            call.args = out.args;
-            ctx = { ...ctx, params: out.args };
-          }
-          if (out?.serverId && out.serverId !== ctx.serverId) {
-            // A guard may not move the call again: the target it was asked about is the one that gets the call.
-            return { denial: wrap({ code: ERR_FORBIDDEN_TARGET, message: `security module ${h.id} tried to reroute the call during final authorization`, data: { decision: 'reroute-loop', module: h.id } }) };
+      if (changed) {
+        const res = this.residencyDenial(ctx);
+        if (res) return { denial: wrap(res) };
+      }
+      // Policy (deny rules) and the security guard hooks, until the arguments are stable: a guard that rewrites the
+      // arguments (DLP redaction) makes the policy and the other guards look at the new ones.
+      const approval = { pending: false };
+      const seen = new Map(reroute.guardsSeen ?? []);
+      let policyDigest: string | undefined = changed ? undefined : checked?.policyDigest;
+      for (let round = 0; ; round++) {
+        const digest = argsDigest(ctx.params);
+        if (policyDigest !== digest) {
+          approval.pending = false;
+          const pol = await this.policyDenial(ctx, span, { deferApproval: approval });
+          if (pol) return { denial: wrap(pol) };
+          policyDigest = digest;
+        } else if (round === 0 && checked?.approvalPending) approval.pending = true;
+        let rewritten = false;
+        if (cfgNow && plan) {
+          const call: HookCall = { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params, principal: ctx.principal };
+          for (const h of plan.hooks) {
+            if (!h.before || !isGuardHook(h.id)) continue;
+            const s = seen.get(h.id);
+            if (s && s.serverId === ctx.serverId && s.digest === argsDigest(ctx.params)) continue;
+            let out: Awaited<ReturnType<NonNullable<CallHook['before']>>>;
+            try {
+              out = await h.before(call, cfgNow);
+            } catch (err) {
+              return { denial: wrap({ code: ERR_MODULE_UNAVAILABLE, message: `security module ${h.id} failed: ${err instanceof Error ? err.message : String(err)}`, data: { decision: 'module-failed', module: h.id } }) };
+            }
+            if (out?.refuse) return { denial: wrap({ code: out.refuse.code, message: out.refuse.message, data: { decision: h.id, ...(out.refuse.data ?? {}) } }) };
+            if (out?.serverId && out.serverId !== ctx.serverId) {
+              // A guard may not move the call again: the target it was asked about is the one that gets the call.
+              return { denial: wrap({ code: ERR_FORBIDDEN_TARGET, message: `security module ${h.id} tried to reroute the call during final authorization`, data: { decision: 'reroute-loop', module: h.id } }) };
+            }
+            if (out?.args && argsDigest(out.args) !== argsDigest(ctx.params)) {
+              call.args = out.args;
+              ctx = { ...ctx, params: out.args };
+              rewritten = true;
+            }
+            seen.set(h.id, { serverId: ctx.serverId, digest: argsDigest(ctx.params) });
           }
         }
+        if (!rewritten && policyDigest === argsDigest(ctx.params)) break;
+        if (round + 1 >= MAX_FINAL_ROUNDS) {
+          return { denial: wrap({ code: ERR_FORBIDDEN_TARGET, message: 'Call arguments did not settle: security modules kept rewriting them during final authorization', data: { decision: 'args-unstable' } }) };
+        }
       }
-      if (prev) logger.info(`audit: call ${ctx.name} rerouted ${prev.serverId} -> ${ctx.serverId} (by ${reroute.by.join(', ') || 'unknown'}) re-authorized for ${ctx.principal?.id}`);
+      // 13.1.3: approval holds are placed last, on the final target and the final arguments.
+      if (approval.pending) {
+        const held = await this.policyDenial(ctx, span);
+        if (held) return { denial: wrap(held) };
+      }
+      if (prev && changed) logger.info(`audit: call ${ctx.name} rerouted ${prev.serverId} -> ${ctx.serverId} (by ${reroute.by.join(', ') || 'unknown'}) re-authorized for ${ctx.principal?.id}`);
+      if (argsChanged) logger.info(`audit: call ${ctx.name} -> ${ctx.serverId} re-checked for ${ctx.principal?.id} after its arguments were rewritten by ${changedBy.join(', ') || 'a call hook'}`);
     }
     const authorizedTarget: AuthorizedTarget = Object.freeze({ serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, principal: ctx.principal.id });
     return { ctx: { ...ctx, authorizedTarget } };
@@ -411,8 +477,10 @@ export class ToolInvoker {
       }
       ctx = { ...ctx, params: call.arguments };
     }
-    const refused = await this.checkPolicy(ctx, span);
+    const approvalHold = { pending: false };
+    const refused = await this.checkPolicy(ctx, span, approvalHold);
     if (refused) return refused;
+    const checked: CheckedState = { policyDigest: ctx.kind === 'tool' ? argsDigest(ctx.params) : undefined, approvalPending: approvalHold.pending, argsChangedBy: [] };
     const residency = this.residencyDenial(ctx);
     if (residency) return this.refuse(ctx, residency.code, residency.message, residency.data, span);
     // 5.6: feature call hooks (before).
@@ -429,7 +497,7 @@ export class ToolInvoker {
     let preset: ProxyResponse | undefined;
     const plan = hookCfg && ctx.kind === 'tool' ? callHookPlan(hookCfg, this.deps.moduleFailure) : undefined;
     const rerouteBy: string[] = [];
-    const guardsSeen = new Map<string, string>();
+    const guardsSeen = new Map<string, { serverId: string; digest: string }>();
     if (hookCfg && plan) {
       // 13.1: a failed security module never fails open. 13.1.1: only the calls in its failure scope are refused
       // (a module whose scope cannot be determined governs every call).
@@ -443,9 +511,14 @@ export class ToolInvoker {
       for (const h of plan.hooks) {
         if (!h.before) continue;
         const out = await h.before(hookCall(), hookCfg);
-        guardsSeen.set(h.id, ctx.serverId);
         if (out?.refuse) return this.refuse(ctx, out.refuse.code, out.refuse.message, { decision: h.id, ...(out.refuse.data ?? {}) }, span);
-        if (out?.args) ctx = { ...ctx, params: out.args };
+        if (out?.args && argsDigest(out.args) !== argsDigest(ctx.params)) {
+          ctx = { ...ctx, params: out.args };
+          checked.argsChangedBy!.push(h.id);
+          span.setAttribute('mcp.args.rewritten_by', checked.argsChangedBy!.join(','));
+        }
+        // What this hook approved: the target and the arguments as it left them.
+        guardsSeen.set(h.id, { serverId: ctx.serverId, digest: argsDigest(ctx.params) });
         if (out?.serverId && out.serverId !== ctx.serverId) {
           span.setAttribute('mcp.rerouted', `${ctx.serverId}->${out.serverId}`);
           rerouteBy.push(h.id);
@@ -459,7 +532,7 @@ export class ToolInvoker {
       }
     }
     // 13.1: mandatory final authorization against the final target (re-runs the target checks after a reroute).
-    const fin = await this.finalAuthorization(ctx, span, { by: rerouteBy, guardsSeen, plan });
+    const fin = await this.finalAuthorization(ctx, span, { by: rerouteBy, guardsSeen, plan, checked });
     if ('denial' in fin) return this.refuse(ctx, fin.denial.code, fin.denial.message, fin.denial.data, span);
     ctx = fin.ctx;
     // 13.1.1: a routing split that moves the call is decided and authorized BEFORE any cache lookup, so a cached answer
@@ -478,6 +551,12 @@ export class ToolInvoker {
         pre = { route, ctx: moved.ctx };
       } else pre = { route, ctx };
     }
+    // 13.1.3: the final security snapshot — what the upstream may receive, compared again at the send.
+    const sendCtx = pre?.ctx ?? ctx;
+    const snapshot = makeSnapshot({ principal: ctx.principal.id, subject: identity.subject, actors: identity.actors, serverId: sendCtx.serverId, requestedServer: ctx.serverId, tool: sendCtx.name, kind: sendCtx.kind, args: sendCtx.params });
+    if (pre) pre = { route: pre.route, ctx: { ...pre.ctx, snapshot } };
+    else ctx = { ...ctx, snapshot };
+    span.setAttribute('mcp.final.server', snapshot.serverId);
     const usage = this.deps.usage;
     if (usage && ctx.kind === 'tool') {
       const over = usage.take({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name });
@@ -546,7 +625,10 @@ export class ToolInvoker {
         }
       }
     }
-    return this.finish(ctx, call, result, span);
+    const done = await this.finish(ctx, call, result, span);
+    // Non-enumerable: never serialized into API responses.
+    Object.defineProperty(done, 'snapshot', { value: snapshot, enumerable: false });
+    return done;
   }
 
   get compliance(): ComplianceEngine | undefined {
@@ -575,6 +657,16 @@ export class ToolInvoker {
       logger.error(`audit: ${message} for ${ctx.principal?.id}`);
       return Promise.resolve({ success: false, durationMs: 0, error: { code: ERR_FORBIDDEN_TARGET, message, data: { decision: 'reroute-denied', reason: 'target-changed-after-authorization', from: t?.serverId ?? null, to: ctx.serverId } } });
     }
+    // 13.1.3: the call must be the one the final security snapshot approved (business arguments, credential target).
+    if (ctx.snapshot) {
+      const why = snapshotMismatch(ctx.snapshot, { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, principal: ctx.principal?.id, params: ctx.params }, ctx.injected);
+      if (why) {
+        this.rerouteDenials++;
+        const message = `Call differs from its final security snapshot (${why}): refused`;
+        logger.error(`audit: ${ctx.name} -> ${ctx.serverId}: ${message} for ${ctx.principal?.id}`);
+        return Promise.resolve({ success: false, durationMs: 0, error: { code: ERR_FORBIDDEN_TARGET, message, data: { decision: 'snapshot-mismatch', reason: why, server: ctx.serverId } } });
+      }
+    }
     // 13.1.1: a server connected by a hot reload that has not committed is not routable yet.
     if (this.deps.staged?.(target) || this.deps.staged?.(ctx.serverId)) {
       return Promise.resolve({ success: false, durationMs: 0, error: { code: ERR_NOT_CONNECTED, message: `Server "${ctx.serverId}" not found`, data: { reason: 'not-committed' } } });
@@ -585,7 +677,11 @@ export class ToolInvoker {
   }
 
   /** One upstream call, spread over replicas and failed over when the server has `replicas:`. */
-  /** Per-call credentials (`inject:`), added after plugins, policy, cache keys and capture saw the call (3.5). */
+  /**
+   * Per-call credentials (`inject:`), added after plugins, policy, cache keys and capture saw the call (3.5). 13.1.3:
+   * always the credentials of the server the call is SENT to (`ctx.serverId` after reroutes and splits) — the
+   * credentials of the server the caller asked for never cross to another upstream.
+   */
   private async injectSecrets(ctx: InvokeContext): Promise<InvokeContext> {
     const secrets = this.deps.secrets;
     const server = this.deps.serverConfig?.(ctx.serverId);
@@ -593,11 +689,15 @@ export class ToolInvoker {
     const values = await secrets.injections(server, { tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], clientId: ctx.clientId });
     let params = ctx.params;
     let meta = ctx.meta;
+    const names: string[] = [];
     for (const v of values) {
-      if (v.argument && ctx.kind === 'tool') params = { ...params, [v.argument]: v.value };
+      if (v.argument && ctx.kind === 'tool') {
+        params = { ...params, [v.argument]: v.value };
+        names.push(v.argument);
+      }
       if (v.meta) meta = { ...(meta ?? {}), [v.meta]: v.value };
     }
-    return { ...ctx, params, meta };
+    return { ...ctx, params, meta, injected: { target: ctx.serverId, arguments: names } };
   }
 
   private async callUpstream(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>, pre?: PreRoute): Promise<ProxyResponse> {
@@ -627,11 +727,9 @@ export class ToolInvoker {
   private async callLocal(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>, pre?: PreRoute): Promise<ProxyResponse> {
     let routed: InvokeContext | undefined;
     try {
-      // Credentials of the requested (logical) server, as before 13.1.1; a split target keeps its own frozen target.
-      if (pre) {
-        const withSecrets = await this.injectSecrets({ ...pre.ctx, serverId: ctx.serverId });
-        routed = { ...withSecrets, serverId: pre.ctx.serverId };
-      } else ctx = await this.injectSecrets(ctx);
+      // 13.1.3: the split target's own credentials (13.1.2 and earlier injected the requested server's).
+      if (pre) routed = await this.injectSecrets(pre.ctx);
+      else ctx = await this.injectSecrets(ctx);
     } catch (err) {
       const message = `Credential injection failed: ${err instanceof Error ? err.message : String(err)}`;
       logger.warn(`${ctx.serverId}/${ctx.name}: ${message}`);
@@ -718,6 +816,7 @@ export class ToolInvoker {
       durationMs: result.durationMs,
       success: result.success,
       errorMessage: result.error?.message,
+      ...(result.success ? {} : { errorCode: result.error?.code, decision: decisionOf(result.error?.data) ?? 'upstream-error' }),
       clientId: ctx.clientId,
       via: ctx.via,
       ...(ctx.kind === 'tool' ? {} : { kind: ctx.kind }),
@@ -762,4 +861,12 @@ export function classifyFailure(r: ProxyResponse): FailureKind | undefined {
   if (r.error?.code === ERR_NOT_CONNECTED) return 'not-connected';
   if (r.error?.code === ERR_TIMEOUT) return 'timeout';
   return 'error';
+}
+
+/** Traceable reason of a refusal for the audit record (13.1.3): `decision`, else `reason`, else `refused`. */
+export function decisionOf(data: Record<string, unknown> | unknown): string | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+  const d = data as Record<string, unknown>;
+  const v = typeof d.decision === 'string' && d.decision ? d.decision : typeof d.reason === 'string' && d.reason ? d.reason : undefined;
+  return v;
 }

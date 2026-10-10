@@ -17,7 +17,7 @@ Streamable HTTP at `/mcp` or a REST API under `/api/v1` — and the gateway auth
 do, routes the call to the right upstream and records what happened. Keys, scopes, rate limits, policy, logs and
 metrics live in one place instead of in every client.
 
-Current release: **13.1.2** (npm `latest`). Live dashboard demo with simulated traffic, no backend:
+Current release: **13.1.3** (npm `latest`). Live dashboard demo with simulated traffic, no backend:
 <https://harrisoncn.github.io/mcp-gateway/>
 
 ## Contents
@@ -162,7 +162,7 @@ Every image is signed with cosign (keyless, GitHub OIDC) and carries SLSA proven
 before you deploy, and pin the digest it prints:
 
 ```bash
-cosign verify ghcr.io/harrisoncn/mcp-gateway:13.1.2 \
+cosign verify ghcr.io/harrisoncn/mcp-gateway:13.1.3 \
   --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -317,7 +317,7 @@ See [Observability](docs/configuration.md#observability) and [Audit log](docs/co
 
 | Line | Latest | npm dist-tag | Image tag | Status |
 |---|---|---|---|---|
-| 13.x | 13.1.2 | `latest` | `:13`, `:latest` | Current — new features, bug and security fixes |
+| 13.x | 13.1.3 | `latest` | `:13`, `:latest` | Current — new features, bug and security fixes |
 | 12.x | 12.0.3 | `v12-0` | `:12` | Superseded — carries the MGW-2026-001, -005, -007 and -008 fixes; upgrade to 13.x |
 | 11.x | 11.2.0 | — | `:11` | Superseded — upgrade to 13.x |
 | 10.x (LTS) | 10.9.4 | `v10-lts` | `:10` | Bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |

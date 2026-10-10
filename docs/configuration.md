@@ -423,7 +423,9 @@ servers:
 - **Per-tenant injection:** `inject` adds a credential to every call — a tool argument or a `_meta` field — after
   plugins, policy, cache keys and request capture, so it never reaches logs or the replay debugger. `{tenant}` is
   the caller's first tenant, `{client}` its client id. A call that needs `{tenant}` from a caller without one is
-  refused (`-32010`) unless `required: false`.
+  refused (`-32010`) unless `required: false`. Credentials are always those of the server the call is **sent to**
+  (13.1.3): a call moved by a `routing` split or a rerouting hook gets the final server's `inject:` entries, never the
+  requested server's — give every split target its own `inject:` when it needs one.
 - `GET /api/v1/secrets` lists providers and references with version / fetched / rotated times — never values.
 
 ## Smart routing (3.4)
@@ -631,7 +633,13 @@ argument values addressed by dotted path (`path`, `options.mode`, `files.0`) wit
 value is present. Policies apply to tool calls from REST and `/mcp` and are hot reloadable.
 
 **Results:** `deny` → REST `403` / JSON-RPC `-32003` with `data.rule`; an approval that is denied, expires or is
-cancelled → `403` / `-32004`. Refusals appear in the request log as failed calls.
+cancelled → `403` / `-32004`. Refusals appear in the request log as failed calls, with `decision` (the refusal
+reason) and `errorCode` (13.1.3).
+
+**Final arguments (13.1.3):** rules with `args` conditions and approval holds apply to the arguments the upstream
+receives. When a call hook rewrites the arguments (DLP redaction, budget downgrades, plugin hooks) the policy and the
+security guard modules run again on the new arguments before the call is sent (refusals carry `data.argsChangedBy`);
+an `approve` rule holds the call after the call hooks, so the operator sees the final arguments and final server.
 
 **Approvals:** `GET /api/v1/approvals` (pending + recent), `GET /api/v1/approvals/:id`,
 `POST /api/v1/approvals/:id/approve` / `deny` (optional `{"reason": "…"}`). The dashboard shows a *Pending approvals*
@@ -882,7 +890,9 @@ audit:
   retentionDays: 30            # 0 = keep forever
 ```
 
-Requires Node.js 22.5+ (`node:sqlite`); the Docker image ships Node 22. Stores request metadata only.
+Requires Node.js 22.5+ (`node:sqlite`); the Docker image ships Node 22. Stores request metadata only. Failed and
+refused calls carry `decision` (refusal reason, or `upstream-error`) and `error_code` (13.1.3; older databases get the
+columns on start).
 
 Forward audit records to a SIEM with `audit.export` (syslog or webhooks) — see
 [SIEM export](guides/policy-as-code.md#audit-export-to-a-siem).

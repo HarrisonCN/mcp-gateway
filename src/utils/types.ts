@@ -889,6 +889,13 @@ export interface RequestMetric {
   actor?: string;
   /** 13.1.2: full delegation chain `[original caller, agent, sub-agent, …(, origin)]` of a delegated call. */
   chain?: string[];
+  /** 13.1.3: JSON-RPC error code of a failed / refused call. */
+  errorCode?: number;
+  /**
+   * 13.1.3: traceable reason of a failed call — the refusal decision (`deny`, `scope`, `reroute-denied`, `dlp`,
+   * `quota`, `snapshot-mismatch`, …) or `upstream-error` when the upstream itself failed.
+   */
+  decision?: string;
 }
 
 export interface AggregatedMetrics {
