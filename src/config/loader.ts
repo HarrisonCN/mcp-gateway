@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 /**
  * Configuration loader
  * Supports YAML, JSON, and environment variable overrides
@@ -105,7 +106,8 @@ const ToolFilterSchema = z
   .strict();
 
 const McpServerSchema = z.object({
-  id: z.string().min(1),
+  // 13.5.0: control characters in an id would forge log lines / cache and metric keys — refused
+  id: z.string().min(1).regex(/^[^\u0000-\u001f\u007f]+$/, 'must not contain control characters'),
   name: z.string().min(1),
   description: z.string().optional(),
   transport: z.enum(['stdio', 'sse', 'websocket', 'streamable-http']),
@@ -445,7 +447,8 @@ const ChainStepSchema: z.ZodType<ChainStepInput> = z.lazy(() =>
 
 const GatewayConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(4000),
-  host: z.string().default('0.0.0.0'),
+  // 13.5.0: an empty host would make Node listen on every interface — refused (omit it for the 0.0.0.0 default)
+  host: z.string().min(1, 'must not be empty (omit it for the default)').default('0.0.0.0'),
   auth: z
     .object({
       strategy: z.enum(['none', 'api-key', 'jwt', 'oauth2']).default('none'),
@@ -482,6 +485,17 @@ const GatewayConfigSchema = z.object({
         if (typeof k !== 'string' && k.key.length === 0) {
           ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['apiKeys', i, 'key'], message: 'is empty (unset environment variable?)' });
         }
+      });
+      // 13.5.0: two entries with the same key value make the identity ambiguous (the first entry's name, scope and
+      // tenancy would silently apply to holders of the second) — refused.
+      const byValue = new Map<string, number>();
+      (a.apiKeys ?? []).forEach((k, i) => {
+        const v = keyOf(k);
+        if (!v) return;
+        const norm = /^sha256:/i.test(v) ? v.toLowerCase() : `sha256:${createHash('sha256').update(v).digest('hex')}`;
+        const prev = byValue.get(norm);
+        if (prev !== undefined) ctx.addIssue({ code: z.ZodIssueCode.custom, path: typeof k === 'string' ? ['apiKeys', i] : ['apiKeys', i, 'key'], message: `has the same key as apiKeys[${prev}] (ambiguous identity)` });
+        else byValue.set(norm, i);
       });
       if (a.strategy === 'api-key' && !(a.apiKeys ?? []).some((k) => keyOf(k).length > 0)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['apiKeys'], message: 'at least one key is required for api-key strategy' });
@@ -824,7 +838,7 @@ const GatewayConfigSchema = z.object({
                   z
                     .object({
                       server: z.string().min(1),
-                      weight: z.number().min(0),
+                      weight: z.number().finite().min(0),
                       label: z.string().min(1).optional(),
                       guard: z
                         .object({
@@ -1136,11 +1150,30 @@ export const CONFIG_FILE_KEYS: readonly string[] = [
   ...Object.keys(((GatewayConfigSchema as unknown as { _def: { schema?: { shape: object } } })._def.schema ?? (GatewayConfigSchema as unknown as { shape: object })).shape),
 ];
 
+const AUTH_KEYS = new Set(['strategy', 'apiKeys', 'jwtSecret', 'jwt', 'oauth', 'protect']);
+/**
+ * 13.5.0 fail-closed: an `auth` block without an explicit `strategy` defaults to "none" (no authentication). When that
+ * block carries credentials (apiKeys, jwtSecret, jwt, oauth) or keys the schema does not know (`enabled: true`, a typo
+ * such as `stratgy`), the operator clearly meant authentication to be on — refuse instead of starting an open gateway.
+ */
+function authSilentlyOff(raw: unknown): string | undefined {
+  const auth = raw && typeof raw === 'object' ? (raw as Record<string, unknown>).auth : undefined;
+  if (!auth || typeof auth !== 'object' || Array.isArray(auth)) return undefined;
+  const a = auth as Record<string, unknown>;
+  if (a.strategy !== undefined) return undefined;
+  const unknown = Object.keys(a).filter((k) => !AUTH_KEYS.has(k));
+  const creds = ['apiKeys', 'jwtSecret', 'jwt', 'oauth'].filter((k) => a[k] !== undefined);
+  if (unknown.length === 0 && creds.length === 0) return undefined;
+  return `no auth.strategy is set, so authentication would be OFF (strategy "none") although the block has ${[...creds, ...unknown.map((k) => `unknown key "${k}"`)].join(', ')} — set auth.strategy (api-key, jwt, oauth2) or "none" explicitly`;
+}
+
 export function validateConfig(raw: unknown): GatewayConfig {
   const removed = removedConfigKeys(raw);
   const v4 = normalizeApiKeyScopes(normalizeSchemaV5(removed.length ? raw : normalizeStoreV9(normalizeFeaturesV10(raw))));
   removed.push(...v4.errors);
   if (removed.length > 0) throw new Error(`Invalid configuration:\n${removed.map((m) => `  - ${m}`).join('\n')}`);
+  const authOff = authSilentlyOff(v4.raw);
+  if (authOff) throw new Error(`Invalid configuration:\n  - auth: ${authOff}`);
   const result = GatewayConfigSchema.safeParse(v4.raw);
   if (!result.success) {
     throw new Error(

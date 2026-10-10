@@ -633,7 +633,7 @@ export class ToolInvoker {
       if (preset) {
         result = preset;
       } else if (cache) {
-        const out = await cache.run({ serverId: ctx.serverId, target: pre?.ctx.serverId, tool: ctx.name, args: pre?.ctx.params ?? ctx.params, clientId: ctx.clientId }, () => this.callUpstream(ctx, span, pre));
+        const out = await cache.run({ serverId: ctx.serverId, target: pre?.ctx.serverId, tool: ctx.name, args: pre?.ctx.params ?? ctx.params, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], principal: { kind: ctx.principal.kind, actors: ctx.identity?.actors ?? [], scope: ctx.principal.scope, delegation: ctx.principal.delegation } }, () => this.callUpstream(ctx, span, pre));
         if (out.status !== 'bypass') span.setAttribute('mcp.cache', out.status);
         result = out.status === 'hit' || out.status === 'shared' ? { ...out.result, durationMs: out.status === 'hit' ? 0 : out.result.durationMs } : out.result;
       } else {

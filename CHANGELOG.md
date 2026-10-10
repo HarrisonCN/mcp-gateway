@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.5.0] - 2026-10-10
+
+Security verification 2.0 release (roadmap 13.5 "安全验证 2.0"). Config schema v11 is unchanged; configs that load today keep loading, except the fail-closed cases listed under Upgrade notes (each of which previously started a weaker gateway than configured).
+
+### Security
+
+- **MGW-2026-013 (High): regular-expression denial of service in glob matching.** Globs (`*`, `?`) were compiled to backtracking regular expressions (`*` → `.*`), so a pattern such as `*a*a*a*a*a*a*a*a*a*zz` took seconds to minutes against an ordinary tool name, blocking the event loop. Some patterns are client-supplied: an authenticated client allowed to delegate could send one in the `tools` of an agent-identity token request (`POST /api/v1/features/agent-identity/token`) and stall the gateway for every tenant. Glob matching is now a linear matcher with the same semantics (property-tested against the old translation), and the compiled-pattern cache is bounded. Affected: 8.1.0 (first release with agent identity) through 13.4.0, 12.0.7 and 10.9.8. Fixed in 13.5.0, 12.0.8 and 10.9.9.
+
+### Added
+
+- **Combined security tests** (`test/security-13-5-0.test.ts`): cross-tenant isolation × agent / proxy authorization × routing × caching — refused calls (scope, tenant role, delegation, routed split target) never read the cache or reach the upstream; cache partitions by tenant, principal and scope; fail-closed configuration cases.
+- **Property-based / fuzz tests** (`test/fuzz-13-5-0.test.ts`, fast-check as a devDependency only): glob semantics and linearity, cache-key injectivity, routing / tenant config parsing, tenant isolation of the authorizer, API-key header parsing — on top of the 10.2 suite (`test/property.test.ts`: config, JSON-RPC framing, JWT / bearer).
+
+### Changed
+
+- **Tool cache keys** carry the caller's tenant, principal kind, delegation actors and a scope fingerprint, and are an unambiguous JSON encoding (server ids / routed targets / tools / client ids can no longer collide). `scope: shared` rules share within one tenant only. The semantic cache partition uses the same unambiguous encoding.
+- **Fail-closed configuration** (clear `Invalid configuration` errors): two `auth.apiKeys` entries with the same key value (ambiguous identity); an `auth` block without `strategy` that carries credentials or unknown keys (`enabled: true`, typos) — it used to resolve to strategy `none`, i.e. no authentication; an empty `host` (would listen on every interface); non-finite routing weights (`.inf`); server ids containing control characters.
+- SECURITY.md: private vulnerability reporting verified enabled.
+
+### Upgrade notes
+
+13.5.0 is a minor release, but it includes security hardening that rejects some configurations that 13.4.0 accepted. Each case used to start a gateway that was weaker than what the file said. Config schema v11 is unchanged. If 13.5.0 refuses to start with `Invalid configuration`, find your case below:
+
+| Now rejected | Why | Fix |
+| --- | --- | --- |
+| Two `auth.apiKeys` entries with the same key value (plain or `sha256:` form; error: `has the same key as apiKeys[N] (ambiguous identity)`) | The first entry's name, scope and tenant silently won | Give each client its own key, or merge the two entries |
+| An `auth` block with no `strategy` that has credentials (`apiKeys`, `jwtSecret`, `jwt`, `oauth`) or unknown keys (for example `enabled: true` or a typo) | It resolved to strategy `none`, so authentication was **off** | Set `auth.strategy` (`api-key`, `jwt`, `oauth2`), or `none` explicitly if no auth is intended; remove unknown keys |
+| `host: ""` (empty string) | It listened on every interface | Remove `host` to get the default, or set the address (for example `127.0.0.1`) |
+| A non-finite `routing.splits[].variants[].weight` (`.inf`, `.nan`) | Weighted selection breaks with Infinity/NaN arithmetic | Use a finite number ≥ 0 |
+| A `servers[].id` with control characters (U+0000–U+001F, U+007F) | Ids are used in cache keys, logs and routing | Rename the server using printable characters |
+
+Behavior change without config edits: tool-cache entries are now partitioned by tenant, principal and scope (`scope: shared` shares within one tenant only), so hit rates can drop for a short time after the upgrade while the cache refills.
+
 ## [13.4.0] - 2026-10-10
 
 Engineering quality release (roadmap 13.4 "工程质量整顿"). Config schema v11 is unchanged; no configuration changes are needed.
