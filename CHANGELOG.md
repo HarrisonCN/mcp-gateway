@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.9.3] - 2026-10-10
+
+**Security backport (10.x LTS).** Fix for MGW-2026-005 from 13.1.1; no other changes.
+
+### Security
+- **MGW-2026-005 (medium) — caches shared entries across routing-split targets.** The tool cache (`cache.rules`) and
+  the semantic cache (`semanticCache`) keyed entries on the requested server, but a `routing` split decides the real
+  upstream after the cache lookup: a cached answer from variant A could be served to a caller the split sends to
+  variant B, and — with `cache` `scope: shared` or a semantic cache scoped `tenant` / `global` — to a caller that is
+  not authorized on A (bypassing the MGW-2026-001 final authorization of split targets). The split is now decided once
+  per call and authorized before any cache lookup; both caches key on the routed target, so split targets never share
+  entries; the send uses that same decision.
+
 ## [10.9.2] - 2026-10-10
 
 **Security backport (10.x LTS).** Fix for MGW-2026-001 from 13.1.0; no other changes.

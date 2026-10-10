@@ -145,6 +145,13 @@ export interface InvokerDeps {
   exposed?: (serverId: string, tool: string) => boolean;
 }
 
+/** A routing-split decision made once per call and authorized before any cache lookup (MGW-2026-005). */
+interface PreRoute {
+  route: RouteDecision;
+  /** The call moved to `route.server`, with the frozen authorized target of the final authorization. */
+  ctx: InvokeContext;
+}
+
 /** Why the final authorization refused a call (13.1). */
 interface FinalDenial {
   code: number;
@@ -369,7 +376,15 @@ export class ToolInvoker {
     if (residency) return this.refuse(ctx, residency.code, residency.message, residency.data, span);
     // 5.6: feature call hooks (before).
     const hookCfg = this.deps.config?.();
-    const hookCall = (): HookCall => ({ serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params, principal: ctx.principal });
+    // MGW-2026-005: one routing-split decision per (call, server), shared by cache keys, the final authorization and the send.
+    const routes = new Map<string, RouteDecision | null>();
+    const routeOf = (serverId: string): RouteDecision | undefined => {
+      const router = ctx.kind === 'tool' ? this.deps.router : undefined;
+      if (!router) return undefined;
+      if (!routes.has(serverId)) routes.set(serverId, router.route(serverId, ctx.name, ctx.clientId) ?? null);
+      return routes.get(serverId) ?? undefined;
+    };
+    const hookCall = (): HookCall => ({ serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params, principal: ctx.principal, routedTo: () => routeOf(ctx.serverId)?.server ?? ctx.serverId });
     let preset: ProxyResponse | undefined;
     const plan = hookCfg && ctx.kind === 'tool' ? { hooks: activeCallHooks(hookCfg) } : undefined;
     const rerouteBy: string[] = [];
@@ -397,6 +412,22 @@ export class ToolInvoker {
     const fin = await this.finalAuthorization(ctx, span, { by: rerouteBy, guardsSeen, hooks: plan?.hooks });
     if ('denial' in fin) return this.refuse(ctx, fin.denial.code, fin.denial.message, fin.denial.data, span);
     ctx = fin.ctx;
+    // MGW-2026-005: a routing split that moves the call is decided and authorized BEFORE any cache lookup, so a cached
+    // answer is never served for a target the caller was not authorized on, and split targets never share cache entries.
+    let pre: PreRoute | undefined;
+    const route = routeOf(ctx.serverId);
+    if (route) {
+      span.setAttribute('mcp.route.split', route.split);
+      span.setAttribute('mcp.route.variant', route.variant);
+      if (route.server !== ctx.serverId) {
+        const moved = await this.finalAuthorization({ ...ctx, serverId: route.server }, span, { by: [`routing:${route.split}`] });
+        if ('denial' in moved) {
+          this.deps.router!.report(route, false, 0);
+          return this.refuse(ctx, moved.denial.code, moved.denial.message, moved.denial.data, span);
+        }
+        pre = { route, ctx: moved.ctx };
+      } else pre = { route, ctx };
+    }
     const usage = this.deps.usage;
     if (usage && ctx.kind === 'tool') {
       const over = usage.take({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name });
@@ -419,11 +450,11 @@ export class ToolInvoker {
       if (preset) {
         result = preset;
       } else if (cache) {
-        const out = await cache.run({ serverId: ctx.serverId, tool: ctx.name, args: ctx.params, clientId: ctx.clientId }, () => this.callUpstream(ctx, span));
+        const out = await cache.run({ serverId: ctx.serverId, target: pre?.ctx.serverId, tool: ctx.name, args: pre?.ctx.params ?? ctx.params, clientId: ctx.clientId }, () => this.callUpstream(ctx, span, pre));
         if (out.status !== 'bypass') span.setAttribute('mcp.cache', out.status);
         result = out.status === 'hit' || out.status === 'shared' ? { ...out.result, durationMs: out.status === 'hit' ? 0 : out.result.durationMs } : out.result;
       } else {
-        result = await this.callUpstream(ctx, span);
+        result = await this.callUpstream(ctx, span, pre);
       }
     } catch (err) {
       span.setError(err instanceof Error ? err.message : String(err));
@@ -505,10 +536,10 @@ export class ToolInvoker {
     return { ...ctx, params, meta };
   }
 
-  private async callUpstream(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>): Promise<ProxyResponse> {
+  private async callUpstream(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>, pre?: PreRoute): Promise<ProxyResponse> {
     const fed = this.deps.federation;
     const canFailover = ctx.kind === 'tool' && !ctx.fromPeer && !!fed?.failsOver(ctx.serverId);
-    const local = await this.callLocal(ctx, span);
+    const local = await this.callLocal(ctx, span, pre);
     if (!canFailover || classifyFailure(local) !== 'not-connected') return local;
     const tenant = this.deps.tenantsOf?.(ctx.clientId)?.[0];
     const peers = fed!.candidates(ctx.serverId, ctx.name).filter((p) => this.deps.compliance?.residencyAllows(tenant, p.region) ?? true);
@@ -529,34 +560,27 @@ export class ToolInvoker {
     return this.deps.federation;
   }
 
-  private async callLocal(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>): Promise<ProxyResponse> {
+  private async callLocal(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>, pre?: PreRoute): Promise<ProxyResponse> {
+    let routed: InvokeContext | undefined;
     try {
-      ctx = await this.injectSecrets(ctx);
+      // Credentials of the requested (logical) server; a split target keeps its own frozen authorized target.
+      if (pre) {
+        const withSecrets = await this.injectSecrets({ ...pre.ctx, serverId: ctx.serverId });
+        routed = { ...withSecrets, serverId: pre.ctx.serverId };
+      } else ctx = await this.injectSecrets(ctx);
     } catch (err) {
       const message = `Credential injection failed: ${err instanceof Error ? err.message : String(err)}`;
       logger.warn(`${ctx.serverId}/${ctx.name}: ${message}`);
       return { success: false, durationMs: 0, error: { code: ERR_SECRET_UNAVAILABLE, message } };
     }
-    const route: RouteDecision | undefined = ctx.kind === 'tool' ? this.deps.router?.route(ctx.serverId, ctx.name, ctx.clientId) : undefined;
-    if (route) {
-      span.setAttribute('mcp.route.split', route.split);
-      span.setAttribute('mcp.route.variant', route.variant);
-      let routed: InvokeContext = { ...ctx, serverId: route.server };
-      if (route.server !== ctx.serverId) {
-        // 13.1: a routing split moved the call: authorize the final target before the send.
-        const fin = await this.finalAuthorization(routed, span, { by: [`routing:${route.split}`] });
-        if ('denial' in fin) {
-          this.deps.router!.report(route, false, 0);
-          return { success: false, durationMs: 0, error: { code: fin.denial.code, message: fin.denial.message, data: fin.denial.data } };
-        }
-        routed = fin.ctx;
-      }
+    // MGW-2026-005: the routing split was decided and authorized in invoke(), before the cache (see PreRoute).
+    if (pre && routed) {
       try {
         const r = await this.balancedCall(routed, span);
-        this.deps.router!.report(route, r.success, r.durationMs);
+        this.deps.router!.report(pre.route, r.success, r.durationMs);
         return r;
       } catch (err) {
-        this.deps.router!.report(route, false, 0);
+        this.deps.router!.report(pre.route, false, 0);
         throw err;
       }
     }
