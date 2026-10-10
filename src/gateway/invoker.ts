@@ -42,7 +42,7 @@ POLICY_ERROR_CODES.add(ERR_PII_BLOCKED);
 export { ERR_PLUGIN_REJECTED };
 import { logger } from '../utils/logger.js';
 import { ERR_NOT_CONNECTED, ERR_TIMEOUT } from '../proxy/index.js';
-import type { FailureKind, LoadBalancer } from './balancer.js';
+import { expandReplicas, type FailureKind, type LoadBalancer } from './balancer.js';
 import type { RouteDecision, SmartRouter } from './routing.js';
 import type { SecretManager } from '../secrets/index.js';
 import type { Federation } from './federation.js';
@@ -113,6 +113,11 @@ export interface InvokeContext {
   snapshot?: FinalCallSnapshot;
   /** Set by the invoker (13.1.3): argument names the credential injection added, and the server they belong to. */
   injected?: { target: string; arguments: readonly string[] };
+  /**
+   * Set by the invoker (MGW-2026-011) — callers must not set it: the gateway config the call started with. A hot reload
+   * replaces the config object; the send refuses a call whose target server config, policy or tenants changed since.
+   */
+  configAtStart?: import('../utils/types.js').GatewayConfig;
 }
 
 export interface InvokeResult extends ProxyResponse {
@@ -421,7 +426,7 @@ export class ToolInvoker {
     // MGW-2026-007: one identity context. The principal is authoritative: `clientId` becomes the call's subject (the
     // original caller of a delegated call); a different label from the call site is kept only as the audit origin.
     const identity = identityOf(ctx.principal, ctx.clientId);
-    ctx = { ...ctx, clientId: identity.subject, identity };
+    ctx = { ...ctx, clientId: identity.subject, identity, configAtStart: this.deps.config?.() };
     const span = this.tracer().startSpan(`mcp.${ctx.method} ${ctx.name}`, {
       parent: ctx.traceparent,
       kind: 'server',
@@ -616,7 +621,31 @@ export class ToolInvoker {
     return this.deps.plugins;
   }
 
+  /**
+   * MGW-2026-011: what changed, since the call started, in the config the call was authorized under (undefined = the
+   * call may be sent). A call that was held (approval, slow hook / plugin) across a hot reload must not be sent with the
+   * new config's server settings / credentials, nor escape the new policy or tenant mapping.
+   */
+  private configChange(ctx: InvokeContext, target: string): string[] | undefined {
+    const was = ctx.configAtStart;
+    const now = this.deps.config?.();
+    if (!was || !now || was === now) return undefined;
+    const j = (v: unknown) => JSON.stringify(v ?? null);
+    const server = (c: import('../utils/types.js').GatewayConfig, id: string) => expandReplicas(c.servers ?? []).find((s) => s.id === id);
+    const changed: string[] = [];
+    for (const id of new Set([target, ctx.serverId])) if (j(server(was, id)) !== j(server(now, id))) changed.push(`server ${id}`);
+    if (j(was.policy) !== j(now.policy)) changed.push('policy');
+    if (j(was.tenants) !== j(now.tenants)) changed.push('tenants');
+    return changed.length ? changed : undefined;
+  }
+
   private send(ctx: InvokeContext, target: string): Promise<ProxyResponse> {
+    const changed = this.configChange(ctx, target);
+    if (changed) {
+      const message = `The gateway configuration changed while this call was in flight (${changed.join(', ')}); it was not sent — retry`;
+      logger.warn(`audit: ${ctx.name} -> ${target} refused for ${ctx.principal?.id}: ${message}`);
+      return Promise.resolve({ success: false, durationMs: 0, error: { code: ERR_POLICY_DENIED, message, data: { decision: 'config-changed', changed } } });
+    }
     // 13.1: the target is frozen by the final authorization; anything that changed it afterwards is refused.
     const t = ctx.authorizedTarget;
     if (!t || t.serverId !== ctx.serverId || t.name !== ctx.name || t.kind !== ctx.kind || t.principal !== ctx.principal?.id) {
