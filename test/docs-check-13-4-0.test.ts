@@ -43,6 +43,11 @@ describe('docs-check', () => {
     expect(r).toEqual(expect.arrayContaining([expect.stringMatching(/^image: stale image tag ":1"/), expect.stringMatching(/^image: stale image tag ":1.0.0"/), expect.stringMatching(/^version: stale npm version "11.2.0"/), expect.stringMatching(/^version: "latest 13.3.0" is stale/)]));
   });
 
+  it('fails on a stale "current release" line or supported-versions row', async () => {
+    const r = await rules('Current release: **13.3.0** (npm `latest`).\n\n| Line | Latest |\n|---|---|\n| 13.x | 13.3.0 | `latest` |\n| 10.x | 10.9.6 | `v10-lts` |\n| 12.x | 12.0.6 | `v12-0` |\n');
+    expect(r).toEqual(['version: current release stated as 13.3.0 (package is 13.4.0)', 'version: supported-versions row 13.x names 13.3.0 (latest is 13.4.0)', 'version: supported-versions row 10.x names 10.9.6 (latest is 10.9.7)']);
+  });
+
   it('accepts supported LTS lines and digests, and exempts historical files from version rules', async () => {
     expect(await rules(fence('bash', 'docker pull ghcr.io/harrisoncn/mcp-gateway:10\ndocker pull ghcr.io/harrisoncn/mcp-gateway:12.0.6\ndocker pull ghcr.io/harrisoncn/mcp-gateway@sha256:<digest>\nnpm i @winstonsayno/mcp-gateway@v10-lts'))).toEqual([]);
     const d = repo('# ok\n');

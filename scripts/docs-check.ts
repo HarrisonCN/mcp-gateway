@@ -209,6 +209,14 @@ async function check(root: string, opts: { external?: boolean }) {
     if (!hist) {
       for (const m of l.matchAll(/@winstonsayno\/mcp-gateway@([A-Za-z0-9._-]+)/g)) if (!okVersion(m[1])) add(rel, n, 'version', `stale npm version "${m[1]}" (current ${V})`);
       for (const m of l.matchAll(/helm\s+(?:install|upgrade|template|pull)\b[^\n]*--version[ =]([0-9][0-9.]*)/g)) if (m[1] !== V) add(rel, n, 'version', `helm chart --version ${m[1]} (chart version is ${V})`);
+      for (const m of l.matchAll(/(?:Current release|当前版本)[:：]\s*\*\*(\d+\.\d+\.\d+)\*\*/g)) if (m[1] !== V) add(rel, n, 'version', `current release stated as ${m[1]} (package is ${V})`);
+      // supported-versions tables: | 13.x | 13.4.0 | … — the current line names the current version, LTS lines their latest patch
+      const row = /^\|\s*(\d+)\.x[^|]*\|\s*(\d+\.\d+\.\d+)\s*\|/.exec(l);
+      if (row) {
+        const lts = Object.values(settings.lts).find((x) => x.split('.')[0] === row[1]);
+        const want = row[1] === MAJ ? V : lts;
+        if (want && row[2] !== want) add(rel, n, 'version', `supported-versions row ${row[1]}.x names ${row[2]} (latest is ${want})`);
+      }
       for (const m of l.matchAll(/\blatest (\d+\.\d+\.\d+)\b/g)) if (m[1] !== V && !Object.values(settings.lts).includes(m[1])) add(rel, n, 'version', `"latest ${m[1]}" is stale (current ${V}; LTS ${Object.values(settings.lts).join(', ')})`);
     }
     if (inFence) return;

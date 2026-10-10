@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.4.0] - 2026-10-10
+
+Engineering quality release (roadmap 13.4 "工程质量整顿"). Config schema v11 is unchanged; no configuration changes are needed.
+
+### Added
+
+- **Module contract harness** (`test/contract-13-4-0.test.ts`, `test/helpers/module-contract.ts`): one shared lifecycle / security contract applied to all 46 registered feature modules — manifest consistency (registration, versions, activation keys, acyclic dependencies, minimal sections valid under schema v11), declared call hooks, failure policies (static, and at runtime with an injected init failure: `closed` → -32026 within the module's failure scope, `open` → call runs, `degrade` → result marked degraded), the init → reconfigure → disable → re-enable → stop lifecycle with background-timer accounting, generation pinning (hooks read only the call's pinned config) and the identity context every hook sees. A module added to the manifest is covered automatically.
+- **Docs auto-check** (`scripts/docs-check.ts`, CI job `Docs check`): validates YAML config snippets — including the config inside Kubernetes ConfigMaps and Helm values — against config schema v11, JSON / TypeScript / JavaScript samples, `mcp-gateway` commands and flags against `src/cli.ts`, relative links and heading anchors, container image tags and version numbers (npm pins, `helm --version`, "latest x.y.z", chart version, README / dashboard versions). It fails on stale versions; supported LTS lines are listed in `scripts/docs-check.json`, historical migration guides are exempt from the version rules.
+- **Deployment examples** that CI boots (`examples/deploy/`, workflow `Deployment examples`): Docker Compose (with the published image the example names and with an image built from the commit), plain Kubernetes manifests and the Helm chart on a kind cluster, each answering health and a tool call.
+- **Release gate** (`scripts/release-gate.mjs`, `scripts/required-checks.json`, [docs/release-gates.md](docs/release-gates.md)): the release scripts refuse to tag, create a release or publish to npm unless every required check is green on the merge commit (conditional path-filtered checks must be green when they ran; any other failing check refuses too).
+- `CONFIG_FILE_KEYS` export of the config loader (top-level keys the parser knows; used by tooling).
+
+### Fixed
+
+- Feature modules disabled by a hot reload (their config section removed) kept the background work they started running until the gateway stopped: the OpenTelemetry GenAI exporter, billing, the compliance-report scheduler, the chaos scheduler, the edge WASM runtime (warm instance pools stayed allocated), the tool-registry mirror sync and the post-quantum audit checkpoints. The kernel now gives every module its own `onStop` scope: cleanups run when the module is disabled as well as at shutdown, its routes are taken down, and re-enabling it mounts it once again (no duplicated timers). Cleanups registered by a module whose initialisation then failed are released too.
+- Call hooks notified of a refused call (`refused`: time-travel journal, post-quantum audit log) now receive the call's principal, like `before` / `after` hooks.
+- Documentation (37 findings of the new check): stale image tags (`docs/deployment.md` still showed `:1` / `:1.0.0`; the cosign examples used `:11`), feature sections shown at the top level although they live under `features:` since 10.0 (DLP, edge fleet, multi-region guides), invalid YAML (unquoted `${VAR}` inside flow mappings in seven snippets), server entries without `name` / `transport`, a JWT example combining an HMAC secret with `RS256`, an output-filter pattern using an unsupported inline `(?i)` flag, and three broken anchors.
+
+### Changed
+
+- `docs/deployment.md` rewritten for 13.x: image tags and digest pinning (with `cosign verify`), Docker, Docker Compose, Helm and hardened plain Kubernetes manifests, all taken from `examples/deploy/`.
+- `SECURITY.md`: GitHub private vulnerability reporting is enabled and is the reporting channel; a new "Audits" section states that there has been no independent third-party security audit.
+
 ## [13.3.0] - 2026-10-10
 
 **Minor release — production reliability.** Config schema stays **v11**: the new keys (`health.restartAfter`,
