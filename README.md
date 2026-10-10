@@ -292,8 +292,8 @@ property tests; there has been **no independent third-party audit**. Details: [t
 **Advisories.** MGW-2026-001 … MGW-2026-012 (reroute re-authorization, fail-closed modules, per-gateway module
 failures, transactional reload, split-aware cache keys, staged reload, delegated-call identity, issuer-qualified
 client ids, split-target credentials, final-argument checks, calls in flight across a reload, Redis reply alignment) are fixed in 13.3.0, with backports of the applicable fixes in 12.0.6 and 10.9.7 — see [SECURITY.md](SECURITY.md#security-advisories). Report vulnerabilities
-privately as described in [SECURITY.md](SECURITY.md#reporting-a-vulnerability) (GitHub private vulnerability
-reporting is not enabled yet), never with details in public issues.
+privately through [GitHub private vulnerability reporting](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new)
+(see [SECURITY.md](SECURITY.md#reporting-a-vulnerability)), never with details in public issues.
 
 ## Observability
 
