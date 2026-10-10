@@ -12,7 +12,7 @@ hot reload is rejected and the running configuration kept.
 
 | Variable | Overrides |
 |---|---|
-| `MCP_GATEWAY_PORT` | `port` |
+| `MCP_GATEWAY_PORT` | `port` (must be numeric; a Kubernetes service-link value such as `tcp://10.96.0.10:80` is ignored with a warning) |
 | `MCP_GATEWAY_HOST` | `host` |
 | `MCP_GATEWAY_LOG_LEVEL` | `logLevel` |
 | `MCP_GATEWAY_API_KEYS` | comma-separated keys (plain or `sha256:<hex>`) → `auth.strategy: api-key`, `auth.apiKeys` (other `auth` settings from the file are kept) |
