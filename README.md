@@ -1,7 +1,5 @@
 # mcp-gateway
 
-**One authenticated, observable endpoint in front of all your MCP servers.**
-
 [![npm](https://img.shields.io/npm/v/@winstonsayno/mcp-gateway.svg)](https://www.npmjs.com/package/@winstonsayno/mcp-gateway)
 [![CI](https://github.com/HarrisonCN/mcp-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/HarrisonCN/mcp-gateway/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/HarrisonCN/mcp-gateway/actions/workflows/codeql.yml/badge.svg)](https://github.com/HarrisonCN/mcp-gateway/actions/workflows/codeql.yml)
@@ -9,52 +7,190 @@
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[Docs](docs/README.md) · [Configuration](docs/configuration.md) · [API reference](docs/api-reference.md) ·
-[Deployment](docs/deployment.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md) · [中文](docs/README.zh-CN.md)
+**English** · [简体中文](README.zh-CN.md)
 
-mcp-gateway sits between AI clients (Claude Code, Cursor, your own agents) and the
-[Model Context Protocol](https://modelcontextprotocol.io) servers they use. Instead of every client launching and
-authenticating to every server, clients connect once — over MCP Streamable HTTP at `/mcp` or a plain REST API — and
-the gateway routes each call to the right upstream with one place for keys, scopes, rate limits, logs and metrics.
+**One authenticated, observable endpoint in front of all your MCP servers.**
 
-It is not tied to one model vendor or one kind of client:
+mcp-gateway sits between AI clients (Claude Code, Cursor, your own agents, LLM apps, web and mobile front-ends) and
+the [Model Context Protocol](https://modelcontextprotocol.io) servers they use. Clients connect once — over MCP
+Streamable HTTP at `/mcp` or a REST API under `/api/v1` — and the gateway authenticates the caller, checks what it may
+do, routes the call to the right upstream and records what happened. Keys, scopes, rate limits, policy, logs and
+metrics live in one place instead of in every client.
 
-- **Any LLM with function calling** — OpenAI, xAI Grok, DeepSeek and other OpenAI-compatible APIs, or Anthropic
-  Claude: fetch the tools in the provider's format and execute the model's tool calls through the gateway
-  ([Use with any LLM](#use-with-any-llm)).
-- **Web pages and apps** — browser front-ends, mobile and desktop apps reach the same tools over REST or the client
-  libraries (JS, Kotlin/Android, Swift/iOS, Python, Go), with keys kept out of the bundle
-  ([Use from web pages and apps](#use-from-web-pages-and-apps)).
+Current release: **13.1.1** (npm `latest`). Live dashboard demo with simulated traffic, no backend:
+<https://harrisoncn.github.io/mcp-gateway/>
 
+## Contents
+
+- [Architecture](#architecture)
+- [Key features](#key-features)
+- [Quick start](#quick-start)
+- [Minimal configuration](#minimal-configuration)
+- [Connect clients and LLMs](#connect-clients-and-llms)
+- [Security model](#security-model)
+- [Observability](#observability)
+- [Supported versions](#supported-versions)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph Clients
+    A["MCP clients<br/>Claude Code · Cursor · agents"]
+    B["LLM apps<br/>OpenAI · Grok · DeepSeek · Claude"]
+    C["Web / mobile apps<br/>JS · Kotlin · Swift · Python · Go"]
+  end
+
+  subgraph GW["mcp-gateway"]
+    direction TB
+    AU["Authentication<br/>API keys · JWT · OAuth 2.1"]
+    PO["Authorization & policy<br/>scopes · tenants · tool policy · rate limits"]
+    RT["Routing<br/>splits · load balancing · failover"]
+    SM["Security modules<br/>DLP · sanitize · approvals · …"]
+    CA["Cache<br/>tool cache · semantic cache"]
+    FA["Final authorization<br/>against the routed target"]
+    AD[("Audit log · metrics · traces")]
+    AU --> PO --> RT --> CA --> SM --> FA
+    FA -.-> AD
+  end
+
+  A -- "/mcp (Streamable HTTP)" --> AU
+  B -- "/api/v1 (REST)" --> AU
+  C -- "/api/v1 or /mcp" --> AU
+
+  FA -- stdio --> U1["Local MCP servers"]
+  FA -- "Streamable HTTP · SSE" --> U2["Remote MCP servers"]
+  FA -- WebSocket --> U3["WebSocket MCP servers"]
 ```
- Claude Code · Cursor · agents · LLM apps (OpenAI, Grok, DeepSeek, Claude) · web / mobile apps
-                 │  /mcp (Streamable HTTP)  ·  /api/v1 (REST)
-                 ▼
- ┌──────────────── mcp-gateway ────────────────┐
- │ auth · scopes · rate limits · policy        │
- │ routing · reconnect · health · metrics · log│
- └──────┬───────────────┬──────────────┬───────┘
-        │ stdio         │ HTTP / SSE   │ WebSocket
-        ▼               ▼              ▼
-   local servers   remote servers   …
-```
 
-Try the dashboard with simulated traffic (runs in your browser, no backend): <https://harrisoncn.github.io/mcp-gateway/>
+Each call is authenticated, authorized against the caller's scope, routed (a routing split is decided and authorized
+**before** any cache lookup), passed through the configured security modules and then authorized once more against the
+final target right before it is sent upstream. Feature modules are loaded on demand: a module is only imported when its
+section is present in the config.
+
+## Key features
+
+**Core gateway**
+- MCP endpoint at `/mcp` (Streamable HTTP, protocol revisions `2025-11-25` back to `2024-11-05`) that aggregates tools,
+  resources and prompts from every upstream, with progress, cancellation, logging, completions and subscriptions.
+- Upstream transports: `stdio`, `streamable-http`, legacy `sse` and `websocket`, with per-server headers and env.
+- REST API under `/api/v1`: tool discovery and calls, resources, prompts, request history, live stats (SSE).
+  `GET /api/v1/tools?format=openai|openai-responses|anthropic` returns function-calling schemas for LLM APIs.
+- Reconnect with backoff and jitter, MCP `ping` health checks, per-server concurrency limits, timeouts and tool
+  allow / deny filters.
+- Hot reload of servers, keys, limits and CORS when the config file changes (`start --no-watch` to disable).
+
+**Access control**
+- API keys (constant-time compare, `sha256:` digests, expiry / disable), JWT (HMAC, PEM or JWKS; issuer / audience /
+  exp checks) and OAuth 2.1 resource server per the MCP authorization spec. Misconfiguration fails closed.
+- Per-key scopes (server and tool globs, own rate limit) for keys and JWT claims, enforced on REST and `/mcp`;
+  tenants with roles; sliding-window rate limits; brute-force lockout.
+- Network guards: IP allowlist, Host / Origin checks against DNS rebinding, body and argument size limits, security
+  headers with a hash-based CSP. stdio servers run with an environment allowlist and optional uid / gid, cwd and
+  sandbox wrapper ([stdio isolation](docs/security/stdio-isolation.md)).
+
+**Operations**
+- Prometheus metrics, OpenTelemetry tracing, optional SQLite audit log, secret redaction in logs, history and API
+  output.
+- Web dashboard at `/dashboard`: guided setup, live traffic, latency and errors, server health, tool playground,
+  request history.
+- Liveness / readiness probes, signed container image, Helm chart, Kubernetes operator.
+- CLI: `init`, `validate`, `diff` / `apply`, `gen-key` / `hash-key`, `migrate`, `bench`, `conformance`, `desktop`,
+  `policy test`, `plugin`, `pq`, `operator`.
+- Embeddable as a library: `import { Gateway, loadConfig } from '@winstonsayno/mcp-gateway'`.
+
+**Extended modules** — opt in under `features:`; each has a guide in [`docs/guides`](docs/guides). Among them:
+[Cedar / OPA policies](docs/guides/policy-engine.md), [DLP](docs/guides/dlp.md),
+[prompt-injection sanitising](docs/guides/sanitize.md), [approval flows](docs/guides/approval-flows.md),
+[semantic cache](docs/guides/semantic-cache.md), [rollouts](docs/guides/rollouts.md) and
+[blue/green](docs/guides/blue-green.md), [time-travel replay](docs/guides/time-travel.md),
+[real-time budgets](docs/guides/realtime-budgets.md), [task graphs](docs/guides/task-graphs.md),
+[OpenAI / A2A bridges](docs/guides/bridges.md), [kernel plugin SDK](docs/guides/plugin-sdk.md) and
+[multi-region](docs/guides/multi-region.md). These modules are compact and unit-tested but have seen far less
+real-world use than the core; test them in your environment before relying on one.
+
+**Experimental** — [confidential computing / TEE attestation](docs/guides/confidential.md),
+[post-quantum TLS](docs/guides/pq-tls.md), [edge autonomy](docs/guides/edge-autonomy.md),
+[privacy computing](docs/guides/privacy.md) and [post-quantum identity](docs/guides/pq-identity.md). `validate`,
+startup and `GET /api/v1/security` print an EXPERIMENTAL notice when one is enabled; each guide lists what it does
+**not** do.
 
 ## Quick start
 
 Requires Node.js 22 or newer.
 
+### npm / npx
+
 ```bash
-npx @winstonsayno/mcp-gateway init      # writes mcp-gateway.yml (two example stdio servers)
-npx @winstonsayno/mcp-gateway gen-key   # prints a key for clients + its sha256 digest for the config
+npx @winstonsayno/mcp-gateway init      # writes mcp-gateway.yml (loopback, two example stdio servers)
+npx @winstonsayno/mcp-gateway gen-key   # prints a key for clients and its sha256 digest for the config
+# add the digest to mcp-gateway.yml (see Minimal configuration below), then:
+npx @winstonsayno/mcp-gateway validate --strict   # schema check; exits 2 on security warnings
+npx @winstonsayno/mcp-gateway start
 ```
 
-Edit `mcp-gateway.yml` — a minimal, authenticated setup:
+Or install it globally: `npm i -g @winstonsayno/mcp-gateway && mcp-gateway start`. The dashboard is at
+`http://localhost:4000/dashboard`.
+
+> Without auth the gateway **refuses to start** on a non-loopback address. Configure auth before binding to
+> `0.0.0.0`, or — only on a trusted network — pass `start --insecure` (`security.insecure: true`).
+
+### Docker (GHCR)
+
+Multi-arch images (`linux/amd64`, `linux/arm64`) are published as `ghcr.io/harrisoncn/mcp-gateway` with tags
+`<version>`, `<major>.<minor>`, `<major>` and `latest`. They run as the unprivileged `node` user and read
+`/app/mcp-gateway.yml`.
+
+```bash
+docker run -d -p 4000:4000 \
+  -v "$PWD/mcp-gateway.yml:/app/mcp-gateway.yml:ro" \
+  -v mcp-gateway-data:/app/data \
+  -e MCP_GATEWAY_HOST=0.0.0.0 \
+  -e MCP_GATEWAY_API_KEYS=sha256:<digest from gen-key> \
+  ghcr.io/harrisoncn/mcp-gateway:13
+```
+
+`MCP_GATEWAY_API_KEYS` (comma-separated, plain or `sha256:<hex>`) turns on API-key auth without editing the file, and
+`MCP_GATEWAY_HOST` overrides the loopback `host` written by `init` so the published port is reachable. stdio servers
+run inside the container, which ships Node.js / npm; install anything else (Python, `uvx`, …) in a derived image. A
+Compose example with Prometheus is in [`examples/docker`](examples/docker).
+
+Every image is signed with cosign (keyless, GitHub OIDC) and carries SLSA provenance and SBOM attestations. Verify
+before you deploy, and pin the digest it prints:
+
+```bash
+cosign verify ghcr.io/harrisoncn/mcp-gateway:13.1.1 \
+  --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+More in [supply chain](docs/security/supply-chain.md).
+
+### Kubernetes (Helm)
+
+The chart lives in this repository (it is not published to a chart registry) and requires an API key:
+
+```bash
+git clone https://github.com/HarrisonCN/mcp-gateway.git && cd mcp-gateway
+kubectl create secret generic gw-secrets --from-literal=MCP_GATEWAY_API_KEYS=sha256:<digest from gen-key>
+helm install gw ./deploy/helm/mcp-gateway --set existingSecret=gw-secrets
+```
+
+Gateway config goes in the chart's `config:` value. Pods run non-root with a read-only root filesystem; probes use
+`/api/v1/health/live` and `/api/v1/health/ready`; HPA, PDB, `ServiceMonitor` and the operator (`McpGateway` CRD) are
+off by default. See the [chart README](deploy/helm/mcp-gateway/README.md) and the
+[Kubernetes guide](docs/guides/kubernetes.md).
+
+## Minimal configuration
+
+`mcp-gateway.yml` — an authenticated gateway with one stdio server:
 
 ```yaml
-version: 11
-host: 127.0.0.1
+version: 11            # config schema (13.x uses schema v11)
+host: 127.0.0.1        # 0.0.0.0 only together with auth
 port: 4000
 
 auth:
@@ -74,23 +210,19 @@ servers:
     args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
 ```
 
-```bash
-npx @winstonsayno/mcp-gateway validate --strict   # schema check; exits 2 if there are security warnings
-npx @winstonsayno/mcp-gateway start               # or: npm i -g @winstonsayno/mcp-gateway && mcp-gateway start
-```
+Every key, environment override, scope and module section is in the
+[configuration reference](docs/configuration.md); more complete files are in [`examples/`](examples).
 
-Call it over REST:
+## Connect clients and LLMs
 
 ```bash
+# REST
 curl -H "Authorization: Bearer $KEY" http://localhost:4000/api/v1/tools
 curl -X POST http://localhost:4000/api/v1/tools/call \
   -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
   -d '{"tool": "read_text_file", "arguments": {"path": "/tmp/hello.txt"}}'
-```
 
-…or point an MCP client at it:
-
-```bash
+# Claude Code
 claude mcp add --transport http gateway http://localhost:4000/mcp --header "Authorization: Bearer $KEY"
 ```
 
@@ -100,257 +232,109 @@ claude mcp add --transport http gateway http://localhost:4000/mcp --header "Auth
 ```
 
 stdio-only clients can bridge with [`mcp-remote`](https://www.npmjs.com/package/mcp-remote):
-`npx mcp-remote http://localhost:4000/mcp --header "Authorization: Bearer <key>"`. The dashboard is at
-`http://localhost:4000/dashboard`.
+`npx mcp-remote http://localhost:4000/mcp --header "Authorization: Bearer <key>"`.
 
-> `init` writes `host: 127.0.0.1` with auth commented out. Without auth the gateway **refuses to start** on a
-> non-loopback address: configure auth before binding to `0.0.0.0`, or — only on a trusted network — pass
-> `start --insecure` (`security.insecure: true`).
+**Any LLM with function calling.** The gateway does not call a model itself. `GET /api/v1/tools?format=openai`
+(Chat Completions — OpenAI, DeepSeek and other compatible APIs), `format=openai-responses` (Responses API — OpenAI,
+xAI Grok) or `format=anthropic` (Claude Messages API) returns the tools the caller may use plus a `mapping` from each
+LLM tool name to the gateway `{ server, tool }`; execute the model's tool calls with `POST /api/v1/tools/call`. A
+complete loop is in [`examples/llm-tools`](examples/llm-tools); the [OpenAI-compatible bridge](docs/guides/bridges.md)
+can also run the loop inside the gateway. These are plain HTTP integrations, not partnerships with model vendors.
 
-### Docker
+**Web pages and apps.** Use REST or the client libraries — [JS / TypeScript](clients/js)
+(`@winstonsayno/mcp-gateway-client`), [Kotlin / Android](clients/kotlin), [Swift](clients/swift),
+[Python](clients/python), [Go](clients/go). Never ship a long-lived API key in a browser bundle or app binary: put your
+backend in the middle, or have it mint short-lived scoped JWTs (`auth.jwt.requireExp`, `maxTokenAgeSeconds`,
+`mcp_servers` / `mcp_tools` claims) and restrict origins with `cors.origins` and `mcp.allowedOrigins`.
 
-Multi-arch images (`linux/amd64`, `linux/arm64`) are published to GHCR with tags `<version>`, `<major>.<minor>`,
-`<major>` and `latest`, signed with cosign (keyless) and carrying SLSA provenance and SBOM attestations — see
-[supply chain](docs/security/supply-chain.md) for `cosign verify`. The image runs as the unprivileged `node` user and looks for `/app/mcp-gateway.yml`.
+## Security model
 
-```bash
-docker run -d -p 4000:4000 \
-  -v "$PWD/mcp-gateway.yml:/app/mcp-gateway.yml:ro" \
-  -v mcp-gateway-data:/app/data \
-  -e MCP_GATEWAY_API_KEYS=change-me \
-  ghcr.io/harrisoncn/mcp-gateway:11
-```
+The gateway executes tool calls that can read files, call APIs and spend money: treat it as a privileged service.
+**Operators are root-equivalent** (they can change which commands stdio servers run), so give end users scoped keys
+or tenant roles.
 
-(`:10` stays on the last 10.x LTS release.)
+**Authorization is re-checked after rerouting.** A call can be moved to another server after the first check — by a
+`routing` split, `rollouts`, `blue-green`, `self-healing` or a `realtime-budgets` downgrade. Right before the upstream
+send, the gateway authorizes the call again against its **final** target (caller scope, tool exposure, tool policy,
+data residency and the security guard modules) and then freezes that target. A refused reroute answers `-32003` with
+`data.decision: "reroute-denied"`.
 
-`MCP_GATEWAY_API_KEYS` (comma-separated, plain or `sha256:<hex>`) turns on API-key auth without editing the file.
-stdio servers run inside the container, which ships Node.js/npm; install anything else (Python, `uvx`, …) in a derived
-image. A Compose example with Prometheus is in [`examples/docker`](examples/docker).
+**Failed modules have an explicit failure policy.** Every feature module declares one:
 
-### Kubernetes (Helm)
-
-The chart lives in this repository (it is not published to a chart registry):
-
-```bash
-git clone https://github.com/HarrisonCN/mcp-gateway.git && cd mcp-gateway
-kubectl create secret generic gw-secrets --from-literal=MCP_GATEWAY_API_KEYS=sha256:<hash from gen-key>
-helm install gw ./deploy/helm/mcp-gateway --set existingSecret=gw-secrets
-```
-
-An API key is required: without `existingSecret` (or `apiKeys` / `config.auth`) the chart fails at install time with
-a message explaining how to provide one. `--set security.insecure=true` is the explicit, warned opt-out for trusted
-networks. See the [chart README](deploy/helm/mcp-gateway/README.md).
-
-Gateway config goes in the chart's `config:` value. Pods run non-root with a read-only root filesystem; HPA, PDB,
-`ServiceMonitor` and an optional operator (`McpGateway` CRD) are off by default. Liveness / readiness probes use
-`/api/v1/health/live` and `/api/v1/health/ready`. See the [Kubernetes guide](docs/guides/kubernetes.md).
-
-## Use with any LLM
-
-The gateway does not call a model itself; your code does. `GET /api/v1/tools?format=…` returns the tools the caller's
-key may use in the provider's function-calling format, plus a `mapping` from the (sanitized) LLM tool name to the
-gateway `{ server, tool }`. Execute each tool call the model makes with `POST /api/v1/tools/call` — scopes, policy,
-rate limits and the audit log apply exactly as for any other client.
-
-| Provider | Tools format | API |
+| Policy | Modules | While the module is configured but failed |
 |---|---|---|
-| OpenAI | `format=openai` (Chat Completions) or `format=openai-responses` (Responses API) | `https://api.openai.com/v1` |
-| DeepSeek | `format=openai` (OpenAI-compatible Chat Completions) | `https://api.deepseek.com` |
-| xAI Grok | `format=openai-responses` (xAI's recommended Responses API) or `format=openai` (Chat Completions) | `https://api.x.ai/v1` |
-| Anthropic Claude | `format=anthropic` (Messages API `tools`) | Anthropic SDK |
-| other OpenAI-compatible APIs | `format=openai` | their base URL |
+| `closed` | security and enforcement: `dlp`, `sanitize`, `agent-identity`, `policy-engine`, `approval-flows`, `confidential`, `privacy`, `anomaly`, `multimodal`; quota: `console`, `realtime-budgets` | the calls it governs are refused with `-32026` (`data.decision: "module-failed"`); the gateway keeps running |
+| `open` | analytics and optimisation, e.g. `genai-otel`, `billing`, `sla`, `semantic-cache`, `rollouts` | its hooks are skipped |
+| `degrade` | e.g. `offline`, `self-healing`, `blue-green`, `edge-autonomy` | hooks skipped; results carry `_meta["mcp-gateway/degraded"]` |
 
-A complete loop with the OpenAI SDK — switch provider by changing `LLM_BASE_URL` / `LLM_MODEL`
-([examples/llm-tools](examples/llm-tools)):
+Fail-closed is **scoped**: a failed module refuses only the calls in its own configured scope (for example
+`dlp.servers`); when that scope cannot be determined it refuses every tool call. Security modules are always `closed`;
+`kernel.failurePolicy` may override only `console`, `realtime-budgets` and `billing`.
+`GET /api/v1/admin/kernel` shows each module's state and policy.
 
-```js
-import OpenAI from 'openai';
-const gw = (path, init = {}) => fetch(`http://127.0.0.1:4000/api/v1${path}`, { ...init,
-  headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.GATEWAY_KEY}` } });
+**Hot reload is staged: Prepare → Validate → Commit.** New connections, catalog and modules are built aside; servers
+added by a reload stay hidden (not listed, routed or authorized) until the commit, and removed servers are only
+disconnected after a successful commit. An invalid config is rejected and the running one keeps serving.
 
-const llm = new OpenAI({ apiKey: process.env.LLM_API_KEY, baseURL: process.env.LLM_BASE_URL }); // e.g. https://api.deepseek.com
-const { tools, mapping } = await (await gw('/tools?format=openai')).json();
-const messages = [{ role: 'user', content: 'List the files in /tmp' }];
-for (let round = 0; round < 8; round++) {
-  const msg = (await llm.chat.completions.create({ model: process.env.LLM_MODEL, messages, tools })).choices[0].message;
-  messages.push(msg);
-  if (!msg.tool_calls?.length) { console.log(msg.content); break; }
-  for (const call of msg.tool_calls) {
-    const { server, tool } = mapping[call.function.name];
-    const out = await (await gw('/tools/call', { method: 'POST',
-      body: JSON.stringify({ server, tool, arguments: JSON.parse(call.function.arguments || '{}') }) })).json();
-    messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(out.result ?? out) });
-  }
-}
-```
+**Error codes** on `/mcp` (REST answers `403` with the same `code`):
 
-Alternatives: the JS client wraps this as `toolSchemas()` / `callLlmTool()` ([clients/js](clients/js)), and the
-[OpenAI-compatible bridge](docs/guides/bridges.md) (`openai:` with `upstream.baseUrl`) can run the whole loop inside
-the gateway — point any OpenAI-compatible SDK at `http://<gateway>/openai/v1` and the gateway injects its tools,
-executes them and returns the final answer. Model names change often; check each provider's documentation. These
-are plain HTTP integrations, not partnerships with or endorsements by any model vendor.
-
-## Use from web pages and apps
-
-Front-ends and apps call the gateway like any other client: REST under `/api/v1` (or `/mcp`), directly or through
-the client libraries — [JS / TypeScript](clients/js) (browsers, React Native, Node, Deno, Bun),
-[Kotlin / Android](clients/kotlin), [Swift / iOS / macOS](clients/swift), [Python](clients/python) and
-[Go](clients/go).
-
-**Never ship a long-lived API key in a browser bundle or an app binary** — anyone can extract it and call every tool
-in its scope. Use one of these instead:
-
-1. **Your backend in the middle** (simplest): the page / app talks to your server, which holds the gateway key and
-   calls the gateway.
-2. **Short-lived, scoped JWTs**: your backend signs in the user and mints a token the gateway verifies; the app
-   sends it as `Authorization: Bearer <jwt>`.
-
-```yaml
-auth:
-  strategy: jwt
-  jwt:
-    jwksUrl: https://auth.example.com/.well-known/jwks.json   # or publicKey / jwtSecret
-    issuer: https://auth.example.com/
-    audience: mcp-gateway
-    requireExp: true             # reject tokens without "exp"
-    maxTokenAgeSeconds: 900      # and tokens issued more than 15 minutes ago
-# token claims mcp_servers / mcp_tools narrow what each token may call, like a scoped key
-cors:
-  origins: ["https://app.example.com"]        # browser origins allowed to call /api/v1
-mcp:
-  allowedOrigins: ["https://app.example.com"]  # browser origins allowed on /mcp
-security:
-  allowedHosts: ["gateway.example.com"]        # reject other Host headers
-  authLockout: true
-```
-
-Server-side API keys can also carry scopes (`servers`, `tools`), their own `rateLimit` and an `expiresAt` — see
-[Configuration](docs/configuration.md#per-key-scopes). Terminate TLS in front of the gateway.
-
-## Features
-
-**Core gateway**
-- MCP endpoint at `/mcp` (Streamable HTTP; protocol revisions `2025-11-25` back to `2024-11-05`) that aggregates tools,
-  resources and prompts from every upstream, including progress, cancellation, logging, completions and subscriptions.
-- Upstream transports: `stdio`, `streamable-http`, legacy `sse` and `websocket`, with per-server headers / env.
-- REST API under `/api/v1`: tool discovery and calls, resources, prompts, request history, live stats (SSE).
-  `GET /api/v1/tools?format=openai|openai-responses|anthropic` returns function-calling schemas for LLM APIs.
-- Automatic reconnect with backoff and jitter, MCP `ping` health checks, per-server concurrency limits and timeouts,
-  tool allow / deny filters per server.
-- Hot reload of servers, keys, limits and CORS when the config file changes (`start --no-watch` to disable).
-
-**Access control**
-- Auth: API keys (constant-time compare, `sha256:` digests, expiry / disable), JWT (HMAC, PEM or JWKS; issuer /
-  audience / exp checks), OAuth 2.1 resource server per the MCP authorization spec. Misconfiguration fails closed.
-- Per-key scopes (server and tool globs, own rate limit) for keys and JWT claims, enforced on REST and `/mcp`;
-  tenants with roles; sliding-window rate limits; brute-force lockout.
-- Network guards: IP allowlist, Host / Origin checks against DNS rebinding (on by default for a loopback gateway
-  without auth), body and argument size limits, security headers with a hash-based CSP.
-
-**Operations**
-- Prometheus `/api/v1/metrics`, OpenTelemetry tracing, optional SQLite audit log, secret redaction in logs, history
-  and API output.
-- Web dashboard: guided setup, live traffic, latency and errors, server health, tool playground, request history.
-- Liveness / readiness probes, Docker image, Helm chart, Kubernetes operator.
-- CLI: `init`, `validate`, `diff` / `apply` (config against a running gateway), `gen-key` / `hash-key`, `migrate`,
-  `bench`, `conformance` (MCP conformance suite against any Streamable HTTP endpoint), `desktop`, `plugin`, `operator`.
-- Embeddable as a library (`import { Gateway, loadConfig } from '@winstonsayno/mcp-gateway'`).
-
-**Extended modules** — opt-in under `features:` in the config (since 11.0 a module is loaded only when its section is
-configured), each documented in [`docs/guides`](docs/guides):
-policy as code and approvals, [Cedar / OPA policies](docs/guides/policy-engine.md) with tests and impact analysis,
-[time-travel replay](docs/guides/time-travel.md), [real-time cost / carbon budgets](docs/guides/realtime-budgets.md),
-[durable task graphs](docs/guides/task-graphs.md) (cross-gateway, checkpoints, resume, compensation),
-DLP and prompt-injection sanitising, result and semantic caching, plugins (signed, WASM, and the
-[kernel plugin SDK](docs/guides/plugin-sdk.md) for hooks + config + routes),
-OpenAI / A2A bridges, control plane / data plane, multi-region, SLA and cost reporting, and more. These
-are compact implementations with unit tests, but they have seen far less real-world use than the core; read the guide
-and test in your environment before depending on one.
-
-**Experimental** — `validate`, startup and `GET /api/v1/security` print an EXPERIMENTAL notice when one is enabled.
-- **Confidential computing / TEE attestation** ([guide](docs/guides/confidential.md)): the gateway checks a signed
-  JSON attestation report from a key you trust, plus measurement allowlists and single-use nonces. It does **not**
-  verify native SEV-SNP / TDX / Nitro / SGX evidence or vendor certificate chains, and the report is not bound to the
-  upstream connection — treat it as a hook for an external attestation verifier.
-- **Post-quantum TLS** ([guide](docs/guides/pq-tls.md)): offers hybrid `X25519MLKEM768` key exchange on upstream
-  HTTPS (Streamable HTTP / SSE) connections and can probe what an upstream negotiates. It does not cover the gateway's
-  own listener or WebSocket upstreams, and ML-KEM needs OpenSSL 3.5+.
-- **Edge autonomy** ([guide](docs/guides/edge-autonomy.md)): while an upstream is unreachable, answers matching calls
-  from the last good result or a local WASM tool, queues them into an outbox, or refuses them, and replays the outbox
-  on reconnect. No conflict resolution (rejected replays are parked for an operator), at-least-once replay.
-- **Privacy computing** ([guide](docs/guides/privacy.md)): protected tools answer only Laplace-noised aggregates
-  (count / sum / mean / histogram) with per-client ε budgets, and federated queries combine noisy results from peer
-  gateways so raw rows stay in their domain. The guarantee assumes one row per person and data-independent bounds.
-- **Post-quantum identity** ([guide](docs/guides/pq-identity.md)): Ed25519 + ML-DSA hybrid signatures for a gateway
-  identity document, a signed tool manifest, a hash-chained audit log with signed checkpoints, and plugin artifacts.
-  ML-DSA uses `node:crypto` where the runtime has it, otherwise `@noble/post-quantum` (not independently audited); no
-  X.509 hybrid certificates.
-
-**Client libraries** — TypeScript ([`clients/js`](clients/js), published as `@winstonsayno/mcp-gateway-client`),
-Kotlin / JVM / Android ([`clients/kotlin`](clients/kotlin)), Python ([`clients/python`](clients/python)),
-Go ([`clients/go`](clients/go)) and Swift ([`clients/swift`](clients/swift)); the non-JS clients are used from source.
-
-## Security posture
-
-The gateway runs tool calls that can read files, call APIs and spend money, so treat it as a privileged service.
-Here is what has and has not been checked:
-
-| Done | Not done |
+| Code | Meaning |
 |---|---|
-| [Threat model](docs/security/threat-model.md) with trust boundaries, known limitations and per-release audit findings (10.1, 10.2) | No independent third-party security audit |
-| CodeQL and OpenSSF Scorecard on every push to `main`; `npm audit --audit-level=high` blocks CI (currently clean) | No continuous / coverage-guided fuzzing — randomized testing is limited to fast-check property tests |
-| Property tests (fast-check) for config parsing, JSON-RPC framing, argument limits, JWT / bearer, Host and SAN parsing | The extended modules and experimental features above have not had the same review depth as the core |
-| Authorization matrix: every `/api/v1/admin/*` route answers 401 / 403 for unauthenticated and non-operator callers | The gateway does not sandbox stdio servers — they run as the gateway's OS user |
+| `-32003` | forbidden: outside the caller's scope, denied by policy, or `reroute-denied` |
+| `-32026` | a `closed` module covering this call has failed (`module-failed`) |
 
-Things to know before deploying:
+**Secure defaults and checks.** No auth means loopback only; the Helm chart requires an API key; stdio servers do not
+inherit `MCP_GATEWAY_*` variables. `mcp-gateway validate --strict` fails on security warnings and
+`GET /api/v1/security` reports the running posture. CI runs CodeQL, OpenSSF Scorecard, Trivy, `npm audit` and
+property tests; there has been **no independent third-party audit**. Details: [threat model](docs/security/threat-model.md),
+[deployment checklist](docs/deployment.md#security-checklist).
 
-- **Operators are root-equivalent.** Any unrestricted client can change config, including which commands stdio
-  servers run. Give end users scoped keys or tenant roles.
-- **No auth means loopback only.** Turn auth on (`auth.strategy`, or `MCP_GATEWAY_API_KEYS`); without it the
-  gateway refuses to start on a non-loopback address unless you pass `--insecure`. The Helm chart requires an API key.
-- `mcp-gateway validate --strict` fails on security warnings; `GET /api/v1/security` reports the running posture.
-- Releases: signed container images, CycloneDX / SPDX SBOMs and checksums on each GitHub Release, Trivy and
-  `npm audit` in CI, Dependabot — [supply chain](docs/security/supply-chain.md),
-  [incident response](docs/security/incident-response.md).
-- stdio servers do not inherit `MCP_GATEWAY_*` variables, so third-party servers can't read the gateway's own keys.
+**Advisories.** MGW-2026-001 … MGW-2026-006 (reroute re-authorization, fail-closed modules, per-gateway module
+failures, transactional reload, split-aware cache keys, staged reload) are fixed in 13.1.1, with backports of the
+applicable fixes in 12.0.2 and 10.9.3 — see [SECURITY.md](SECURITY.md#security-advisories). Report vulnerabilities
+privately via [GitHub security advisories](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new), not in
+public issues.
 
-Hardening checklist: [SECURITY.md](SECURITY.md) and [docs/deployment.md](docs/deployment.md#security-checklist).
-Report vulnerabilities privately via
-[GitHub security advisories](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new), not in public issues.
+## Observability
+
+- **Metrics** — `GET /api/v1/metrics` returns JSON aggregates (requests, errors, latency, per-server state). With
+  `monitor.prometheus: true`, Prometheus text is served at `/metrics` and `/api/v1/metrics?format=prometheus`. Metric
+  names include `mcp_gateway_requests_total`, `mcp_gateway_errors_total`, `mcp_gateway_request_duration_seconds`,
+  `mcp_gateway_server_up`, `mcp_gateway_authz_denials_total`, `mcp_gateway_reroute_denials_total`,
+  `mcp_gateway_module_failure_denials_total` and `mcp_gateway_degraded_calls_total`. Metrics are public by default;
+  require auth with `auth.protect.metrics`.
+- **Audit log** — `audit.enabled: true` keeps request metadata (never arguments or results) in SQLite via the built-in
+  `node:sqlite`; `GET /api/v1/requests` queries it with filters and paging, and `audit.export` forwards records to a
+  SIEM. Refused reroutes and calls refused by a failed module are recorded too.
+- **Tracing** — OpenTelemetry spans per upstream call, exported over OTLP/HTTP without an SDK
+  (`observability.tracing`), with W3C `traceparent` propagation.
+- **Health** — `/api/v1/health/live`, `/api/v1/health/ready`, `/api/v1/health`; live stats at `/api/v1/stats` and the
+  SSE stream `/api/v1/events`, which feed the dashboard.
+
+See [Observability](docs/configuration.md#observability) and [Audit log](docs/configuration.md#audit-log).
 
 ## Supported versions
 
-| Version | Status |
-|---|---|
-| 13.x (current) | New features, bug and security fixes |
-| 12.x | Superseded — upgrade to 13.x ([13.0 guide](docs/guides/migrating-to-v13.md)) |
-| 11.x | Superseded — upgrade to 13.x ([12.0 guide](docs/guides/migrating-to-v12.md), [13.0 guide](docs/guides/migrating-to-v13.md)) |
-| 10.x (LTS) | Bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |
-| < 10.0 | Unsupported — upgrade with `mcp-gateway migrate` ([10.0 guide](docs/guides/migrating-to-v10.md), [11.0 guide](docs/guides/migrating-to-v11.md)) |
+| Line | Latest | npm dist-tag | Image tag | Status |
+|---|---|---|---|---|
+| 13.x | 13.1.1 | `latest` | `:13`, `:latest` | Current — new features, bug and security fixes |
+| 12.x | 12.0.2 | `v12-0` | `:12` | Superseded — carries the MGW-2026-001 and MGW-2026-005 fixes; upgrade to 13.x |
+| 11.x | 11.2.0 | — | `:11` | Superseded — upgrade to 13.x |
+| 10.x (LTS) | 10.9.3 | `v10-lts` | `:10` | Bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |
+| < 10.0 | — | — | — | Unsupported — upgrade with `mcp-gateway migrate` |
 
-Upgrading from 10.x: `npx @winstonsayno/mcp-gateway@13 migrate --write` rewrites the config to schema v11 — see
-[Migrating to 11.0](docs/guides/migrating-to-v11.md). From 11.x: no config migration; stdio servers get an
-environment allowlist — see [Migrating to 12.0](docs/guides/migrating-to-v12.md). From 12.x: no config migration;
-feature modules load on demand — see [Migrating to 13.0](docs/guides/migrating-to-v13.md).
+```bash
+npm i @winstonsayno/mcp-gateway            # 13.x
+npm i @winstonsayno/mcp-gateway@v10-lts    # 10.x LTS
+```
 
-The project follows [Semantic Versioning](https://semver.org/). Within a major line the REST API under `/api/v1`,
-`/mcp` behaviour, the config schema (v11 for 11.x, v10 for 10.x), CLI commands and flags, root library exports and
-Prometheus metric names change only in backward-compatible ways. Deep imports, log format, the dashboard and the
-audit database schema are not covered — see [stability and versioning](docs/api-reference.md#stability-and-versioning).
+Upgrading: from 10.x run `npx @winstonsayno/mcp-gateway@13 migrate --write` (config schema v10 → v11, see
+[Migrating to 11.0](docs/guides/migrating-to-v11.md)); from 11.x / 12.x no config migration is needed — read
+[Migrating to 12.0](docs/guides/migrating-to-v12.md) and [Migrating to 13.0](docs/guides/migrating-to-v13.md).
 
-## What's New in v13.1
-
-**Security release.** A call that a hook (rollouts, blue/green, self-healing, budget downgrade) or a routing split
-reroutes is now **authorized again against its final target** right before the upstream send — scope, tool exposure,
-policy rules, data residency and the security guard modules — and the target is frozen afterwards (fixes a canary
-reachable by clients that were only allowed on stable; also fixed in 12.0.1 and 10.9.2). **Security modules fail
-closed:** every feature module has a failure policy (`closed` / `open` / `degrade`), so a broken DLP, policy-engine or
-agent-identity module refuses the calls it protects (`-32026`) instead of silently letting them through. Module
-failures are per gateway, and hot reload is Prepare → Validate → Commit: removed servers are only disconnected after a
-successful commit. **13.1.1** narrows fail-closed to the calls a failed module would have governed (its configured
-servers / tools / tenants / clients; global or unreadable config still refuses everything), keeps servers prepared by a
-reload hidden until the commit, and keys the tool and semantic caches on the routing-split target (also fixed in
-12.0.2 and 10.9.3). See [SECURITY.md](SECURITY.md#security-advisories).
+The project follows [Semantic Versioning](https://semver.org/). Within a major line the `/api/v1` REST API, `/mcp`
+behaviour, the config schema, CLI commands and flags, root library exports and Prometheus metric names change only in
+backward-compatible ways — see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
 ## Documentation
 
@@ -361,8 +345,8 @@ reload hidden until the commit, and keys the tool and semantic caches on the rou
 | [API reference](docs/api-reference.md) | REST `/api/v1`, admin API, `/mcp`, error codes |
 | [Deployment](docs/deployment.md) | Docker, Kubernetes, reverse proxy, systemd, security checklist |
 | [Guides](docs/guides) | One page per module, plus migration guides |
-| [Threat model](docs/security/threat-model.md) | Data flow, trust boundaries, audit findings |
-| [Roadmap](docs/ROADMAP.md) | 10.x / 11.0 release plan and what comes after |
+| [Security](SECURITY.md) · [Threat model](docs/security/threat-model.md) | Advisories, hardening, trust boundaries |
+| [Changelog](CHANGELOG.md) | Every release |
 | [Dashboard](dashboard/README.md) | The built-in web UI |
 
 ## Contributing
@@ -374,7 +358,8 @@ npm run typecheck && npm test
 npm run dev -- start -c examples/basic/mcp-gateway.yml
 ```
 
-See [CONTRIBUTING.md](docs/CONTRIBUTING.md).
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md). When a change is user-facing, update both READMEs (English and
+简体中文).
 
 ## License
 
