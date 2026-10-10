@@ -6,7 +6,7 @@
  *  2. A call hook that rewrites the arguments cannot bypass argument-dependent policy, DLP, sanitize or approvals,
  *     whether or not the call was rerouted.
  *  3. Credentials never cross a reroute / split: a call moved from server A to server B carries B's injected credentials
- *     only (MGW-2026-009).
+ *     only.
  *  4. A refused call never contacts the upstream (spy upstream).
  *  5. Every refusal is recorded with a traceable reason (decision + error code in the audit record).
  */
@@ -150,19 +150,20 @@ describe('argument-dependent checks run on the FINAL arguments (13.1.3)', () => 
     expect(sent).toEqual([]);
   });
 
-  it('approval: an approval granted for the original arguments does not cover rewritten arguments', async () => {
+  it('approval: the hold happens once, on the final arguments; what was approved is exactly what is sent', async () => {
     const seen: Array<Record<string, unknown>> = [];
-    const approvals = { request: async (req: { args: Record<string, unknown> }) => (seen.push(req.args), seen.length === 1 ? 'approved' : 'rejected'), configure: () => undefined };
+    const approvals = { request: async (req: { args: Record<string, unknown> }) => (seen.push(req.args), 'approved'), configure: () => undefined };
     const policy = { rules: [{ name: 'transfers', effect: 'approve', tools: ['transfer'] }] };
     const { inv, sent } = setup({ cfg: { __rewrite: { to: 'attacker' } }, policy, approvals });
     const r = await inv.invoke(ctx({ name: 'transfer', params: { amount: '5', to: 'bob' } }));
-    expect(r.success).toBe(false);
-    expect(seen).toEqual([{ amount: '5', to: 'bob' }, { amount: '5', to: 'attacker' }]);
-    expect(sent).toEqual([]);
+    expect(r.success).toBe(true);
+    // 13.1.2 asked about { to: 'bob' } and then sent { to: 'attacker' }.
+    expect(seen).toEqual([{ amount: '5', to: 'attacker' }]);
+    expect(sent.map((s) => s.args)).toEqual(seen);
   });
 });
 
-describe('credentials never cross a reroute (13.1.3, MGW-2026-009)', () => {
+describe('credentials never cross a reroute (13.1.3)', () => {
   const inject = { stable: [{ argument: 'api_key' }], canary: [{ argument: 'api_key' }] };
 
   it('routing split A → B: B receives B\'s credential, never A\'s', async () => {
@@ -246,4 +247,33 @@ describe('final security snapshot (13.1.3)', () => {
     expect(tampered.error?.data).toMatchObject({ decision: 'snapshot-mismatch', reason: 'arguments-changed-after-authorization' });
     expect(sent).toHaveLength(1);
   });
+});
+
+describe('credential target on a real gateway (13.1.3)', () => {
+  it('a routing split from stable to canary sends canary\'s injected credential, never stable\'s', async () => {
+    const { startFeatureGw, fakeServer, op } = await import('./helpers/feature-gw.js');
+    process.env.MGW_T133_STABLE = 'stable-secret-133';
+    process.env.MGW_T133_CANARY = 'canary-secret-133';
+    const h = await startFeatureGw({
+      servers: [
+        { ...fakeServer('stable', { SERVER_TAG: 'stable' }), inject: [{ ref: 'secret://env/MGW_T133_STABLE', argument: 'api_key' }] },
+        { ...fakeServer('canary', { SERVER_TAG: 'canary' }), inject: [{ ref: 'secret://env/MGW_T133_CANARY', argument: 'api_key' }] },
+      ],
+      secrets: { providers: [{ id: 'env', type: 'env' }] },
+      routing: { splits: [{ name: 'to-canary', server: 'stable', sticky: 'none', variants: [{ server: 'canary', weight: 100 }] }] },
+    } as never);
+    try {
+      const call = async (server: string) => {
+        const res = await fetch(`${h.base}/api/v1/tools/call`, { method: 'POST', headers: op, body: JSON.stringify({ server, tool: 'echo', arguments: { q: 1 } }) });
+        return (await res.json()) as { result?: { content: Array<{ text: string }> } };
+      };
+      const r = await call('stable');
+      const echoed = JSON.parse(r.result!.content[0]!.text) as Record<string, unknown>;
+      expect(echoed).toEqual({ q: 1, api_key: 'canary-secret-133', _server: 'canary' });
+    } finally {
+      await h.stop();
+      delete process.env.MGW_T133_STABLE;
+      delete process.env.MGW_T133_CANARY;
+    }
+  }, 20000);
 });

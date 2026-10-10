@@ -131,8 +131,11 @@ export class SqliteAuditStore implements AuditStore {
     const cols = new Set((this.db.prepare('PRAGMA table_info(requests)').all() as Array<{ name: string }>).map((c) => String(c.name)));
     if (!cols.has('actor')) this.db.exec('ALTER TABLE requests ADD COLUMN actor TEXT');
     if (!cols.has('chain')) this.db.exec('ALTER TABLE requests ADD COLUMN chain TEXT');
+    // 13.1.3: traceable refusal reason + error code.
+    if (!cols.has('decision')) this.db.exec('ALTER TABLE requests ADD COLUMN decision TEXT');
+    if (!cols.has('error_code')) this.db.exec('ALTER TABLE requests ADD COLUMN error_code INTEGER');
     this.insert = this.db.prepare(
-      'INSERT OR IGNORE INTO requests (id, ts, server, tool, kind, duration_ms, success, error, client_id, via, actor, chain) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT OR IGNORE INTO requests (id, ts, server, tool, kind, duration_ms, success, error, client_id, via, actor, chain, decision, error_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
   }
 
@@ -150,6 +153,8 @@ export class SqliteAuditStore implements AuditStore {
       m.via ?? null,
       m.actor ?? null,
       m.chain?.length ? JSON.stringify(m.chain) : null,
+      m.decision ?? null,
+      m.errorCode ?? null,
     );
   }
 
@@ -191,6 +196,8 @@ export class SqliteAuditStore implements AuditStore {
       if (r.via !== null && r.via !== undefined) m.via = r.via as RequestMetric['via'];
       if (r.kind && r.kind !== 'tool') m.kind = r.kind as RequestMetric['kind'];
       if (r.actor !== null && r.actor !== undefined) m.actor = String(r.actor);
+      if (r.decision !== null && r.decision !== undefined) m.decision = String(r.decision);
+      if (r.error_code !== null && r.error_code !== undefined) m.errorCode = Number(r.error_code);
       if (typeof r.chain === 'string') {
         try {
           m.chain = JSON.parse(r.chain) as string[];

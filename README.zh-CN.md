@@ -16,7 +16,7 @@ mcp-gateway 位于 AI 客户端（Claude Code、Cursor、自研 Agent、大模�
 Streamable HTTP，或 `/api/v1` 下的 REST API——网关负责识别调用方、判断它能做什么、把调用路由到正确的上游，并记录发生了什么。
 密钥、权限范围、限流、策略、日志和指标集中在一处管理，不必在每个客户端里各配一遍。
 
-当前版本：**13.1.2**（npm `latest`）。控制面板在线演示（模拟流量，纯浏览器运行，无需后端）：
+当前版本：**13.1.3**（npm `latest`）。控制面板在线演示（模拟流量，纯浏览器运行，无需后端）：
 <https://harrisoncn.github.io/mcp-gateway/>
 
 ## 目录
@@ -149,7 +149,7 @@ docker run -d -p 4000:4000 \
 每个镜像都用 cosign 做了无密钥签名（GitHub OIDC），并附带 SLSA 来源证明和 SBOM。部署前请先验证，并在生产清单中固定它输出的摘要：
 
 ```bash
-cosign verify ghcr.io/harrisoncn/mcp-gateway:13.1.2 \
+cosign verify ghcr.io/harrisoncn/mcp-gateway:13.1.3 \
   --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -293,7 +293,7 @@ CI 中运行 CodeQL、OpenSSF Scorecard、Trivy、`npm audit` 和属性测试；
 
 | 版本线 | 最新版本 | npm dist-tag | 镜像标签 | 状态 |
 |---|---|---|---|---|
-| 13.x | 13.1.2 | `latest` | `:13`、`:latest` | 当前版本——新功能、缺陷与安全修复 |
+| 13.x | 13.1.3 | `latest` | `:13`、`:latest` | 当前版本——新功能、缺陷与安全修复 |
 | 12.x | 12.0.3 | `v12-0` | `:12` | 已被取代——包含 MGW-2026-001、-005、-007 和 -008 的修复；请升级到 13.x |
 | 11.x | 11.2.0 | — | `:11` | 已被取代——请升级到 13.x |
 | 10.x（LTS） | 10.9.4 | `v10-lts` | `:10` | 2027-10-31 前提供缺陷与安全修复，之后至 2028-10-31 仅提供安全修复 |

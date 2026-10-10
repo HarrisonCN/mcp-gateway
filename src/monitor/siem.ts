@@ -30,6 +30,9 @@ export interface AuditEvent {
   /** 13.1.2: delegation chain, original caller first. */
   chain?: string[];
   success: boolean;
+  /** 13.1.3: refusal / failure reason and JSON-RPC error code of a failed call. */
+  decision?: string;
+  errorCode?: number;
   durationMs: number;
   error?: string;
   host: string;
@@ -52,6 +55,8 @@ export function toAuditEvent(m: RequestMetric): AuditEvent {
     success: m.success,
     durationMs: m.durationMs,
     ...(m.errorMessage ? { error: m.errorMessage } : {}),
+    ...(m.decision ? { decision: m.decision } : {}),
+    ...(m.errorCode !== undefined ? { errorCode: m.errorCode } : {}),
     host: HOST,
   };
 }

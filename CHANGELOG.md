@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.1.3] - 2026-10-10
+
+**Security patch — final call security.** Config schema stays **v11**; no configuration changes.
+
+### Security
+- **Credentials never cross a reroute.** Per-call credentials (`inject:` on a server — tool arguments
+  or `_meta` fields) are now always those of the server the call is **sent to**. Since routing splits were introduced,
+  a call that a `routing` split moved from server A to server B carried **A's** injected credentials to B (hook
+  reroutes — rollouts, blue/green, self-healing, budget downgrades — already used the final server's). A split target
+  that needs a credential must declare its own `inject:`; nothing is injected otherwise.
+- **Argument-dependent checks run on the final arguments.** Call hooks may rewrite a call's arguments
+  (DLP redaction, budget downgrades, plugin hooks). Before, the tool policy (argument rules), approval holds and the
+  security guard modules that ran earlier (DLP, sanitize, approval flows, policy engine, …) were only re-checked when a
+  hook also changed the target server, so a rewrite on the same server was sent unchecked and an operator could approve
+  arguments that were not the ones sent. Now the final authorization re-runs the policy and every guard whose verdict
+  was given on other arguments, until the arguments are stable (a guard that keeps rewriting is refused with
+  `args-unstable`); refusals carry `argsChangedBy` (the hooks that rewrote the arguments).
+- **Approval holds are placed on the final call.** An `approve` rule now holds the call in the final authorization,
+  after the call hooks, on the final target and final arguments — the operator approves exactly what is sent (once;
+  a reroute to a target with its own `approve` rule still asks again, as before).
+- **Final security snapshot.** After the final authorization the invoker freezes the principal (and subject / actors
+  of a delegated call), the upstream server, the tool, the approved business arguments and the credential target
+  (always the upstream server). The upstream send refuses a call that differs from it (`snapshot-mismatch`, reasons
+  `target-changed-after-authorization`, `arguments-changed-after-authorization`, `credentials-of-another-server`,
+  `principal-changed-after-authorization`). Injected credentials are the only values added after the checks, and they
+  override a caller-supplied argument of the same name.
+- **Every refusal is traceable.** Request records (history, SQLite audit store, SIEM events) of failed calls now carry
+  `decision` (the refusal reason: `deny`, `scope`, `reroute-denied`, `dlp`, `quota`, `budget`, `module-failed`,
+  `snapshot-mismatch`, …, or `upstream-error`) and `errorCode`. Older audit databases get the two columns on start.
+- A refused call never contacts the upstream server: covered by a unified reroute regression matrix (hook reroute,
+  routing split, reroute + argument rewrite, rewrite without reroute, split to a non-exposed tool, reroute followed by a
+  split) with a spy upstream.
+
+### Upgrade notes
+- Deployments that combine `routing` splits with `inject:` credentials: give every split target its own `inject:`
+  entries (the requested server's credentials are no longer sent to it).
+- Approval holds now happen after call hooks; a hook answering the call itself (`respond`, e.g. a semantic-cache hit)
+  is still subject to the hold.
+
 ## [13.1.2] - 2026-10-10
 
 **Security patch — one identity context per call.** Config schema stays **v11**. Advisories:
