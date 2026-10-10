@@ -26,6 +26,7 @@ import type { ApiKeyConfig, AuthConfig, JwtConfig } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { scopeFromJwt, type AccessScope } from './scopes.js';
 import { oauthMiddleware, type TokenInfo } from './oauth.js';
+import { issuerQualified, tokenClientId } from './identity.js';
 
 export type AuthedRequest = Request & {
   clientId?: string;
@@ -124,7 +125,7 @@ export function createAuthMiddleware(config?: AuthConfig, options: AuthMiddlewar
       return apiKeyMiddleware(keys);
     }
     case 'jwt':
-      return jwtMiddleware(buildJwtVerifier(config));
+      return jwtMiddleware(buildJwtVerifier(config), issuerQualified(config));
     case 'oauth2':
       if (!config.oauth) throw new Error('auth.strategy is "oauth2" but auth.oauth is not configured');
       return oauthMiddleware(config.oauth, { mcpPath: options.mcpPath ?? (() => '/mcp'), fetch: options.fetch });
@@ -290,7 +291,8 @@ export function buildJwtVerifier(config: AuthConfig): JwtVerifier {
   return { key, options };
 }
 
-function jwtMiddleware(verifier: JwtVerifier): AuthMiddleware {
+/** `qualified` (13.1.2): several issuers are trusted, so client ids carry the issuer (`jwt:<iss>#<sub>`). */
+function jwtMiddleware(verifier: JwtVerifier, qualified = false): AuthMiddleware {
   const verify = (token: string) =>
     typeof verifier.key === 'function'
       ? jwtVerify(token, verifier.key, verifier.options)
@@ -310,7 +312,7 @@ function jwtMiddleware(verifier: JwtVerifier): AuthMiddleware {
     verify(token).then(
       ({ payload }) => {
         (req as AuthedRequest).jwtPayload = payload;
-        (req as AuthedRequest).clientId = `jwt:${String(payload.sub ?? 'unknown')}`;
+        (req as AuthedRequest).clientId = tokenClientId('jwt', String(payload.sub ?? 'unknown'), typeof payload.iss === 'string' ? payload.iss : undefined, qualified);
         const scope = scopeFromJwt(payload);
         if (scope) (req as AuthedRequest).scope = scope;
         next();
