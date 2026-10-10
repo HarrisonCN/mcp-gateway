@@ -191,10 +191,12 @@ describe.each(MATRIX_VERSIONS)('TypeScript SDK client @ %s', (version) => {
       client.setNotificationHandler(ToolListChangedNotificationSchema, () => void changed++);
       // give the standalone GET stream a moment to open
       await new Promise((r) => setTimeout(r, 150));
-      await client.callTool({ name: 'shttp__add-tool', arguments: {} });
+      // the Streamable HTTP upstream announces it on its standalone GET stream (unsolicited, no related request)
+      shttp.servers.at(-1)!.registerTool(`late-${version}`, { description: 'added at runtime' }, async () => ({ content: [{ type: 'text', text: 'late' }] }));
       const end = Date.now() + 4000;
       while (changed === 0 && Date.now() < end) await new Promise((r) => setTimeout(r, 25));
       expect(changed).toBeGreaterThan(0);
+      expect((await client.listTools()).tools.map((t) => t.name)).toContain(`shttp__late-${version}`);
       mark(who, 'list_changed', true);
     } catch (e) {
       mark(who, 'list_changed', false);
