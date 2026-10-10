@@ -43,8 +43,9 @@ USER node
 
 EXPOSE 4000
 
+# 127.0.0.1, not localhost: busybox wget resolves localhost to ::1 first and the gateway listens on IPv4
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:4000/api/v1/health/live || exit 1
+  CMD wget -qO- http://127.0.0.1:4000/api/v1/health/live || exit 1
 
 ENTRYPOINT ["node", "dist/cli.js"]
 CMD ["start"]

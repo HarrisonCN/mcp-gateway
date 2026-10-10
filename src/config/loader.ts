@@ -65,6 +65,7 @@ import { validateChains, type ChainsConfig } from '../orchestration/chains.js';
 import { configDeprecations, normalizeApiKeyScopes, normalizeFeaturesV10, normalizeSchemaV5, normalizeStoreV9, removedConfigKeys } from '../utils/deprecations.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
+import { logger } from '../utils/logger.js';
 import { ASYMMETRIC_ALGORITHMS, HMAC_ALGORITHMS } from '../auth/middleware.js';
 
 // ─── Zod Schema ───────────────────────────────────────────────────────────────
@@ -1167,8 +1168,13 @@ async function readConfigFile(filePath: string): Promise<unknown> {
 function applyEnvOverrides(config: Record<string, unknown>): Record<string, unknown> {
   const overrides: Record<string, unknown> = { ...config };
 
-  if (process.env.MCP_GATEWAY_PORT) {
-    overrides.port = parseInt(process.env.MCP_GATEWAY_PORT, 10);
+  const envPort = process.env.MCP_GATEWAY_PORT?.trim();
+  if (envPort) {
+    if (/^\d+$/.test(envPort)) overrides.port = parseInt(envPort, 10);
+    // Kubernetes injects service-link variables for every Service in the namespace — a Service named
+    // `mcp-gateway` yields MCP_GATEWAY_PORT=tcp://<cluster-ip>:<port>. That is not a listen port: ignore it.
+    else if (/^(tcp|udp|sctp):\/\//.test(envPort)) logger.warn(`Ignoring MCP_GATEWAY_PORT=${envPort}: a Kubernetes service link, not a port (set enableServiceLinks: false or a numeric value)`);
+    else throw new Error(`MCP_GATEWAY_PORT must be a port number, got "${envPort}"`);
   }
   if (process.env.MCP_GATEWAY_HOST) {
     overrides.host = process.env.MCP_GATEWAY_HOST;

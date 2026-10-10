@@ -131,6 +131,10 @@ jobs:
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4000/api/v1/health/live && break; sleep 1; done
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/api/v1/tools)" = 401
           test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer ci-key' http://127.0.0.1:4000/api/v1/tools)" = 200
+          # the image HEALTHCHECK must report healthy (it probed localhost → ::1 before 12.0.7 / 10.9.8)
+          for i in $(seq 1 45); do s=$(docker inspect --format '{{.State.Health.Status}}' gw); [ "$s" = healthy ] && break; sleep 2; done
+          docker inspect --format '{{json .State.Health}}' gw
+          test "$(docker inspect --format '{{.State.Health.Status}}' gw)" = healthy
           docker rm -f gw
       - uses: actions/setup-node@v7
         with:
