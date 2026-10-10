@@ -79,7 +79,7 @@ routable), a second session for each changed server (the current one keeps servi
 module code — then commits, and only then publishes the next numbered **config generation**. If any step fails the
 reload is rolled back and the running generation keeps serving unchanged: a changed server whose new settings cannot
 connect, a plugin that cannot be loaded, or a feature module whose `init` / `reconfigure` / `disable` throws all fail
-the reload (`POST /api/v1/admin/reload` answers with the error). Calls already running finish with the generation
+the reload (the error is logged; `POST /api/v1/admin/reload` answers with an error status). Calls already running finish with the generation
 they started in — its servers, credentials, policy and plugins — and the sessions and plugins of a previous generation
 are closed once its last call is done. `GET /api/v1/admin/kernel` shows the current generation, generations still
 pinned by calls and the rollback count.
