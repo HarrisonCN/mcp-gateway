@@ -128,7 +128,11 @@ auth:
   missing `requiredScopes` → `403` with `error="insufficient_scope", scope="…"`.
 - JWTs must carry `exp`, an accepted `iss` and an `aud` matching the resource; introspected tokens must be `active`.
 - The `mcp_servers` / `mcp_tools` claims restrict a token like a scoped key (see *Per-key scopes*).
-- Client ids are `oauth:<sub>` (or `oauth:<client_id>`).
+- Client ids are `oauth:<sub>` (or `oauth:<client_id>`). `sub` is only unique per issuer: when **more than one issuer**
+  is accepted (`issuer` list, or several `authorizationServers`), client ids are `oauth:<issuer>#<sub>` (13.1.2), and
+  an unqualified client pattern such as `oauth:alice` in `tenants`, `policy.rules[].clients`, `quotas`,
+  `costs.budgets` or `agentIdentity.agents[].delegators` is a configuration error (use `oauth:<issuer>#alice` or
+  `oauth:*`).
 
 ### Hashed keys
 
@@ -163,6 +167,9 @@ auth:
     requireExp: true                            # reject tokens without "exp" (default false)
     maxTokenAgeSeconds: 3600                    # reject tokens whose "iat" is older
 ```
+
+With several accepted issuers (`issuer` as a list) client ids are `jwt:<issuer>#<sub>` (13.1.2; one issuer or none:
+`jwt:<sub>`), and unqualified `jwt:` client patterns are refused as for OAuth.
 
 HMAC and asymmetric algorithms are never mixed (an `algorithms` entry that does not fit the key source is a
 configuration error), which rules out algorithm-confusion attacks. With `jwksUrl` the gateway acts as an OAuth 2.0
@@ -245,7 +252,7 @@ tenants:
   - id: platform
     name: Platform team
     servers: ['github', 'fs-*']        # server id globs that belong to the workspace
-    members:                           # client id globs: key:<api key name>, jwt:<sub>, oauth:<sub>
+    members:                           # client id globs: key:<api key name>, jwt:<sub>, oauth:<sub> (<issuer>#<sub> with several issuers)
       - { client: 'key:alice', role: owner }
       - { client: 'key:ci-*',  role: admin }
       - { client: 'jwt:*',     role: viewer }

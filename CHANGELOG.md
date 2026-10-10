@@ -9,6 +9,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.1.2] - 2026-10-10
+
+**Security patch — one identity context per call.** Config schema stays **v11**. Advisories:
+[SECURITY.md](SECURITY.md#security-advisories).
+
+### Security
+- **Delegated calls are made for the original caller.** A call made with an agent delegation token
+  (`POST /api/v1/features/agent-identity/call`), or by a feature module on behalf of a request (time-travel replays,
+  debug sessions, adaptive retries, task graphs, plugin routes), now has one identity context: the **subject** is the
+  original caller (the token's `sub`, the requesting client), the agent is the **actor**, and the effective scope is
+  the caller's scope ∩ every delegation hop. Every module keys on the subject: client policy rules, tenant membership,
+  quotas, budgets, data residency, per-tenant credential injection, the tool cache (`scope: client`) and the semantic
+  cache (`scope: tenant` / `client`), metering, cost accounting and the audit record. Before, these modules saw the
+  agent (`agent:<id>`) or a component label (`replay:…`, `debug:…`) instead of the caller.
+- **Policy rules naming an agent only restrict.** Rules whose `clients` name an actor explicitly (`agent:<id>`,
+  `agent:*`; a bare `*` does not count) still apply to that agent's calls, but only a `deny` or `approve` takes
+  effect; an `allow` for the agent never lends the delegator access its own rules refuse.
+- **Token identity keys include the issuer when several issuers are trusted.** `sub` is only unique per issuer. With
+  more than one accepted issuer (`auth.oauth.issuer` / `authorizationServers`, `auth.jwt.issuer` as a list) client ids
+  are now `oauth:<issuer>#<sub>` / `jwt:<issuer>#<sub>`; with a single issuer they stay `oauth:<sub>` / `jwt:<sub>`.
+  In such a configuration an unqualified client pattern (`oauth:alice`, `jwt:user-*` in `tenants[].members`,
+  `policy.rules[].clients`, `quotas.rules[].clients`, `costs.budgets[].clients`, `agentIdentity.agents[].delegators`)
+  is now a **config error** naming the qualified form, instead of silently matching users of every issuer.
+
+### Changed
+- Agent API answers like the REST tool call: quota and budget refusals are **429** (with `Retry-After`), policy-layer
+  refusals (residency, PII, approvals, plugins, failed security modules) **403**, timeouts **504** — before, everything
+  except an authorizer refusal was 502. Failed calls carry `code` and `message` at the top level.
+- Audit: request records of delegated calls carry `actor` (the executing agent, or the initiating component) and
+  `chain` (`[caller, agent, sub-agent, …]`) in `GET /api/v1/requests`, the persistent audit log (new nullable columns
+  `actor`, `chain`, added automatically to existing databases) and SIEM export events; `clientId` / `client` is the
+  original caller. Records of direct calls are unchanged. Trace spans get `mcp.actor`.
+- New module `auth/identity` (`identityOf`, `tokenClientId`, `issuerQualified`); `evaluateActorPolicy` in
+  `policy/tool-policy`; `gateway/http-status` (status mapping shared by the REST surfaces).
+
+### Upgrade notes
+- Deployments with **one** token issuer (or API keys only) need no config change. Usage, cost and audit totals of
+  delegated calls move from `agent:<id>` to the delegating client.
+- Deployments with **several** trusted issuers: rewrite client patterns to `oauth:<issuer>#<sub>` (or `oauth:*`);
+  `mcp-gateway validate` lists every pattern to change.
+
+### Tests
+- New `test/identity-13-1-2.test.ts` (written first; 13 of its 15 original cases failed on 13.1.1): two tenants
+  sharing one agent (tool cache, semantic cache), delegator deny rules and agent allow rules, per-tenant and
+  per-client quotas, tenant budgets and data residency for delegated vs direct calls, REST / MCP / agent API status
+  and code parity, audit chain incl. sub-agents and the SQLite audit log / SIEM event, issuer-qualified ids for
+  `oauth2` and `jwt` and the ambiguous-pattern config error.
+
 ## [13.1.1] - 2026-10-10
 
 **Security patch.** Tightens two edges of 13.1.0 and fixes a cache key that let routing-split targets share entries.
