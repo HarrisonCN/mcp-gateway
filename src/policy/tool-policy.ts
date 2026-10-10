@@ -116,6 +116,28 @@ export function evaluatePolicy(policy: ToolPolicyConfig | undefined, req: Policy
   return { effect: policy?.default ?? 'allow' };
 }
 
+/**
+ * Policy for the ACTORS of a delegated call (13.1.2). The call is decided for its subject (the delegator) by
+ * {@link evaluatePolicy}; in addition, rules that name an actor explicitly (a `clients` pattern other than `*` that
+ * matches `agent:<id>`) apply to calls that actor makes. They can only restrict: a `deny` refuses, an `approve` holds,
+ * an `allow` changes nothing. First matching rule per actor; the most restrictive actor decision is returned.
+ */
+export function evaluateActorPolicy(policy: ToolPolicyConfig | undefined, actors: readonly string[], req: PolicyRequest): (PolicyDecision & { actor: string }) | undefined {
+  const rank = { allow: 0, approve: 1, deny: 2 } as const;
+  let worst: (PolicyDecision & { actor: string }) | undefined;
+  const rules = policy?.rules ?? [];
+  for (const actor of actors) {
+    for (let i = 0; i < rules.length; i++) {
+      const rule = rules[i]!;
+      const named = (rule.clients ?? []).filter((p) => p !== '*');
+      if (!named.length || !ruleMatches({ ...rule, clients: named }, { ...req, clientId: actor })) continue;
+      if (!worst || rank[rule.effect] > rank[worst.effect]) worst = { effect: rule.effect, rule: rule.name ?? `#${i + 1}`, message: rule.message, actor };
+      break;
+    }
+  }
+  return worst && worst.effect !== 'allow' ? worst : undefined;
+}
+
 /** Validate rules (regexes compile); returns an error message or undefined. */
 export function invalidPolicy(policy: ToolPolicyConfig | undefined): string | undefined {
   for (const [i, rule] of (policy?.rules ?? []).entries()) {

@@ -35,6 +35,7 @@ import { registerCallHook } from '../gateway/hooks.js';
 import { logger } from '../utils/logger.js';
 import { registerMetricSource } from '../monitor/index.js';
 import { ERR_FORBIDDEN } from '../auth/authorizer.js';
+import { toolCallHttpStatus } from '../gateway/http-status.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig } from '../utils/types.js';
 import { Agent, type AgentIdentityConfig, AgentIdentitySchema, ERR_AGENT_REQUIRED } from './schemas/agent-identity.js';
@@ -332,7 +333,8 @@ registerCallHook({
 export function delegatedPrincipal(ctx: { resolveScope?: (id: string | undefined) => { known: boolean; scope?: AccessScope } | undefined }, k: AgentTokenClaims, _token?: string): Principal {
   const r = ctx.resolveScope?.(k.sub);
   const base = r ? (r.known ? clientPrincipal(k.sub, r.scope) : deniedPrincipal(k.sub)) : clientPrincipal(k.sub, k.dsc ?? { servers: [], tools: [] });
-  return { ...base, delegation: [{ agent: chainOf(k.act).join(' > '), tools: k.scope, jti: k.jti }] };
+  // 13.1.2: one hop per acting agent, outermost delegation first (`[sub, agent:first, …, agent:current]`).
+  return { ...base, delegation: chainOf(k.act).reverse().map((agent) => ({ agent, tools: k.scope, jti: k.jti })) };
 }
 
 registerFeature({
@@ -426,9 +428,14 @@ registerFeature({
       const rec = agentState.issued.get(v.claims.jti);
       if (rec) rec.calls++;
       // 11.1: authorized centrally as delegator scope ∩ token grant (∩ tenant ∩ server filter ∩ policy).
+      // 13.1.2: the call is made FOR the delegator (sub): the invoker keys tenancy, policy, quotas, budgets, residency,
+      // caches and audit on it; the agent is recorded as the actor.
       const r = await ctx.invoke(b.server, b.tool, args, delegatedPrincipal(ctx, v.claims, b.token), `agent:${v.claims.agent}`);
-      if (!r.success && r.error?.code === ERR_FORBIDDEN) return void res.status(403).json({ error: 'Forbidden', message: r.error.message, scope: v.claims.scope });
-      res.status(r.success ? 200 : 502).json({ ...r, onBehalfOf: v.claims.sub, chain: chainOf(v.claims.act) });
+      // 13.1.2: same HTTP status as the REST tool call for the same refusal (quota / budget 429, policy 403, …).
+      const http = toolCallHttpStatus(r);
+      if (!r.success && r.error?.code === ERR_FORBIDDEN) return void res.status(403).json({ error: 'Forbidden', message: r.error.message, code: r.error.code, scope: v.claims.scope, policy: r.error.data });
+      if (http.retryAfter !== undefined) res.set('Retry-After', String(http.retryAfter));
+      res.status(http.status).json({ ...r, ...(r.success ? {} : { code: r.error?.code, message: r.error?.message }), onBehalfOf: v.claims.sub, chain: chainOf(v.claims.act) });
     });
   },
 });

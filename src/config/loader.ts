@@ -5,6 +5,7 @@
 
 import { invalidPolicy } from '../policy/tool-policy.js';
 import { invalidTenants } from '../auth/tenants.js';
+import { ambiguousClientPatterns, clientPatternsOf } from '../auth/identity.js';
 import { invalidFilterPattern } from '../policy/output-filter.js';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
@@ -1075,6 +1076,12 @@ const GatewayConfigSchema = z.object({
       }
     }
   });
+  // 13.1.2: with several trusted token issuers, client ids are `oauth:<issuer>#<sub>` / `jwt:<issuer>#<sub>`. An
+  // unqualified pattern (`oauth:alice`) would silently stop matching — a tenant member losing its confinement, a deny
+  // rule or quota no longer applying — so it is refused instead.
+  for (const a of ambiguousClientPatterns(c.auth, clientPatternsOf(c as unknown as Record<string, unknown>))) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: a.path.split('.').map((k) => (/^\d+$/.test(k) ? Number(k) : k)), message: `"${a.pattern}" is ambiguous: several token issuers are trusted, so client ids include the issuer since 13.1.2 — write "${a.pattern.replace(/^(oauth|jwt):/, '$1:<issuer>#')}" (or "${a.pattern.split(':')[0]}:*")` });
+  }
   (c.routing?.splits ?? []).forEach((sp, i) => {
     for (const [j, id] of [sp.server, ...sp.variants.map((v) => v.server)].entries()) {
       if (!seen.has(id)) {

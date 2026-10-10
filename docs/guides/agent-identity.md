@@ -25,7 +25,9 @@ features:
    The scope is the intersection of the agent's `tools` and the requested `tools`.
 2. The agent calls tools with it: `POST /api/v1/features/agent-identity/call`
    `{ "token": "…", "server": "flights", "tool": "search", "arguments": {…} }`. The call runs through the whole
-   pipeline (policy, DLP, approvals, audit) as client `agent:<id>`; the response carries `onBehalfOf` and `chain`.
+   pipeline (policy, DLP, approvals, quotas, budgets, residency, caches, audit) **for the user** — see *Identity
+   context* below; the response carries `onBehalfOf` and `chain`. Refusals answer with the same HTTP status as the
+   REST tool call (403 policy, 429 quota / budget, …).
 3. **Sub-agents**: an agent exchanges its token (`subjectToken`) for one for another agent. `sub` stays the user,
    `act` nests (`agent:booker` acting for `agent:travel-bot`), the scope narrows at every hop and the chain is capped
    by `maxDelegationDepth`.
@@ -50,6 +52,26 @@ chains, task graphs and plugins use.
 `server/tool` an allowed pattern matches, or (c) any other glob, resolved to the concrete tools currently known that
 both match. `vault/read*` is therefore never granted from `vault/read?` — only the existing `vault/readX`-style tools.
 A restricted delegator's grant is always a list of concrete tool names.
+
+## Identity context (13.1.2)
+
+Every call has one identity context (`auth/identity`):
+
+| Fact | Delegated call | Used by |
+|---|---|---|
+| **subject** | the token's `sub` — the user who delegated | client policy rules, tenant membership, quotas, budgets, data residency, per-tenant credentials (`inject` `{tenant}` / `{client}`), tool cache `scope: client`, semantic cache `scope: tenant` / `client`, metering, costs, the audit record's `clientId` |
+| **actors** | `agent:<id>` per hop, outermost first | audit `actor` / `chain`, span `mcp.actor`, policy rules that name the agent |
+| **effective scope** | user scope ∩ every hop's grant | the central authorizer |
+
+Two users of different tenants who share one agent therefore never share cache entries, quotas or budgets, and an
+agent never escapes its user's client-specific deny rules or data residency. Policy rules whose `clients` name an
+agent explicitly (`agent:travel-bot`, `agent:*`; a bare `*` does not count) still apply to that agent's calls but can
+only restrict: `deny` refuses, `approve` holds, `allow` changes nothing. The same rule applies to calls feature modules
+make for a request (replays, debug sessions, adaptive retries, task graphs, plugin routes): the requesting client is
+the subject, the component label (`replay:…`) is recorded as the actor.
+
+Request records of delegated calls (`GET /api/v1/requests`, the SQLite audit log, SIEM export) carry
+`clientId: "key:alice"`, `actor: "agent:booker"` and `chain: ["key:alice", "agent:travel-bot", "agent:booker"]`.
 
 ## Revocation (11.2)
 

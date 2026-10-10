@@ -882,6 +882,13 @@ export interface RequestMetric {
   via?: 'rest' | 'mcp';
   /** What was called: a tool (default), a resource read (`toolName` = URI) or a prompt get. */
   kind?: 'tool' | 'resource' | 'prompt';
+  /**
+   * 13.1.2: the agent that executed a delegated call (`agent:<id>`), or the component that initiated it on the
+   * caller's behalf (`replay:…`). `clientId` is always the original caller.
+   */
+  actor?: string;
+  /** 13.1.2: full delegation chain `[original caller, agent, sub-agent, …(, origin)]` of a delegated call. */
+  chain?: string[];
 }
 
 export interface AggregatedMetrics {
