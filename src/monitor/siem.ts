@@ -25,6 +25,10 @@ export interface AuditEvent {
   kind: 'tool' | 'resource' | 'prompt';
   via?: 'rest' | 'mcp';
   client: string;
+  /** 13.1.2: agent (or initiating component) acting for `client`. */
+  actor?: string;
+  /** 13.1.2: delegation chain, original caller first. */
+  chain?: string[];
   success: boolean;
   durationMs: number;
   error?: string;
@@ -43,6 +47,8 @@ export function toAuditEvent(m: RequestMetric): AuditEvent {
     kind: m.kind ?? 'tool',
     ...(m.via ? { via: m.via } : {}),
     client: m.clientId ?? 'anonymous',
+    ...(m.actor ? { actor: m.actor } : {}),
+    ...(m.chain?.length ? { chain: m.chain } : {}),
     success: m.success,
     durationMs: m.durationMs,
     ...(m.errorMessage ? { error: m.errorMessage } : {}),

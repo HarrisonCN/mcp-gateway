@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [12.0.3] - 2026-10-10
+
+**Security backport (12.x).** Fixes for MGW-2026-007 and MGW-2026-008 from 13.1.2; no other changes. The config
+schema is unchanged; see the upgrade notes for deployments that trust several token issuers.
+
+### Security
+- **MGW-2026-007 (high) — delegated agent calls were evaluated as the agent instead of the delegator.** A call made
+  with an agent delegation token (`POST /api/v1/features/agent-identity/call`), or by a feature module for a request
+  under its own label (replays, debug sessions, adaptive retries, task graphs), now has one identity context: the
+  original caller is the **subject** that client policy rules, tenant membership, quotas, budgets, data residency,
+  per-tenant credentials, the tool cache (`scope: client`), the semantic cache and the audit record key on; agents are
+  **actors**. Policy rules naming an agent explicitly (`agent:<id>`, `agent:*`) still apply to its calls but only a
+  `deny` / `approve` takes effect. Two tenants sharing one agent no longer share cache entries.
+- **MGW-2026-008 (medium) — OAuth / JWT client ids ignored the issuer.** With several trusted issuers
+  (`auth.oauth.issuer` list or several `authorizationServers`, `auth.jwt.issuer` list) client ids are now
+  `oauth:<issuer>#<sub>` / `jwt:<issuer>#<sub>`; a single issuer keeps `oauth:<sub>` / `jwt:<sub>`.
+
+### Changed
+- Request records of delegated calls carry `actor` and `chain` (`GET /api/v1/requests`, SQLite audit log — nullable
+  columns added automatically — and SIEM events); `clientId` is the original caller. Direct calls are unchanged.
+
+### Upgrade notes
+- One issuer or API keys only: no config change. Usage / cost totals of delegated calls move from `agent:<id>` to the
+  delegating client.
+- Several trusted issuers: unqualified client patterns (`oauth:alice` in `tenants[].members`, `policy.rules[].clients`,
+  `quotas.rules[].clients`, `costs.budgets[].clients`, `agentIdentity.agents[].delegators`) are now a configuration
+  error — write `oauth:<issuer>#alice` or `oauth:*`.
+
 ## [12.0.2] - 2026-10-10
 
 **Security backport (12.x).** Fix for MGW-2026-005 from 13.1.1; no other changes.
