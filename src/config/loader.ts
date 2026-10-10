@@ -537,7 +537,7 @@ const GatewayConfigSchema = z.object({
     .strict()
     .optional(),
   cors: z.object({ origins: z.array(z.string()).optional() }).strict().optional(),
-  health: z.object({ intervalMs: z.number().int().min(1000).optional() }).strict().optional(),
+  health: z.object({ intervalMs: z.number().int().min(1000).optional(), restartAfter: z.number().int().min(0).max(100).optional() }).strict().optional(),
   // 7.0: role (all / control / data), config API, dashboard and data-plane sync.
   controlPlane: ControlPlaneSchema.optional(),
   regions: RegionsSchema.optional(),
@@ -1029,7 +1029,7 @@ const GatewayConfigSchema = z.object({
     .object({
       store: z.enum(['memory', 'redis', 'eventlog', 'sqlite']).default('memory'),
       // 11.2: durable single-node store on node:sqlite.
-      sqlite: z.object({ path: z.string().min(1).default('.mcp-gateway/state.db') }).strict().optional(),
+      sqlite: z.object({ path: z.string().min(1).default('.mcp-gateway/state.db'), busyTimeoutMs: z.number().int().min(0).max(5000).optional() }).strict().optional(),
       // 9.0: event-sourced store (append-only log + snapshots).
       eventlog: z
         .object({

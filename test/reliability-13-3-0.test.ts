@@ -213,11 +213,19 @@ describe('13.3.0 failure matrix — HTTP upstream', () => {
     expect(down.ms).toBeLessThan(1000);
     await up.up();
     expect(await until(async () => (await call('h')).ok, 5000)).toBeLessThan(3000);
-    // the server restarts and forgets every session: the next call must not fail
-    await up.restart();
+    // the server forgets every session (session TTL, restart behind a proxy): it answers 404 before processing the
+    // request — the call is resent once on a new session instead of failing
+    const before = up.stats().calls;
+    up.forgetSessions();
     const after = await call('h');
     expect(after.ok).toBe(true);
-    expect(up.stats().calls).toBeGreaterThan(0);
+    expect(up.stats().calls - before).toBe(1);
+    // a hard restart that cuts pooled connections: the in-flight request may have been delivered, so it is NOT resent
+    // (fails fast, never runs twice) — and the next call works again
+    await up.restart();
+    const cut = await call('h');
+    expect(cut.ms).toBeLessThan(1000);
+    expect(await until(async () => (await call('h')).ok, 5000)).toBeLessThan(3000);
   });
 
   it('stall → 504 at the timeout, no stuck upstream requests, recovery is immediate', async () => {
@@ -337,7 +345,7 @@ describe('13.3.0 combined: load balancing + ejection + rate limit + budgets + ca
     const seen = new Set<string>();
     for (let i = 0; i < 4; i++) seen.add((await call('r')).upstream!);
     expect([...seen].sort()).toEqual(['A', 'B']);
-    expect(gw.balancer?.snapshot?.()[0]?.members.every((m: any) => !m.ejectedUntil)).toBe(true);
+    expect(gw.invoker.balancer.snapshot()[0].members.every((m: any) => !m.ejectedUntil)).toBe(true);
   });
 
   it('classifyFailure: only gateway-side transport failures are not-connected', () => {

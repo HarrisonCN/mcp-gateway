@@ -126,7 +126,7 @@ export interface LoadBalancingConfig {
   failoverOn?: Array<'not-connected' | 'timeout' | 'error'>;
   /** Extra attempts per call (default: members - 1). */
   retries?: number;
-  /** Consecutive failed calls before a member is ejected (default 3, 0 = never). */
+  /** Consecutive failed calls before a member is ejected (default 3, 0 = never). 13.3.0: only not-connected / timeout count, not the upstream's own errors. */
   ejectAfter?: number;
   /** How long an ejected member is skipped (ms, default 30000). */
   ejectMs?: number;
@@ -272,7 +272,12 @@ export interface GatewayConfig {
   /** CORS: allowed browser origins (default `["*"]`). */
   cors?: { origins?: string[] };
   /** Health checks: ping interval (ms, default 30000). Restart required. */
-  health?: { intervalMs?: number };
+  /**
+   * Health checks: an MCP `ping` per server every `intervalMs` (default 30000). 13.3.0 `restartAfter`: recycle a
+   * server's session (stdio: restart the process) after this many consecutive failed pings while it stays
+   * "connected" — a hung upstream; default 3, 0 = never.
+   */
+  health?: { intervalMs?: number; restartAfter?: number };
   /** Role (all / control / data) and control-plane settings: config API, dashboard, data-plane sync (7.0). */
   controlPlane?: import('../gateway/control-plane.js').ControlPlaneConfig;
   /** Deprecated keys found by `loadConfig` (set by the loader). */
@@ -491,7 +496,12 @@ export interface StateConfig {
   /** `memory` (default, single instance), `redis` (shared between instances) or `eventlog` (9.0, durable, single instance). */
   store?: 'memory' | 'redis' | 'eventlog' | 'sqlite';
   /** SQLite store (11.2): durable, single node (several processes on one host may share the file). */
-  sqlite?: { path?: string };
+  /**
+   * SQLite store (11.2). 13.3.0 `busyTimeoutMs`: how long one store operation may wait for a lock held by another
+   * process (default 200, was a fixed 5000 that froze the event loop); past it the operation fails and
+   * `failureMode` applies.
+   */
+  sqlite?: { path?: string; busyTimeoutMs?: number };
   /** Event-sourced store (9.0): append-only `events.log` + `snapshot.json` in `dir` (relative to the config file). */
   eventlog?: { dir?: string; snapshotEvery?: number; fsync?: boolean };
   redis?: {

@@ -20,7 +20,7 @@ import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import type { FederationConfig, ProxyResponse } from '../utils/types.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { logger } from '../utils/logger.js';
-import { ERR_NOT_CONNECTED } from '../proxy/index.js';
+import { ERR_NOT_CONNECTED, markTransportFailure } from '../proxy/index.js';
 
 export const FEDERATION_HEADER = 'x-mcp-federation';
 export const MAX_SKEW_MS = 5 * 60_000;
@@ -229,7 +229,7 @@ export class Federation {
     } catch (err) {
       peer.healthy = false;
       peer.lastError = err instanceof Error ? err.message : String(err);
-      return { success: false, error: { code: ERR_NOT_CONNECTED, message: `[${peer.id}] unreachable: ${peer.lastError}` }, durationMs: Math.max(0, this.now() - t0), peer: peer.id };
+      return markTransportFailure({ success: false, error: { code: ERR_NOT_CONNECTED, message: `[${peer.id}] unreachable: ${peer.lastError}` }, durationMs: Math.max(0, this.now() - t0), peer: peer.id }, 'not-connected');
     }
   }
 

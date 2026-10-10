@@ -234,10 +234,11 @@ export class ServerSupervisor {
     entry.state.attempt = 0;
     // Tools stay listed (marked unavailable via health) so clients see what will come back.
     logger.warn(`Server "${serverId}" disconnected: ${err.message}`);
-    this.scheduleRetry(entry, entry.gen);
+    // 13.3.0: the server answered and only forgot our session (HTTP 404): it is reachable — re-initialize at once.
+    this.scheduleRetry(entry, entry.gen, (err as { sessionExpired?: unknown }).sessionExpired === true);
   }
 
-  private scheduleRetry(entry: Entry, gen: number): void {
+  private scheduleRetry(entry: Entry, gen: number, immediate = false): void {
     const { policy } = entry;
     if (!policy.enabled) {
       entry.state.state = 'disabled';
@@ -251,7 +252,7 @@ export class ServerSupervisor {
       return;
     }
     entry.state.attempt++;
-    const delay = computeBackoff(entry.state.attempt, policy, this.random);
+    const delay = immediate ? 0 : computeBackoff(entry.state.attempt, policy, this.random);
     entry.state.state = 'scheduled';
     entry.state.nextAttemptAt = new Date(Date.now() + delay);
     logger.info(`Reconnecting "${entry.config.id}" in ${delay}ms (attempt ${entry.state.attempt})`);

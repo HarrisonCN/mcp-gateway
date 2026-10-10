@@ -34,7 +34,7 @@ POLICY_ERROR_CODES.add(ERR_RESIDENCY);
 POLICY_ERROR_CODES.add(ERR_PII_BLOCKED);
 export { ERR_PLUGIN_REJECTED };
 import { logger } from '../utils/logger.js';
-import { ERR_NOT_CONNECTED, ERR_TIMEOUT } from '../proxy/index.js';
+import { ERR_NOT_CONNECTED, markTransportFailure, transportFailureOf } from '../proxy/index.js';
 import type { FailureKind, LoadBalancer } from './balancer.js';
 import type { RouteDecision, SmartRouter } from './routing.js';
 import type { SecretManager } from '../secrets/index.js';
@@ -704,7 +704,7 @@ export class ToolInvoker {
     }
     // 13.1.1: a server connected by a hot reload that has not committed is not routable yet.
     if (this.deps.staged?.(target) || this.deps.staged?.(ctx.serverId)) {
-      return Promise.resolve({ success: false, durationMs: 0, error: { code: ERR_NOT_CONNECTED, message: `Server "${ctx.serverId}" not found`, data: { reason: 'not-committed' } } });
+      return Promise.resolve(markTransportFailure({ success: false, durationMs: 0, error: { code: ERR_NOT_CONNECTED, message: `Server "${ctx.serverId}" not found`, data: { reason: 'not-committed' } } }, 'not-connected'));
     }
     // 13.2.0: the session opened with the server config of the call's generation (never one of another generation).
     const configKey = this.deps.serverKey?.(target);
@@ -793,7 +793,7 @@ export class ToolInvoker {
   private async balancedCall(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>): Promise<ProxyResponse> {
     const lb = this.deps.balancer;
     const targets = lb ? lb.order(ctx.serverId) : [ctx.serverId];
-    if (!lb || targets.length === 1) return this.send(ctx, ctx.serverId);
+    if (!lb || targets.length === 1) return this.sendWithResend(ctx, ctx.serverId, span);
     const { failoverOn, retries } = lb.settings(ctx.serverId);
     const attempts = Math.min(targets.length, retries + 1);
     const tried: string[] = [];
@@ -823,6 +823,30 @@ export class ToolInvoker {
     /* c8 ignore next */
     throw new Error('unreachable');
   }
+
+  /**
+   * 13.3.0: one upstream send; when the server refused this very request unprocessed because its session expired
+   * (the server restarted and forgot it — HTTP 404) the call waits for the supervisor to
+   * reconnect, within the call's own timeout and at most {@link RESEND_WAIT_MS}, and is sent ONCE more. A request
+   * that may have been delivered is never resent.
+   */
+  private async sendWithResend(ctx: InvokeContext, target: string, span: ReturnType<Tracer['startSpan']>): Promise<ProxyResponse> {
+    const t0 = Date.now();
+    const first = await this.send(ctx, target);
+    const tf = transportFailureOf(first);
+    if (!tf?.unsent || tf.kind !== 'not-connected' || ctx.signal?.aborted || !this.deps.proxy.waitReconnected) return first;
+    const budget = Math.min(RESEND_WAIT_MS, Math.max(0, (ctx.timeoutMs ?? this.deps.serverConfig?.(target)?.timeout ?? 30_000) - (Date.now() - t0)));
+    // a session opened after the failed attempt started (never the expired one it was refused on)
+    if (!(await this.deps.proxy.waitReconnected(target, t0 - 1, budget)) || ctx.signal?.aborted) return first;
+    this.resends++;
+    span.setAttribute('mcp.upstream.resent', true);
+    logger.info(`${ctx.name} → ${target}: request never reached the server (${first.error?.message}); resent after reconnect`);
+    const second = await this.send(ctx, target);
+    return { ...second, durationMs: Date.now() - t0 };
+  }
+
+  /** 13.3.0: calls resent once after a provably-undelivered attempt (see sendWithResend). */
+  resends = 0;
 
   get usage(): UsageMeter | undefined {
     return this.deps.usage;
@@ -892,13 +916,19 @@ export class ToolInvoker {
   }
 }
 
-/** Failure kind of an upstream result (undefined = success or an application-level tool error). */
+/**
+ * Failure kind of an upstream result (undefined = success or an application-level tool error inside a result).
+ * 13.3.0: `not-connected` / `timeout` only for failures the gateway itself produced (see proxy
+ * `markTransportFailure`); an upstream's own JSON-RPC error is `error` whatever its code — before 13.3.0 an upstream
+ * answering -32000 was taken for `not-connected`, so the tool was re-run on the next replica / peer gateway.
+ */
 export function classifyFailure(r: ProxyResponse): FailureKind | undefined {
   if (r.success) return undefined;
-  if (r.error?.code === ERR_NOT_CONNECTED) return 'not-connected';
-  if (r.error?.code === ERR_TIMEOUT) return 'timeout';
-  return 'error';
+  return transportFailureOf(r)?.kind ?? 'error';
 }
+
+/** 13.3.0: longest wait for a reconnect before resending a provably-undelivered call. */
+export const RESEND_WAIT_MS = 3_000;
 
 /** Traceable reason of a refusal for the audit record (13.1.3): `decision`, else `reason`, else `refused`. */
 export function decisionOf(data: Record<string, unknown> | unknown): string | undefined {

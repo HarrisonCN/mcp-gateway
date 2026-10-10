@@ -21,12 +21,20 @@ export class SqliteStateStore implements StateStore {
   private readonly q: Record<'get' | 'upsert' | 'del' | 'purge' | 'insertNew' | 'add', SqliteStatement>;
   private closed = false;
 
-  constructor(readonly path: string) {
+  /** 13.3.0: default lock wait (ms). node:sqlite is synchronous — the wait blocks the event loop, so keep it short. */
+  static readonly DEFAULT_BUSY_TIMEOUT_MS = 200;
+
+  constructor(
+    readonly path: string,
+    options: { busyTimeoutMs?: number } = {},
+  ) {
     const mod = loadSqlite();
     if (!mod) throw new Error('store.backend "sqlite" needs Node 22.5+ (node:sqlite)');
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     this.db = new mod.DatabaseSync(path);
-    this.db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL, exp INTEGER)');
+    const busy = Math.max(0, Math.min(5000, Math.floor(options.busyTimeoutMs ?? SqliteStateStore.DEFAULT_BUSY_TIMEOUT_MS)));
+    this.db.exec(`PRAGMA busy_timeout=${busy}`);
+    this.db.exec('PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL, exp INTEGER)');
     this.q = {
       get: this.db.prepare('SELECT v, exp FROM kv WHERE k = ?'),
       upsert: this.db.prepare('INSERT INTO kv (k, v, exp) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, exp = excluded.exp'),

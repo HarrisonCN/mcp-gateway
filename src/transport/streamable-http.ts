@@ -96,7 +96,7 @@ export class StreamableHttpChannel implements UpstreamChannel {
       if (abort.signal.aborted) throw new Error('Request aborted');
       // The server is unreachable: whatever session it held is gone.
       const e = new Error(`POST ${this.url.origin}${this.url.pathname} failed: ${errMessage(err)}`);
-      this.lose(e);
+      this.loseSoon(e);
       throw e;
     }
 
@@ -106,8 +106,11 @@ export class StreamableHttpChannel implements UpstreamChannel {
     if (res.status === 404 && this.sessionId && message.method !== 'initialize') {
       done();
       await res.body?.cancel().catch(() => {});
-      const e = new Error('MCP session expired (HTTP 404)');
-      this.lose(e);
+      // 13.3.0: the server rejected the session before processing the request — safe to resend on a new session
+      const e: Error & { unsent?: boolean; sessionExpired?: boolean } = new Error('MCP session expired (HTTP 404)');
+      e.unsent = true;
+      e.sessionExpired = true;
+      this.loseSoon(e);
       throw e;
     }
     if (!res.ok) {
@@ -157,6 +160,14 @@ export class StreamableHttpChannel implements UpstreamChannel {
   abandon(id: JsonRpcId): void {
     this.inflight.get(id)?.abort();
     this.inflight.delete(id);
+  }
+
+  /**
+   * 13.3.0: report the loss after the failing send() has settled, so the session layer sees THIS request's own error
+   * (and its `unsent` flag) first; the other in-flight requests then fail with the plain loss.
+   */
+  private loseSoon(err: Error): void {
+    setImmediate(() => this.lose(err));
   }
 
   private lose(err: Error): void {

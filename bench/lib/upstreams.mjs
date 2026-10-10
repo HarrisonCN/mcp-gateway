@@ -159,6 +159,10 @@ export async function startHttpUpstream(opts = {}) {
       await down();
       await listen();
     },
+    /** Drop every session but keep the listener and sockets (session TTL, or a restart behind a proxy). */
+    forgetSessions() {
+      state.sessions.clear();
+    },
     stats() {
       return { connections: state.connections, openSockets: state.openSockets.size, requests: state.requests, calls: state.calls, sessions: state.sessions.size, stalled: state.stalled.size };
     },

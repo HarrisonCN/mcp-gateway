@@ -91,6 +91,9 @@ export interface GatewayOptions {
   reloadFromDisk?: () => Promise<GatewayConfig>;
 }
 
+/** 13.3.0: default `health.restartAfter`. */
+export const DEFAULT_RESTART_AFTER = 3;
+
 export class Gateway {
   private readonly app = express();
   private readonly server: Server = createServer(this.app);
@@ -717,16 +720,30 @@ export class Gateway {
    * marks `degraded` when it fails); disconnected servers are `reconnecting`
    * while the supervisor is on it, otherwise `offline`.
    */
+  /** 13.3.0: consecutive failed health pings per connected server (see `health.restartAfter`). */
+  private readonly failedPings = new Map<string, number>();
+  /** 13.3.0: sessions recycled because they stopped answering health pings. */
+  recycles = 0;
+
   private async checkHealth(serverId: string): Promise<void> {
     if (this.proxy.isConnected(serverId)) {
       const timeout = Math.min(this.registry.getServer(serverId)?.timeout ?? 5_000, 5_000);
       try {
         const latency = await this.proxy.ping(serverId, timeout);
+        this.failedPings.delete(serverId);
         if (this.proxy.isConnected(serverId)) this.registry.updateHealth(serverId, 'online', latency);
       } catch (err) {
         if (!this.proxy.isConnected(serverId)) return; // the disconnect handler owns the status now
         const msg = err instanceof Error ? err.message : String(err);
         this.registry.updateHealth(serverId, 'degraded', undefined, `health ping failed: ${msg}`);
+        // 13.3.0: a session that stays "connected" but never answers (hung child, stalled remote) is recycled.
+        const n = (this.failedPings.get(serverId) ?? 0) + 1;
+        const limit = this.config.health?.restartAfter ?? DEFAULT_RESTART_AFTER;
+        if (limit > 0 && n >= limit) {
+          this.failedPings.delete(serverId);
+          this.recycles++;
+          await this.proxy.recycle(serverId, `unresponsive: ${n} consecutive health pings failed (${msg})`);
+        } else this.failedPings.set(serverId, n);
       }
       return;
     }
