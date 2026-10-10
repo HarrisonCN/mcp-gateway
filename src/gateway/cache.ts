@@ -4,8 +4,8 @@
  * Only tool calls matched by a `cache.rules` entry are cached: by server /
  * tool glob (`tools: ['search_*']` or `['github/search_*']`), for `ttlSeconds`.
  * The key is the server, the tool, the canonical JSON of the arguments and —
- * with `scope: client` (default) — the caller, so one client never sees
- * another's results. Only successful results that are not `isError` are kept.
+ * with `scope: client` (default) — the caller (tenant, subject, delegation actors, scope), so one client never
+ * sees another's results; `scope: shared` shares within one tenant only (13.5.0). Only successful results that are not `isError` are kept.
  *
  * Identical calls that arrive while the first one is still running share its
  * upstream request (`dedupe`, default on for cached tools; `dedupeOnly: true`
@@ -17,6 +17,7 @@
  * @module gateway/cache
  */
 
+import { createHash } from 'node:crypto';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { CacheConfig, CacheRule, ProxyResponse } from '../utils/types.js';
 
@@ -27,6 +28,17 @@ export interface CacheKeyInput {
   tool: string;
   args: Record<string, unknown>;
   clientId?: string;
+  /** 13.5.0: the caller's tenant (first membership) — entries never cross tenants, not even with `scope: shared`. */
+  tenant?: string;
+  /** 13.5.0: who the call runs as — principal kind, delegation actors and a scope fingerprint are part of the key. */
+  principal?: { kind: string; actors?: readonly string[]; scope?: unknown; delegation?: unknown };
+}
+
+/** Short stable fingerprint of a principal's scope + delegation grants (13.5.0). */
+function scopeFingerprint(p: CacheKeyInput['principal']): string | null {
+  if (!p || (p.scope === undefined && p.delegation === undefined)) return null;
+  const { rateLimit: _rl, name: _n, ...scope } = (p.scope ?? {}) as Record<string, unknown>;
+  return createHash('sha256').update(canonicalJson([scope, p.delegation ?? null])).digest('base64url').slice(0, 22);
 }
 
 /** Stable JSON (sorted object keys) for cache keys. */
@@ -84,10 +96,18 @@ export class ToolCache {
     );
   }
 
+  /**
+   * 13.5.0: the key is an unambiguous JSON array (no separator collisions between server ids, routed targets, tools,
+   * client ids and arguments). `scope: client` partitions by tenant + principal (kind, subject, actors, scope);
+   * `scope: shared` shares across clients of the same tenant only.
+   */
   key(rule: CacheRule, k: CacheKeyInput): string {
-    const who = (rule.scope ?? 'client') === 'client' ? (k.clientId ?? 'anonymous') : '*';
-    const server = k.target && k.target !== k.serverId ? `${k.serverId}>${k.target}` : k.serverId;
-    return `${server}\u0000${k.tool}\u0000${who}\u0000${canonicalJson(k.args)}`;
+    const target = k.target && k.target !== k.serverId ? k.target : null;
+    const who =
+      (rule.scope ?? 'client') === 'client'
+        ? [k.tenant ?? null, k.principal?.kind ?? 'client', k.clientId ?? 'anonymous', k.principal?.actors ?? [], scopeFingerprint(k.principal)]
+        : ['*', k.tenant ?? null];
+    return JSON.stringify([k.serverId, target, k.tool, who, canonicalJson(k.args)]);
   }
 
   /**
