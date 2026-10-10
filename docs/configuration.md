@@ -33,6 +33,7 @@ hot reload is rejected and the running configuration kept.
 | `features` | — | ✓ | every feature-module section (`chaos`, `sla`, `dlp`, …) nested here — see [Migrating to 10.0](guides/migrating-to-v10.md) |
 | `cors.origins` | `["*"]` | ✓ | allowed browser origins: exact values, `*`, or `/regex/` |
 | `health.intervalMs` | `30000` | restart | MCP `ping` interval (min 1000) |
+| `health.restartAfter` | `3` | restart | 13.3: recycle a server's session (stdio: restart the process) after this many consecutive failed pings while it still counts as connected — a hung upstream; `0` = never (max 100) |
 | `controlPlane` | role `all` | restart | role (`all` / `control` / `data`), config API, dashboard, data-plane sync — see [Admin API](#admin-api) |
 | `servers` | `[]` | ✓ | see [Servers](#servers) |
 | `auth` | none | ✓ | see [Authentication](#authentication) |
@@ -312,6 +313,14 @@ Health checks: the periodic ping (`health.intervalMs`) runs on every member; mem
 `degraded` / `offline`, or ejected are skipped. When all members are unhealthy, all are tried in order. Each member
 reconnects on its own with the `reconnect` policy. Tools come from the primary, or from a replica while the primary
 has none. `GET /api/v1/load-balancing` shows members, health, latency (EWMA) and ejections. Hot reloadable.
+
+**What counts as a failure (13.3).** `not-connected` and `timeout` are only failures the gateway itself observed
+(connection lost, member not connected, no answer within `timeoutMs`). An upstream's own JSON-RPC error is `error`
+whatever its code — it fails over only with `failoverOn: [error]` and never counts towards `ejectAfter` (before 13.3
+an upstream answering `-32000` was taken for "not connected" and the tool ran again on the next member). A member that
+stays connected but stops answering pings is recycled after `health.restartAfter` failed pings. An HTTP member that
+answers 404 for an expired session (it restarted) gets the call resent once on its new session — the request was
+refused unprocessed, so this is never a duplicate.
 
 ## Developer portal (3.8)
 
@@ -786,6 +795,14 @@ observability:
     serviceName: mcp-gateway
     resourceAttributes: { deployment.environment: prod }
     sampleRatio: 1.0           # for new traces; an incoming sampled traceparent is always followed
+  principal:                   # 13.3: subject / actor ids on spans (never in metric labels)
+    mode: hash                 # hash (default, keyed HMAC-SHA256, 16 hex chars) | plain | omit
+    hashKey: ${MGW_PRINCIPAL_HASH_KEY}   # ≥ 16 chars; random per process when unset (hashes then differ per restart)
+  metrics:                     # 13.3: push the reliability metrics as OTLP/HTTP JSON
+    otlp:
+      endpoint: http://otel-collector:4318/v1/metrics
+      headers: { "x-api-key": "${OTEL_KEY}" }
+      intervalMs: 15000        # min 1000
 ```
 
 - **Tracing**: one span per upstream call (`mcp.tools/call <tool>`, `mcp.resources/read <uri>`,
@@ -796,6 +813,19 @@ observability:
 - **Prometheus**: `GET /metrics` (conventional scrape path; protected with `auth.protect.metrics`) adds a latency
   histogram `mcp_gateway_request_duration_seconds{server}` (buckets 5 ms … 30 s) to the existing counters and gauges.
 - **Dashboard**: request rate, latency (p50 / p95), error rate, top tools, usage per key and calls per server charts.
+- **Reliability metrics (13.3)**: `mcp_gateway_route_final_total{server,upstream}` (the logical server after
+  reroutes / splits and the member that answered), `mcp_gateway_calls_by_principal_total{principal_type}`
+  (`direct` / `delegated` / `anonymous`), `mcp_gateway_policy_denials_by_reason_total{reason}`,
+  `mcp_gateway_module_failures_total{module}`, `mcp_gateway_module_failed{module}`, `mcp_gateway_config_generation`,
+  `mcp_gateway_config_generations_alive`, `mcp_gateway_reloads_total{result}`,
+  `mcp_gateway_upstream_failovers_total{server}`, `mcp_gateway_upstream_resends_total`,
+  `mcp_gateway_upstream_recycles_total`, `mcp_gateway_state_store_up{backend}`,
+  `mcp_gateway_state_store_failures_total{backend}`. Label values are bounded: no principal id ever becomes a label.
+  Spans carry the effective principal as `mcp.principal.subject` / `mcp.principal.actor` / `mcp.principal.chain`
+  (hashed by default, see `observability.principal`) and `mcp.principal.type`, the final route as
+  `mcp.route.final.server` / `mcp.route.final.upstream`, refusals as `mcp.policy.deny_reason`, a session-expiry resend
+  as `mcp.upstream.resent`. With `observability.metrics.otlp` the same metrics are pushed as OTLP/HTTP JSON
+  (`resourceMetrics`, `service.name` / `service.version` resource attributes) — no SDK needed.
 
 ## MCP endpoint
 
@@ -845,6 +875,14 @@ store:
   failureMode: open            # open: Redis outage lets requests through; closed: reject them
 ```
 
+**Store failures (13.3).** A Redis or SQLite store that stops answering costs one command timeout; then a breaker
+opens and every store operation fails immediately for 1 s (rate limits, lockouts and quotas apply `failureMode` at
+once instead of waiting per request), after which one probe operation decides whether it closes. Replies Redis itself
+answers with an error do not open it. `mcp_gateway_state_store_up{backend}` is `0` while it is open. Each Redis
+connection matches replies only to the commands written on it; a connection that timed out is discarded with the
+commands it carried (MGW-2026-012). Agent-token revocation checks are fail-closed regardless of `failureMode`
+unless `features.agentIdentity.revocation.failureMode: open`.
+
 With `backend: redis`, every gateway replica shares:
 
 - **rate limits** — the global `rateLimit` and per-key `rateLimit` sliding windows count requests on all replicas;
@@ -883,7 +921,12 @@ store:
   backend: sqlite
   sqlite:
     path: .mcp-gateway/state.db   # relative to the config file
+    busyTimeoutMs: 200            # 13.3: max wait for a lock held by another process (0–5000; was a fixed 5000)
 ```
+
+`node:sqlite` is synchronous: while one operation waits for a lock held by another process the whole event loop
+waits. 13.3 caps that wait at `busyTimeoutMs` (default 200 ms); past it the operation fails, `failureMode` applies and
+the store breaker keeps further operations from waiting until the lock is gone.
 
 Agent-token revocations (`features.agentIdentity`) live in this store (11.2) — see
 [agent identity](guides/agent-identity.md#revocation-11-2).
