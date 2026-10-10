@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [13.1.2] - 2026-10-10
 
 **Security patch — one identity context per call.** Config schema stays **v11**. Advisories:
-[SECURITY.md](SECURITY.md#security-advisories).
+[SECURITY.md](SECURITY.md#security-advisories) — **MGW-2026-007** (high, delegated calls evaluated as the agent) and
+**MGW-2026-008** (medium, token client ids without the issuer); also fixed in **12.0.3** and **10.9.4**.
 
 ### Security
 - **Delegated calls are made for the original caller.** A call made with an agent delegation token

@@ -5,9 +5,9 @@
 | Version | Supported |
 |---|---|
 | 13.x (current) | ✅ new features, bug and security fixes |
-| 12.x | ⚠️ superseded — 12.0.2 carries the MGW-2026-001 and MGW-2026-005 fixes; upgrade to 13.x ([Migrating to 13.0](docs/guides/migrating-to-v13.md)) |
+| 12.x | ⚠️ superseded — 12.0.3 carries the MGW-2026-001, MGW-2026-005, MGW-2026-007 and MGW-2026-008 fixes; upgrade to 13.x ([Migrating to 13.0](docs/guides/migrating-to-v13.md)) |
 | 11.x | ⚠️ superseded — 11.2.0 carries the 11.1 / 11.2 security fixes; upgrade to 12.x ([Migrating to 12.0](docs/guides/migrating-to-v12.md)) |
-| 10.x (LTS) | ✅ bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 — latest 10.9.3 (npm dist-tag `v10-lts`, image `:10`) |
+| 10.x (LTS) | ✅ bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 — latest 10.9.4 (npm dist-tag `v10-lts`, image `:10`) |
 | < 10.0 | ❌ — please upgrade (`mcp-gateway migrate`, see [Migrating to 10.0](docs/guides/migrating-to-v10.md) and [Migrating to 11.0](docs/guides/migrating-to-v11.md)) |
 
 13.x is the current line (config schema v11, central authorizer, isolated stdio servers, on-demand feature modules). 10.x is the long-term-support line:
@@ -17,10 +17,20 @@ config schema v10 stays stable across every 10.x minor release, and its LTS date
 
 ## Reporting a vulnerability
 
-Please **do not** open a public issue. Use
-[GitHub private vulnerability reporting](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new)
-with steps to reproduce and the affected version. You will get an answer within a few days; fixes are released as
-patch versions and credited in the CHANGELOG unless you prefer otherwise.
+Please **do not** put vulnerability details in a public issue, pull request or discussion.
+
+GitHub private vulnerability reporting is **not enabled yet** on this repository (pending enablement by the
+maintainer; until then the "Report a vulnerability" form is unavailable). In the meantime:
+
+1. Open a public issue titled **"Security contact request"** that contains **no technical details** — only the
+   affected package (`@winstonsayno/mcp-gateway` or a client) and the major version.
+2. The maintainer ([@HarrisonCN](https://github.com/HarrisonCN)) will reply there with a private channel for the
+   report (steps to reproduce, affected versions, impact).
+
+Once private reporting is enabled, use
+[GitHub private vulnerability reporting](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new) instead.
+You will get an answer within a few days; fixes are released as patch versions and credited in the CHANGELOG unless
+you prefer otherwise.
 
 ## Security advisories
 
@@ -32,6 +42,8 @@ patch versions and credited in the CHANGELOG unless you prefer otherwise.
 | MGW-2026-004 | Medium | 13.1.0 | Hot reload disconnected removed servers before the steps that can fail (module load, catalog refresh); a rollback restored config, auth and routing but not those connections. Fixed by Prepare → Validate → Commit. Affected: 12.0.0 – 13.0.0 (availability only; earlier versions applied reloads without rollback). |
 | MGW-2026-005 | Medium | 13.1.1, 12.0.2, 10.9.3 | Caches shared entries across routing-split targets: the tool cache and the semantic cache keyed entries on the requested server, but a `routing` split picks the real upstream after the lookup, so a cached answer from one split target could be served to a caller routed to another — with `cache` `scope: shared` or a semantic cache scoped `tenant` / `global`, also to a caller not authorized on the target that produced it (bypassing the MGW-2026-001 check of split targets). Fixed by deciding and authorizing the split before any cache lookup and keying both caches on the routed target. Affected: deployments that combine `routing` splits with `cache` rules or `semanticCache`; verified in 10.9.2, 12.0.1 and 13.1.0 (earlier versions with both features likely affected too). |
 | MGW-2026-006 | Low | 13.1.1 | Servers prepared by a hot reload were listed and routable before the commit: 13.1.0 connected new servers in the Prepare phase directly into the registry, so during the reload (and until a failed reload disposed them) their tools / resources / prompts were visible and callable under the previous auth and routing config. Fixed by staging prepared servers (connected, hidden from listings, routing and the authorizer) until the commit. Affected: 13.1.0 only. |
+| MGW-2026-007 | High | 13.1.2, 12.0.3, 10.9.4 | Delegated agent calls were evaluated as the agent instead of the delegator: calls made with an agent delegation token were authorized correctly (delegator scope ∩ token grant), but client policy rules, tenant membership, quotas, budgets, data residency, per-tenant credential injection, the tool cache (`scope: client`), the semantic cache (`scope: tenant`) and the audit record saw `agent:<id>` — so an agent could bypass its delegator's client-specific deny rules (or lend every delegator an `allow` rule written for the agent under `policy.default: deny`), escape tenant quotas / budgets / residency, and two tenants sharing one agent shared cache entries. The same applied to calls feature modules make for a request under their own label (replays, debug sessions, adaptive retries, task graphs). Fixed by one identity context per call: the original caller is the subject every module keys on, agents are recorded as actors (`actor` / `chain` in audit records), rules naming an agent can only restrict. Affected: deployments using `agentIdentity` (since 8.1.0) or those feature modules together with client policy rules, tenants, quotas, budgets, residency or caches; verified in 13.1.1, 12.0.2 and 10.9.3. |
+| MGW-2026-008 | Medium | 13.1.2, 12.0.3, 10.9.4 | OAuth / JWT client ids ignored the token issuer: with several trusted issuers (`auth.oauth.issuer` list / several `authorizationServers`, `auth.jwt.issuer` list) a user of one issuer whose `sub` equals a user of another issuer became the same client (tenant membership and role, policy rules, quotas, budgets, agent delegation rights, client-scoped cache, request history). Fixed by issuer-qualified ids `oauth:<issuer>#<sub>` / `jwt:<issuer>#<sub>` when more than one issuer is trusted (single issuer unchanged); unqualified `oauth:` / `jwt:` client patterns are then a configuration error. Affected: only multi-issuer deployments; verified in 13.1.1, 12.0.2 and 10.9.3. |
 
 Earlier security fixes are listed in the [CHANGELOG](CHANGELOG.md) (search for “Security”): 10.1.0 and 10.2.0
 (baseline audit), 11.1.0 / 11.2.0 / 12.0.0 (central authorizer, delegation bounds, blob ownership, fail-closed
