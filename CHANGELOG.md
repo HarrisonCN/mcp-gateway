@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.1.1] - 2026-10-10
+
+**Security patch.** Tightens two edges of 13.1.0 and fixes a cache key that let routing-split targets share entries.
+Config schema stays **v11**; no config changes needed. Advisories: [SECURITY.md](SECURITY.md#security-advisories)
+(MGW-2026-005, MGW-2026-006).
+
+### Security
+- **MGW-2026-005 (medium) — caches shared entries across routing-split targets.** The tool cache (`cache.rules`) and
+  the semantic cache (`semanticCache`) keyed entries on the requested server, but a `routing` split decides the real
+  upstream after the cache lookup. A cached answer from variant A could be served to a caller the split sends to
+  variant B, and — with `cache` `scope: shared` or a semantic cache scoped `tenant` / `global` — to a caller that is
+  **not authorized on A** (bypassing the MGW-2026-001 final authorization of split targets). The split is now decided
+  once per call and **authorized before any cache lookup**; both caches key on the routed target
+  (`<server>><target>`), so split targets never share entries; the send uses that same decision. Also fixed in
+  **12.0.2** and **10.9.3**.
+- **MGW-2026-006 (low) — servers prepared by a hot reload were visible before the commit.** 13.1.0 connected brand-new
+  servers in the Prepare phase straight into the registry, so for the duration of the reload (and until a failed reload
+  disposed them) their tools, resources and prompts were listed and callable under the *previous* auth / routing
+  config. Prepared servers are now **staged**: connected, but not listed (`tools/list`, `resources/*`, `prompts/*`,
+  REST `/tools`, `/servers`), not routable (invoke, routing splits, rollouts, load balancer) and not exposed to the
+  authorizer until the commit swaps them in; a failed reload disposes them without them ever being visible. Affected:
+  13.1.0 only (12.x connected new servers after the config swap).
+
+### Changed
+- **Fail-closed is scoped (MGW-2026-002 follow-up).** A failed `closed` module now refuses only the tool calls it
+  would have governed, read from its own config: `dlp.servers`, `sanitize.servers` minus `exempt`,
+  `multimodal.servers`, `confidential.servers[].match`, `approvalFlows.flows[].tools` (+ `clients`; `when` ignored),
+  `privacy.protect`, `realtimeBudgets.budgets[]` (`clients` / `tenants` / `tools`), `console.orgs` (tenants),
+  `anomaly.exempt` (clients), `agentIdentity` (agent-token calls + `requireAgentFor`). A module whose scope cannot be
+  determined — no restriction configured, a value that does not parse, `policyEngine`, plugins / unknown modules —
+  keeps refusing every tool call (safe default). Error `-32026`, `data.decision: "module-failed"`, the `audit:` log
+  line and `mcp_gateway_module_failure_denials_total` are unchanged. A hook or split that reroutes a call into a failed
+  module's scope is refused by the final authorization (`-32026`, `decision: "reroute-denied"`,
+  `reason: "module-failed"`).
+
+### Tests
+- New `test/security-13-1-1.test.ts`: failed DLP scoped to server A refuses A and serves B; global / unparseable scope
+  refuses all; reroute into a failed scope; per-module scopes; staged registry; split / rollout to a staged server
+  never sent; mid-reload calls and listings of a new server → not found, after commit → served, after a failed reload
+  → never visible; tool and semantic cache entries per split target and split authorization before the lookup.
+
 ## [13.1.0] - 2026-10-10
 
 **Security release.** Fixes an authorization bypass when a call is rerouted (P0), makes failed security modules fail
