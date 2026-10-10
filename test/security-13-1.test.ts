@@ -284,3 +284,53 @@ describe('P0-1 on a real gateway (rollouts)', () => {
     if (prom.status === 200) expect(await prom.text()).toMatch(/mcp_gateway_reroute_denials_total 1/);
   });
 });
+
+describe('P1-2: hot reload is Prepare → Validate → Commit (13.1)', () => {
+  type ReloadGw = { reload: (c: GatewayConfig) => Promise<void>; catalog: { prepare: () => Promise<unknown>; commit: (e: unknown) => void }; config: GatewayConfig; rollbacks: number; proxy: { isConnected: (id: string) => boolean }; plugins: { set: (p: unknown) => Promise<void> } };
+  const callOn = (server: string) =>
+    fetch(`${h!.base}/api/v1/tools/call`, { method: 'POST', headers: { authorization: 'Bearer op', 'content-type': 'application/json' }, body: JSON.stringify({ server, tool: 'echo', arguments: { x: 1 } }) }).then((r) => r.status);
+
+  it('a catalog failure after a server was removed leaves the old server connected and serving', async () => {
+    h = await startFeatureGw({ servers: [fakeServer('fake'), fakeServer('b')] } as never);
+    const gw = h.gw as unknown as ReloadGw;
+    expect(gw.proxy.isConnected('b')).toBe(true);
+    const before = gw.config;
+    gw.catalog.prepare = () => Promise.reject(new Error('catalog backend down'));
+    const next = { ...before, servers: [fakeServer('fake'), fakeServer('c')], catalog: { serversFile: 'x.json' } } as unknown as GatewayConfig;
+    await expect(gw.reload(next)).rejects.toThrow(/catalog backend down/);
+    expect(gw.config).toBe(before);
+    expect(gw.rollbacks).toBe(1);
+    expect(gw.proxy.isConnected('b')).toBe(true);
+    expect(await callOn('b')).toBe(200);
+    // nothing prepared is left behind
+    expect(gw.proxy.isConnected('c')).toBe(false);
+  }, 30_000);
+
+  it('a failure during commit restores the config, disposes new servers and keeps removed ones serving', async () => {
+    h = await startFeatureGw({ servers: [fakeServer('fake'), fakeServer('b')] } as never);
+    const gw = h.gw as unknown as ReloadGw;
+    const before = gw.config;
+    const prepared = await gw.catalog.prepare();
+    gw.catalog.prepare = async () => prepared;
+    gw.catalog.commit = () => {
+      throw new Error('commit exploded');
+    };
+    const next = { ...before, servers: [fakeServer('fake'), fakeServer('c')], catalog: { builtins: false } } as unknown as GatewayConfig;
+    await expect(gw.reload(next)).rejects.toThrow(/commit exploded/);
+    expect(gw.config).toBe(before);
+    expect(gw.proxy.isConnected('b')).toBe(true);
+    expect(gw.proxy.isConnected('c')).toBe(false);
+    expect(await callOn('b')).toBe(200);
+  }, 30_000);
+
+  it('a successful reload disconnects removed servers only after the commit', async () => {
+    h = await startFeatureGw({ servers: [fakeServer('fake'), fakeServer('b')] } as never);
+    const gw = h.gw as unknown as ReloadGw;
+    const next = { ...gw.config, servers: [fakeServer('fake'), fakeServer('c')] } as unknown as GatewayConfig;
+    await gw.reload(next);
+    expect(gw.proxy.isConnected('b')).toBe(false);
+    expect(gw.proxy.isConnected('c')).toBe(true);
+    expect(await callOn('c')).toBe(200);
+    expect(await callOn('b')).not.toBe(200);
+  }, 30_000);
+});

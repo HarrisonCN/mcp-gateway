@@ -17,8 +17,9 @@ import { createApiRouter, serverStateSamples, type ApiRouter, type ToolCallRespo
 import { createOpenAIRouter } from '../bridges/openai.js';
 import { createAdminRouter } from './admin.js';
 import { createEdgeControlRouter } from './edge-control.js';
-import { loadFailureOf } from './kernel-runtime.js';
-import { createFeatureRouter, featureSections, principalOf, clientIdOf, type FeatureRouter } from './features.js';
+import { loadFailureOf, loadFeature, loadRecord } from './kernel-runtime.js';
+import { FEATURE_MANIFEST } from '../features/manifest.js';
+import { createFeatureRouter, featureSections, principalOf, clientIdOf, isFeatureActive, type FeatureRouter } from './features.js';
 import { clientPrincipal, deniedPrincipal, systemPrincipal, type Principal } from '../auth/authorizer.js';
 import { deprecate } from '../utils/deprecations.js';
 import { createA2ARouter } from '../bridges/a2a.js';
@@ -720,9 +721,12 @@ export class Gateway {
 
       const toRemove = [...current.keys()].filter((id) => !wanted.has(id));
       const reconnectChanged = !same(this.config.reconnect, next.reconnect);
-      const toConnect = [...wanted.values()].filter((s) => {
+      // 13.1: brand-new server ids are connected in the prepare phase; servers whose config changed are reconnected
+      // only after everything else committed (one session per id).
+      const toAdd = [...wanted.values()].filter((s) => !current.has(s.id));
+      const toChange = [...wanted.values()].filter((s) => {
         const prev = current.get(s.id);
-        return !prev || key(prev) !== key(s);
+        return !!prev && key(prev) !== key(s);
       });
 
       const applied: string[] = [];
@@ -744,9 +748,54 @@ export class Gateway {
         logger.warn('Config "monitor.retentionHours" changed — restart required for it to take effect');
       }
 
-      // 12.0: transactional reload — any failure below restores the previous config (router, policy, mcp, cors,
-      // security, logging, feature sections) and rethrows; servers already reconnected keep running.
+      // 13.1: Prepare → Validate → Commit. (12.0 disconnected removed servers first and could not restore them on
+      // rollback.)
+      //  - Prepare: build the new resources aside — catalog entries, plugin instances, connections to new server ids.
+      //    Nothing the running gateway uses is changed or closed.
+      //  - Validate: feature modules that the new config activates must evaluate.
+      //  - Commit: swap config, auth, routing, modules, catalog, plugins; reconnect changed servers. A failure restores
+      //    the previous config and disposes what Prepare built; old servers were never touched, so they keep serving.
+      //  - Only after a successful commit are removed servers disconnected and unregistered.
       const prevConfig = this.config;
+      const connectedAside: string[] = [];
+      const disposeAside = async () => {
+        await Promise.all(
+          connectedAside.map(async (id) => {
+            try {
+              this.supervisor.forget(id);
+              await this.proxy.disconnect(id);
+              this.registry.unregister(id);
+            } catch (e) {
+              logger.error(`Could not dispose prepared server ${id}: ${e instanceof Error ? e.message : String(e)}`);
+            }
+          }),
+        );
+        connectedAside.length = 0;
+      };
+      let preparedCatalog: Awaited<ReturnType<Catalog['prepare']>> | undefined;
+      let preparedPlugins: Awaited<ReturnType<typeof PluginHost.build>> | undefined;
+      try {
+        if (!same(prevCatalog, next.catalog)) preparedCatalog = await this.catalog.prepare(next.catalog);
+        if (!same(prevPlugins, next.plugins) || !same(prevTrust, next.pluginTrust)) {
+          try {
+            preparedPlugins = await PluginHost.build(next.plugins, this.options.plugins, next.configDir ?? this.config.configDir, next.pluginTrust);
+          } catch (err) {
+            logger.error(`Plugins not reloaded (keeping the current ones): ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+        for (const e of FEATURE_MANIFEST) {
+          if (!(e.activation?.length || e.hook) || !isFeatureActive(next, e.id) || isFeatureActive(prevConfig, e.id)) continue;
+          if (!(await loadFeature(e.id))) throw new Error(`feature module "${e.id}" cannot be loaded: ${loadRecord(e.id)?.error ?? 'unknown error'}`);
+        }
+        connectedAside.push(...toAdd.filter((s) => s.enabled !== false).map((s) => s.id));
+        await this.connectServers(toAdd);
+      } catch (err) {
+        this.rollbacks++;
+        await disposeAside();
+        logger.error(`Hot reload rejected while preparing (nothing changed): ${err instanceof Error ? err.message : String(err)}`);
+        throw err;
+      }
+
       try {
       // Router-level settings (auth may be rejected and kept; the router logs that).
       this.router?.update(this.withPortalKeys(next));
@@ -781,15 +830,6 @@ export class Gateway {
         logger.setLevel(next.logLevel);
         applied.push('logLevel');
       }
-
-      await Promise.all(
-        toRemove.map(async (id) => {
-          this.supervisor.forget(id);
-          await this.proxy.disconnect(id);
-          this.registry.unregister(id);
-        }),
-      );
-
       this.config = {
         ...this.config,
         servers: next.servers,
@@ -823,8 +863,8 @@ export class Gateway {
       };
       const activated = (await this.featureRouter?.reconcile(prevConfig)) ?? [];
       if (activated.length) applied.push(`modules (${activated.join(', ')})`);
-      if (!same(prevCatalog, next.catalog)) {
-        await this.catalog.refresh();
+      if (preparedCatalog) {
+        this.catalog.commit(preparedCatalog);
         applied.push('catalog');
       }
       if (!same(prevTenants, next.tenants)) {
@@ -853,13 +893,9 @@ export class Gateway {
         this.invoker?.cache?.purge();
         applied.push('cache');
       }
-      if (!same(prevPlugins, next.plugins) || !same(prevTrust, next.pluginTrust)) {
-        try {
-          await this.plugins.set(await PluginHost.build(next.plugins, this.options.plugins, this.config.configDir, next.pluginTrust));
-          applied.push('plugins');
-        } catch (err) {
-          logger.error(`Plugins not reloaded (keeping the current ones): ${err instanceof Error ? err.message : String(err)}`);
-        }
+      if (preparedPlugins) {
+        await this.plugins.set(preparedPlugins);
+        applied.push('plugins');
       }
       if (!same(prevPolicy, next.policy)) {
         this.invoker?.refreshPolicy();
@@ -872,13 +908,7 @@ export class Gateway {
           logger.error(err instanceof Error ? err.message : String(err));
         }
       }
-      await this.connectServers(toConnect);
-      this.invoker?.balancer?.prune();
-      logger.info(
-        `Hot reload applied: ${toConnect.length} (re)connected, ${toRemove.length} removed` +
-          (applied.length ? `; updated ${applied.join(', ')}` : ''),
-      );
-      await this.plugins.configChanged({ applied, servers: (next.servers ?? []).map((x) => x.id), at: new Date().toISOString() });
+      await this.connectServers(toChange);
       } catch (err) {
         this.rollbacks++;
         logger.error(`Hot reload failed, rolled back to the previous config: ${err instanceof Error ? err.message : String(err)}`);
@@ -893,10 +923,35 @@ export class Gateway {
           if (prevConfig.logLevel) logger.setLevel(prevConfig.logLevel);
           this.invoker?.refreshPolicy();
           this.mcp?.refreshClients();
+          if (preparedCatalog) await this.catalog.refresh().catch(() => {});
         } catch (e) {
           logger.error(`Rollback incomplete: ${e instanceof Error ? e.message : String(e)}`);
         }
+        await disposeAside();
         throw err;
+      }
+
+      // Committed: only now are removed servers closed.
+      await Promise.all(
+        toRemove.map(async (id) => {
+          try {
+            this.supervisor.forget(id);
+            await this.proxy.disconnect(id);
+          } catch (e) {
+            logger.warn(`Removed server ${id} did not disconnect cleanly: ${e instanceof Error ? e.message : String(e)}`);
+          }
+          this.registry.unregister(id);
+        }),
+      );
+      this.invoker?.balancer?.prune();
+      logger.info(
+        `Hot reload applied: ${toAdd.length + toChange.length} (re)connected, ${toRemove.length} removed` +
+          (applied.length ? `; updated ${applied.join(', ')}` : ''),
+      );
+      try {
+        await this.plugins.configChanged({ applied, servers: (next.servers ?? []).map((x) => x.id), at: new Date().toISOString() });
+      } catch (err) {
+        logger.warn(`Plugin configChanged hook failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     });
   }

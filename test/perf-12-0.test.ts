@@ -56,11 +56,11 @@ describe('multimodal memory pressure (12.0)', () => {
 describe('transactional hot reload (12.0)', () => {
   it('a reload that fails midway rolls back to the previous config', async () => {
     h = await startFeatureGw({ policy: { rules: [{ id: 'deny-echo', match: { tool: 'echo' }, effect: 'deny' }] } } as never);
-    const gw = h.gw as unknown as { reload: (c: GatewayConfig) => Promise<void>; catalog: { refresh: () => Promise<void> }; config: GatewayConfig; rollbacks: number };
+    const gw = h.gw as unknown as { reload: (c: GatewayConfig) => Promise<void>; catalog: { prepare: () => Promise<unknown> }; config: GatewayConfig; rollbacks: number };
     const before = gw.config;
     const call = () => fetch(`${h!.base}/api/v1/tools/call`, { method: 'POST', headers: { authorization: 'Bearer op', 'content-type': 'application/json' }, body: JSON.stringify({ server: 'fake', tool: 'echo', arguments: {} }) }).then((r) => r.status);
     expect(await call()).toBe(403);
-    gw.catalog.refresh = () => Promise.reject(new Error('catalog backend down'));
+    gw.catalog.prepare = () => Promise.reject(new Error('catalog backend down'));
     const next = { ...before, policy: undefined, catalog: { serversFile: 'x.json' }, auth: { strategy: 'api-key', apiKeys: ['other'] } } as unknown as GatewayConfig;
     await expect(gw.reload(next)).rejects.toThrow(/catalog backend down/);
     expect(gw.rollbacks).toBe(1);
