@@ -174,9 +174,17 @@ export class RedisClient {
         if (this.conn === conn) this.conn = undefined;
         RedisClient.failAll(conn, new Error('Redis connection closed'));
       });
+      // 13.7.0: a peer that closed its side can no longer answer: stop handing this connection out right away
+      // (commands written before the close is noticed fail with "connection closed"; they never mis-match).
+      socket.on('end', () => {
+        conn.dead = true;
+        if (this.conn === conn) this.conn = undefined;
+      });
       socket.once(this.url.protocol === 'rediss:' ? 'secureConnect' : 'connect', () => {
         clearTimeout(timer);
-        this.conn = conn;
+        // 13.7.0 (MGW-2026-014): NOT published as `this.conn` yet — only once AUTH / SELECT have completed (below).
+        // Before, a command issued in that window was written straight to the socket and ran before SELECT (on db 0)
+        // or before the AUTH reply; concurrent callers now wait on `this.connecting` instead.
         resolve(conn);
       });
       socket.once('close', () => {
@@ -202,6 +210,8 @@ export class RedisClient {
           conn.socket.destroy();
           throw new Error('Redis client is closed');
         }
+        if (conn.dead || conn.socket.destroyed) throw new Error('Redis connection closed');
+        this.conn = conn;
         return conn;
       })
       .finally(() => {
