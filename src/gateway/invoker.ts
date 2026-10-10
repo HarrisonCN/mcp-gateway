@@ -277,7 +277,7 @@ export class ToolInvoker {
       return {
         code: d.code,
         message: `Rerouted call refused: ${d.message} (route "${from}" -> "${ctx.serverId}" by ${reroute.by.join(', ') || 'unknown'})`,
-        data: { ...d.data, decision: 'reroute-denied', reason: d.data.decision ?? null, from, to: ctx.serverId, reroutedBy: reroute.by, chain: principalChain(ctx.principal) },
+        data: { ...d.data, decision: 'reroute-denied', reason: d.data.reason ?? d.data.decision ?? null, from, to: ctx.serverId, reroutedBy: reroute.by, chain: principalChain(ctx.principal) },
       };
     };
     const denied = authorize(ctx.principal, { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind }, { exposed: this.deps.exposed });
