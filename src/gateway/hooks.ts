@@ -12,6 +12,7 @@ import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { isFeatureActive } from './features.js';
 import { FEATURE_MANIFEST, failurePolicyOf, hookOwner, manifestEntry, type FailurePolicy } from '../features/manifest.js';
 import { loadFailureOf } from './kernel-runtime.js';
+import { failureScopeOf, type FailureScope, type ScopeCall } from './failure-scope.js';
 
 export interface HookCall {
   serverId: string;
@@ -22,6 +23,11 @@ export interface HookCall {
   args: Record<string, unknown>;
   /** Who the call is made for (11.1), already authorized by the central authorizer. */
   principal?: import('../auth/authorizer.js').Principal;
+  /**
+   * Upstream server the call goes to once routing splits are applied (13.1.1). Caches key on it, so split targets never
+   * share entries. Absent outside the invoker (tests, plugins): use `serverId`.
+   */
+  routedTo?: () => string;
 }
 
 /** `serverId` (7.5) routes the call to another upstream (operator-configured, e.g. a canary). `respond` (7.4) answers the call without the upstream (e.g. a cache hit); later `before` hooks are skipped, `after` hooks still run. */
@@ -72,13 +78,23 @@ export interface FailedHookModule {
   id: string;
   policy: FailurePolicy;
   error: string;
+  /**
+   * Calls the module would have governed (13.1.1), from its own config (servers / tools / tenants / clients / agent
+   * calls). `undefined` = global: every tool call (also when the scope cannot be determined).
+   */
+  scope?: FailureScope;
+}
+
+/** Failed `closed` modules that govern `call` (13.1.1): a module refuses only the calls in its failure scope. */
+export function closedFor(plan: CallHookPlan, call: ScopeCall): FailedHookModule[] {
+  return plan.closed.filter((m) => !m.scope || m.scope.matches(call));
 }
 
 /** What the call pipeline runs under `cfg` (13.1). */
 export interface CallHookPlan {
   /** Hooks of active, healthy modules (and unknown hooks, e.g. plugins), in pipeline order. */
   hooks: readonly CallHook[];
-  /** Active modules with failure policy `closed` that failed or are not ready: calls are refused. */
+  /** Active modules with failure policy `closed` that failed or are not ready: calls in their failure scope are refused (13.1.1). */
   closed: FailedHookModule[];
   /** Active modules with failure policy `degrade` that failed: hooks skipped, results marked degraded. */
   degraded: FailedHookModule[];
@@ -97,7 +113,9 @@ export function callHookPlan(cfg: GatewayConfig, failure: FailureLookup = loadFa
   const plan: CallHookPlan = { hooks: [], closed: [], degraded: [], open: [] };
   const add = (id: string, policy: FailurePolicy, error: string) => {
     const list = policy === 'closed' ? plan.closed : policy === 'degrade' ? plan.degraded : plan.open;
-    if (!list.some((x) => x.id === id)) list.push({ id, policy, error });
+    if (list.some((x) => x.id === id)) return;
+    const scope = policy === 'closed' ? failureScopeOf(id, cfg) : undefined;
+    list.push({ id, policy, error, ...(scope ? { scope } : {}) });
   };
   const hooks: CallHook[] = [];
   for (const h of callHooksList) {

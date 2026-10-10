@@ -23,6 +23,11 @@ export class ServerRegistry extends EventEmitter {
   private tools = new Map<string, ToolInfo[]>(); // serverId -> tools
   private replicaTools = new Map<string, ToolInfo[]>(); // replica id -> tools (mapped to the primary)
   private catalogs = new Map<string, ServerCatalog>(); // serverId -> resources / prompts
+  /**
+   * 13.1.1: servers registered by a hot reload's Prepare phase. They connect and fill their tools / catalog, but every
+   * query below hides them — not listed, not routable — until {@link commitStaged}; a failed reload unregisters them.
+   */
+  private staged = new Set<string>();
   private healthCheckInterval?: NodeJS.Timeout;
 
   constructor(private readonly healthCheckMs = 30_000) {
@@ -31,11 +36,18 @@ export class ServerRegistry extends EventEmitter {
 
   // ─── Registration ───────────────────────────────────────────────────────────
 
-  register(config: McpServerConfig): void {
+  register(config: McpServerConfig, opts: { staged?: boolean } = {}): void {
     if (this.servers.has(config.id)) {
       logger.warn(`Server "${config.id}" is already registered. Overwriting.`);
     }
     this.servers.set(config.id, config);
+    if (opts.staged) {
+      this.staged.add(config.id);
+      this.health.set(config.id, { serverId: config.id, status: 'unknown', lastChecked: new Date() });
+      logger.info(`Staged MCP server: ${config.id} (${config.name}) — hidden until the reload commits`);
+      return;
+    }
+    this.staged.delete(config.id);
     this.health.set(config.id, {
       serverId: config.id,
       status: 'unknown',
@@ -47,24 +59,62 @@ export class ServerRegistry extends EventEmitter {
 
   unregister(serverId: string): boolean {
     if (!this.servers.has(serverId)) return false;
+    const wasStaged = this.staged.delete(serverId);
     this.servers.delete(serverId);
     this.health.delete(serverId);
     this.tools.delete(serverId);
     this.replicaTools.delete(serverId);
     this.catalogs.delete(serverId);
     logger.info(`Unregistered MCP server: ${serverId}`);
-    this.emit('unregistered', serverId);
+    if (!wasStaged) this.emit('unregistered', serverId);
     return true;
+  }
+
+  /** Whether a server is staged by an uncommitted hot reload (13.1.1). */
+  isStaged(serverId: string): boolean {
+    return this.staged.has(serverId);
+  }
+
+  /**
+   * Make staged servers visible (13.1.1: hot reload Commit). Emits `registered`, `tools-updated` and `catalog-updated`
+   * for each, as if they had connected now.
+   */
+  commitStaged(ids: Iterable<string> = [...this.staged]): void {
+    for (const id of ids) {
+      if (!this.staged.delete(id)) continue;
+      const config = this.servers.get(id);
+      if (!config) continue;
+      logger.info(`Registered MCP server: ${id} (${config.name})`);
+      this.emit('registered', config);
+      const tools = this.tools.get(id);
+      if (tools) this.emit('tools-updated', id, tools);
+      const primary = config.replicaOf;
+      const mapped = this.replicaTools.get(id);
+      if (primary && mapped?.length && (this.tools.get(primary)?.length ?? 0) === 0 && this.servers.has(primary)) {
+        this.tools.set(primary, mapped);
+        if (!this.staged.has(primary)) this.emit('tools-updated', primary, mapped);
+      }
+      const catalog = this.catalogs.get(id);
+      if (catalog) this.emit('catalog-updated', id, catalog);
+    }
+  }
+
+  /** Visible (committed) entries of a per-server map. */
+  private visible<T>(m: Map<string, T>): T[] {
+    if (!this.staged.size) return [...m.values()];
+    return [...m.entries()].filter(([id]) => !this.staged.has(id)).map(([, v]) => v);
   }
 
   // ─── Queries ────────────────────────────────────────────────────────────────
 
-  getServer(id: string): McpServerConfig | undefined {
+  /** A committed server (`includeStaged`: also one staged by an uncommitted reload — supervisor / health only). */
+  getServer(id: string, opts: { includeStaged?: boolean } = {}): McpServerConfig | undefined {
+    if (!opts.includeStaged && this.staged.has(id)) return undefined;
     return this.servers.get(id);
   }
 
   getAllServers(): McpServerConfig[] {
-    return Array.from(this.servers.values());
+    return this.visible(this.servers);
   }
 
   getEnabledServers(): McpServerConfig[] {
@@ -75,12 +125,13 @@ export class ServerRegistry extends EventEmitter {
     return this.getAllServers().filter((s) => s.tags?.includes(tag));
   }
 
-  getHealth(serverId: string): ServerHealth | undefined {
+  getHealth(serverId: string, opts: { includeStaged?: boolean } = {}): ServerHealth | undefined {
+    if (!opts.includeStaged && this.staged.has(serverId)) return undefined;
     return this.health.get(serverId);
   }
 
   getAllHealth(): ServerHealth[] {
-    return Array.from(this.health.values());
+    return this.visible(this.health);
   }
 
   // ─── Tool Registry ──────────────────────────────────────────────────────────
@@ -99,9 +150,11 @@ export class ServerRegistry extends EventEmitter {
       if (!primary) return;
       const mapped = filterTools(all, primary.tools).map((t) => ({ ...t, serverId: primaryId, serverName: primary.name }));
       this.replicaTools.set(serverId, mapped);
+      // 13.1.1: a staged replica stands in for its primary only after the reload commits.
+      if (this.staged.has(serverId)) return;
       if ((this.tools.get(primaryId)?.length ?? 0) === 0 && mapped.length > 0) {
         this.tools.set(primaryId, mapped);
-        this.emit('tools-updated', primaryId, mapped);
+        if (!this.staged.has(primaryId)) this.emit('tools-updated', primaryId, mapped);
       }
       return;
     }
@@ -109,7 +162,7 @@ export class ServerRegistry extends EventEmitter {
       const standIn = [...this.replicaTools.entries()].find(([id, t]) => this.servers.get(id)?.replicaOf === serverId && t.length > 0);
       if (standIn) {
         this.tools.set(serverId, standIn[1]);
-        this.emit('tools-updated', serverId, standIn[1]);
+        if (!this.staged.has(serverId)) this.emit('tools-updated', serverId, standIn[1]);
         return;
       }
     }
@@ -127,26 +180,28 @@ export class ServerRegistry extends EventEmitter {
       }
     }
     this.tools.set(serverId, tools);
-    this.emit('tools-updated', serverId, tools);
+    if (!this.staged.has(serverId)) this.emit('tools-updated', serverId, tools);
   }
 
   /** Whether the server's `tools` filter lets `toolName` through. */
   isToolExposed(serverId: string, toolName: string): boolean {
+    if (this.staged.has(serverId)) return false;
     return isToolAllowed(toolName, this.servers.get(serverId)?.tools);
   }
 
   getTools(serverId: string): ToolInfo[] {
+    if (this.staged.has(serverId)) return [];
     return this.tools.get(serverId) ?? [];
   }
 
   getAllTools(): ToolInfo[] {
-    return Array.from(this.tools.values()).flat();
+    return this.visible(this.tools).flat();
   }
 
   /** Every server's entry for a tool name (more than one means the name is ambiguous). */
   findTools(toolName: string): ToolInfo[] {
     const found: ToolInfo[] = [];
-    for (const tools of this.tools.values()) {
+    for (const tools of this.visible(this.tools)) {
       const t = tools.find((x) => x.name === toolName);
       if (t) found.push(t);
     }
@@ -154,7 +209,7 @@ export class ServerRegistry extends EventEmitter {
   }
 
   findTool(toolName: string): ToolInfo | undefined {
-    for (const tools of this.tools.values()) {
+    for (const tools of this.visible(this.tools)) {
       const found = tools.find((t) => t.name === toolName);
       if (found) return found;
     }
@@ -167,23 +222,24 @@ export class ServerRegistry extends EventEmitter {
   setCatalog(serverId: string, catalog: ServerCatalog): void {
     if (!this.servers.has(serverId) || this.servers.get(serverId)?.replicaOf) return;
     this.catalogs.set(serverId, catalog);
-    this.emit('catalog-updated', serverId, catalog);
+    if (!this.staged.has(serverId)) this.emit('catalog-updated', serverId, catalog);
   }
 
   getCatalog(serverId: string): ServerCatalog {
+    if (this.staged.has(serverId)) return { resources: [], resourceTemplates: [], prompts: [] };
     return this.catalogs.get(serverId) ?? { resources: [], resourceTemplates: [], prompts: [] };
   }
 
   getAllResources(): ResourceInfo[] {
-    return [...this.catalogs.values()].flatMap((c) => c.resources);
+    return this.visible(this.catalogs).flatMap((c) => c.resources);
   }
 
   getAllResourceTemplates(): ResourceTemplateInfo[] {
-    return [...this.catalogs.values()].flatMap((c) => c.resourceTemplates);
+    return this.visible(this.catalogs).flatMap((c) => c.resourceTemplates);
   }
 
   getAllPrompts(): PromptInfo[] {
-    return [...this.catalogs.values()].flatMap((c) => c.prompts);
+    return this.visible(this.catalogs).flatMap((c) => c.prompts);
   }
 
   // ─── Health Updates ─────────────────────────────────────────────────────────

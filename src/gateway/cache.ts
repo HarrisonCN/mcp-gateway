@@ -22,6 +22,8 @@ import type { CacheConfig, CacheRule, ProxyResponse } from '../utils/types.js';
 
 export interface CacheKeyInput {
   serverId: string;
+  /** Server the call is actually sent to after a routing split (13.1.1); part of the key so split targets never share entries. */
+  target?: string;
   tool: string;
   args: Record<string, unknown>;
   clientId?: string;
@@ -84,7 +86,8 @@ export class ToolCache {
 
   key(rule: CacheRule, k: CacheKeyInput): string {
     const who = (rule.scope ?? 'client') === 'client' ? (k.clientId ?? 'anonymous') : '*';
-    return `${k.serverId}\u0000${k.tool}\u0000${who}\u0000${canonicalJson(k.args)}`;
+    const server = k.target && k.target !== k.serverId ? `${k.serverId}>${k.target}` : k.serverId;
+    return `${server}\u0000${k.tool}\u0000${who}\u0000${canonicalJson(k.args)}`;
   }
 
   /**
