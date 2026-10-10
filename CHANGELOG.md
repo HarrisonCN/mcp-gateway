@@ -11,15 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [13.1.3] - 2026-10-10
 
-**Security patch — final call security.** Config schema stays **v11**; no configuration changes.
+**Security patch — final call security.** Config schema stays **v11**; no configuration changes. Advisories
+**MGW-2026-009** (High) and **MGW-2026-010** (Medium): [SECURITY.md](SECURITY.md#security-advisories); backports in 12.0.4 and 10.9.5.
 
 ### Security
-- **Credentials never cross a reroute.** Per-call credentials (`inject:` on a server — tool arguments
+- **Credentials never cross a reroute (MGW-2026-009).** Per-call credentials (`inject:` on a server — tool arguments
   or `_meta` fields) are now always those of the server the call is **sent to**. Since routing splits were introduced,
   a call that a `routing` split moved from server A to server B carried **A's** injected credentials to B (hook
   reroutes — rollouts, blue/green, self-healing, budget downgrades — already used the final server's). A split target
   that needs a credential must declare its own `inject:`; nothing is injected otherwise.
-- **Argument-dependent checks run on the final arguments.** Call hooks may rewrite a call's arguments
+- **Argument-dependent checks run on the final arguments (MGW-2026-010).** Call hooks may rewrite a call's arguments
   (DLP redaction, budget downgrades, plugin hooks). Before, the tool policy (argument rules), approval holds and the
   security guard modules that ran earlier (DLP, sanitize, approval flows, policy engine, …) were only re-checked when a
   hook also changed the target server, so a rewrite on the same server was sent unchecked and an operator could approve
