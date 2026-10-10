@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [12.0.5] - 2026-10-10
+
+**Security backport (12.x).** Fix for MGW-2026-011 from 13.2.0 (without the 13.2 transactional-reload
+architecture); no other changes. The config schema is unchanged.
+
+### Security
+- **MGW-2026-011 (medium) — calls in flight across a hot reload ran with the new configuration.** A call that was
+  still waiting when a reload committed (held for an approval, or in a slow plugin / call hook) was sent with the new
+  configuration: the new upstream session and `inject:` credentials of a server whose settings changed, without the
+  new policy / tenant mapping being applied. The upstream send now refuses a call whose target server config, policy
+  or tenants changed since the call started (`decision: config-changed`, HTTP 403; retry the call).
+
+### Upgrade notes
+- Calls that span a reload changing their server, the policy or the tenants are refused instead of being sent; clients
+  retry them under the new configuration.
+
 ## [12.0.4] - 2026-10-10
 
 **Security backport (12.x).** Fixes for MGW-2026-009 and MGW-2026-010 from 13.1.3; no other changes. The config
