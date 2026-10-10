@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [12.0.8] - 2026-10-10
+
+**Security backport (12.x).** Fixes MGW-2026-013 from 13.5.0; no other changes. The config schema is unchanged.
+
+### Security
+- **MGW-2026-013 (High): regular-expression denial of service in glob matching.** Globs (`*`, `?`) were compiled to
+  backtracking regular expressions, so a pattern such as `*a*a*a*a*a*a*a*a*a*zz` took seconds to minutes to test
+  against an ordinary tool name and blocked the event loop. An authenticated client allowed to delegate could send one
+  in the `tools` of an agent-identity token request (`POST /api/v1/features/agent-identity/token`) and stall the
+  gateway for every tenant. Glob matching is now a linear matcher with the same semantics, and the compiled-pattern
+  cache is bounded. Affected: 8.1.0 through 13.4.0, 12.0.7 and 10.9.8. Fixed in 13.5.0, 12.0.8 and 10.9.9.
+
 ## [12.0.7] - 2026-10-10
 
 **Maintenance backport (12.x).** Two deployment fixes from 13.4.0; no other changes. Not a security release. The
