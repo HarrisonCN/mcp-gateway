@@ -10,8 +10,11 @@
  *    every later request; the negotiated version goes in `MCP-Protocol-Version`.
  *  - `close()` ends the session with `DELETE` (best effort).
  *
- * Not implemented: the optional standalone `GET` stream for unsolicited server
- * notifications, and SSE stream resumption. Neither is needed for tool calls.
+ * 13.6.0: after `notifications/initialized` the channel opens the standalone
+ * `GET` stream for unsolicited server messages (`notifications/tools/list_changed`,
+ * `resources/updated`, `message`, server requests). A server without one (405 or a
+ * non-SSE answer) is fine; a dropped stream is re-opened with `Last-Event-ID`
+ * (bounded retries, the counter resets once an event arrives).
  *
  * @module transport/streamable-http
  */
@@ -41,6 +44,9 @@ export class StreamableHttpChannel implements UpstreamChannel {
   private protocolVersion?: string;
   private closed = false;
   private lost = false;
+  /** 13.6.0: standalone GET stream (unsolicited server messages). */
+  private getStream?: AbortController;
+  private lastEventId?: string;
   /** Open POST requests, keyed by JSON-RPC request id when they carry one. */
   private readonly inflight = new Map<JsonRpcId | symbol, AbortController>();
 
@@ -121,6 +127,7 @@ export class StreamableHttpChannel implements UpstreamChannel {
     if (res.status === 202 || !res.body) {
       done();
       await res.body?.cancel().catch(() => {});
+      if (message.method === 'notifications/initialized') this.openGetStream(0);
       return;
     }
 
@@ -157,6 +164,51 @@ export class StreamableHttpChannel implements UpstreamChannel {
     for (const m of toMessages(parsed)) this.onmessage?.(m);
   }
 
+  /** 13.6.0: open (or re-open after a drop) the standalone GET stream. Never throws. */
+  private openGetStream(attempt: number): void {
+    if (this.closed || this.lost || this.getStream) return;
+    const abort = new AbortController();
+    this.getStream = abort;
+    const retry = () => {
+      if (this.getStream === abort) this.getStream = undefined;
+      if (this.closed || this.lost || abort.signal.aborted || attempt >= 5) return;
+      const t = setTimeout(() => this.openGetStream(attempt + 1), Math.min(5000, 250 * 2 ** attempt));
+      t.unref?.();
+    };
+    void (async () => {
+      let res: Response;
+      try {
+        res = await upstreamFetch(this.config)(this.url, {
+          method: 'GET',
+          headers: this.requestHeaders({ Accept: 'text/event-stream', ...(this.lastEventId ? { 'Last-Event-ID': this.lastEventId } : {}) }),
+          redirect: 'error',
+          signal: abort.signal,
+        });
+      } catch (err) {
+        if (!abort.signal.aborted) logger.debug(`[${this.config.id}] GET stream failed: ${errMessage(err)}`);
+        return retry();
+      }
+      const ct = res.headers.get('content-type') ?? '';
+      if (!res.ok || !res.body || !ct.includes('text/event-stream')) {
+        // 405 = the server offers no standalone stream (allowed by the spec); anything else: give up quietly.
+        await res.body?.cancel().catch(() => {});
+        if (this.getStream === abort) this.getStream = undefined;
+        if (res.status !== 405) logger.debug(`[${this.config.id}] no GET stream (HTTP ${res.status})`);
+        return;
+      }
+      try {
+        await readSseStream(res.body, (ev) => {
+          if (ev.id !== undefined) this.lastEventId = ev.id;
+          attempt = 0;
+          if ((ev.event === undefined || ev.event === 'message') && ev.data) this.deliver(ev.data);
+        });
+      } catch (err) {
+        if (!abort.signal.aborted) logger.debug(`[${this.config.id}] GET stream error: ${errMessage(err)}`);
+      }
+      retry();
+    })();
+  }
+
   abandon(id: JsonRpcId): void {
     this.inflight.get(id)?.abort();
     this.inflight.delete(id);
@@ -178,6 +230,8 @@ export class StreamableHttpChannel implements UpstreamChannel {
   }
 
   private abortAll(): void {
+    this.getStream?.abort();
+    this.getStream = undefined;
     for (const c of this.inflight.values()) c.abort();
     this.inflight.clear();
   }
