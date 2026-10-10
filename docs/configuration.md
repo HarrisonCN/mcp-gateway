@@ -470,7 +470,12 @@ routing:
           guard: { maxErrorRate: 0.2, maxLatencyMs: 2000, minCalls: 20 }   # automatic rollback
 
 servers:
+  - { id: search, name: Search, transport: streamable-http, url: https://search.example/mcp }
+  - { id: search-v2, name: Search v2, transport: streamable-http, url: https://search-v2.example/mcp }
   - id: postgres
+    name: Postgres
+    transport: streamable-http
+    url: https://primary.example/mcp
     cost: 3                     # relative cost per call (smart strategy)
     replicas: [{ url: https://replica.example/mcp, cost: 1 }]
     loadBalancing:
@@ -1107,6 +1112,7 @@ mtls:
   requireForAll: false                 # true: every https:// upstream uses mTLS
 servers:
   - id: search
+    name: Search
     transport: streamable-http
     url: https://search.internal:8443/mcp
     tls:
