@@ -4,7 +4,8 @@
 
 | Version | Supported |
 |---|---|
-| 12.x (current) | ✅ new features, bug and security fixes |
+| 13.x (current) | ✅ new features, bug and security fixes |
+| 12.x | ⚠️ superseded by 13.x — 12.0.1 carries the MGW-2026-001 fix ([Migrating to 13.0](https://github.com/HarrisonCN/mcp-gateway/blob/main/docs/guides/migrating-to-v13.md)) |
 | 11.x | ⚠️ superseded — 11.2.0 carries the 11.1 / 11.2 security fixes; upgrade to 12.x ([Migrating to 12.0](docs/guides/migrating-to-v12.md)) |
 | 10.x (LTS) | ✅ bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |
 | < 10.0 | ❌ — please upgrade (`mcp-gateway migrate`, see [Migrating to 10.0](docs/guides/migrating-to-v10.md) and [Migrating to 11.0](docs/guides/migrating-to-v11.md)) |
@@ -20,6 +21,14 @@ Please **do not** open a public issue. Use
 [GitHub private vulnerability reporting](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new)
 with steps to reproduce and the affected version. You will get an answer within a few days; fixes are released as
 patch versions and credited in the CHANGELOG unless you prefer otherwise.
+
+## Security advisories
+
+| ID | Severity | Fixed in | Summary |
+|---|---|---|---|
+| MGW-2026-001 | High | 13.1.0, 12.0.1, 10.9.2 | Re-authorization after reroute: call hooks (`rollouts`, `blue-green`, `self-healing`, `realtime-budgets` downgrade) and `routing` splits could move a call to another server after the central authorizer ran, so a client allowed only on the stable server could reach a canary / fallback it was not allowed on. Fixed by a mandatory final authorization against the final target immediately before the upstream send, and a frozen authorized target. Affected: 7.5.0 – 13.0.0, only deployments that use rollouts, blue/green, self-healing fallbacks / rollbacks, budget downgrades or routing splits. |
+
+The full list (including 13.x-only advisories) is in SECURITY.md on the `main` branch.
 
 ## Incident response and supply chain
 

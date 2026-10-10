@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [12.0.1] - 2026-10-10
+
+**Security backport (12.x).** Fix for MGW-2026-001 from 13.1.0; no other changes.
+
+### Security
+- **MGW-2026-001 (high) — re-authorization after reroute.** The central authorizer ran once at the start of the call
+  pipeline, but call hooks (`rollouts` stable → canary, `blue-green`, `self-healing` fallback / rollback,
+  `realtime-budgets` downgrade) and `routing` splits could change the target server afterwards without a new check:
+  a client allowed only on the stable server could reach the canary. The invoker now runs a mandatory final
+  authorization immediately before the upstream send, against the final target: the central authorizer (client /
+  tenant / delegation scope ∩ the server's tool exposure) always runs again; when the target changed, tool policy
+  rules (incl. approval holds), data residency and the `before` hooks of the security guard modules (DLP, agent
+  identity, confidential computing, policy engine, privacy, sanitize, approval flows) are evaluated for the new target
+  too. The authorized target is then frozen; the send refuses any call whose target differs from it. A refused
+  reroute answers `-32003` with `data.decision: "reroute-denied"` (`from`, `to`, `reroutedBy`, `reason`), is recorded
+  in history / the audit store, logged as an `audit:` line and counted in `mcp_gateway_reroute_denials_total`.
+- The release workflows of this branch never move the `latest` container tag or npm dist-tag, and CI / image builds
+  pull base images from the ECR Public mirror of the Docker Official Images (Docker Hub rate limits).
+
 ## [12.0.0] - 2026-10-09
 
 **Breaking security release.** Third-party stdio MCP servers are isolated from the gateway core — environment
