@@ -83,7 +83,17 @@ for (const profile of ['minimal', 'all']) {
 }
 
 const out = arg('--write');
-if (out) writeFileSync(join(root, out), JSON.stringify({ ...result, recordedAt: new Date().toISOString() }, null, 2) + '\n');
+if (out) {
+  // 13.3.0: merge into platforms[<platform>] instead of replacing the file (it also holds the load baselines)
+  const p = join(root, out);
+  let file = {};
+  try {
+    file = JSON.parse(readFileSync(p, 'utf8'));
+  } catch {}
+  file.platforms ??= {};
+  file.platforms[result.platform] = { ...(file.platforms[result.platform] ?? {}), node: result.node, method: `median of ${runs}`, profiles: result.profiles, recordedAt: new Date().toISOString() };
+  writeFileSync(p, JSON.stringify(file, null, 2) + '\n');
+}
 const cmp = arg('--compare');
 let failed = false;
 if (process.argv.includes('--json')) console.log(JSON.stringify(result, null, 2));
