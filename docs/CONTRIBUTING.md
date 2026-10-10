@@ -73,6 +73,11 @@ reconnects are shared and need no changes.
 1. Fork the repository and create a feature branch
 2. Write tests for new functionality
 3. Ensure `npm run typecheck` and `npm test` pass
+   - documentation changes: `npx tsx scripts/docs-check.ts` (config snippets vs schema v11, CLI flags, links, image
+     tags, versions) — the required CI check `Docs check` runs the same
+   - a new feature module needs a minimal config section in `test/helpers/module-contract.ts`; the shared module
+     contract (`test/contract-13-4-0.test.ts`) then covers it
+   - releases are gated on the required checks of the merge commit: see [release-gates.md](release-gates.md)
 4. Keep PRs focused — one feature or fix per PR
 5. Write a clear PR description explaining the motivation
 
