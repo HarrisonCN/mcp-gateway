@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
 import { globToRegExp } from '../src/utils/tool-filter.js';
-import { ToolCache } from '../src/gateway/cache.js';
+import { ToolCache, canonicalJson } from '../src/gateway/cache.js';
 import { validateConfig } from '../src/config/loader.js';
 import { authorize, clientPrincipal } from '../src/auth/authorizer.js';
 import { withTenantScope } from '../src/auth/tenants.js';
@@ -62,10 +62,10 @@ describe('cache keys', () => {
       fc.property(input, input, (a, b) => {
         const ka = cache.key(rule, a);
         const kb = cache.key(rule, b);
-        const norm = (x: typeof a) => JSON.stringify([x.serverId, x.target && x.target !== x.serverId ? x.target : null, x.tool, x.clientId ?? 'anonymous', x.tenant ?? null, JSON.parse(JSON.stringify(x.args))]);
+        const norm = (x: typeof a) => JSON.stringify([x.serverId, x.target && x.target !== x.serverId ? x.target : null, x.tool, x.clientId ?? 'anonymous', x.tenant ?? null, canonicalJson(x.args)]);
         if (norm(a) !== norm(b)) {
           // args are compared canonically (key order does not matter), so only assert on structurally different calls
-          const sameArgs = JSON.stringify(Object.entries(a.args).sort()) === JSON.stringify(Object.entries(b.args).sort());
+          const sameArgs = canonicalJson(a.args) === canonicalJson(b.args);
           const sameRest = JSON.stringify([a.serverId, a.target && a.target !== a.serverId ? a.target : null, a.tool, a.clientId ?? 'anonymous', a.tenant ?? null]) === JSON.stringify([b.serverId, b.target && b.target !== b.serverId ? b.target : null, b.tool, b.clientId ?? 'anonymous', b.tenant ?? null]);
           if (!(sameArgs && sameRest)) expect(ka).not.toBe(kb);
         } else expect(ka).toBe(kb);

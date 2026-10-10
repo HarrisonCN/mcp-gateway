@@ -200,7 +200,8 @@ const partition = (c: Cfg, call: HookCall, exact: string) => {
   // 13.1.1: keyed on the server the call is routed to (routing splits), so split targets never share entries.
   const target = call.routedTo?.() ?? call.serverId;
   // 13.5.0: unambiguous JSON-array partition (server ids / tool names containing "/", ">" or NUL cannot collide)
-  return JSON.stringify([call.serverId, target !== call.serverId ? target : null, call.tool, subject, exact]);
+  // (the `server/tool\u0000` prefix is kept only for `DELETE /admin/semantic-cache?tool=` purges)
+  return `${call.serverId}/${call.tool}\u0000${JSON.stringify([call.serverId, target !== call.serverId ? target : null, call.tool, subject, exact])}`;
 };
 const fromCache = (r: ProxyResponse) => {
   const res = r.result as { _meta?: Record<string, unknown> } | undefined;
