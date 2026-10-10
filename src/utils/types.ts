@@ -489,6 +489,10 @@ export interface ToolPolicyConfig {
 
 export interface ObservabilityConfig {
   tracing?: TracingConfig;
+  /** 13.3.0: subject / actor ids on spans — `hash` (default, keyed HMAC), `plain` or `omit`. Never metric labels. */
+  principal?: import('../observability/telemetry.js').PrincipalTelemetryConfig;
+  /** 13.3.0: push the reliability metrics (route, principal type, denials, modules, generations, …) as OTLP/HTTP JSON. */
+  metrics?: import('../observability/telemetry.js').MetricsExportConfig;
 }
 
 /** `state` — where rate-limit windows, lockouts and MCP session metadata live. */

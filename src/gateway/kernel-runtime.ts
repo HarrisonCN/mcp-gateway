@@ -126,9 +126,12 @@ export const loadedFeatures = (): string[] => [...records.values()].filter((r) =
  */
 export class ModuleFailures {
   private readonly failed = new Map<string, string>();
+  /** 13.3.0: called on every failure (telemetry: `mcp_gateway_module_failures_total`). */
+  onFail?: (id: string, error: string) => void;
   /** Mark a module failed. */
   mark(id: string, error: string): void {
     this.failed.set(id, error);
+    this.onFail?.(id, error);
   }
   /** Clear one failure (successful re-init) or all of them (gateway stop). */
   clear(id?: string): void {

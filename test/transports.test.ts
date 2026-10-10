@@ -111,6 +111,8 @@ describe('Streamable HTTP transport (official SDK server)', () => {
     await remote.dropSessions();
     const r = await proxy.callTool('remote', 'echo', { msg: 'x' });
     expect(r.success).toBe(false);
+    // 13.3.0: the loss is reported right after the refused request settled (so it keeps its own "unsent" error)
+    await new Promise((res) => setImmediate(res));
     expect(lost).toEqual(['remote']);
     expect(proxy.isConnected('remote')).toBe(false);
   });

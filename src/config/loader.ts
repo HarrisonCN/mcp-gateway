@@ -1022,6 +1022,13 @@ const GatewayConfigSchema = z.object({
         })
         .strict()
         .optional(),
+      // 13.3.0: how subject / actor ids appear on spans (never in metric labels)
+      principal: z.object({ mode: z.enum(['hash', 'plain', 'omit']).optional(), hashKey: z.string().min(16).optional() }).strict().optional(),
+      // 13.3.0: push the reliability metrics as OTLP/HTTP JSON
+      metrics: z
+        .object({ otlp: z.object({ endpoint: z.string().url(), headers: z.record(z.string()).optional(), intervalMs: z.number().int().min(1000).optional() }).strict().optional() })
+        .strict()
+        .optional(),
     })
     .strict()
     .optional(),
