@@ -17,6 +17,7 @@ import { createApiRouter, serverStateSamples, type ApiRouter, type ToolCallRespo
 import { createOpenAIRouter } from '../bridges/openai.js';
 import { createAdminRouter } from './admin.js';
 import { createEdgeControlRouter } from './edge-control.js';
+import { loadFailureOf } from './kernel-runtime.js';
 import { createFeatureRouter, featureSections, principalOf, clientIdOf, type FeatureRouter } from './features.js';
 import { clientPrincipal, deniedPrincipal, systemPrincipal, type Principal } from '../auth/authorizer.js';
 import { deprecate } from '../utils/deprecations.js';
@@ -224,6 +225,15 @@ export class Gateway {
       '# HELP mcp_gateway_authz_denials_total Calls refused by the central authorizer',
       '# TYPE mcp_gateway_authz_denials_total counter',
       `mcp_gateway_authz_denials_total ${this.invoker?.authzDenials ?? 0}`,
+      '# HELP mcp_gateway_reroute_denials_total Rerouted calls refused by the final authorization (13.1)',
+      '# TYPE mcp_gateway_reroute_denials_total counter',
+      `mcp_gateway_reroute_denials_total ${this.invoker?.rerouteDenials ?? 0}`,
+      '# HELP mcp_gateway_module_failure_denials_total Calls refused because a fail-closed feature module failed (13.1)',
+      '# TYPE mcp_gateway_module_failure_denials_total counter',
+      `mcp_gateway_module_failure_denials_total ${this.invoker?.moduleFailureDenials ?? 0}`,
+      '# HELP mcp_gateway_degraded_calls_total Calls answered while a degrade-policy feature module was failed (13.1)',
+      '# TYPE mcp_gateway_degraded_calls_total counter',
+      `mcp_gateway_degraded_calls_total ${this.invoker?.degradedCalls ?? 0}`,
     ]);
     this.invoker = new ToolInvoker({
       proxy: this.proxy,
@@ -242,6 +252,7 @@ export class Gateway {
       compliance: new ComplianceEngine(() => this.config.compliance),
       config: () => this.config,
       exposed: (serverId, tool) => this.registry.isToolExposed(serverId, tool),
+      moduleFailure: (id) => (this.featureRouter ? this.featureRouter.failureOf(id) : loadFailureOf(id)),
       federation: (this.federation = new Federation({
         config: () => this.config.federation,
         version: VERSION,

@@ -158,7 +158,11 @@ export interface GatewayConfig {
   /** Config schema version (11.0: 11). */
   version?: 11;
   /** Feature-module activation (10.9; `lazy` = only configured modules — the 11.0 default; `eager` = all, as in 10.x). */
-  kernel?: { modules?: 'eager' | 'lazy' };
+  kernel?: {
+    modules?: 'eager' | 'lazy';
+    /** Override the failure policy of quota / cost modules (13.1): `console`, `realtime-budgets`, `billing`. Security modules are always `closed`. */
+    failurePolicy?: Record<string, 'open' | 'closed' | 'degrade'>;
+  };
   /** Ecosystem marketplace GA (9.8). */
   ecosystem?: import('../features/schemas/ecosystem.js').EcosystemConfig;
   /** Policy-as-code 2.0: Cedar / OPA (10.5). */

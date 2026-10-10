@@ -11,6 +11,7 @@ import { existsSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
+import { manifestEntry } from '../features/manifest.js';
 import { RegionsSchema } from '../features/schemas/regions.js';
 import { EdgeFleetSchema } from '../features/schemas/edge-fleet.js';
 import { PluginTrustSchema } from '../plugins/trust.js';
@@ -518,7 +519,22 @@ const GatewayConfigSchema = z.object({
   version: z.literal(11).optional(),
   // 10.9: how feature modules are activated. 11.0 default: lazy (only modules whose section is configured);
   // eager mounts every module (10.x behaviour).
-  kernel: z.object({ modules: z.enum(['eager', 'lazy']).optional() }).strict().optional(),
+  kernel: z
+    .object({
+      modules: z.enum(['eager', 'lazy']).optional(),
+      failurePolicy: z
+        .record(z.enum(['open', 'closed', 'degrade']))
+        .optional()
+        .superRefine((v, c) => {
+          for (const id of Object.keys(v ?? {})) {
+            const e = manifestEntry(id);
+            if (!e) c.addIssue({ code: z.ZodIssueCode.custom, message: `kernel.failurePolicy: unknown module "${id}"` });
+            else if (!e.failurePolicyConfigurable) c.addIssue({ code: z.ZodIssueCode.custom, message: `kernel.failurePolicy: the failure policy of "${id}" is fixed (${e.failurePolicy ?? 'closed'}); only console, realtime-budgets and billing are configurable` });
+          }
+        }),
+    })
+    .strict()
+    .optional(),
   cors: z.object({ origins: z.array(z.string()).optional() }).strict().optional(),
   health: z.object({ intervalMs: z.number().int().min(1000).optional() }).strict().optional(),
   // 7.0: role (all / control / data), config API, dashboard and data-plane sync.

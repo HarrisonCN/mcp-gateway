@@ -2,8 +2,10 @@
  * Kernel module loader (13.0): evaluates feature modules on demand through the manifest's `import()` thunks, in
  * dependency order, and remembers which ones failed so the rest of the gateway keeps running (failure isolation).
  *
- * Evaluation is process-wide (an ES module is evaluated once); activation, lifecycle and health are per gateway and
- * live in {@link ./features.ts createFeatureRouter}.
+ * Evaluation is process-wide (an ES module is evaluated once): the process keeps only the immutable manifest and
+ * this load cache. Activation, lifecycle, health and runtime failures are per gateway (13.1: {@link ModuleFailures},
+ * owned by each {@link ./features.ts createFeatureRouter}), so a module that fails in one gateway does not affect
+ * another gateway in the same process.
  *
  * - {@link loadFeature} — evaluate a module after its declared dependencies; resolves `false` (never throws) on failure.
  * - {@link requireDependency} — what a module uses instead of importing another feature module: only declared
@@ -26,8 +28,6 @@ export interface LoadRecord {
 const records = new Map<string, LoadRecord>();
 const namespaces = new Map<string, Record<string, unknown>>();
 const pending = new Map<string, Promise<boolean>>();
-/** Modules the gateway(s) marked failed at runtime (init / reconfigure threw, or a dependency failed). Call hooks of these are skipped. */
-const runtimeFailed = new Map<string, string>();
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -119,18 +119,34 @@ export const loadRecord = (id: string): LoadRecord | undefined => records.get(id
 /** Ids of manifest modules evaluated so far (through the kernel). */
 export const loadedFeatures = (): string[] => [...records.values()].filter((r) => r.status === 'loaded').map((r) => r.id);
 
-/** Mark a module failed at runtime (its call hooks stop running). */
-export function markRuntimeFailed(id: string, error: string): void {
-  runtimeFailed.set(id, error);
+/**
+ * Runtime failures of one gateway's kernel (13.1; was a process-wide map in 13.0): modules whose init / reconfigure /
+ * disable threw or whose dependency failed. Their call hooks are handled by their failure policy (see
+ * {@link ../gateway/hooks.ts callHookPlan}).
+ */
+export class ModuleFailures {
+  private readonly failed = new Map<string, string>();
+  /** Mark a module failed. */
+  mark(id: string, error: string): void {
+    this.failed.set(id, error);
+  }
+  /** Clear one failure (successful re-init) or all of them (gateway stop). */
+  clear(id?: string): void {
+    if (id === undefined) this.failed.clear();
+    else this.failed.delete(id);
+  }
+  get(id: string): string | undefined {
+    return this.failed.get(id);
+  }
+  ids(): string[] {
+    return [...this.failed.keys()];
+  }
 }
 
-/** Clear a runtime failure (gateway stop / successful re-init). */
-export function clearRuntimeFailed(id?: string): void {
-  if (id === undefined) runtimeFailed.clear();
-  else runtimeFailed.delete(id);
-}
+/** Load failure of a module (process-wide: an ES module that failed to evaluate is failed for every gateway). */
+export const loadFailureOf = (id: string): string | undefined => (records.get(id)?.status === 'failed' ? records.get(id)!.error : undefined);
 
-/** Runtime or load failure of a module, if any. */
-export function failureOf(id: string): string | undefined {
-  return runtimeFailed.get(id) ?? (records.get(id)?.status === 'failed' ? records.get(id)!.error : undefined);
+/** Runtime failure (of the given gateway's kernel) or load failure of a module, if any. */
+export function failureOf(id: string, failures?: ModuleFailures): string | undefined {
+  return failures?.get(id) ?? loadFailureOf(id);
 }
