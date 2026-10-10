@@ -17,10 +17,20 @@ config schema v10 stays stable across every 10.x minor release, and its LTS date
 
 ## Reporting a vulnerability
 
-Please **do not** open a public issue. Use
-[GitHub private vulnerability reporting](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new)
-with steps to reproduce and the affected version. You will get an answer within a few days; fixes are released as
-patch versions and credited in the CHANGELOG unless you prefer otherwise.
+Please **do not** put vulnerability details in a public issue, pull request or discussion.
+
+GitHub private vulnerability reporting is **not enabled yet** on this repository (pending enablement by the
+maintainer; until then the "Report a vulnerability" form is unavailable). In the meantime:
+
+1. Open a public issue titled **"Security contact request"** that contains **no technical details** — only the
+   affected package (`@winstonsayno/mcp-gateway` or a client) and the major version.
+2. The maintainer ([@HarrisonCN](https://github.com/HarrisonCN)) will reply there with a private channel for the
+   report (steps to reproduce, affected versions, impact).
+
+Once private reporting is enabled, use
+[GitHub private vulnerability reporting](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new) instead.
+You will get an answer within a few days; fixes are released as patch versions and credited in the CHANGELOG unless
+you prefer otherwise.
 
 ## Security advisories
 
