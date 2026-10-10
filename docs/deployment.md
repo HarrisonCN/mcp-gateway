@@ -10,8 +10,8 @@ Images are published to GitHub Container Registry for every release (`linux/amd6
 cosign (keyless, GitHub Actions identity) and shipped with an SBOM:
 
 ```
-ghcr.io/harrisoncn/mcp-gateway:13.6.0   # exact release — immutable, use this (or a digest) in production
-ghcr.io/harrisoncn/mcp-gateway:13.6     # latest patch of 13.4
+ghcr.io/harrisoncn/mcp-gateway:13.7.0   # exact release — immutable, use this (or a digest) in production
+ghcr.io/harrisoncn/mcp-gateway:13.7     # latest patch of 13.4
 ghcr.io/harrisoncn/mcp-gateway:13       # latest 13.x (current line, config schema v11)
 ghcr.io/harrisoncn/mcp-gateway:latest   # newest release of the current line
 ghcr.io/harrisoncn/mcp-gateway:12.0     # 12.0.x security maintenance line (npm dist-tag v12-0)
@@ -24,7 +24,7 @@ Which tag to use:
   under you even if a tag is moved:
 
   ```bash
-  docker buildx imagetools inspect ghcr.io/harrisoncn/mcp-gateway:13.6.0 --format '{{json .Manifest.Digest}}'
+  docker buildx imagetools inspect ghcr.io/harrisoncn/mcp-gateway:13.7.0 --format '{{json .Manifest.Digest}}'
   # → use ghcr.io/harrisoncn/mcp-gateway@sha256:<digest> (or 13.4.0@sha256:<digest> to keep the version readable)
   cosign verify ghcr.io/harrisoncn/mcp-gateway@sha256:<digest> \
     --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@refs/tags/v' \
@@ -44,7 +44,7 @@ docker run -d --name mcp-gateway -p 4000:4000 \
   -v mcp-gateway-data:/app/data \
   -e MCP_GATEWAY_API_KEYS="$(openssl rand -hex 24)" \
   -e GITHUB_TOKEN \
-  ghcr.io/harrisoncn/mcp-gateway:13.6.0
+  ghcr.io/harrisoncn/mcp-gateway:13.7.0
 ```
 
 - The image runs as the unprivileged `node` user, listens on `4000`, and has a `HEALTHCHECK` on the always-public
@@ -54,7 +54,7 @@ docker run -d --name mcp-gateway -p 4000:4000 \
   anything else (Python, `uvx`, …) in a derived image:
 
   ```dockerfile
-  FROM ghcr.io/harrisoncn/mcp-gateway:13.6.0
+  FROM ghcr.io/harrisoncn/mcp-gateway:13.7.0
   USER root
   RUN apk add --no-cache python3 py3-pip && pip install --break-system-packages uv
   USER node
@@ -117,7 +117,7 @@ The essential parts of the Deployment:
 ```yaml
 containers:
   - name: mcp-gateway
-    image: ghcr.io/harrisoncn/mcp-gateway:13.6.0   # or @sha256:<digest>
+    image: ghcr.io/harrisoncn/mcp-gateway:13.7.0   # or @sha256:<digest>
     args: ["start", "-c", "/config/mcp-gateway.yml", "--no-watch"]
     ports: [{ name: http, containerPort: 4000 }]
     envFrom: [{ secretRef: { name: mcp-gateway } }]
@@ -158,6 +158,23 @@ Rate limits, auth lockouts and MCP session metadata are then shared (see *Shared
 reference). Each replica connects to the upstream MCP servers itself. The `GET /mcp` notification stream is served by
 the replica that accepted it; clients reconnect with `Last-Event-ID` after a failover. `/api/v1/health` reports
 `"state": "redis"`.
+
+What holds across replicas (13.7.0, verified in CI against a real Redis with injected faults — job *Multi-instance
+reliability (real Redis)*, `test/multi-instance-13-7-0.test.ts`):
+
+| Behaviour | Guarantee |
+|---|---|
+| MCP session opened on replica A, next request on B | B adopts it from the store (same client only) |
+| Session terminated (`DELETE /mcp`) on A | rejected (404) on every replica within 1 s; a refresh elsewhere cannot re-create it |
+| Redis restarted without persistence / failover | live sessions keep working; the replica that holds one re-publishes it on its next request (≤ 1 s) |
+| Agent-token revoked on A | rejected on every replica from the next call (no caching of "not revoked") |
+| Replica cut off from Redis | revocation checks fail closed (503) by default; once healed the replica answers from the store after the 1 s breaker cooldown |
+| Rate limits | one limit across all replicas, also under concurrent bursts (denied requests are not counted) |
+| `notifications/cancelled` arrives on another replica | the replica running the request stops it within ~250 ms |
+| Progress / result of a request | stay on the HTTP response of the replica that accepted the request |
+
+Not shared: the `Last-Event-ID` replay buffer of a `GET /mcp` stream (per replica). Run Redis with persistence
+(`appendonly yes`) if revocations must survive a Redis restart: without it a restart forgets them.
 
 ## Behind a reverse proxy
 

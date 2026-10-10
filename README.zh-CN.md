@@ -16,7 +16,7 @@ mcp-gateway 位于 AI 客户端（Claude Code、Cursor、自研 Agent、大模�
 Streamable HTTP，或 `/api/v1` 下的 REST API——网关负责识别调用方、判断它能做什么、把调用路由到正确的上游，并记录发生了什么。
 密钥、权限范围、限流、策略、日志和指标集中在一处管理，不必在每个客户端里各配一遍。
 
-当前版本：**13.6.0**（npm `latest`）。控制面板在线演示（模拟流量，纯浏览器运行，无需后端）：
+当前版本：**13.7.0**（npm `latest`）。控制面板在线演示（模拟流量，纯浏览器运行，无需后端）：
 <https://harrisoncn.github.io/mcp-gateway/>
 
 ## 目录
@@ -149,7 +149,7 @@ docker run -d -p 4000:4000 \
 每个镜像都用 cosign 做了无密钥签名（GitHub OIDC），并附带 SLSA 来源证明和 SBOM。部署前请先验证，并在生产清单中固定它输出的摘要：
 
 ```bash
-cosign verify ghcr.io/harrisoncn/mcp-gateway:13.6.0 \
+cosign verify ghcr.io/harrisoncn/mcp-gateway:13.7.0 \
   --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -269,7 +269,7 @@ CI 中运行 CodeQL、OpenSSF Scorecard、Trivy、`npm audit` 和属性测试；
 
 **安全公告。** MGW-2026-001 至 MGW-2026-013（改道后重新授权、安全模块失效关闭、按网关隔离模块故障、事务化热更新、
 分流感知的缓存键、分阶段热更新、委托调用身份上下文、按签发方区分的客户端 ID、分流目标凭据隔离、最终参数复核、热更新期间在途调用的配置隔离、Redis 回复错位）均已在 13.3.0 中修复，适用的修复也已回移到
-12.0.6 和 10.9.7；MGW-2026-013（通过 agent-identity 令牌作用域触发的通配符匹配正则拒绝服务）已在 13.5.0、12.0.8 和 10.9.9 中修复——见
+12.0.6 和 10.9.7；MGW-2026-013（通过 agent-identity 令牌作用域触发的通配符匹配正则拒绝服务）已在 13.5.0、12.0.8 和 10.9.9 中修复；MGW-2026-014（重连后 Redis 命令先于 `AUTH` / `SELECT` 执行）已在 13.7.0、12.0.10 和 10.9.11 中修复——见
 [SECURITY.md](SECURITY.md#security-advisories)。发现漏洞请按 [SECURITY.md](SECURITY.md#reporting-a-vulnerability)
 中的方式私下报告（已启用 GitHub 私密漏洞报告：[Report a vulnerability](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new)），不要在公开 issue 中披露细节。
 
@@ -293,7 +293,7 @@ CI 中运行 CodeQL、OpenSSF Scorecard、Trivy、`npm audit` 和属性测试；
 
 | 版本线 | 最新版本 | npm dist-tag | 镜像标签 | 状态 |
 |---|---|---|---|---|
-| 13.x | 13.6.0 | `latest` | `:13`、`:latest` | 当前版本——新功能、缺陷与安全修复 |
+| 13.x | 13.7.0 | `latest` | `:13`、`:latest` | 当前版本——新功能、缺陷与安全修复 |
 | 12.x | 12.0.9 | `v12-0` | `:12` | 已被取代——包含 MGW-2026-001、-005、-007、-008、-009、-010、-011、-012 和 -013 的修复；请升级到 13.x |
 | 11.x | 11.2.0 | — | `:11` | 已被取代——请升级到 13.x |
 | 10.x（LTS） | 10.9.10 | `v10-lts` | `:10` | 2027-10-31 前提供缺陷与安全修复，之后至 2028-10-31 仅提供安全修复 |

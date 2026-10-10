@@ -9,6 +9,7 @@
     "JS client (Node 22)",
     "JS client (Node 24)",
     "Kotlin client",
+    "MCP compat matrix",
     "Analyze (javascript-typescript)"
   ],
   "conditional": [

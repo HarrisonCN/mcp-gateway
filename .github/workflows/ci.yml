@@ -210,6 +210,32 @@ jobs:
           path: compat-matrix.json
           if-no-files-found: ignore
 
+  multi-instance:
+    name: Multi-instance reliability (real Redis)
+    # 13.7.0: real redis-server processes (crash + restart, AUTH + SELECT) behind an in-test TCP fault proxy (latency,
+    # stalls, resets, partitions) and several gateway instances sharing them: session recovery / termination,
+    # revocation and rate-limit consistency, connection migration. The suite skips without redis-server, so this job
+    # installs it and fails if the suite did not run.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: redis-server
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q redis-server
+          sudo systemctl stop redis-server || true
+          redis-server --version
+      - name: Multi-instance + Redis fault-injection suite
+        run: |
+          npx vitest run test/multi-instance-13-7-0.test.ts test/state.test.ts --reporter=default --reporter=json --outputFile.json=multi-instance.json
+          node -e "const r=require('./multi-instance.json'); const s=r.testResults.flatMap(f=>f.assertionResults).filter(a=>a.status==='skipped'||a.status==='pending'); const n=r.numPassedTests; console.log(n+' passed'); if(r.numFailedTests||n<13){process.exit(1)}"
+
   js-client:
     name: JS client (Node ${{ matrix.node }})
     runs-on: ubuntu-latest

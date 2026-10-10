@@ -2,7 +2,7 @@
 #   kubectl create secret generic mcp-gateway --from-literal=MCP_GATEWAY_API_KEYS=$(openssl rand -hex 24)
 #   kubectl apply -f examples/deploy/kubernetes/mcp-gateway.yaml
 # The Secret below is only a placeholder for local clusters — create a real one as above (or with sealed / external
-# secrets) and delete this document. Pin a release in production: ghcr.io/harrisoncn/mcp-gateway:13.6.0 or @sha256:<digest>.
+# secrets) and delete this document. Pin a release in production: ghcr.io/harrisoncn/mcp-gateway:13.7.0 or @sha256:<digest>.
 apiVersion: v1
 kind: Secret
 metadata:
