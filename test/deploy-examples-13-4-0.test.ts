@@ -32,8 +32,8 @@ afterEach(async () => {
 async function boots(raw: Record<string, unknown>, echoPath: string) {
   const dir = mkdtempSync(join(tmpdir(), 'deploy-ex-'));
   const text = JSON.stringify(raw).replaceAll('/app/examples/echo-server.mjs', echoPath).replaceAll('/config/echo-server.mjs', echoPath);
-  const cfg = validateConfig({ ...JSON.parse(text), port: 0, host: '127.0.0.1', auth: { strategy: 'api-key', apiKeys: [KEY] }, configDir: dir });
-  gw = new Gateway(cfg);
+  const cfg = validateConfig({ ...JSON.parse(text), auth: { strategy: 'api-key', apiKeys: [KEY] } });
+  gw = new Gateway({ ...cfg, port: 0, host: '127.0.0.1', configDir: dir });
   await gw.start();
   const base = `http://127.0.0.1:${gw.address()!.port}`;
   for (let i = 0; i < 50; i++) {
