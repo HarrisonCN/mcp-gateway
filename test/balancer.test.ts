@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 import { Gateway } from '../src/gateway/index.js';
 import { LoadBalancer, expandReplicas } from '../src/gateway/balancer.js';
 import { classifyFailure, ToolInvoker } from '../src/gateway/invoker.js';
+import { markTransportFailure } from '../src/proxy/index.js';
 import { MetricsCollector } from '../src/monitor/index.js';
 import { loadConfig } from '../src/config/loader.js';
 import type { McpServerConfig } from '../src/utils/types.js';
@@ -88,8 +89,10 @@ describe('LoadBalancer', () => {
 
   it('classifies upstream failures', () => {
     expect(classifyFailure({ success: true, durationMs: 1 })).toBeUndefined();
-    expect(classifyFailure({ success: false, durationMs: 1, error: { code: -32000, message: '' } })).toBe('not-connected');
-    expect(classifyFailure({ success: false, durationMs: 1, error: { code: -32001, message: '' } })).toBe('timeout');
+    // 13.3.0: only failures the gateway produced (marked by the proxy) are transport failures
+    expect(classifyFailure(markTransportFailure({ success: false, durationMs: 1, error: { code: -32000, message: '' } }, 'not-connected'))).toBe('not-connected');
+    expect(classifyFailure(markTransportFailure({ success: false, durationMs: 1, error: { code: -32001, message: '' } }, 'timeout'))).toBe('timeout');
+    expect(classifyFailure({ success: false, durationMs: 1, error: { code: -32000, message: 'upstream says server error' } })).toBe('error');
     expect(classifyFailure({ success: false, durationMs: 1, error: { code: -1, message: '' } })).toBe('error');
   });
 
@@ -122,8 +125,8 @@ describe('ToolInvoker failover', () => {
     return { run, calls };
   }
   const ok = () => ({ success: true, durationMs: 1, result: 'ok' });
-  const down = () => ({ success: false, durationMs: 0, error: { code: -32000, message: 'down' } });
-  const slow = () => ({ success: false, durationMs: 9, error: { code: -32001, message: 'timeout' } });
+  const down = () => markTransportFailure({ success: false, durationMs: 0, error: { code: -32000, message: 'down' } }, 'not-connected');
+  const slow = () => markTransportFailure({ success: false, durationMs: 9, error: { code: -32001, message: 'timeout' } }, 'timeout');
 
   it('retries the next member on not-connected, not on timeouts by default', async () => {
     const a = invoker({ svc: down, 'svc~1': ok, 'svc~2': ok });

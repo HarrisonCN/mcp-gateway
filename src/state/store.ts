@@ -29,6 +29,8 @@ export interface StateStore {
   /** Health check (resolves when reachable). */
   ping(): Promise<void>;
   close(): Promise<void>;
+  /** 13.3.0: breaker state of a guarded shared store (see state/guard). */
+  health?(): import('./guard.js').StoreHealth;
 }
 
 interface Entry {
@@ -139,6 +141,9 @@ export class PrefixedStateStore implements StateStore {
   }
   close() {
     return this.inner.close();
+  }
+  health() {
+    return this.inner.health?.() ?? { state: 'closed' as const, failures: 0, fastFails: 0, trips: 0 };
   }
 }
 

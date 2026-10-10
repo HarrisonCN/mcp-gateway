@@ -10,12 +10,14 @@ import { MemoryStateStore, PrefixedStateStore, type StateStore } from './store.j
 import { RedisStateStore } from './redis.js';
 import { EventLogStateStore } from './eventlog.js';
 import { SqliteStateStore } from './sqlite.js';
+import { GuardedStateStore } from './guard.js';
 
 export { MemoryStateStore, PrefixedStateStore } from './store.js';
 export type { StateStore } from './store.js';
 export { RedisStateStore, RedisClient, RespParser, encodeCommand } from './redis.js';
 export { EventLogStateStore } from './eventlog.js';
 export { SqliteStateStore } from './sqlite.js';
+export { GuardedStateStore, StoreUnavailableError, type StoreHealth, type BreakerState } from './guard.js';
 export type { EventLogOptions, EventLogStats } from './eventlog.js';
 export { createStoreRateLimiter, StoreAuthLockout } from './shared.js';
 
@@ -29,7 +31,8 @@ export function createStateStore(config: StateConfig | undefined, baseDir: strin
       connectTimeoutMs: config.redis.connectTimeoutMs,
       commandTimeoutMs: config.redis.commandTimeoutMs,
     });
-    return new PrefixedStateStore(redis, config.redis.keyPrefix ?? 'mcp-gateway:');
+    // 13.3.0: a stalled / unreachable store fails fast after one timeout (see state/guard)
+    return new PrefixedStateStore(new GuardedStateStore(redis), config.redis.keyPrefix ?? 'mcp-gateway:');
   }
   if (config.store === 'eventlog') {
     const dir = config.eventlog?.dir ?? '.mcp-gateway/store';
@@ -37,7 +40,7 @@ export function createStateStore(config: StateConfig | undefined, baseDir: strin
   }
   if (config.store === 'sqlite') {
     const p = config.sqlite?.path ?? '.mcp-gateway/state.db';
-    return new SqliteStateStore(p === ':memory:' || isAbsolute(p) ? p : resolve(baseDir, p));
+    return new GuardedStateStore(new SqliteStateStore(p === ':memory:' || isAbsolute(p) ? p : resolve(baseDir, p), { busyTimeoutMs: config.sqlite?.busyTimeoutMs }));
   }
   throw new Error(`Unknown store.backend "${String(config.store)}"`);
 }

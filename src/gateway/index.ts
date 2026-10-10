@@ -19,7 +19,8 @@ import { createApiRouter, serverStateSamples, type ApiRouter, type ToolCallRespo
 import { createOpenAIRouter } from '../bridges/openai.js';
 import { createAdminRouter } from './admin.js';
 import { createEdgeControlRouter } from './edge-control.js';
-import { loadFailureOf, loadFeature, loadRecord } from './kernel-runtime.js';
+import { loadFailureOf, loadFeature, loadRecord, ModuleFailures } from './kernel-runtime.js';
+import { Telemetry, setCurrentTelemetry } from '../observability/telemetry.js';
 import { FEATURE_MANIFEST } from '../features/manifest.js';
 import { createFeatureRouter, featureSections, principalOf, clientIdOf, isFeatureActive, type FeatureRouter } from './features.js';
 import { clientPrincipal, deniedPrincipal, systemPrincipal, type Principal } from '../auth/authorizer.js';
@@ -90,6 +91,9 @@ export interface GatewayOptions {
   /** Re-read the config from its source (enables `POST /api/v1/admin/reload`; set by the CLI). */
   reloadFromDisk?: () => Promise<GatewayConfig>;
 }
+
+/** 13.3.0: default `health.restartAfter`. */
+export const DEFAULT_RESTART_AFTER = 3;
 
 export class Gateway {
   private readonly app = express();
@@ -273,6 +277,7 @@ export class Gateway {
 
     this.tracer = await createTracer(this.config.observability?.tracing);
     if (this.tracer.enabled) logger.info(`Tracing enabled (${this.config.observability?.tracing?.exporter ?? 'otlp-http'})`);
+    this.setupTelemetry();
     registerMetricSource('authz', () => [
       '# HELP mcp_gateway_authz_denials_total Calls refused by the central authorizer',
       '# TYPE mcp_gateway_authz_denials_total counter',
@@ -291,6 +296,7 @@ export class Gateway {
       proxy: this.proxy,
       metrics: this.metrics,
       tracer: () => this.tracer,
+      telemetry: this.telemetry,
       // 13.2.0: every config read of a call resolves in the generation the call pinned (cfgNow / callGeneration).
       requestLog: () => this.cfgNow().monitor?.requestLog !== false,
       policy: () => this.cfgNow().policy,
@@ -480,6 +486,7 @@ export class Gateway {
     this.app.use('/api/v1', edgeControl);
     // 5.1: feature modules under /api/v1/admin/<id> (src/features).
     this.featureRouter = createFeatureRouter({
+        failures: this.moduleFailures,
         authenticate: this.router.authenticate,
         isOperator: (req) => this.router!.isOperator(req),
         context: {
@@ -717,16 +724,65 @@ export class Gateway {
    * marks `degraded` when it fails); disconnected servers are `reconnecting`
    * while the supervisor is on it, otherwise `offline`.
    */
+  /** 13.3.0: reliability telemetry (Prometheus `/metrics` + optional OTLP push). */
+  telemetry = new Telemetry();
+  /** 13.3.0: this gateway's module failure registry (feeds `mcp_gateway_module_failures_total`). */
+  private readonly moduleFailures = new ModuleFailures();
+
+  /** 13.3.0: consecutive failed health pings per connected server (see `health.restartAfter`). */
+  private readonly failedPings = new Map<string, number>();
+  /** 13.3.0: sessions recycled because they stopped answering health pings. */
+  recycles = 0;
+
+  /** 13.3.0: telemetry per `observability.principal` / `observability.metrics`, its gauges and the metric source. */
+  private setupTelemetry(): void {
+    const obs = this.config.observability;
+    const t = (this.telemetry = new Telemetry(obs?.principal));
+    setCurrentTelemetry(t);
+    this.moduleFailures.onFail = (id) => t.moduleFailures.inc({ module: id });
+    t.gauge({ name: 'mcp_gateway_config_generation', help: 'Committed config generation (13.3)', read: () => [{ labels: {}, value: this.gens?.current.id ?? 0 }] });
+    t.gauge({ name: 'mcp_gateway_config_generations_alive', help: 'Config generations still alive: the current one plus those draining pinned calls (13.3)', read: () => [{ labels: {}, value: this.gens?.stats().alive ?? 0 }] });
+    t.gauge({
+      name: 'mcp_gateway_module_failed',
+      help: 'Feature modules currently failed (1 per module) (13.3)',
+      read: () => (this.featureRouter?.modules() ?? []).filter((m) => m.state === 'failed').map((m) => ({ labels: { module: m.id }, value: 1 })),
+    });
+    t.gauge({
+      name: 'mcp_gateway_state_store_up',
+      help: 'Shared state store reachable (0 while its breaker is open) (13.3)',
+      read: () => {
+        const h = this.stateStore?.health?.();
+        return this.stateStore && this.stateStore.kind !== 'memory' ? [{ labels: { backend: this.stateStore.kind }, value: h && h.state !== 'closed' ? 0 : 1 }] : [];
+      },
+    });
+    t.onCollect(() => {
+      const h = this.stateStore?.health?.();
+      if (h && this.stateStore) Telemetry.set(t.storeFailures, { backend: this.stateStore.kind }, h.failures);
+      Telemetry.set(t.recycles, {}, this.recycles);
+    });
+    registerMetricSource('reliability', () => t.prometheus());
+    t.startExport(obs?.metrics?.otlp, { 'service.name': obs?.tracing?.serviceName ?? 'mcp-gateway', 'service.version': VERSION });
+  }
+
   private async checkHealth(serverId: string): Promise<void> {
     if (this.proxy.isConnected(serverId)) {
       const timeout = Math.min(this.registry.getServer(serverId)?.timeout ?? 5_000, 5_000);
       try {
         const latency = await this.proxy.ping(serverId, timeout);
+        this.failedPings.delete(serverId);
         if (this.proxy.isConnected(serverId)) this.registry.updateHealth(serverId, 'online', latency);
       } catch (err) {
         if (!this.proxy.isConnected(serverId)) return; // the disconnect handler owns the status now
         const msg = err instanceof Error ? err.message : String(err);
         this.registry.updateHealth(serverId, 'degraded', undefined, `health ping failed: ${msg}`);
+        // 13.3.0: a session that stays "connected" but never answers (hung child, stalled remote) is recycled.
+        const n = (this.failedPings.get(serverId) ?? 0) + 1;
+        const limit = this.config.health?.restartAfter ?? DEFAULT_RESTART_AFTER;
+        if (limit > 0 && n >= limit) {
+          this.failedPings.delete(serverId);
+          this.recycles++;
+          await this.proxy.recycle(serverId, `unresponsive: ${n} consecutive health pings failed (${msg})`);
+        } else this.failedPings.set(serverId, n);
       }
       return;
     }
@@ -736,6 +792,7 @@ export class Gateway {
   }
 
   private async shutdownInternals(): Promise<void> {
+    this.telemetry.stop();
     this.invoker?.approvals.close();
     await this.plugins.close();
     this.mcp?.close();
@@ -894,6 +951,7 @@ export class Gateway {
         await this.connectServers(toAdd, { staged: true });
       } catch (err) {
         this.rollbacks++;
+        this.telemetry.reloads.inc({ result: 'rolled_back' });
         await disposePrepared();
         logger.error(`Hot reload rejected while preparing (nothing changed): ${err instanceof Error ? err.message : String(err)}`);
         throw err;
@@ -1039,6 +1097,7 @@ export class Gateway {
         fault('commit:final');
       } catch (err) {
         this.rollbacks++;
+        this.telemetry.reloads.inc({ result: 'rolled_back' });
         logger.error(`Hot reload failed, rolled back to the previous config: ${err instanceof Error ? err.message : String(err)}`);
         this.config = prevConfig;
         // Servers: the previous sessions come back; prepared ones are closed.
@@ -1117,6 +1176,7 @@ export class Gateway {
       if (applied.includes('cache')) this.invoker?.cache?.purge();
       else for (const id of [...toRemove, ...toChange.map((s) => s.id)]) this.invoker?.cache?.purge(id);
       this.invoker?.balancer?.prune();
+      this.telemetry.reloads.inc({ result: 'committed' });
       logger.info(
         `Hot reload applied (generation ${gen.id}): ${toAdd.length + toChange.length} (re)connected, ${toRemove.length} removed` +
           (applied.length ? `; updated ${applied.join(', ')}` : ''),

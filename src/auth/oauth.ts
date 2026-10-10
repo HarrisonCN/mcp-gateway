@@ -22,7 +22,8 @@
 
 import { createHash } from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
-import { createRemoteJWKSet, decodeJwt, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from 'jose';
+import type { JWTPayload, JWTVerifyGetKey } from 'jose';
+import { jose } from '../utils/lazy.js';
 import type { OAuthConfig } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { scopeFromJwt } from './scopes.js';
@@ -121,7 +122,7 @@ export class OAuthVerifier {
   }
 
   private remoteJwks(url: URL): JWTVerifyGetKey {
-    return createRemoteJWKSet(url, {
+    return jose().createRemoteJWKSet(url, {
       cacheMaxAge: (this.config.jwksCacheSeconds ?? 600) * 1000,
       cooldownDuration: 30_000,
       timeoutDuration: 5_000,
@@ -186,7 +187,7 @@ export class OAuthVerifier {
   private async verifyJwt(token: string, jwks: JWTVerifyGetKey, resource: string): Promise<TokenInfo> {
     let payload: JWTPayload;
     try {
-      ({ payload } = await jwtVerify(token, jwks, {
+      ({ payload } = await jose().jwtVerify(token, jwks, {
         algorithms: this.config.algorithms ?? ASYMMETRIC_ALGORITHMS,
         issuer: this.issuers(),
         audience: this.audiences(resource),
@@ -376,7 +377,7 @@ export function oauthMiddleware(config: OAuthConfig, options: OAuthMiddlewareOpt
 /** Decode a JWT's claims without verifying it (diagnostics only). */
 export function peekClaims(token: string): Record<string, unknown> | undefined {
   try {
-    return decodeJwt(token) as Record<string, unknown>;
+    return jose().decodeJwt(token) as Record<string, unknown>;
   } catch {
     return undefined;
   }

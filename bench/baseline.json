@@ -2,49 +2,61 @@
   "node": "v22.23.3",
   "platform": "linux-arm64",
   "runs": 15,
-  "method": "median of 3 interleaved 12.0/13.0 bench runs × 5 samples each (shared, noisy sandbox)",
+  "method": "13.3.0: median of 5 bench/kernel.mjs runs (3 samples each) on the shared sandbox, interleaved with 13.2.0; modules / moduleKb / lazyDeps are deterministic",
   "note": "Top-level profiles = linux-arm64 sandbox (kept for older readers). `--compare` uses platforms[<platform>] when present; on a platform without a recorded baseline memory deltas are report-only.",
   "profiles": {
     "minimal": {
-      "importMs": 657.9,
-      "startMs": 21.9,
-      "totalMs": 685.7,
-      "rssMb": 53.8,
-      "heapMb": 19.5,
-      "featureModules": 0
+      "importMs": 858.7,
+      "startMs": 27.1,
+      "totalMs": 889.6,
+      "rssMb": 38.2,
+      "heapMb": 17.5,
+      "featureModules": 0,
+      "modules": 267,
+      "moduleKb": 1774.1,
+      "lazyDeps": 0
     },
     "all": {
-      "importMs": 675.7,
-      "startMs": 152.4,
-      "totalMs": 824.8,
-      "rssMb": 56.1,
-      "heapMb": 21.7,
-      "featureModules": 31
+      "importMs": 1045.3,
+      "startMs": 542.7,
+      "totalMs": 1588.1,
+      "rssMb": 50.8,
+      "heapMb": 21,
+      "featureModules": 31,
+      "modules": 393,
+      "moduleKb": 2473.8,
+      "lazyDeps": 2
     }
   },
   "platforms": {
     "linux-arm64": {
       "node": "v22.23.3",
-      "method": "median of 3 interleaved 12.0/13.0 bench runs × 5 samples each (shared, noisy sandbox)",
+      "method": "13.3.0: median of 5 bench/kernel.mjs runs (3 samples each) on the shared sandbox, interleaved with 13.2.0; modules / moduleKb / lazyDeps are deterministic",
       "profiles": {
         "minimal": {
-          "importMs": 657.9,
-          "startMs": 21.9,
-          "totalMs": 685.7,
-          "rssMb": 53.8,
-          "heapMb": 19.5,
-          "featureModules": 0
+          "importMs": 858.7,
+          "startMs": 27.1,
+          "totalMs": 889.6,
+          "rssMb": 38.2,
+          "heapMb": 17.5,
+          "featureModules": 0,
+          "modules": 267,
+          "moduleKb": 1774.1,
+          "lazyDeps": 0
         },
         "all": {
-          "importMs": 675.7,
-          "startMs": 152.4,
-          "totalMs": 824.8,
-          "rssMb": 56.1,
-          "heapMb": 21.7,
-          "featureModules": 31
+          "importMs": 1045.3,
+          "startMs": 542.7,
+          "totalMs": 1588.1,
+          "rssMb": 50.8,
+          "heapMb": 21,
+          "featureModules": 31,
+          "modules": 393,
+          "moduleKb": 2473.8,
+          "lazyDeps": 2
         }
       },
-      "recordedAt": "2026-10-09T20:50:00Z"
+      "recordedAt": "2026-10-10"
     },
     "linux-x64": {
       "node": "v22.23.3 / v24.21.0",
@@ -57,7 +69,10 @@
           "totalMs": 253.5,
           "rssMb": 97.2,
           "heapMb": 19.8,
-          "featureModules": 0
+          "featureModules": 0,
+          "modules": 267,
+          "moduleKb": 1774.1,
+          "lazyDeps": 0
         },
         "all": {
           "importMs": 231.6,
@@ -65,10 +80,14 @@
           "totalMs": 307.2,
           "rssMb": 102.6,
           "heapMb": 21.9,
-          "featureModules": 31
+          "featureModules": 31,
+          "modules": 393,
+          "moduleKb": 2473.8,
+          "lazyDeps": 2
         }
       },
-      "recordedAt": "2026-10-09"
+      "recordedAt": "2026-10-09",
+      "note13_3": "13.3.0: timings from 13.0.0 CI (lazy loading only lowers them); modules / moduleKb / lazyDeps copied from the linux-arm64 run (the same JavaScript is loaded on every platform)"
     }
   },
   "before": {
@@ -93,5 +112,191 @@
       }
     }
   },
-  "recordedAt": "2026-10-09T20:50:00Z"
+  "recordedAt": "2026-10-10",
+  "before13_3": {
+    "version": "13.2.0",
+    "source": "mgw dist copy, same runs",
+    "minimal": {
+      "modules": 443,
+      "moduleKb": 2496.7,
+      "lazyDeps": 4,
+      "rssMb": 57.1
+    },
+    "all": {
+      "modules": 475,
+      "moduleKb": 2854.5,
+      "lazyDeps": 4
+    }
+  },
+  "load": {
+    "note": "bench/load.mjs baselines, per platform and profile key (<profile>[+faults]); medians. 13.3.0.",
+    "platforms": {
+      "linux-arm64": {
+        "ci": {
+          "node": "v22.23.3",
+          "platform": "linux-arm64",
+          "cpus": 2,
+          "profile": "ci",
+          "seed": 42,
+          "concurrency": 16,
+          "requests": 4000,
+          "store": "memory",
+          "faults": false,
+          "version": "13.3.0",
+          "rps": 461.86,
+          "latency": {
+            "meanMs": 34.37,
+            "p50Ms": 31.93,
+            "p95Ms": 62.05,
+            "p99Ms": 77.39,
+            "maxMs": 108.19
+          },
+          "errors": {
+            "rate": 0
+          },
+          "memory": {
+            "rssPeakMb": 154.25,
+            "heapGrowthPer10kMb": 14.25
+          },
+          "pool": {
+            "upstreamConnections": 8
+          },
+          "eventLoopDelayP99Ms": 30.44,
+          "method": "median of 3 runs interleaved with 13.2.0 (same harness) on the shared 2-CPU sandbox",
+          "recordedAt": "2026-10-10"
+        },
+        "ci+faults": {
+          "node": "v22.23.3",
+          "platform": "linux-arm64",
+          "cpus": 2,
+          "profile": "ci",
+          "seed": 42,
+          "concurrency": 16,
+          "requests": 8000,
+          "store": "memory",
+          "faults": true,
+          "version": "13.3.0",
+          "rps": 485.86,
+          "latency": {
+            "meanMs": 34.4,
+            "p50Ms": 27.62,
+            "p95Ms": 58.59,
+            "p99Ms": 78.84,
+            "maxMs": 2024.88
+          },
+          "errors": {
+            "rate": 0.11
+          },
+          "memory": {
+            "rssPeakMb": 192.86,
+            "heapGrowthPer10kMb": 8.77
+          },
+          "pool": {
+            "upstreamConnections": 28
+          },
+          "eventLoopDelayP99Ms": 28.08,
+          "faultWindows": [
+            {
+              "name": "http-replica-killed-1s",
+              "recoveredMs": 0.36,
+              "errorsDuringFault": 0,
+              "afterRecoveryErrors": 0
+            },
+            {
+              "name": "stdio-child-stalled-1s",
+              "recoveredMs": 1014.5,
+              "errorsDuringFault": 9,
+              "afterRecoveryErrors": 0
+            },
+            {
+              "name": "http-sessions-forgotten",
+              "recoveredMs": 5.0,
+              "errorsDuringFault": 0,
+              "afterRecoveryErrors": 0
+            }
+          ],
+          "method": "median of 2 runs; 13.2.0 shows the same fault behaviour (recovery 0.25 ms / 1022 ms / 10 ms, 9 × 504 during the stdio stall)",
+          "recordedAt": "2026-10-10"
+        }
+      },
+      "linux-x64": {
+        "ci": {
+          "node": "v22.23.3",
+          "platform": "linux-x64",
+          "profile": "ci",
+          "seed": 42,
+          "concurrency": 16,
+          "store": "memory",
+          "version": "13.3.0",
+          "method": "GitHub Actions ubuntu-latest, Node 22.23.3, single run of the Performance workflow on PR #158 (run 38070870329); thresholds are generous enough for one sample",
+          "recordedAt": "2026-10-10",
+          "requests": 4000,
+          "faults": false,
+          "rps": 773.92,
+          "latency": {
+            "p50Ms": 19.23,
+            "p95Ms": 37.46,
+            "p99Ms": 47.18
+          },
+          "errors": {
+            "rate": 0
+          },
+          "memory": {
+            "heapGrowthPer10kMb": 16.7
+          },
+          "pool": {
+            "upstreamConnections": 8
+          }
+        },
+        "ci+faults": {
+          "node": "v22.23.3",
+          "platform": "linux-x64",
+          "profile": "ci",
+          "seed": 42,
+          "concurrency": 16,
+          "store": "memory",
+          "version": "13.3.0",
+          "method": "GitHub Actions ubuntu-latest, Node 22.23.3, single run of the Performance workflow on PR #158 (run 38070870329); thresholds are generous enough for one sample",
+          "recordedAt": "2026-10-10",
+          "requests": 8000,
+          "faults": true,
+          "rps": 671.2,
+          "latency": {
+            "p50Ms": 18.39,
+            "p95Ms": 37.1,
+            "p99Ms": 46.55
+          },
+          "errors": {
+            "rate": 0.11
+          },
+          "memory": {
+            "heapGrowthPer10kMb": 8.34
+          },
+          "pool": {
+            "upstreamConnections": 29
+          },
+          "faultWindows": [
+            {
+              "name": "http-replica-killed-1s",
+              "recoveredMs": 0.89,
+              "errorsDuringFault": 0,
+              "afterRecoveryErrors": 0
+            },
+            {
+              "name": "stdio-child-stalled-1s",
+              "recoveredMs": 1005.82,
+              "errorsDuringFault": 9,
+              "afterRecoveryErrors": 0
+            },
+            {
+              "name": "http-sessions-forgotten",
+              "recoveredMs": 0.13,
+              "errorsDuringFault": 0,
+              "afterRecoveryErrors": 0
+            }
+          ]
+        }
+      }
+    }
+  }
 }

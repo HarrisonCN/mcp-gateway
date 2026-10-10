@@ -1,0 +1,67 @@
+name: Performance
+
+# 13.3.0: reproducible load + fault benchmark (bench/load.mjs) compared with bench/baseline.json.
+# Separate from CI so a noisy runner never blocks unrelated work; thresholds are generous (3× latency + 15 ms,
+# +0.5 pp errors, 2× heap growth + 8 MiB / 10k, 2× upstream connections, ⅓ throughput) and only a gross regression
+# fails. A deliberate regression is accepted by updating bench/baseline.json in the same PR with a `justification`.
+on:
+  pull_request:
+    paths: ['src/**', 'bench/**', 'package.json', 'package-lock.json', '.github/workflows/perf.yml']
+  push:
+    branches: [main]
+    paths: ['src/**', 'bench/**', 'package.json', 'package-lock.json']
+  schedule:
+    - cron: '17 4 * * 1' # weekly: catches regressions from dependency / runner drift
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'ci (4k requests) or long (60k requests)'
+        default: ci
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  load:
+    name: Load + faults (Node 22)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Kernel cold start (modules / memory / time vs baseline)
+        run: |
+          set -o pipefail
+          node bench/kernel.mjs --runs 5 --compare bench/baseline.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Load (seeded, fixed request count)
+        run: |
+          set -o pipefail
+          node bench/load.mjs --profile "${{ inputs.profile || 'ci' }}" --json --compare bench/baseline.json > load.txt || rc=$?
+          sed -n '/^load /,$p' load.txt | tee -a "$GITHUB_STEP_SUMMARY"
+          sed -n '1,/^}/p' load.txt > load.json
+          exit ${rc:-0}
+      - name: Load with fault injection (replica kill, stdio stall, session loss)
+        run: |
+          set -o pipefail
+          node bench/load.mjs --profile "${{ inputs.profile || 'ci' }}" --faults --json --compare bench/baseline.json > load-faults.txt || rc=$?
+          sed -n '/^load /,$p' load-faults.txt | tee -a "$GITHUB_STEP_SUMMARY"
+          sed -n '1,/^}/p' load-faults.txt > load-faults.json
+          exit ${rc:-0}
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: perf-reports
+          path: |
+            load.json
+            load-faults.json
+          retention-days: 30

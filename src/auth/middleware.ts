@@ -21,7 +21,8 @@
 
 import { createHash, createPublicKey, timingSafeEqual, type KeyObject } from 'crypto';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
-import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey, type JWTVerifyOptions } from 'jose';
+import type { JWTVerifyGetKey, JWTVerifyOptions } from 'jose';
+import { jose } from '../utils/lazy.js';
 import type { ApiKeyConfig, AuthConfig, JwtConfig } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { scopeFromJwt, type AccessScope } from './scopes.js';
@@ -273,7 +274,7 @@ export function buildJwtVerifier(config: AuthConfig): JwtVerifier {
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local)) {
       throw new Error('auth.jwt.jwksUrl must use https:// (http:// is only allowed for localhost)');
     }
-    key = createRemoteJWKSet(url, {
+    key = jose().createRemoteJWKSet(url, {
       cacheMaxAge: (jwt.jwksCacheSeconds ?? 600) * 1000,
       cooldownDuration: 30_000,
       timeoutDuration: 5_000,
@@ -295,8 +296,8 @@ export function buildJwtVerifier(config: AuthConfig): JwtVerifier {
 function jwtMiddleware(verifier: JwtVerifier, qualified = false): AuthMiddleware {
   const verify = (token: string) =>
     typeof verifier.key === 'function'
-      ? jwtVerify(token, verifier.key, verifier.options)
-      : jwtVerify(token, verifier.key, verifier.options);
+      ? jose().jwtVerify(token, verifier.key, verifier.options)
+      : jose().jwtVerify(token, verifier.key, verifier.options);
 
   return (req: Request, res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization;

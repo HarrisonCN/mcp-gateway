@@ -67,6 +67,34 @@ export const ERR_SERVER_BUSY = -32014;
 /** The caller cancelled the request (e.g. a downstream `notifications/cancelled`). */
 export const ERR_CANCELLED = -32800;
 
+/**
+ * 13.3.0: failures the GATEWAY produced (no session, transport error, timeout), told apart from an upstream's own
+ * JSON-RPC error that happens to use the same code (-32000 is the generic "server error" many MCP servers answer
+ * with). Before 13.3.0 such an upstream error was classified `not-connected`, so load balancing re-ran the tool on
+ * the next replica and ejected healthy members.
+ */
+export type TransportFailure = 'not-connected' | 'timeout';
+const TRANSPORT_FAILURES = new WeakMap<object, { kind: TransportFailure; unsent: boolean }>();
+
+/**
+ * Mark a gateway-produced failure. `unsent`: this very request was refused by the server before processing (its
+ * session had expired) — the only case the invoker resends it after the reconnect.
+ */
+export function markTransportFailure<T extends ProxyResponse>(r: T, kind: TransportFailure, unsent = false): T {
+  if (r.error) TRANSPORT_FAILURES.set(r.error, { kind, unsent });
+  return r;
+}
+
+/** The transport failure behind a response, or undefined (success, or the upstream's own error). */
+export function transportFailureOf(r: ProxyResponse | undefined): { kind: TransportFailure; unsent: boolean } | undefined {
+  return r?.error ? TRANSPORT_FAILURES.get(r.error) : undefined;
+}
+
+/** Whether a channel error means the server refused the request unprocessed (session expired, HTTP 404). */
+function isUnsent(err: unknown): boolean {
+  return !!err && typeof err === 'object' && (err as { unsent?: unknown }).unsent === true;
+}
+
 export interface ProgressUpdate {
   progress: number;
   total?: number;
@@ -664,19 +692,19 @@ export class McpProxy extends EventEmitter {
     const session = this._sessionFor(serverId, options.configKey);
     if (!session && options.configKey !== undefined && (this.sessions.has(serverId) || this.retired.has(serverId))) {
       // 13.2.0: the config this call was authorized under is gone (reloaded and drained); never use another one.
-      return {
+      return markTransportFailure({
         success: false,
         error: { code: ERR_NOT_CONNECTED, message: `Server "${serverId}" was reconfigured while this call was in flight; retry`, data: { reason: 'generation-retired' } },
         durationMs: 0,
-      };
+      }, 'not-connected');
     }
     // Requests are only forwarded once the handshake (initialize → initialized) is done.
     if (!session || session.closed || !session.connectedAt) {
-      return {
+      return markTransportFailure({
         success: false,
         error: { code: ERR_NOT_CONNECTED, message: `Server "${serverId}" is not connected` },
         durationMs: 0,
-      };
+      }, 'not-connected');
     }
     return this._sendRequest(
       session,
@@ -726,6 +754,51 @@ export class McpProxy extends EventEmitter {
   getLoad(serverId: string): { inFlight: number; queued: number } | undefined {
     const s = this.sessions.get(serverId);
     return s ? { inFlight: s.limiter.inFlight, queued: s.limiter.pending } : undefined;
+  }
+
+  /**
+   * 13.3.0: resolves true once `serverId` has a usable session opened AFTER `since` (epoch ms) — i.e. not the session
+   * a failed request was sent on — false after `ms`. Used to resend a call the server refused unprocessed (session
+   * expired) once the supervisor has re-initialized.
+   */
+  waitReconnected(serverId: string, since: number, ms: number): Promise<boolean> {
+    const fresh = () => {
+      const s = this.sessions.get(serverId);
+      return !!s && !s.closed && !!s.connectedAt && s.connectedAt.getTime() > since;
+    };
+    if (fresh()) return Promise.resolve(true);
+    if (ms <= 0) return Promise.resolve(false);
+    return new Promise<boolean>((resolve) => {
+      const onConnected = (id: string) => {
+        if (id !== serverId || !fresh()) return;
+        cleanup();
+        resolve(true);
+      };
+      const timer = setTimeout(() => {
+        cleanup();
+        resolve(fresh());
+      }, ms);
+      timer.unref();
+      const cleanup = () => {
+        clearTimeout(timer);
+        this.off('connected', onConnected);
+      };
+      this.on('connected', onConnected);
+    });
+  }
+
+  /**
+   * 13.3.0: take an unresponsive session down (a child that is alive but never answers, a remote that accepts and
+   * stalls): in-flight calls fail, the channel is closed (stdio: the process is terminated) and `disconnected` is
+   * emitted, so the supervisor reconnects with its usual backoff. Returns false when there is no current session.
+   */
+  async recycle(serverId: string, reason: string): Promise<boolean> {
+    const s = this.sessions.get(serverId);
+    if (!s || s.closed || !s.connectedAt) return false;
+    logger.warn(`[${serverId}] recycling the upstream session: ${reason}`);
+    this._onChannelLost(s, new Error(reason));
+    await s.channel.close().catch((err: unknown) => logger.debug(`[${serverId}] error while recycling: ${String(err)}`));
+    return true;
   }
 
   // ─── Internal ───────────────────────────────────────────────────────────────
@@ -899,16 +972,10 @@ export class McpProxy extends EventEmitter {
     const serverId = session.config.id;
     const startTime = Date.now();
     const deadline = startTime + timeout;
-    const timedOut = (): ProxyResponse => ({
-      success: false,
-      error: { code: ERR_TIMEOUT, message: `Request timed out after ${timeout}ms` },
-      durationMs: Date.now() - startTime,
-    });
-    const notConnected = (message: string): ProxyResponse => ({
-      success: false,
-      error: { code: ERR_NOT_CONNECTED, message },
-      durationMs: Date.now() - startTime,
-    });
+    const timedOut = (): ProxyResponse =>
+      markTransportFailure({ success: false, error: { code: ERR_TIMEOUT, message: `Request timed out after ${timeout}ms` }, durationMs: Date.now() - startTime }, 'timeout');
+    const notConnected = (message: string, unsent = false): ProxyResponse =>
+      markTransportFailure({ success: false, error: { code: ERR_NOT_CONNECTED, message }, durationMs: Date.now() - startTime }, 'not-connected', unsent);
 
     const cancelled = (): ProxyResponse => ({
       success: false,
@@ -1018,7 +1085,7 @@ export class McpProxy extends EventEmitter {
           clearTimeout(timer);
           session.pendingRequests.delete(id);
           const message = err instanceof Error ? err.message : String(err);
-          settle(notConnected(`Request to "${serverId}" failed: ${message}`));
+          settle(notConnected(`Request to "${serverId}" failed: ${message}`, isUnsent(err)));
         });
       });
     } finally {

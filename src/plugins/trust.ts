@@ -17,29 +17,10 @@
  */
 
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from 'node:crypto';
-import { z } from 'zod';
 import { mlDsaSign, mlDsaVerify, type MlDsaKey, type MlDsaPublicKey } from '../security/pq.js';
 
-export const PluginTrustSchema = z
-  .object({
-    requireSigned: z.boolean().default(false),
-    /** 10.8 (EXPERIMENTAL): refuse signatures without a valid ML-DSA part (hybrid only). */
-    requirePostQuantum: z.boolean().default(false),
-    keys: z
-      .array(
-        z
-          .object({
-            id: z.string().min(1),
-            publicKey: z.string().min(1),
-            /** 10.8: ML-DSA public key `{ kty: "ML-DSA", alg, pub }` — with it, signatures from this key must be hybrid. */
-            mldsa: z.object({ kty: z.literal('ML-DSA'), alg: z.enum(['ml-dsa-44', 'ml-dsa-65', 'ml-dsa-87']), pub: z.string().min(1) }).strict().optional(),
-          })
-          .strict(),
-      )
-      .default([]),
-  })
-  .strict();
-export type PluginTrustConfig = z.input<typeof PluginTrustSchema>;
+// 13.3.0: the schema lives in trust-schema.ts so config validation never loads the ML-DSA backend (@noble/*).
+export { PluginTrustSchema, type PluginTrustConfig } from './trust-schema.js';
 
 export interface PluginSignature {
   keyId: string;

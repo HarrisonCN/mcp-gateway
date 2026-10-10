@@ -37,6 +37,7 @@ import { registerFeature } from '../gateway/features.js';
 import { registerCallHook, type HookCall } from '../gateway/hooks.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { VERSION } from '../utils/version.js';
+import { principalAttr } from '../observability/telemetry.js';
 import { type GenaiTelemetryConfig, GenaiTelemetrySchema } from './schemas/genai-otel.js';
 export { type GenaiTelemetryConfig, GenaiTelemetrySchema } from './schemas/genai-otel.js';
 type Cfg = z.output<typeof GenaiTelemetrySchema>;
@@ -99,7 +100,9 @@ export function genaiAttributes(call: HookCall, result: ProxyResponse, cfg: Cfg,
     a['gen_ai.input.messages'] = clip(call.args);
     if (result.success) a['gen_ai.output.messages'] = clip(result.result);
   }
-  if (call.clientId) a['mcp.client.id'] = call.clientId;
+  // 13.3.0: never the raw principal on a span (observability.principal: hash by default)
+  const cid = principalAttr(call.clientId);
+  if (cid) a['mcp.client.id'] = cid;
   return a;
 }
 

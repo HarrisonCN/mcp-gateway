@@ -28,7 +28,9 @@ afterEach(() => {
   dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true }));
 });
 
-describe('cli', () => {
+// Every case spawns the CLI through tsx several times; on a loaded 2-CPU runner (or a cold tsx cache)
+// that exceeds the 15 s default without anything being wrong, so the file gets a wider budget.
+describe('cli', { timeout: 60_000 }, () => {
   it('--version prints the package version', () => {
     const r = run(['--version']);
     expect(r.code).toBe(0);

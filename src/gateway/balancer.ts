@@ -225,6 +225,9 @@ export class LoadBalancer {
       return;
     }
     s.errors++;
+    // 13.3.0: the member answered (its own JSON-RPC error): it is reachable — only transport failures and timeouts
+    // count towards ejection, so a client sending calls a tool rejects cannot eject healthy members.
+    if (failure === 'error') return;
     s.failures++;
     const { ejectAfter, ejectMs } = this.settings(group);
     if (ejectAfter > 0 && s.failures >= ejectAfter) {

@@ -34,7 +34,7 @@ POLICY_ERROR_CODES.add(ERR_RESIDENCY);
 POLICY_ERROR_CODES.add(ERR_PII_BLOCKED);
 export { ERR_PLUGIN_REJECTED };
 import { logger } from '../utils/logger.js';
-import { ERR_NOT_CONNECTED, ERR_TIMEOUT } from '../proxy/index.js';
+import { ERR_NOT_CONNECTED, markTransportFailure, transportFailureOf } from '../proxy/index.js';
 import type { FailureKind, LoadBalancer } from './balancer.js';
 import type { RouteDecision, SmartRouter } from './routing.js';
 import type { SecretManager } from '../secrets/index.js';
@@ -44,6 +44,7 @@ import { ERR_QUOTA_EXCEEDED, type UsageMeter } from './usage.js';
 import { ERR_BUDGET_EXCEEDED, type CostLedger } from '../costs/index.js';
 export { ERR_QUOTA_EXCEEDED };
 import { NOOP_TRACER, type Tracer } from '../observability/tracing.js';
+import { principalAttr, type Telemetry } from '../observability/telemetry.js';
 import { ERR_FORBIDDEN as ERR_FORBIDDEN_TARGET } from '../auth/authorizer.js';
 import type { ReplayRecorder } from './replay.js';
 import { callGeneration, type GenerationPin } from './generation.js';
@@ -123,6 +124,8 @@ export interface InvokerDeps {
   config?: () => import('../utils/types.js').GatewayConfig;
   /** 4.3: cost accounting and budgets. */
   costs?: CostLedger;
+  /** 13.3.0: reliability telemetry (final route, principal type, denial reasons, failovers, resends). */
+  telemetry?: Telemetry;
   proxy: McpProxy;
   /** Captures calls for the replay debugger (3.2). */
   recorder?: ReplayRecorder;
@@ -230,6 +233,12 @@ export class ToolInvoker {
     return this.filter.filter;
   }
 
+  /** 13.3.0: a principal id as it may appear on a span (observability.principal). */
+  private pid(id: string | undefined): string | undefined {
+    if (id === undefined) return undefined;
+    return this.deps.telemetry ? this.deps.telemetry.principalAttribute(id) : principalAttr(id);
+  }
+
   /** Delegation / origin fields of the audit record (13.1.2): absent for plain direct calls. */
   private auditOf(ctx: InvokeContext): { actor?: string; chain?: string[] } {
     const id = ctx.identity;
@@ -239,6 +248,8 @@ export class ToolInvoker {
 
   /** Refuse a call without contacting the upstream server (still recorded). */
   private refuse(ctx: InvokeContext, code: number, message: string, data: Record<string, unknown>, span: ReturnType<Tracer['startSpan']>): InvokeResult {
+    this.deps.telemetry?.deny(decisionOf(data) ?? 'refused');
+    span.setAttribute('mcp.policy.deny_reason', decisionOf(data) ?? 'refused');
     this.deps.metrics.record({
       serverId: ctx.serverId,
       toolName: ctx.name,
@@ -476,18 +487,25 @@ export class ToolInvoker {
         'mcp.server.id': ctx.serverId,
         [ctx.kind === 'tool' ? 'mcp.tool.name' : ctx.kind === 'prompt' ? 'mcp.prompt.name' : 'mcp.resource.uri']: ctx.name,
         'mcp.via': ctx.via,
-        'mcp.client.id': ctx.clientId,
+        // 13.3.0: the effective principal as a keyed hash by default (observability.principal), never raw PII
+        'mcp.client.id': this.pid(ctx.clientId),
+        'mcp.principal.subject': this.pid(identity.subject),
+        'mcp.principal.type': principalType(identity),
       },
     });
+    this.deps.telemetry?.principal(principalType(identity));
     // 11.1: the single, non-bypassable authorization decision point (fail-closed without a principal).
     const denied = authorize(ctx.principal, { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind }, { exposed: this.deps.exposed });
     if (denied) {
       this.authzDenials++;
       return this.refuse(ctx, denied.code, denied.message, { ...denied.data, chain: principalChain(ctx.principal) }, span);
     }
-    if (ctx.principal.delegation?.length) span.setAttribute('mcp.principal.chain', principalChain(ctx.principal).join(' > '));
+    if (ctx.principal.delegation?.length) span.setAttribute('mcp.principal.chain', principalChain(ctx.principal).map((p) => this.pid(p) ?? '-').join(' > '));
     const actor = actorOf(identity);
-    if (actor) span.setAttribute('mcp.actor', actor);
+    if (actor) {
+      span.setAttribute('mcp.actor', this.pid(actor));
+      span.setAttribute('mcp.principal.actor', this.pid(actor));
+    }
     ctx = { ...ctx, authorizedTarget: Object.freeze({ serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, principal: ctx.principal.id }) };
     const pluginSet = this.pluginSet();
     const plugins = pluginSet ? this.deps.plugins : undefined;
@@ -704,7 +722,7 @@ export class ToolInvoker {
     }
     // 13.1.1: a server connected by a hot reload that has not committed is not routable yet.
     if (this.deps.staged?.(target) || this.deps.staged?.(ctx.serverId)) {
-      return Promise.resolve({ success: false, durationMs: 0, error: { code: ERR_NOT_CONNECTED, message: `Server "${ctx.serverId}" not found`, data: { reason: 'not-committed' } } });
+      return Promise.resolve(markTransportFailure({ success: false, durationMs: 0, error: { code: ERR_NOT_CONNECTED, message: `Server "${ctx.serverId}" not found`, data: { reason: 'not-committed' } } }, 'not-connected'));
     }
     // 13.2.0: the session opened with the server config of the call's generation (never one of another generation).
     const configKey = this.deps.serverKey?.(target);
@@ -793,7 +811,11 @@ export class ToolInvoker {
   private async balancedCall(ctx: InvokeContext, span: ReturnType<Tracer['startSpan']>): Promise<ProxyResponse> {
     const lb = this.deps.balancer;
     const targets = lb ? lb.order(ctx.serverId) : [ctx.serverId];
-    if (!lb || targets.length === 1) return this.send(ctx, ctx.serverId);
+    if (!lb || targets.length === 1) {
+      const r = await this.sendWithResend(ctx, ctx.serverId, span);
+      this.routed(ctx, ctx.serverId, span);
+      return r;
+    }
     const { failoverOn, retries } = lb.settings(ctx.serverId);
     const attempts = Math.min(targets.length, retries + 1);
     const tried: string[] = [];
@@ -813,6 +835,8 @@ export class ToolInvoker {
       lb.report(target, ctx.serverId, failure, result?.durationMs ?? 0);
       const last = i === attempts - 1 || ctx.signal?.aborted;
       if (failure === undefined || !failoverOn.includes(failure) || last) {
+        this.routed(ctx, target, span);
+        if (tried.length > 1) this.deps.telemetry?.failovers.inc({ server: ctx.serverId }, tried.length - 1);
         span.setAttribute('mcp.upstream.id', target);
         if (tried.length > 1) span.setAttribute('mcp.upstream.attempts', tried.length);
         if (thrown !== undefined) throw thrown;
@@ -822,6 +846,38 @@ export class ToolInvoker {
     }
     /* c8 ignore next */
     throw new Error('unreachable');
+  }
+
+  /**
+   * 13.3.0: one upstream send; when the server refused this very request unprocessed because its session expired
+   * (the server restarted and forgot it — HTTP 404) the call waits for the supervisor to
+   * reconnect, within the call's own timeout and at most {@link RESEND_WAIT_MS}, and is sent ONCE more. A request
+   * that may have been delivered is never resent.
+   */
+  private async sendWithResend(ctx: InvokeContext, target: string, span: ReturnType<Tracer['startSpan']>): Promise<ProxyResponse> {
+    const t0 = Date.now();
+    const first = await this.send(ctx, target);
+    const tf = transportFailureOf(first);
+    if (!tf?.unsent || tf.kind !== 'not-connected' || ctx.signal?.aborted || !this.deps.proxy.waitReconnected) return first;
+    const budget = Math.min(RESEND_WAIT_MS, Math.max(0, (ctx.timeoutMs ?? this.deps.serverConfig?.(target)?.timeout ?? 30_000) - (Date.now() - t0)));
+    // a session opened after the failed attempt started (never the expired one it was refused on)
+    if (!(await this.deps.proxy.waitReconnected(target, t0 - 1, budget)) || ctx.signal?.aborted) return first;
+    this.resends++;
+    this.deps.telemetry?.resends.inc();
+    span.setAttribute('mcp.upstream.resent', true);
+    logger.info(`${ctx.name} → ${target}: request never reached the server (${first.error?.message}); resent after reconnect`);
+    const second = await this.send(ctx, target);
+    return { ...second, durationMs: Date.now() - t0 };
+  }
+
+  /** 13.3.0: calls resent once after a provably-undelivered attempt (see sendWithResend). */
+  resends = 0;
+
+  /** 13.3.0: final route of a call — the logical server (after reroutes / splits) and the member that answered. */
+  private routed(ctx: InvokeContext, upstream: string, span: ReturnType<Tracer['startSpan']>): void {
+    span.setAttribute('mcp.route.final.server', ctx.serverId);
+    span.setAttribute('mcp.route.final.upstream', upstream);
+    this.deps.telemetry?.route(ctx.serverId, upstream);
   }
 
   get usage(): UsageMeter | undefined {
@@ -877,6 +933,12 @@ export class ToolInvoker {
       const label = ctx.kind === 'tool' ? ctx.name : `${ctx.method} ${ctx.name}`;
       logger.info(`${label} → ${ctx.serverId} ${result.success ? 'ok' : 'failed'} ${result.durationMs}ms${ctx.via === 'mcp' ? ' (mcp)' : ''}`);
     }
+    // 13.3.0: refusals produced at the upstream send (final authorization, snapshot mismatch, …) count as denials too
+    if (!result.success && result.error && (POLICY_ERROR_CODES.has(result.error.code) || result.error.code === ERR_FORBIDDEN_TARGET) && !transportFailureOf(result)) {
+      const reason = decisionOf(result.error.data) ?? 'refused';
+      this.deps.telemetry?.deny(reason);
+      span.setAttribute('mcp.policy.deny_reason', reason);
+    }
     span.setAttribute('mcp.duration_ms', result.durationMs);
     span.setAttribute('mcp.success', result.success);
     if (!result.success) {
@@ -892,13 +954,25 @@ export class ToolInvoker {
   }
 }
 
-/** Failure kind of an upstream result (undefined = success or an application-level tool error). */
+/**
+ * Failure kind of an upstream result (undefined = success or an application-level tool error inside a result).
+ * 13.3.0: `not-connected` / `timeout` only for failures the gateway itself produced (see proxy
+ * `markTransportFailure`); an upstream's own JSON-RPC error is `error` whatever its code — before 13.3.0 an upstream
+ * answering -32000 was taken for `not-connected`, so the tool was re-run on the next replica / peer gateway.
+ */
 export function classifyFailure(r: ProxyResponse): FailureKind | undefined {
   if (r.success) return undefined;
-  if (r.error?.code === ERR_NOT_CONNECTED) return 'not-connected';
-  if (r.error?.code === ERR_TIMEOUT) return 'timeout';
-  return 'error';
+  return transportFailureOf(r)?.kind ?? 'error';
 }
+
+/** 13.3.0: principal type of a call for telemetry (never the id itself). */
+export function principalType(identity: CallIdentity): 'direct' | 'delegated' | 'anonymous' {
+  if (identity.actors.length) return 'delegated';
+  return !identity.subject || identity.subject === 'anonymous' ? 'anonymous' : 'direct';
+}
+
+/** 13.3.0: longest wait for a reconnect before resending a provably-undelivered call. */
+export const RESEND_WAIT_MS = 3_000;
 
 /** Traceable reason of a refusal for the audit record (13.1.3): `decision`, else `reason`, else `refused`. */
 export function decisionOf(data: Record<string, unknown> | unknown): string | undefined {
