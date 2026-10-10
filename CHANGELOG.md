@@ -9,6 +9,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.3.0] - 2026-10-10
+
+**Minor release — production reliability.** Config schema stays **v11**: the new keys (`health.restartAfter`,
+`store.sqlite.busyTimeoutMs`, `observability.principal`, `observability.metrics.otlp`) are optional additions and
+every 13.2 config loads unchanged. Includes a security fix, **MGW-2026-012** (Medium):
+[SECURITY.md](SECURITY.md#security-advisories); backports in 12.0.6 and 10.9.7.
+
+### Added
+- **Reproducible load + fault benchmark** (`bench/load.mjs`). One in-process gateway in front of an HTTP upstream with
+  a replica and a stdio child, with API-key auth, rate limit, response cache, quotas, budgets and policy rules in the
+  hot path. A fixed number of requests from N workers, each with its own seeded PRNG, so two runs send the same
+  sequence. Reports throughput, latency p50 / p95 / p99 / max (overall and per operation), unexpected-error rate,
+  RSS / heap (start, end after GC, peak, growth per 10k requests), event-loop delay, upstream connections and
+  failovers / resends / recycles. `--faults` kills the HTTP replica, stalls the stdio child and makes the HTTP upstream
+  forget its sessions (non-overlapping windows, counted per faulted server); every fault must recover within 5 s
+  with no errors afterwards. `--profile long` runs 60k requests at concurrency 32; `--store redis` puts a RESP store
+  in the path. See [benchmarks](docs/benchmarks.md#load-and-fault-benchmark-133).
+- **Performance workflow** (`.github/workflows/perf.yml`, separate from CI): kernel cold start, load and load with
+  faults against `bench/baseline.json`, on pull requests that touch `src/` / `bench/`, on `main` and weekly. Only a
+  gross regression fails (latency > 3× + 15 ms, errors > +0.5 pp, heap growth > 2× + 8 MiB per 10k requests,
+  upstream connections > 2× + 8, throughput < ⅓, a fault that does not recover); a deliberate change updates the
+  baseline in the same PR with a `justification`.
+- **Reliability telemetry** on `/metrics` and, with `observability.metrics.otlp`, pushed as OTLP/HTTP JSON (no SDK
+  dependency): `mcp_gateway_route_final_total{server,upstream}` (where calls really went after reroutes, splits and
+  failover), `mcp_gateway_calls_by_principal_total{principal_type}` (direct / delegated / anonymous),
+  `mcp_gateway_policy_denials_by_reason_total{reason}`, `mcp_gateway_module_failures_total{module}` and
+  `mcp_gateway_module_failed{module}`, `mcp_gateway_config_generation`, `mcp_gateway_config_generations_alive`,
+  `mcp_gateway_reloads_total{result}`, `mcp_gateway_upstream_failovers_total{server}`,
+  `mcp_gateway_upstream_resends_total`, `mcp_gateway_upstream_recycles_total`, `mcp_gateway_state_store_up{backend}`,
+  `mcp_gateway_state_store_failures_total{backend}`. Spans gain `mcp.route.final.server` / `mcp.route.final.upstream`,
+  `mcp.principal.subject` / `.actor` / `.chain` / `.type`, `mcp.policy.deny_reason` and `mcp.upstream.resent`.
+- **`observability.principal`**: how subject / actor ids appear on spans — `hash` (default: keyed HMAC-SHA256,
+  16 hex characters; set `hashKey` so hashes correlate across instances and restarts), `plain` or `omit`. Metric
+  labels never carry a principal.
+- **State-store circuit breaker.** A Redis that accepts connections but never answers, or a SQLite file locked by
+  another process, used to cost every request the full command timeout. Now the first failed operation opens a
+  breaker: for 1 s every store operation fails at once (rate limits / lockouts / quotas then fail open or closed per
+  `store.failureMode`, exactly as before — only without the wait), then one probe operation decides whether it closes.
+  Errors Redis itself answers (`-ERR …`) do not trip it. `mcp_gateway_state_store_up` shows the breaker state
+  (embedders: `StateStore.health()`).
+- **`health.restartAfter`** (default 3, 0 = never): a server that stays "connected" but fails this many consecutive
+  health pings (a hung stdio child, a stalled remote) has its session recycled — the stdio process is restarted.
+  Before, a hung upstream was only marked degraded and every call to it timed out until a manual restart.
+- **Session-expiry resend.** When an HTTP upstream answers 404 because it restarted and forgot the session, the
+  request was provably not processed: the call now waits (within its own timeout, at most 3 s) for the reconnect and
+  is sent once more on the new session instead of failing. A request that may have been delivered is never resent.
+
+### Changed
+- **Cold start without feature modules.** `jose` (JWT / OAuth), `ws` (WebSocket transport), `yaml` (config files)
+  and the plugin-signature backend are imported on first use. A minimal gateway evaluates 267 modules / 1.77 MB
+  instead of 443 / 2.50 MB and starts with ~38 MB RSS instead of ~54 MB (`bench/kernel.mjs`, linux-arm64). No
+  behaviour change: a strategy whose dependency cannot load refuses the request.
+- **SQLite lock wait.** `store.sqlite.busyTimeoutMs` (default **200**, max 5000) replaces the fixed 5000 ms: with the
+  synchronous `node:sqlite` API a lock held by another process blocked the whole event loop for up to 5 s per store
+  operation (spurious upstream timeouts on every other call). Past the wait the operation fails and `failureMode`
+  applies.
+- **Transport failures are classified by the gateway, not by error codes.** Only failures the gateway itself produced
+  (connection lost, not connected, timeout) count as `not-connected` / `timeout` for `failoverOn` and `ejectAfter`. An
+  upstream's own JSON-RPC error is `error` whatever its code — before, an upstream answering `-32000` was taken for
+  "not connected", so the tool was **re-run on the next replica** (duplicate side effects) and the member ejected.
+- `bench/kernel.mjs` reports `modules`, `moduleKb` and `lazyDeps` and fails when they grow more than 10 % (or a
+  profile loads an on-demand dependency it does not use); `--write` merges into `bench/baseline.json` instead of
+  replacing it.
+
+### Fixed
+- **Redis reply alignment (MGW-2026-012).** See Security.
+- Fault matrix (`test/reliability-13-3-0.test.ts`): Redis down / stalled / reset, SQLite locked, HTTP upstream down /
+  stalled / slow / 503 / restarted / flapping, stdio child killed / flapping / hung — each with bounded latency during
+  the fault and recovery after it; combined circuit breaker + load balancing + rate limit + budgets + cache under
+  failures (cost charged once, cache hits skip upstream and balancer).
+
+### Security
+- **Redis replies could be delivered to the wrong command after a timeout or reconnect (MGW-2026-012).** The built-in
+  Redis client kept one reply queue for all connections. When a command timed out (the client then destroys the
+  socket) or the connection reset, the old socket's `close` could fail commands that had already been written to the
+  new connection, and their replies were then handed to later commands: `GET agent-identity:revoked:<jti>` could
+  return another key's value — or `nil`, so a **revoked agent token was accepted** — and rate-limit / lockout
+  counters could read other counters. Every connection now owns its reply queue and parser; a connection that timed
+  out or received a reply nobody waits for is discarded with the commands it carried. Affected: deployments with
+  `store.backend: redis` (all versions since 1.4.0); verified in 13.2.0, 12.0.5 and 10.9.6.
+
 ## [13.2.0] - 2026-10-10
 
 **Minor release — transactional kernel reload.** Config schema stays **v11** (no new or changed keys; every 13.1
