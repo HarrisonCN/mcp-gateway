@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [12.0.9] - 2026-10-10
+
+**Protocol-correctness backport (12.x).** Backports one fix from 13.6.0; no other changes. The config schema is unchanged.
+
+### Fixed
+- **Streamable HTTP upstreams: unsolicited notifications were lost.** The channel never opened the standalone `GET`
+  stream, so `notifications/tools/list_changed` (and `resources/updated`, log messages, server requests without a
+  related request) from Streamable HTTP servers never reached the gateway, and downstream clients kept a stale tool
+  list. The channel now opens the stream after `notifications/initialized`, accepts servers without one (HTTP 405),
+  and re-opens a dropped stream with `Last-Event-ID` (bounded retries).
+
 ## [12.0.8] - 2026-10-10
 
 **Security backport (12.x).** Fixes MGW-2026-013 from 13.5.0; no other changes. The config schema is unchanged.
