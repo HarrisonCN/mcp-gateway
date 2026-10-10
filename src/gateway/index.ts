@@ -225,6 +225,9 @@ export class Gateway {
       '# HELP mcp_gateway_authz_denials_total Calls refused by the central authorizer',
       '# TYPE mcp_gateway_authz_denials_total counter',
       `mcp_gateway_authz_denials_total ${this.invoker?.authzDenials ?? 0}`,
+      '# HELP mcp_gateway_reroute_denials_total Rerouted calls refused by the final authorization (12.0.1)',
+      '# TYPE mcp_gateway_reroute_denials_total counter',
+      `mcp_gateway_reroute_denials_total ${this.invoker?.rerouteDenials ?? 0}`,
     ]);
     this.invoker = new ToolInvoker({
       proxy: this.proxy,
