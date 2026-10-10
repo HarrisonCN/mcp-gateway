@@ -264,6 +264,9 @@ describe('edge autonomy (10.7, EXPERIMENTAL)', () => {
     fx = await startFeatureGw({
       edgeAutonomy: { rules: [{ match: 'fake/*', action: 'queue' }], reconcile: { intervalMs: 3_600_000, maxAttempts: 2 } },
     } as never);
+    // Let the start-up reconcile pass (100 ms after activation) run first: otherwise it can land between the two manual
+    // reconciles below on a slow runner (coverage) and take the second attempt itself (13.1.1 de-flake).
+    await new Promise((r) => setTimeout(r, 250));
     await fx.admin('edge-autonomy/connectivity', { disconnected: true });
     expect((await call(fx.base, 'later', {})).status).toBe(200);
     await fx.admin('edge-autonomy/connectivity', { disconnected: false });

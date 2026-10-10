@@ -49,6 +49,9 @@ Config schema stays **v11**; no config changes needed. Advisories: [SECURITY.md]
   refuses all; reroute into a failed scope; per-module scopes; staged registry; split / rollout to a staged server
   never sent; mid-reload calls and listings of a new server → not found, after commit → served, after a failed reload
   → never visible; tool and semantic cache entries per split target and split authorization before the lookup.
+- De-flaked `orchestration-edge-10-7` ("reconcile parks a replay…"): the start-up reconcile pass (100 ms after the
+  module activates) could land between the test's two manual reconciles on a slow (coverage) runner; the test now lets
+  it run first.
 
 ## [13.1.0] - 2026-10-10
 
