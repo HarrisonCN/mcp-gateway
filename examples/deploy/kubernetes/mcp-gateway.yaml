@@ -64,6 +64,8 @@ spec:
         prometheus.io/port: "4000"
         prometheus.io/path: /metrics
     spec:
+      # no service-link env vars: the Service below would otherwise inject MCP_GATEWAY_PORT=tcp://…
+      enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
