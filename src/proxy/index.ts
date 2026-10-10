@@ -89,6 +89,29 @@ export interface RequestOptions {
    * while this request is in flight are handed to the client request handler together with this value.
    */
   caller?: RelayCaller;
+  /**
+   * 13.2.0: identity of the server config the call was authorized under (its pinned config generation). The request
+   * goes to the session opened with exactly that config — the current one, or a session a hot reload replaced that is
+   * still draining — and is refused when none is left; it never reaches a session of another generation.
+   */
+  configKey?: string;
+}
+
+/** A session opened aside by a hot reload's Prepare phase (13.2.0): not used for any request until installed. */
+export interface PreparedSession {
+  readonly serverId: string;
+  readonly key: string;
+  readonly tools: ToolInfo[];
+  readonly catalog: ServerCatalog;
+  /** @internal */
+  readonly session: unknown;
+}
+
+/** A session taken out of service (replaced or removed by a hot reload) that may still serve pinned calls. */
+export interface RetiredSession {
+  readonly serverId: string;
+  /** @internal */
+  readonly session: unknown;
 }
 
 /** Downstream caller of a request; `key` identifies the client session (callers with equal keys are the same). */
@@ -153,6 +176,29 @@ interface Session {
   progress: Map<string, (update: ProgressUpdate) => void>;
   /** Downstream callers of in-flight requests, oldest first (sampling / elicitation routing). */
   callers: Array<{ token?: string; caller: RelayCaller }>;
+  /** 13.2.0: identity of the registered (pre-secret-resolution) config this session was opened with. */
+  key: string;
+  /** 13.2.0: requests in flight on this session (any kind). */
+  active: number;
+  /** 13.2.0: replaced / removed by a hot reload; serves only calls pinned to its config. */
+  retired?: boolean;
+  /** 13.2.0: close as soon as `active` drops to 0. */
+  closeWhenIdle?: boolean;
+}
+
+export interface ConnectOptions {
+  /** Identity of the registered config (default: the config itself). */
+  key?: string;
+  /** Checked (under the server's connect lock) before the new session replaces the current one; false → abort. */
+  guard?: () => boolean;
+}
+
+/** Thrown by {@link McpProxy.connect} when its guard says the attempt was superseded. */
+export class SupersededError extends Error {
+  constructor(serverId: string) {
+    super(`Connect to "${serverId}" superseded by a newer config`);
+    this.name = 'SupersededError';
+  }
 }
 
 export interface SessionInfo {
@@ -184,6 +230,8 @@ export function passthroughCapabilities(methods: readonly PassthroughMethod[]): 
 
 export class McpProxy extends EventEmitter {
   private sessions = new Map<string, Session>();
+  /** 13.2.0: sessions replaced or removed by a hot reload, kept until the generations pinning them retire. */
+  private retired = new Map<string, Set<Session>>();
   // Per-server connect mutex (fix BUG-001)
   private spawnLocks = new Map<string, Mutex>();
   private readonly killGraceMs: number;
@@ -234,39 +282,27 @@ export class McpProxy extends EventEmitter {
 
   // ─── Connection Management ──────────────────────────────────────────────────
 
-  async connect(config: McpServerConfig): Promise<ToolInfo[]> {
+  async connect(config: McpServerConfig, opts: ConnectOptions = {}): Promise<ToolInfo[]> {
     // Serialise concurrent connect calls for the same server (fix BUG-001)
     return this.getSpawnLock(config.id).runExclusive(async () => {
+      if (opts.guard && !opts.guard()) throw new SupersededError(config.id);
       // Replace (and clean up) any existing session for this id.
       if (this.sessions.has(config.id)) {
         await this._disconnectUnlocked(config.id);
       }
-
-      const timeout = config.timeout ?? DEFAULT_TIMEOUT_MS;
-      const options: ChannelOptions = { connectTimeoutMs: timeout, killGraceMs: this.killGraceMs, ...(this.stdioOptions?.() ?? {}) };
-      const channel = this.channelFactory(config, options);
-      const session: Session = {
-        config,
-        channel,
-        pendingRequests: new Map(),
-        limiter: new Semaphore(config.maxConcurrency ?? Infinity),
-        closed: false,
-        catalog: { resources: [], resourceTemplates: [], prompts: [] },
-        progress: new Map(),
-        callers: [],
-      };
-
-      channel.onmessage = (msg) => this._onMessage(session, msg);
-      channel.onclose = (err) => this._onChannelLost(session, err);
-
+      const session = this._newSession(config, opts.key);
       try {
-        await withTimeout(channel.start(), timeout, `Connecting to "${config.id}" timed out after ${timeout}ms`);
+        await this._open(session);
       } catch (err) {
         session.closed = true;
-        await channel.close().catch(() => {});
+        await session.channel.close().catch(() => {});
         throw err;
       }
-
+      if (opts.guard && !opts.guard()) {
+        session.closed = true;
+        await session.channel.close().catch(() => {});
+        throw new SupersededError(config.id);
+      }
       this.sessions.set(config.id, session);
       try {
         const tools = await this._handshake(session);
@@ -278,6 +314,148 @@ export class McpProxy extends EventEmitter {
         throw err;
       }
     });
+  }
+
+  private _newSession(config: McpServerConfig, key?: string): Session {
+    const timeout = config.timeout ?? DEFAULT_TIMEOUT_MS;
+    const options: ChannelOptions = { connectTimeoutMs: timeout, killGraceMs: this.killGraceMs, ...(this.stdioOptions?.() ?? {}) };
+    const channel = this.channelFactory(config, options);
+    const session: Session = {
+      config,
+      channel,
+      pendingRequests: new Map(),
+      limiter: new Semaphore(config.maxConcurrency ?? Infinity),
+      closed: false,
+      catalog: { resources: [], resourceTemplates: [], prompts: [] },
+      progress: new Map(),
+      callers: [],
+      key: key ?? JSON.stringify(config),
+      active: 0,
+    };
+    channel.onmessage = (msg) => this._onMessage(session, msg);
+    channel.onclose = (err) => this._onChannelLost(session, err);
+    return session;
+  }
+
+  private async _open(session: Session): Promise<void> {
+    const timeout = session.config.timeout ?? DEFAULT_TIMEOUT_MS;
+    await withTimeout(session.channel.start(), timeout, `Connecting to "${session.config.id}" timed out after ${timeout}ms`);
+  }
+
+  // ─── 13.2.0: hot reload Prepare / Commit / Rollback of a server's session ───
+
+  /**
+   * Prepare: open and hand-shake a session for `config` aside. The current session of the id (if any) keeps serving;
+   * nothing routes to the prepared one until {@link install}. Throws when it cannot be opened (nothing is left behind).
+   */
+  async prepare(config: McpServerConfig, opts: { key?: string } = {}): Promise<PreparedSession> {
+    const session = this._newSession(config, opts.key);
+    try {
+      await this._open(session);
+      const tools = await this._handshake(session);
+      session.connectedAt = new Date();
+      return { serverId: config.id, key: session.key, tools, catalog: session.catalog, session };
+    } catch (err) {
+      session.closed = true;
+      this._rejectAll(session, err instanceof Error ? err : new Error(String(err)));
+      await session.channel.close().catch(() => {});
+      throw err;
+    }
+  }
+
+  /**
+   * Commit: make a prepared session the current one for its id. The session it replaces is retired, not closed: it
+   * keeps serving calls pinned to its config until {@link closeRetired}. Returns it (for rollback / retirement).
+   */
+  async install(prepared: PreparedSession): Promise<RetiredSession | undefined> {
+    const next = prepared.session as Session;
+    return this.getSpawnLock(prepared.serverId).runExclusive(async () => {
+      if (next.closed) throw new Error(`Prepared session for "${prepared.serverId}" was lost before commit`);
+      const old = this.sessions.get(prepared.serverId);
+      this.sessions.set(prepared.serverId, next);
+      this.emit('connected', prepared.serverId);
+      return old ? this._retire(old) : undefined;
+    });
+  }
+
+  /** Rollback of {@link install}: put `old` back as the current session and close the prepared one. */
+  async uninstall(prepared: PreparedSession, old: RetiredSession | undefined): Promise<void> {
+    const next = prepared.session as Session;
+    await this.getSpawnLock(prepared.serverId).runExclusive(async () => {
+      const prev = old?.session as Session | undefined;
+      if (this.sessions.get(prepared.serverId) === next) this.sessions.delete(prepared.serverId);
+      if (prev && !prev.closed) {
+        this.retired.get(prepared.serverId)?.delete(prev);
+        if (!this.retired.get(prepared.serverId)?.size) this.retired.delete(prepared.serverId);
+        prev.retired = false;
+        prev.closeWhenIdle = false;
+        if (!this.sessions.has(prepared.serverId)) this.sessions.set(prepared.serverId, prev);
+      }
+      await this._close(next);
+    });
+  }
+
+  /** Rollback of {@link prepare} (the session was never installed). */
+  async discard(prepared: PreparedSession): Promise<void> {
+    await this._close(prepared.session as Session);
+  }
+
+  /** Take the current session of a removed server out of service; it drains until {@link closeRetired}. */
+  async retire(serverId: string): Promise<RetiredSession | undefined> {
+    return this.getSpawnLock(serverId).runExclusive(async () => {
+      const s = this.sessions.get(serverId);
+      if (!s) return undefined;
+      this.sessions.delete(serverId);
+      return this._retire(s);
+    });
+  }
+
+  private _retire(s: Session): RetiredSession {
+    s.retired = true;
+    let set = this.retired.get(s.config.id);
+    if (!set) this.retired.set(s.config.id, (set = new Set()));
+    set.add(s);
+    return { serverId: s.config.id, session: s };
+  }
+
+  /** Close a retired session once its in-flight requests are done (immediately when idle). */
+  closeRetired(r: RetiredSession | undefined): void {
+    const s = r?.session as Session | undefined;
+    if (!s || !s.retired) return;
+    if (s.active > 0) {
+      s.closeWhenIdle = true;
+      return;
+    }
+    void this._close(s);
+  }
+
+  private async _close(s: Session): Promise<void> {
+    const set = this.retired.get(s.config.id);
+    if (set?.delete(s) && set.size === 0) this.retired.delete(s.config.id);
+    if (s.closed) return;
+    s.closed = true;
+    this._rejectAll(s, new Error('Server disconnected'));
+    await s.channel.close().catch((err: unknown) => logger.debug(`[${s.config.id}] error while closing: ${String(err)}`));
+  }
+
+  /** Current (not retired) sessions. */
+  sessionCount(): number {
+    return this.sessions.size;
+  }
+
+  /** Retired sessions still open (draining pinned calls). */
+  retiredCount(): number {
+    let n = 0;
+    for (const set of this.retired.values()) n += set.size;
+    return n;
+  }
+
+  /** The session a request for `serverId` must use: the current one, or the one opened with `configKey` (13.2.0). */
+  private _sessionFor(serverId: string, configKey?: string): Session | undefined {
+    const cur = this.sessions.get(serverId);
+    if (configKey === undefined || cur?.key === configKey) return cur;
+    for (const s of this.retired.get(serverId) ?? []) if (s.key === configKey && !s.closed) return s;
+    return undefined;
   }
 
   private async _handshake(session: Session): Promise<ToolInfo[]> {
@@ -457,6 +635,7 @@ export class McpProxy extends EventEmitter {
 
   async disconnectAll(): Promise<void> {
     await Promise.all([...this.sessions.keys()].map((id) => this.disconnect(id)));
+    await Promise.all([...this.retired.values()].flatMap((set) => [...set]).map((s) => this._close(s)));
   }
 
   // ─── Tool Execution ─────────────────────────────────────────────────────────
@@ -482,7 +661,15 @@ export class McpProxy extends EventEmitter {
     timeout?: number,
     options: RequestOptions = {},
   ): Promise<ProxyResponse> {
-    const session = this.sessions.get(serverId);
+    const session = this._sessionFor(serverId, options.configKey);
+    if (!session && options.configKey !== undefined && (this.sessions.has(serverId) || this.retired.has(serverId))) {
+      // 13.2.0: the config this call was authorized under is gone (reloaded and drained); never use another one.
+      return {
+        success: false,
+        error: { code: ERR_NOT_CONNECTED, message: `Server "${serverId}" was reconfigured while this call was in flight; retry`, data: { reason: 'generation-retired' } },
+        durationMs: 0,
+      };
+    }
     // Requests are only forwarded once the handshake (initialize → initialized) is done.
     if (!session || session.closed || !session.connectedAt) {
       return {
@@ -547,6 +734,11 @@ export class McpProxy extends EventEmitter {
     if (session.closed) return;
     session.closed = true;
     this._rejectAll(session, err);
+    if (session.retired) {
+      const set = this.retired.get(session.config.id);
+      if (set?.delete(session) && set.size === 0) this.retired.delete(session.config.id);
+      return;
+    }
     // Only drop the session if it is still the current one for this id.
     if (this.sessions.get(session.config.id) === session) {
       this.sessions.delete(session.config.id);
@@ -593,7 +785,7 @@ export class McpProxy extends EventEmitter {
             logger.debug(`[${session.config.id}] progress handler failed: ${String(err)}`);
           }
         }
-      } else if (session.connectedAt) {
+      } else if (session.connectedAt && this.sessions.get(session.config.id) === session) {
         this.emit('notification', session.config.id, msg);
       }
       return;
@@ -616,7 +808,7 @@ export class McpProxy extends EventEmitter {
     if (!session.connectedAt) return; // still handshaking: the initial list is fetched anyway
     void this._listTools(session).then(
       (tools) => {
-        if (!session.closed) this.emit('tools-changed', session.config.id, tools);
+        if (!session.closed && this.sessions.get(session.config.id) === session) this.emit('tools-changed', session.config.id, tools);
       },
       (err: unknown) => logger.warn(`[${session.config.id}] could not refresh tools: ${String(err)}`),
     );
@@ -628,7 +820,7 @@ export class McpProxy extends EventEmitter {
       (catalog) => {
         if (session.closed) return;
         session.catalog = catalog;
-        this.emit('catalog-changed', session.config.id, catalog);
+        if (this.sessions.get(session.config.id) === session) this.emit('catalog-changed', session.config.id, catalog);
       },
       (err: unknown) => logger.warn(`[${session.config.id}] could not refresh resources/prompts: ${String(err)}`),
     );
@@ -676,6 +868,25 @@ export class McpProxy extends EventEmitter {
   }
 
   private async _sendRequest(
+    session: Session,
+    method: string,
+    params: unknown,
+    timeout = DEFAULT_TIMEOUT_MS,
+    limited = true,
+    signal?: AbortSignal,
+    onProgress?: (update: ProgressUpdate) => void,
+    caller?: RelayCaller,
+  ): Promise<ProxyResponse> {
+    session.active++;
+    try {
+      return await this._sendRequestInner(session, method, params, timeout, limited, signal, onProgress, caller);
+    } finally {
+      session.active--;
+      if (session.active === 0 && session.closeWhenIdle) void this._close(session);
+    }
+  }
+
+  private async _sendRequestInner(
     session: Session,
     method: string,
     params: unknown,

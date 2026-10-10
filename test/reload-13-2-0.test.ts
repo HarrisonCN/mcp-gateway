@@ -20,6 +20,7 @@ import { join } from 'path';
 import { startFeatureGw, fakeServer, type FeatureGw } from './helpers/feature-gw.js';
 import { registerFeature, FEATURE_ACTIVATION } from '../src/gateway/features.js';
 import type { GatewayConfig } from '../src/utils/types.js';
+import { clientPrincipal } from '../src/auth/authorizer.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Gw = any;
@@ -194,8 +195,8 @@ describe('in-flight calls are pinned to one generation (13.2.0)', () => {
     h = await startFeatureGw();
     const gw = h.gw as Gw;
     await gw.reload({ ...gw.config, logLevel: 'warn' } as GatewayConfig);
-    const res = await gw.invoker.invoke({ serverId: 'fake', name: 'echo', kind: 'tool', method: 'tools/call', params: { a: 1 }, via: 'rest', principal: gw.principalFor('op'), clientId: 'op' });
-    expect(res.success).toBe(true);
+    const res = await gw.invoker.invoke({ serverId: 'fake', name: 'echo', kind: 'tool', method: 'tools/call', params: { a: 1 }, via: 'rest', principal: clientPrincipal('key:op'), clientId: 'key:op' });
+    expect(res.error).toBeUndefined();
     expect(res.snapshot?.generation).toBe(2);
   }, 30_000);
 });

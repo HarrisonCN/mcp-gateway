@@ -16,7 +16,8 @@
  */
 
 import type { McpServerConfig, ReconnectConfig, ReconnectState, ServerCatalog, ToolInfo } from '../utils/types.js';
-import type { McpProxy } from '../proxy/index.js';
+import { SupersededError, type McpProxy, type PreparedSession } from '../proxy/index.js';
+import { serverKey } from './generation.js';
 import type { ServerRegistry } from '../registry/index.js';
 import { logger } from '../utils/logger.js';
 
@@ -123,6 +124,34 @@ export class ServerSupervisor {
     return this.attempt(entry, entry.gen, false);
   }
 
+  /**
+   * 13.2.0 hot reload Prepare: resolve `config`'s secrets and open a session for it aside (the current session keeps
+   * serving). Throws when it cannot be opened.
+   */
+  async prepareSession(config: McpServerConfig): Promise<PreparedSession> {
+    const resolved = this.prepare ? await this.prepare(config) : config;
+    return this.proxy.prepare(resolved, { key: serverKey(config) });
+  }
+
+  /**
+   * 13.2.0 hot reload Commit: manage `config` from now on with the session that was prepared and installed for it
+   * (supersedes any pending or in-flight reconnect of the previous config) and publish its tools and health.
+   */
+  adopt(config: McpServerConfig, prepared: Pick<PreparedSession, 'tools' | 'catalog'>): void {
+    const prev = this.entries.get(config.id);
+    if (prev?.timer) clearTimeout(prev.timer);
+    const entry: Entry = {
+      config,
+      policy: resolveReconnect(this.reconnectDefaults, config.reconnect),
+      gen: (prev?.gen ?? 0) + 1,
+      state: { state: 'idle', attempt: 0, reconnects: prev?.state.reconnects ?? 0 },
+    };
+    this.entries.set(config.id, entry);
+    this.registry.setTools(config.id, prepared.tools);
+    this.registry.setCatalog(config.id, prepared.catalog);
+    this.registry.updateHealth(config.id, 'online', undefined, undefined, { connectedSince: new Date(), reconnect: { ...entry.state } });
+  }
+
   /** Stop managing a server (cancel pending reconnects). Does not disconnect it. */
   forget(serverId: string): void {
     const e = this.entries.get(serverId);
@@ -163,7 +192,11 @@ export class ServerSupervisor {
     entry.state.nextAttemptAt = undefined;
     this.publish(entry);
     try {
-      const tools = await this.proxy.connect(this.prepare ? await this.prepare(config) : config);
+      const resolved = this.prepare ? await this.prepare(config) : config;
+      if (!this.current(entry, gen)) return false; // superseded by reload/removal
+      // 13.2.0: the guard is re-checked under the proxy's connect lock, so a late reconnect of an old config can never
+      // replace a session a hot reload installed meanwhile.
+      const tools = await this.proxy.connect(resolved, { key: serverKey(config), guard: () => this.current(entry, gen) });
       if (!this.current(entry, gen)) return false; // superseded by reload/removal
       entry.state = {
         state: 'idle',
@@ -180,7 +213,7 @@ export class ServerSupervisor {
       logger.info(`✓ ${config.name} — ${tools.length} tools available${isReconnect ? ' (reconnected)' : ''}`);
       return true;
     } catch (err) {
-      if (!this.current(entry, gen)) return false;
+      if (err instanceof SupersededError || !this.current(entry, gen)) return false;
       const msg = err instanceof Error ? err.message : String(err);
       entry.state.lastError = msg;
       if (!isReconnect) {

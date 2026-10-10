@@ -55,6 +55,8 @@ registerFeature({
         line: RELEASE_LINE,
         lts: { ...LTS, status: ltsStatus() },
         moduleMode: moduleMode(ctx.config()),
+        // 13.2.0: transactional reload — committed config generation and the ones in-flight calls still pin
+        ...(ctx.reloadState ? { reload: ctx.reloadState() } : {}),
         // 13.0: state / evaluated / dependsOn / health per module (kernel lifecycle)
         modules: (ctx.kernel?.() ?? listFeatures().map((m) => ({ ...m, state: undefined }))).map((m) => ({ ...m, path: `/api/v1/admin/${m.id}`, active: isFeatureActive(ctx.config(), m.id) && m.state !== 'failed' })),
         evaluated: loadedFeatures(),
