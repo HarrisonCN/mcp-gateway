@@ -12,6 +12,7 @@ Start with the project README: [English](../README.md) · [简体中文](../READ
 | [Security](../SECURITY.md) | supported versions, advisories, hardening |
 | [Threat model](security/threat-model.md) · [Supply chain](security/supply-chain.md) · [stdio isolation](security/stdio-isolation.md) · [Incident response](security/incident-response.md) | security documentation |
 | [Remote servers](guides/remote-servers.md) | Streamable HTTP, SSE and WebSocket upstreams, reconnect |
+| [Client compatibility](guides/client-compatibility.md) | MCP client × revision test matrix (13.6), negotiation rules, Motionary E2E |
 | [Benchmarks](benchmarks.md) | kernel and gateway benchmarks |
 | [Roadmap](ROADMAP.md) | release plan (in Chinese) |
 | [Contributing](CONTRIBUTING.md) | development workflow |

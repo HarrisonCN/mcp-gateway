@@ -13,7 +13,7 @@ logLevel: info
 auth:
   strategy: api-key
   apiKeys:
-    - overridden-by-MCP_GATEWAY_API_KEYS
+    - "overridden-by-MCP_GATEWAY_API_KEYS"
 
 servers:
   - id: motionary
@@ -24,3 +24,7 @@ servers:
     args: ["node_modules/motionary/bin/motionary-mcp.mjs"]
     tags: [motionary, catalog]
     enabled: true
+
+# No browser clients call this gateway (AI clients connect server-side); list origins here if one does.
+mcp:
+  allowedOrigins: []
