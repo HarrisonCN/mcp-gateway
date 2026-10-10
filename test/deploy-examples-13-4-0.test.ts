@@ -91,6 +91,16 @@ describe('deployment examples', () => {
     await boots(values.config, ex('compose/echo-server.mjs'));
   }, 30_000);
 
+  it('container healthchecks probe 127.0.0.1 (busybox wget resolves localhost to ::1; the gateway listens on IPv4)', () => {
+    // found by the Compose CI job: the image HEALTHCHECK on http://localhost:4000 always failed → containers "unhealthy"
+    const files = ['Dockerfile', 'examples/docker/docker-compose.yml', 'examples/deploy/compose/docker-compose.yml'];
+    for (const f of files) {
+      const t = readFileSync(join(root, f), 'utf8');
+      expect(t, f).toMatch(/127\.0\.0\.1:4000\/api\/v1\/health\/live/);
+      expect(t, f).not.toMatch(/wget[^\n]*localhost:4000/);
+    }
+  });
+
   it('docs/deployment.md points at the examples and shows current tags only', () => {
     const doc = readFileSync(join(root, 'docs/deployment.md'), 'utf8');
     for (const f of ['examples/deploy/compose/docker-compose.yml', 'examples/deploy/kubernetes/mcp-gateway.yaml', 'examples/deploy/helm/values.yaml']) expect(doc).toContain(f);
