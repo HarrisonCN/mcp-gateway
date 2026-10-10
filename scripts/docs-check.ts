@@ -70,7 +70,8 @@ export const slug = (h: string) =>
   h
     .trim()
     .toLowerCase()
-    .replace(/<[^>]+>/g, '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/[<>]/g, '')
     .replace(/`/g, '')
     .replace(/[^\p{L}\p{N}\s_-]/gu, '')
     .replace(/\s/g, '-');
@@ -200,7 +201,7 @@ async function check(root: string, opts: { external?: boolean }) {
 
   const checkLine = (rel: string, abs: string, n: number, l: string, hist: boolean, inFence: boolean) => {
     // image tags
-    for (const m of l.matchAll(/ghcr\.io\/harrisoncn\/mcp-gateway(?::([A-Za-z0-9._-]+))?(@sha256:[0-9a-f<>A-Za-z._-]+)?/g)) {
+    for (const m of l.matchAll(/(?:^|[^\w.-])ghcr\.io\/harrisoncn\/mcp-gateway(?::([A-Za-z0-9._-]+))?(@sha256:[\w<>.-]+)?/g)) {
       stats.images++;
       const tag = m[1];
       if (!tag || hist) continue;
@@ -269,9 +270,9 @@ async function check(root: string, opts: { external?: boolean }) {
       const n = i + 1;
       if (!fence) {
         if (/<!--\s*docs-check:\s*skip\s*-->/.test(l)) skipNext = true;
-        if (/^\s*<!--/.test(l) && !/-->/.test(l)) html = true;
+        if (/^\s*<!--/.test(l) && !/--!?>/.test(l)) html = true;
         if (html) {
-          if (/-->/.test(l)) html = false;
+          if (/--!?>/.test(l)) html = false;
           return;
         }
       }

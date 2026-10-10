@@ -94,7 +94,7 @@ describe('deployment examples', () => {
   it('docs/deployment.md points at the examples and shows current tags only', () => {
     const doc = readFileSync(join(root, 'docs/deployment.md'), 'utf8');
     for (const f of ['examples/deploy/compose/docker-compose.yml', 'examples/deploy/kubernetes/mcp-gateway.yaml', 'examples/deploy/helm/values.yaml']) expect(doc).toContain(f);
-    const tags = [...doc.matchAll(/ghcr\.io\/harrisoncn\/mcp-gateway:([\w.-]+)/g)].map((m) => m[1]);
+    const tags = [...doc.matchAll(/(?:^|[\s"'`(])ghcr\.io\/harrisoncn\/mcp-gateway:([\w.-]+)/gm)].map((m) => m[1]);
     expect(tags.length).toBeGreaterThan(3);
     const minor = V.split('.').slice(0, 2).join('.');
     for (const t of tags) expect(['latest', MAJOR, minor, V, '12', '12.0', '10', '10.9']).toContain(t);
