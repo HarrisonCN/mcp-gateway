@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.9.7] - 2026-10-10
+
+**Security backport (10.x).** Fix for MGW-2026-012 from 13.3.0 (the Redis client change only; none of the other
+13.3 reliability work); no other changes. The config schema is unchanged.
+
+### Security
+- **MGW-2026-012 (medium) — Redis replies could be delivered to the wrong command after a timeout or reconnect.** The
+  built-in Redis client (`store.backend: redis`) kept one reply queue for all connections. When a command ran into
+  `commandTimeoutMs` or the connection reset while other commands were in flight, the old socket's close failed
+  commands already written to the new connection, and their replies were then handed to later commands: an
+  agent-token revocation check could read `nil` and accept a revoked token, and rate-limit / lockout counters could
+  read other counters. Every connection now owns its reply queue and parser; a connection that timed out or received
+  a reply nobody waits for is discarded together with the commands it carried (they fail, and the module's
+  `failureMode` applies).
+
 ## [10.9.6] - 2026-10-10
 
 **Security backport (10.x).** Fix for MGW-2026-011 from 13.2.0 (without the 13.2 transactional-reload

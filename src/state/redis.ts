@@ -95,12 +95,26 @@ export interface RedisOptions {
   commandTimeoutMs?: number;
 }
 
-/** Minimal pipelining Redis client. */
+/**
+ * Minimal pipelining Redis client.
+ *
+ * 10.9.7 (MGW-2026-012): every connection owns its reply queue and parser. Replies are matched to commands strictly in the order
+ * they were written ON THAT SOCKET, so a connection that dies (command timeout, reset) can only fail the commands it
+ * carried — never a command already written to its replacement, and a late reply can never be handed to a later
+ * command (before 10.9.7 the queue was shared: after a timeout + reconnect, a reply could be delivered to the wrong
+ * command, e.g. `GET a` answered with b's value — MGW-2026-012).
+ */
+interface Conn {
+  socket: Socket;
+  queue: Pending[];
+  parser: RespParser;
+  /** Set once the socket is gone: further writes are refused instead of queued. */
+  dead: boolean;
+}
+
 export class RedisClient {
-  private socket?: Socket;
-  private connecting?: Promise<Socket>;
-  private queue: Pending[] = [];
-  private parser = new RespParser();
+  private conn?: Conn;
+  private connecting?: Promise<Conn>;
   private closed = false;
   private readonly url: URL;
 
@@ -111,34 +125,44 @@ export class RedisClient {
     }
   }
 
-  private failAll(err: Error): void {
-    const q = this.queue;
-    this.queue = [];
+  private static failAll(conn: Conn, err: Error): void {
+    conn.dead = true;
+    const q = conn.queue;
+    conn.queue = [];
     for (const p of q) p.reject(err);
   }
 
-  private open(): Promise<Socket> {
-    if (this.socket && !this.socket.destroyed) return Promise.resolve(this.socket);
+  /** Number of commands waiting for a reply on the current connection (for tests / monitoring). */
+  get pending(): number {
+    return this.conn?.queue.length ?? 0;
+  }
+
+  private open(): Promise<Conn> {
+    if (this.conn && !this.conn.dead && !this.conn.socket.destroyed) return Promise.resolve(this.conn);
     if (this.connecting) return this.connecting;
-    this.connecting = new Promise<Socket>((resolve, reject) => {
+    this.connecting = new Promise<Conn>((resolve, reject) => {
       const port = Number(this.url.port || 6379);
       const host = this.url.hostname.replace(/^\[|\]$/g, '');
       const socket =
         this.url.protocol === 'rediss:' ? tlsConnect({ host, port, servername: host }) : netConnect({ host, port });
       const timer = setTimeout(() => socket.destroy(new Error('Redis connect timeout')), this.options.connectTimeoutMs ?? 5_000);
       timer.unref();
-      this.parser = new RespParser();
+      const conn: Conn = { socket, queue: [], parser: new RespParser(), dead: false };
       socket.on('data', (chunk: Buffer) => {
         let values: RespValue[];
         try {
-          values = this.parser.push(chunk);
+          values = conn.parser.push(chunk);
         } catch (err) {
           socket.destroy(err as Error);
           return;
         }
         for (const v of values) {
-          const p = this.queue.shift();
-          if (!p) continue;
+          const p = conn.queue.shift();
+          if (!p) {
+            // A reply nobody waits for means this connection's stream is out of step: never trust it again.
+            socket.destroy();
+            return;
+          }
           if (v instanceof RespError) p.reject(v);
           else p.resolve(v);
         }
@@ -147,38 +171,38 @@ export class RedisClient {
         logger.debug(`Redis connection error: ${err.message}`);
       });
       socket.on('close', () => {
-        if (this.socket === socket) this.socket = undefined;
-        this.failAll(new Error('Redis connection closed'));
+        if (this.conn === conn) this.conn = undefined;
+        RedisClient.failAll(conn, new Error('Redis connection closed'));
       });
       socket.once(this.url.protocol === 'rediss:' ? 'secureConnect' : 'connect', () => {
         clearTimeout(timer);
-        this.socket = socket;
-        resolve(socket);
+        this.conn = conn;
+        resolve(conn);
       });
       socket.once('close', () => {
         clearTimeout(timer);
         reject(new Error(`Could not connect to Redis at ${host}:${port}`));
       });
     })
-      .then(async (socket) => {
+      .then(async (conn) => {
         const user = decodeURIComponent(this.url.username);
         const pass = decodeURIComponent(this.url.password);
         try {
-          if (pass) await this.raw(socket, user ? ['AUTH', user, pass] : ['AUTH', pass]);
+          if (pass) await this.raw(conn, user ? ['AUTH', user, pass] : ['AUTH', pass]);
           const db = this.url.pathname.replace(/^\//, '');
-          if (db && db !== '0') await this.raw(socket, ['SELECT', db]);
+          if (db && db !== '0') await this.raw(conn, ['SELECT', db]);
         } catch (err) {
           // Never keep a half-initialised (unauthenticated / wrong-db) connection around: the next
           // command would reuse it and skip AUTH / SELECT.
-          if (this.socket === socket) this.socket = undefined;
-          socket.destroy();
+          if (this.conn === conn) this.conn = undefined;
+          conn.socket.destroy();
           throw err;
         }
         if (this.closed) {
-          socket.destroy();
+          conn.socket.destroy();
           throw new Error('Redis client is closed');
         }
-        return socket;
+        return conn;
       })
       .finally(() => {
         this.connecting = undefined;
@@ -186,14 +210,22 @@ export class RedisClient {
     return this.connecting;
   }
 
-  private raw(socket: Socket, args: Array<string | number>): Promise<RespValue> {
+  private raw(conn: Conn, args: Array<string | number>): Promise<RespValue> {
     return new Promise<RespValue>((resolve, reject) => {
+      if (conn.dead || conn.socket.destroyed) {
+        reject(new Error('Redis connection closed'));
+        return;
+      }
       const timer = setTimeout(() => {
         reject(new Error(`Redis command timed out: ${String(args[0])}`));
-        socket.destroy();
+        // The reply may still arrive later: the whole connection is discarded so it can never be matched to
+        // another command (its other pending commands fail with "connection closed").
+        if (this.conn === conn) this.conn = undefined;
+        conn.dead = true;
+        conn.socket.destroy();
       }, this.options.commandTimeoutMs ?? 5_000);
       timer.unref();
-      this.queue.push({
+      conn.queue.push({
         resolve: (v) => {
           clearTimeout(timer);
           resolve(v);
@@ -203,21 +235,21 @@ export class RedisClient {
           reject(e);
         },
       });
-      socket.write(encodeCommand(args));
+      conn.socket.write(encodeCommand(args));
     });
   }
 
   async command(...args: Array<string | number>): Promise<RespValue> {
     if (this.closed) throw new Error('Redis client is closed');
-    const socket = await this.open();
-    return this.raw(socket, args);
+    const conn = await this.open();
+    return this.raw(conn, args);
   }
 
   /** Run commands inside MULTI / EXEC; resolves with the EXEC reply array. */
   async transaction(commands: Array<Array<string | number>>): Promise<RespValue[]> {
     if (this.closed) throw new Error('Redis client is closed');
-    const socket = await this.open();
-    const replies = [this.raw(socket, ['MULTI']), ...commands.map((c) => this.raw(socket, c)), this.raw(socket, ['EXEC'])];
+    const conn = await this.open();
+    const replies = [this.raw(conn, ['MULTI']), ...commands.map((c) => this.raw(conn, c)), this.raw(conn, ['EXEC'])];
     const all = await Promise.all(replies);
     const exec = all[all.length - 1];
     if (!Array.isArray(exec)) throw new Error('Redis transaction aborted');
@@ -227,16 +259,16 @@ export class RedisClient {
 
   async close(): Promise<void> {
     this.closed = true;
-    const s = this.socket;
-    this.socket = undefined;
-    if (s && !s.destroyed) {
+    const c = this.conn;
+    this.conn = undefined;
+    if (c && !c.socket.destroyed) {
       await new Promise<void>((resolve) => {
-        s.once('close', () => resolve());
-        s.end(encodeCommand(['QUIT']));
-        setTimeout(() => s.destroy(), 500).unref();
+        c.socket.once('close', () => resolve());
+        c.socket.end(encodeCommand(['QUIT']));
+        setTimeout(() => c.socket.destroy(), 500).unref();
       });
     }
-    this.failAll(new Error('Redis client is closed'));
+    if (c) RedisClient.failAll(c, new Error('Redis client is closed'));
   }
 }
 
