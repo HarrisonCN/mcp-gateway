@@ -442,6 +442,13 @@ export class McpEndpoint {
       return;
     }
 
+    // 13.6.0: a sessionless `server/discover` (the 2026-07-28 stateless-era probe) is answered "method not found",
+    // so modern SDK clients fall back to the initialize handshake instead of failing on a missing-session error.
+    if (msgs.length === 1 && msgs[0]!.method === 'server/discover' && msgs[0]!.id !== undefined && msgs[0]!.id !== null && typeof req.headers['mcp-session-id'] !== 'string') {
+      res.status(200).json(rpcError(msgs[0]!.id, { code: JSONRPC_METHOD_NOT_FOUND, message: `Method not found: server/discover (this gateway negotiates with initialize: ${this.allowedVersions().join(', ')})` }));
+      return;
+    }
+
     const session = await this.resolveSession(req, res);
     if (!session) return;
 
@@ -669,6 +676,11 @@ export class McpEndpoint {
     const version = req.headers['mcp-protocol-version'];
     if (typeof version === 'string' && !this.allowedVersions().includes(version)) {
       res.status(400).json(rpcError(null, { code: JSONRPC_INVALID_REQUEST, message: `Bad Request: unsupported MCP-Protocol-Version "${version}"` }));
+      return undefined;
+    }
+    // 13.6.0: the header must name the revision this session negotiated (results are shaped for that revision).
+    if (typeof version === 'string' && version !== session.protocolVersion) {
+      res.status(400).json(rpcError(null, { code: JSONRPC_INVALID_REQUEST, message: `Bad Request: MCP-Protocol-Version "${version}" does not match the session's negotiated revision "${session.protocolVersion}"` }));
       return undefined;
     }
     session.lastSeen = Date.now();

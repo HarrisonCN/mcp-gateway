@@ -1,0 +1,30 @@
+# mcp-gateway in front of the Motionary MCP server (13.6.0 interop example)
+# Motionary is NOT a dependency of mcp-gateway: install it next to this file
+#   npm i --no-save motionary@13.0.2      (pinned; newer Motionary releases are expected to work too)
+# then start the gateway from this directory:
+#   MCP_GATEWAY_API_KEYS=$(openssl rand -hex 24) npx mcp-gateway start -c mcp-gateway.yml
+
+version: 11
+port: 4000
+# Loopback only. Clients authenticate with a key from MCP_GATEWAY_API_KEYS.
+host: 127.0.0.1
+logLevel: info
+
+auth:
+  strategy: api-key
+  apiKeys:
+    - "overridden-by-MCP_GATEWAY_API_KEYS"
+
+servers:
+  - id: motionary
+    name: Motionary MCP
+    description: Motionary component catalog (read-only; motionary-mcp over stdio)
+    transport: stdio
+    command: node
+    args: ["node_modules/motionary/bin/motionary-mcp.mjs"]
+    tags: [motionary, catalog]
+    enabled: true
+
+# No browser clients call this gateway (AI clients connect server-side); list origins here if one does.
+mcp:
+  allowedOrigins: []

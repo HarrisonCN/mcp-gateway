@@ -163,6 +163,53 @@ jobs:
           npm sbom --omit dev --sbom-format spdx > sbom.spdx.json
           node -e 'const b=require("./sbom.cdx.json"); if(b.bomFormat!=="CycloneDX"||!b.components?.length) process.exit(1); console.log(b.components.length+" components")'
 
+  compat-matrix:
+    name: MCP compat matrix
+    # 13.6.0: official TypeScript SDK client x every downstream revision, official Python SDK client, upstream stdio /
+    # Streamable HTTP / legacy SSE, and the gateway -> Motionary MCP E2E (Motionary installed here only, never a dependency).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MCP_PY_VERSION: '2.3.0'
+      MOTIONARY_VERSION: '13.0.2'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Python SDK (official "mcp" package, pinned)
+        run: |
+          python -m venv /tmp/mcpvenv
+          /tmp/mcpvenv/bin/pip install --quiet "mcp==${MCP_PY_VERSION}"
+          /tmp/mcpvenv/bin/python -c "import mcp, importlib.metadata as m; print('mcp', m.version('mcp'))"
+      - name: Motionary MCP server from npm (scratch dir, not package.json)
+        run: |
+          mkdir -p /tmp/motionary && cd /tmp/motionary
+          npm init -y >/dev/null
+          npm i --no-audit --no-fund "motionary@${MOTIONARY_VERSION}"
+          test -f node_modules/motionary/bin/motionary-mcp.mjs
+      - name: Compatibility matrix + Motionary E2E
+        env:
+          MGW_PY_MCP: /tmp/mcpvenv/bin/python
+          MGW_MOTIONARY_BIN: /tmp/motionary/node_modules/motionary/bin/motionary-mcp.mjs
+          MGW_COMPAT_REPORT: compat-matrix.json
+        run: |
+          npx vitest run test/compat-matrix-13-6-0.test.ts test/motionary-e2e.test.ts test/protocol-compat.test.ts
+          cat compat-matrix.json
+      - name: Fail if a client was skipped
+        run: node -e "const r=require('./compat-matrix.json'); const k=Object.keys(r); if(!k.some(x=>x.startsWith('py-sdk@'))||k.filter(x=>x.startsWith('ts-sdk@')).length<4){console.error('matrix incomplete', k); process.exit(1)}"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: compat-matrix
+          path: compat-matrix.json
+          if-no-files-found: ignore
+
   js-client:
     name: JS client (Node ${{ matrix.node }})
     runs-on: ubuntu-latest

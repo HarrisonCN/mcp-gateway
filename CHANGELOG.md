@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.6.0] - 2026-10-10
+
+MCP protocol interoperability release (roadmap 13.6 "MCP 协议互操作"). Config schema v11 is unchanged; no breaking changes.
+
+### Added
+
+- **Client compatibility matrix in CI** (job `MCP compat matrix`, [docs/guides/client-compatibility.md](docs/guides/client-compatibility.md)): the official TypeScript SDK client on each downstream revision (2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05) and the official Python SDK client (`mcp` 2.3.0, incl. its `server/discover` auto mode) against a gateway with stdio, Streamable HTTP and legacy SSE upstreams — initialize / negotiation, progress, cancellation, timeouts, `tools/list_changed`, session re-attach and termination. The job uploads `compat-matrix.json`.
+- **Motionary example + E2E** (`examples/motionary`, `test/motionary-e2e.test.ts`): the gateway proxies the Motionary MCP server (`motionary-mcp`, stdio). Motionary is installed from npm (pinned `motionary@13.0.2`) only in the example / CI job, never as a dependency. The test requires a core tool set and accepts more (`MOTIONARY_EXPECT_TOOLS` adds expectations) so Motionary 13.7 can extend it.
+
+### Fixed
+
+- **Streamable HTTP upstreams: unsolicited notifications were lost.** The channel never opened the standalone `GET` stream, so `notifications/tools/list_changed` (and `resources/updated`, log messages, server requests without a related request) from Streamable HTTP servers never reached the gateway; downstream clients kept a stale tool list. The channel now opens the stream after `notifications/initialized`, accepts servers without one (405), and re-opens a dropped stream with `Last-Event-ID`.
+- **`MCP-Protocol-Version` mismatch was accepted.** A request on a session negotiated at one revision carrying another supported revision in `MCP-Protocol-Version` was served (shaped for the negotiated revision). It is now refused with HTTP 400; requests without the header are unchanged.
+- **Sessionless `server/discover`** (the 2026-07-28 probe sent by newer SDKs) got HTTP 400 "Mcp-Session-Id header is required"; it now gets JSON-RPC `-32601` so the client falls back to `initialize`.
+
 ## [13.5.0] - 2026-10-10
 
 Security verification 2.0 release (roadmap 13.5 "安全验证 2.0"). Config schema v11 is unchanged; configs that load today keep loading, except the fail-closed cases listed under Upgrade notes (each of which previously started a weaker gateway than configured).
