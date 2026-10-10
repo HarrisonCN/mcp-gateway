@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.9.5] - 2026-10-10
+
+**Security backport (10.x LTS).** Fixes for MGW-2026-009 and MGW-2026-010 from 13.1.3; no other changes. The config
+schema is unchanged.
+
+### Security
+- **MGW-2026-009 (high) — routing-split targets received the requested server's credentials.** Per-call credentials
+  (`inject:` tool arguments / `_meta` fields) are now always those of the server the call is sent to; a call moved by
+  a `routing` split from A to B no longer carries A's credential to B.
+- **MGW-2026-010 (medium) — argument rewrites by call hooks bypassed argument-dependent checks.** When a call hook
+  rewrites the arguments, the tool policy (argument rules) and the security guard modules run again on the final
+  arguments before the call is sent (refusals carry `data.argsChangedBy`); approval holds are placed after the call
+  hooks, on the final target and arguments; the upstream send refuses a call whose target, arguments or credential
+  target differ from what was authorized (`snapshot-mismatch`).
+
+### Upgrade notes
+- Deployments combining `routing` splits with `inject:` credentials: give every split target its own `inject:`.
+- Approval holds now happen after call hooks (the operator sees the arguments that are sent).
+
 ## [10.9.4] - 2026-10-10
 
 **Security backport (10.x LTS).** Fixes for MGW-2026-007 and MGW-2026-008 from 13.1.2; no other changes. The config
