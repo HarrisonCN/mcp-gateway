@@ -233,8 +233,8 @@ export class ServerSupervisor {
 
   private publish(entry: Entry, status?: 'reconnecting' | 'offline'): void {
     const id = entry.config.id;
-    if (!this.registry.getServer(id)) return;
-    const prev = this.registry.getHealth(id);
+    if (!this.registry.getServer(id, { includeStaged: true })) return;
+    const prev = this.registry.getHealth(id, { includeStaged: true });
     const next = status ?? prev?.status ?? 'unknown';
     this.registry.updateHealth(id, next, undefined, entry.state.lastError, {
       reconnect: { ...entry.state },

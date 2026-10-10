@@ -197,7 +197,10 @@ const MARK = 'mcp-gateway/semantic-cache';
 const applies = (c: Cfg, call: HookCall) => c.tools.some((p) => globToRegExp(p).test(`${call.serverId}/${call.tool}`));
 const partition = (c: Cfg, call: HookCall, exact: string) => {
   const subject = c.scope === 'global' ? '*' : c.scope === 'client' ? call.clientId ?? 'anonymous' : call.tenant ?? call.clientId ?? 'anonymous';
-  return `${call.serverId}/${call.tool}\u0000${subject}\u0000${exact}`;
+  // 13.1.1: keyed on the server the call is routed to (routing splits), so split targets never share entries.
+  const target = call.routedTo?.() ?? call.serverId;
+  const server = target !== call.serverId ? `${call.serverId}>${target}` : call.serverId;
+  return `${server}/${call.tool}\u0000${subject}\u0000${exact}`;
 };
 const fromCache = (r: ProxyResponse) => {
   const res = r.result as { _meta?: Record<string, unknown> } | undefined;

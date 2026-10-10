@@ -254,6 +254,7 @@ export class Gateway {
       config: () => this.config,
       exposed: (serverId, tool) => this.registry.isToolExposed(serverId, tool),
       moduleFailure: (id) => (this.featureRouter ? this.featureRouter.failureOf(id) : loadFailureOf(id)),
+      staged: (id) => this.registry.isStaged(id),
       federation: (this.federation = new Federation({
         config: () => this.config.federation,
         version: VERSION,
@@ -268,10 +269,10 @@ export class Gateway {
               tools: this.registry.getTools(s.id).filter((t) => this.registry.isToolExposed(s.id, t.name)).map((t) => t.name),
             })),
       })),
-      router: new SmartRouter(() => this.config.routing, { isConnected: (id) => this.proxy.isConnected(id) }),
+      router: new SmartRouter(() => this.config.routing, { isConnected: (id) => this.proxy.isConnected(id) && !this.registry.isStaged(id) }),
       balancer: new LoadBalancer({
         servers: () => this.registry.getAllServers(),
-        isConnected: (id) => this.proxy.isConnected(id),
+        isConnected: (id) => this.proxy.isConnected(id) && !this.registry.isStaged(id),
         healthStatus: (id) => this.registry.getHealth(id)?.status,
       }),
     });
@@ -788,7 +789,9 @@ export class Gateway {
           if (!(await loadFeature(e.id))) throw new Error(`feature module "${e.id}" cannot be loaded: ${loadRecord(e.id)?.error ?? 'unknown error'}`);
         }
         connectedAside.push(...toAdd.filter((s) => s.enabled !== false).map((s) => s.id));
-        await this.connectServers(toAdd);
+        // 13.1.1: staged — connected, but not listed or routable (tools/list, resources, invoke, splits, rollouts)
+        // until the commit below.
+        await this.connectServers(toAdd, { staged: true });
       } catch (err) {
         this.rollbacks++;
         await disposeAside();
@@ -909,6 +912,8 @@ export class Gateway {
         }
       }
       await this.connectServers(toChange);
+      // 13.1.1: everything committed — the servers prepared aside become visible and routable.
+      this.registry.commitStaged(connectedAside);
       } catch (err) {
         this.rollbacks++;
         logger.error(`Hot reload failed, rolled back to the previous config: ${err instanceof Error ? err.message : String(err)}`);
@@ -983,14 +988,14 @@ export class Gateway {
     });
   }
 
-  private async connectServers(servers: McpServerConfig[]): Promise<void> {
+  private async connectServers(servers: McpServerConfig[], opts: { staged?: boolean } = {}): Promise<void> {
     const enabled = servers.filter((s) => s.enabled !== false);
     if (enabled.length === 0) return;
-    logger.info(`Connecting to ${enabled.length} MCP server(s)...`);
+    logger.info(`Connecting to ${enabled.length} MCP server(s)${opts.staged ? ' (staged until the reload commits)' : ''}...`);
 
     const outcomes = await Promise.all(
       enabled.map((serverConfig) => {
-        this.registry.register(serverConfig);
+        this.registry.register(serverConfig, { staged: opts.staged });
         // Failed servers are retried in the background with backoff.
         return this.supervisor.connect(serverConfig);
       }),
