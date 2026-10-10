@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.9.11] - 2026-10-10
+
+**Security backport (10.x).** Backports the MGW-2026-014 fix from 13.7.0; no other changes. The config schema is unchanged.
+
+### Security
+- **MGW-2026-014 (Low): Redis commands could run before `AUTH` / `SELECT` had completed on a new connection.** The
+  built-in Redis client published a connection as soon as the TCP / TLS handshake finished, so commands issued while
+  `AUTH` and `SELECT <db>` were still in flight ran against database 0: with a database number in `store.redis.url`,
+  revocations, rate-limit / lockout counters and session records could be written to or read from the wrong database
+  right after a (re)connect. Connections are now used only once `AUTH` / `SELECT` succeeded.
+
 ## [10.9.10] - 2026-10-10
 
 **Protocol-correctness backport (10.x).** Backports one fix from 13.6.0; no other changes. The config schema is unchanged.
