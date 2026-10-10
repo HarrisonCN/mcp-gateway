@@ -29,6 +29,7 @@ loads without deprecation warnings runs on 11.0 unchanged.
 | `features.workflows` (6.2) | removed — use `features.taskGraphs` (10.7) | ✓ (each workflow becomes a task graph) |
 | `/api/v1/admin/workflows`, `/list`, `/run` | removed — `/api/v1/admin/task-graphs`, `/task-graphs/run` | — |
 
+<!-- docs-check: skip -->
 ```yaml
 # 10.x                                  # 11.0
 version: 10                             version: 11

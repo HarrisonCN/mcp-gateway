@@ -1,0 +1,24 @@
+# Helm values for the deployment example (docs/deployment.md#helm).
+#   kubectl create secret generic gw-secrets --from-literal=MCP_GATEWAY_API_KEYS=$(openssl rand -hex 24)
+#   helm install gw ./deploy/helm/mcp-gateway -f examples/deploy/helm/values.yaml
+# The chart's appVersion is the gateway release it was published with; image.tag "" uses it. To pin by digest set
+# image.tag to "13.4.0@sha256:<digest>".
+existingSecret: gw-secrets
+
+image:
+  repository: ghcr.io/harrisoncn/mcp-gateway
+  tag: ""
+
+config:
+  version: 11
+  monitor: { prometheus: true }
+  servers:
+    - id: echo
+      name: Echo (example stdio server)
+      transport: stdio
+      command: node
+      args: ["-e", "require('readline').createInterface({input:process.stdin}).on('line',l=>{const m=JSON.parse(l);if(m.id===undefined)return;const r=m.method==='initialize'?{protocolVersion:m.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'echo',version:'1.0.0'}}:m.method==='tools/list'?{tools:[{name:'echo',description:'Echo the arguments back',inputSchema:{type:'object'}}]}:m.method==='tools/call'?{content:[{type:'text',text:JSON.stringify(m.params.arguments||{})}]}:{};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:r})+'\\n')})"]
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { memory: 512Mi }

@@ -51,7 +51,7 @@ features:
     maxStoredBytes: 268435456        # global budget of held blobs (default 256 MiB)
     maxTenantStoredBytes: 67108864   # per tenant, or per client outside tenants (default 64 MiB)
     storage: { type: filesystem, dir: /var/lib/mcp-gateway/blobs }   # default { type: memory }
-    signedLinks: { key: ${BLOB_LINK_KEY}, ttlSeconds: 300 }
+    signedLinks: { key: "${BLOB_LINK_KEY}", ttlSeconds: 300 }
 ```
 
 - **Budgets**: when a new blob does not fit, expired blobs go first, then the least-recently-read blobs of the same

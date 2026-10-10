@@ -25,6 +25,8 @@ spec:
         prometheus.io/port: {{ .Values.port | quote }}
         prometheus.io/path: /api/v1/metrics
     spec:
+      # 13.4.0: no service-link env vars (a Service named mcp-gateway would set MCP_GATEWAY_PORT=tcp://…)
+      enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000

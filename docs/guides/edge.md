@@ -77,12 +77,13 @@ default (per isolate). With `configFromEnv`, set `MCP_GATEWAY_CONTROL_PLANE`, `M
 List your edges in the Node gateway's config to manage them from the control plane:
 
 ```yaml
-edgeFleet:
-  pushTimeoutMs: 10000        # per-edge push timeout
-  offlineAfterMs: 900000      # not seen for 15 min → offline
-  nodes:
-    - { id: cf-hkg, url: https://edge-hkg.example.workers.dev, apiKey: ${EDGE_KEY}, labels: { ring: canary } }
-    - { id: deno-fra, url: https://fra.example.deno.dev, apiKey: ${EDGE_KEY}, labels: { ring: stable } }
+features:
+  edgeFleet:
+    pushTimeoutMs: 10000        # per-edge push timeout
+    offlineAfterMs: 900000      # not seen for 15 min → offline
+    nodes:
+      - { id: cf-hkg, url: https://edge-hkg.example.workers.dev, apiKey: "${EDGE_KEY}", labels: { ring: canary } }
+      - { id: deno-fra, url: https://fra.example.deno.dev, apiKey: "${EDGE_KEY}", labels: { ring: stable } }
 ```
 
 `id` must match the edge's `sync.edgeId`. `GET /api/v1/admin/edge-fleet` merges configured and seen edges and

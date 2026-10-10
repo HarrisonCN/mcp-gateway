@@ -42,7 +42,9 @@ reconnect:            # gateway-wide (defaults shown)
 
 servers:
   - id: flaky
-    # ...
+    name: Flaky upstream
+    transport: streamable-http
+    url: https://flaky.example/mcp
     reconnect:        # per-server override (any subset)
       maxAttempts: 5
 ```

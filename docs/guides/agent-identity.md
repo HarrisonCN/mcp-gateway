@@ -88,6 +88,7 @@ instance:
 ```yaml
 features:
   agentIdentity:
+    signingKey: "${AGENT_SIGNING_KEY}"
     revocation:
       failureMode: closed   # default: store unreachable → agent calls (and sub-token exchange, introspection) answer 503
 ```

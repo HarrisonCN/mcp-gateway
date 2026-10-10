@@ -1,34 +1,60 @@
 # Deployment guide
 
+Every example on this page is a file in [`examples/deploy/`](../examples/deploy) that CI boots on each change
+([`deploy-examples.yml`](../.github/workflows/deploy-examples.yml): `docker compose up` and a kind cluster with the
+plain manifests and the Helm chart), so what you copy here is known to start.
+
+## Images and tags
+
+Images are published to GitHub Container Registry for every release (`linux/amd64`, `linux/arm64`), signed with
+cosign (keyless, GitHub Actions identity) and shipped with an SBOM:
+
+```
+ghcr.io/harrisoncn/mcp-gateway:13.4.0   # exact release — immutable, use this (or a digest) in production
+ghcr.io/harrisoncn/mcp-gateway:13.4     # latest patch of 13.4
+ghcr.io/harrisoncn/mcp-gateway:13       # latest 13.x (current line, config schema v11)
+ghcr.io/harrisoncn/mcp-gateway:latest   # newest release of the current line
+ghcr.io/harrisoncn/mcp-gateway:12.0     # 12.0.x security maintenance line (npm dist-tag v12-0)
+ghcr.io/harrisoncn/mcp-gateway:10       # 10.x LTS line (npm dist-tag v10-lts, config schema v10)
+```
+
+Which tag to use:
+
+- **Production**: pin the exact release, or better its digest, and update deliberately. A digest pin cannot change
+  under you even if a tag is moved:
+
+  ```bash
+  docker buildx imagetools inspect ghcr.io/harrisoncn/mcp-gateway:13.4.0 --format '{{json .Manifest.Digest}}'
+  # → use ghcr.io/harrisoncn/mcp-gateway@sha256:<digest> (or 13.4.0@sha256:<digest> to keep the version readable)
+  cosign verify ghcr.io/harrisoncn/mcp-gateway@sha256:<digest> \
+    --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@refs/tags/v' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com
+  ```
+
+- **Staging / evaluation**: `:13` (or `:13.4`) follows patch and minor releases of the current line.
+- `:latest` moves to a new major line when one ships (breaking config changes): never use it in production.
+- Release digests are listed in each GitHub release and in [SECURITY.md](../SECURITY.md#supported-versions) lists
+  which lines receive fixes. See [supply-chain security](security/supply-chain.md) for signatures and SBOMs.
+
 ## Docker
-
-Images are published to GitHub Container Registry for every release
-(`linux/amd64`, `linux/arm64`):
-
-```
-ghcr.io/harrisoncn/mcp-gateway:1.0.0   # exact version
-ghcr.io/harrisoncn/mcp-gateway:1.0     # latest patch of 1.0
-ghcr.io/harrisoncn/mcp-gateway:1       # latest 1.x
-ghcr.io/harrisoncn/mcp-gateway:latest
-```
 
 ```bash
 docker run -d --name mcp-gateway -p 4000:4000 \
   -v "$PWD/mcp-gateway.yml:/app/mcp-gateway.yml:ro" \
   -v mcp-gateway-data:/app/data \
-  -e MCP_GATEWAY_API_KEYS=change-me \
+  -e MCP_GATEWAY_API_KEYS="$(openssl rand -hex 24)" \
   -e GITHUB_TOKEN \
-  ghcr.io/harrisoncn/mcp-gateway:1
+  ghcr.io/harrisoncn/mcp-gateway:13.4.0
 ```
 
 - The image runs as the unprivileged `node` user, listens on `4000`, and has a `HEALTHCHECK` on the always-public
-  `/api/v1/health/live`.
-- `/app/data` is a writable directory for the audit log (`audit.path: /app/data/audit.db`).
+  `/api/v1/health/live`. Its entrypoint is `mcp-gateway`; the default command `start` reads `/app/mcp-gateway.yml`.
+- `/app/data` is a writable directory for the audit log (`audit.path: /app/data/audit.db`) and file-based stores.
 - `stdio` servers run **inside** the container: the image contains Node.js/npm (so `npx` servers work); install
   anything else (Python, `uvx`, …) in a derived image:
 
   ```dockerfile
-  FROM ghcr.io/harrisoncn/mcp-gateway:1
+  FROM ghcr.io/harrisoncn/mcp-gateway:13.4.0
   USER root
   RUN apk add --no-cache python3 py3-pip && pip install --break-system-packages uv
   USER node
@@ -39,89 +65,70 @@ docker run -d --name mcp-gateway -p 4000:4000 \
 
 ### Docker Compose
 
-`examples/docker/` contains a Compose file with the gateway and Prometheus:
+[`examples/deploy/compose/docker-compose.yml`](../examples/deploy/compose/docker-compose.yml) runs the gateway with
+the config [`examples/deploy/compose/mcp-gateway.yml`](../examples/deploy/compose/mcp-gateway.yml) and a small example
+stdio server; replace the `servers` list with your own.
 
 ```bash
-cd examples/docker
-GATEWAY_API_KEY=change-me docker compose up
+cd examples/deploy/compose
+export GATEWAY_API_KEY="$(openssl rand -hex 24)"
+docker compose up -d --wait
+curl -s -H "Authorization: Bearer $GATEWAY_API_KEY" http://localhost:4000/api/v1/tools
+curl -s -X POST -H "Authorization: Bearer $GATEWAY_API_KEY" -H 'content-type: application/json' \
+  -d '{"server":"echo","tool":"echo","arguments":{"hello":"world"}}' http://localhost:4000/api/v1/tools/call
 ```
+
+The Compose file uses `${MGW_IMAGE:-ghcr.io/harrisoncn/mcp-gateway:13}`: set `MGW_IMAGE` to an exact release or digest
+to pin it. [`examples/docker/`](../examples/docker) has a larger setup with Prometheus and a Postgres MCP server.
 
 ## Kubernetes
 
-> 6.8: there is a Helm chart and an operator — see [guides/kubernetes.md](guides/kubernetes.md). The plain
-> manifests below still work. Since 10.3 the chart requires an API key: provide `MCP_GATEWAY_API_KEYS` through
-> `existingSecret` (`helm install gw ./deploy/helm/mcp-gateway --set existingSecret=gw-secrets`), and the gateway
-> itself refuses to start on `0.0.0.0` without auth — so keep the Secret below (or an `auth` block) in plain manifests
-> too, or opt out explicitly with `security.insecure: true` on a trusted network.
+### Helm
+
+The chart in [`deploy/helm/mcp-gateway`](../deploy/helm/mcp-gateway) (see also [guides/kubernetes.md](guides/kubernetes.md)
+for the operator) deploys the image of its `appVersion` — the release it was published with. It requires an API key
+(since 10.3): put `MCP_GATEWAY_API_KEYS` in a Secret and pass it as `existingSecret`.
+[`examples/deploy/helm/values.yaml`](../examples/deploy/helm/values.yaml) is a complete values file:
+
+```bash
+kubectl create secret generic gw-secrets --from-literal=MCP_GATEWAY_API_KEYS="$(openssl rand -hex 24)"
+helm install gw ./deploy/helm/mcp-gateway -f examples/deploy/helm/values.yaml
+kubectl rollout status deployment/gw-mcp-gateway
+```
+
+Pin by digest with `--set image.tag=13.4.0@sha256:<digest>`. The gateway itself refuses to start on `0.0.0.0` without
+auth, so keep the Secret (or an `auth` block in `config`), or opt out explicitly with `security.insecure: true` on a
+trusted network.
+
+### Plain manifests
+
+[`examples/deploy/kubernetes/mcp-gateway.yaml`](../examples/deploy/kubernetes/mcp-gateway.yaml) contains a Secret
+(placeholder — create a real one), a ConfigMap with the gateway config, a hardened Deployment (non-root, read-only root
+filesystem, no capabilities, liveness / readiness probes) and a Service:
+
+```bash
+kubectl create secret generic mcp-gateway --from-literal=MCP_GATEWAY_API_KEYS="$(openssl rand -hex 24)"
+kubectl apply -f examples/deploy/kubernetes/mcp-gateway.yaml   # after deleting its placeholder Secret document
+kubectl rollout status deployment/mcp-gateway
+```
+
+The essential parts of the Deployment:
 
 ```yaml
-apiVersion: v1
-kind: Secret
-metadata: { name: mcp-gateway }
-stringData:
-  MCP_GATEWAY_API_KEYS: change-me
-  GITHUB_TOKEN: ghp_xxx
----
-apiVersion: v1
-kind: ConfigMap
-metadata: { name: mcp-gateway }
-data:
-  mcp-gateway.yml: |
-    port: 4000
-    monitor: { prometheus: true }
-    mcp: { allowedOrigins: ["https://app.example.com"] }
-    servers:
-      - id: github
-        name: GitHub
-        transport: stdio
-        command: npx
-        args: ["-y", "@modelcontextprotocol/server-github"]
-        env: { GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}" }
----
-apiVersion: apps/v1
-kind: Deployment
-metadata: { name: mcp-gateway }
-spec:
-  replicas: 1
-  selector: { matchLabels: { app: mcp-gateway } }
-  template:
-    metadata:
-      labels: { app: mcp-gateway }
-      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "4000", prometheus.io/path: /api/v1/metrics }
-    spec:
-      securityContext: { runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000 }
-      containers:
-        - name: mcp-gateway
-          image: ghcr.io/harrisoncn/mcp-gateway:1
-          args: ["start", "-c", "/config/mcp-gateway.yml"]
-          ports: [{ name: http, containerPort: 4000 }]
-          envFrom: [{ secretRef: { name: mcp-gateway } }]
-          volumeMounts: [{ name: config, mountPath: /config, readOnly: true }]
-          livenessProbe:
-            httpGet: { path: /api/v1/health/live, port: http }
-            periodSeconds: 10
-          readinessProbe:
-            httpGet: { path: /api/v1/health/ready, port: http }   # add ?min=N if some servers are optional
-            periodSeconds: 5
-          resources:
-            requests: { cpu: 100m, memory: 128Mi }
-            limits: { memory: 512Mi }
-      terminationGracePeriodSeconds: 30
-      volumes:
-        - name: config
-          configMap: { name: mcp-gateway }
----
-apiVersion: v1
-kind: Service
-metadata: { name: mcp-gateway }
-spec:
-  selector: { app: mcp-gateway }
-  ports: [{ name: http, port: 80, targetPort: http }]
+containers:
+  - name: mcp-gateway
+    image: ghcr.io/harrisoncn/mcp-gateway:13.4.0   # or @sha256:<digest>
+    args: ["start", "-c", "/config/mcp-gateway.yml", "--no-watch"]
+    ports: [{ name: http, containerPort: 4000 }]
+    envFrom: [{ secretRef: { name: mcp-gateway } }]
+    livenessProbe: { httpGet: { path: /api/v1/health/live, port: http } }
+    readinessProbe: { httpGet: { path: /api/v1/health/ready, port: http } }   # add ?min=N if some servers are optional
 ```
 
 Notes:
 
-- **Config reload**: ConfigMap updates reach the mounted file after the kubelet sync period (Kubernetes swaps a
+- **Config reload**: the example passes `--no-watch` and expects a rollout on config changes (config-hash
+  annotation or `kubectl rollout restart`). Without `--no-watch`, ConfigMap updates reach the mounted file after the kubelet sync period (Kubernetes swaps a
   symlink; the watcher re-attaches on rename events). If an update is not picked up in your setup, use
   `kubectl rollout restart deployment/mcp-gateway`, or a config-hash annotation so changes roll the pods.
 - **Readiness** answers `503` while upstream servers are still connecting and during shutdown (SIGTERM →

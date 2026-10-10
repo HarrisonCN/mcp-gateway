@@ -22,6 +22,7 @@ security:
   stdioEnvPassthrough: [NODE_EXTRA_CA_CERTS, HTTPS_PROXY]   # every stdio server
 servers:
   - id: github
+    name: GitHub
     transport: stdio
     command: npx
     args: ["-y", "@modelcontextprotocol/server-github"]

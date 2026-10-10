@@ -218,6 +218,26 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
   const activating = new Map<string, Promise<boolean>>();
   const activatedOrder: string[] = [];
   const ctx: FeatureContext = { ...deps.context, kernel: () => views() };
+  // 13.4.0: each module gets its own context whose `onStop` cleanups belong to the module, not the gateway: they run
+  // when the module is disabled (its section removed on a reload) as well as when the gateway stops, so a disabled
+  // module leaves no timer, socket or pool behind, and re-enabling it starts them once again.
+  const stops = new Map<string, Array<() => void | Promise<void>>>();
+  const contexts = new Map<string, FeatureContext>();
+  const ctxFor = (id: string): FeatureContext => {
+    let c = contexts.get(id);
+    if (!c) {
+      c = { ...ctx, onStop: (fn) => void (stops.get(id) ?? stops.set(id, []).get(id)!).push(fn) };
+      contexts.set(id, c);
+    }
+    return c;
+  };
+  const runStops = async (id: string) => {
+    for (const fn of (stops.get(id) ?? []).splice(0).reverse()) {
+      await Promise.resolve()
+        .then(fn)
+        .catch((err) => logger.warn(`feature module "${id}" cleanup failed: ${errText(err)}`));
+    }
+  };
   const failures = deps.failures ?? new ModuleFailures();
   const failureOf = (id: string) => moduleFailureOf(id, failures);
   const markRuntimeFailed = (id: string, error: string) => failures.mark(id, error);
@@ -236,14 +256,24 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
     if (mounted.has(m.id)) return;
     const h = holder(m.id);
     const admin = express.Router();
-    m.mount(admin, ctx);
+    m.mount(admin, ctxFor(m.id));
     h.admin.use(admin);
     if (m.mountClient) {
       const client = express.Router();
-      m.mountClient(client, ctx);
+      m.mountClient(client, ctxFor(m.id));
       h.client.use(client);
     }
     mounted.add(m.id);
+  };
+  /** 13.4.0: release what a module's mount started (its `onStop` cleanups) and take its routes down. */
+  const unmount = async (id: string) => {
+    await runStops(id);
+    const h = holders.get(id);
+    if (h) {
+      (h.admin as unknown as { stack: unknown[] }).stack.length = 0;
+      (h.client as unknown as { stack: unknown[] }).stack.length = 0;
+    }
+    mounted.delete(id);
   };
 
   const fail = (id: string, error: string) => {
@@ -282,9 +312,11 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
       const m = moduleOf(id);
       if (!m) return refuse('the module did not register itself');
       try {
-        await m.init?.(ctx);
+        await m.init?.(ctxFor(id));
         mount(m);
       } catch (e) {
+        // 13.4.0: whatever the module's mount started before the failure is released
+        await unmount(id);
         if (txn) {
           // compensation of a partial init: give the module the chance to release what it acquired
           await Promise.resolve(m.dispose?.()).catch((err) => logger.warn(`feature module "${id}" dispose after failed init: ${errText(err)}`));
@@ -300,6 +332,7 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
         id,
         step: 'activate',
         fn: async () => {
+          await unmount(id);
           await m.dispose?.();
           states.delete(id);
           const i = activatedOrder.indexOf(id);
@@ -372,13 +405,15 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
       const m = moduleOf(id);
       if (!isFeatureActive(next, id)) {
         try {
-          await m?.disable?.(ctx);
+          await m?.disable?.(ctxFor(id));
+          await unmount(id);
           states.set(id, { state: 'disabled' });
           txn?.undo.push({
             id,
             step: 'disable',
             fn: async () => {
-              await m?.init?.(ctx);
+              await m?.init?.(ctxFor(id));
+              if (m) mount(m);
               states.set(id, { state: 'active' });
             },
           });
@@ -389,12 +424,12 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
         continue;
       }
       try {
-        await m?.reconfigure?.(next, prev, ctx);
-        if (m?.reconfigure) txn?.undo.push({ id, step: 'reconfigure', fn: async () => void (await m.reconfigure!(prev, next, ctx)) });
+        await m?.reconfigure?.(next, prev, ctxFor(id));
+        if (m?.reconfigure) txn?.undo.push({ id, step: 'reconfigure', fn: async () => void (await m.reconfigure!(prev, next, ctxFor(id))) });
       } catch (e) {
         if (txn) {
           // the module may have applied part of the new config: reconfigure it back first
-          if (m?.reconfigure) txn.undo.push({ id, step: 'reconfigure', fn: async () => void (await m.reconfigure!(prev, next, ctx)) });
+          if (m?.reconfigure) txn.undo.push({ id, step: 'reconfigure', fn: async () => void (await m.reconfigure!(prev, next, ctxFor(id))) });
           throw new Error(`feature module "${id}" reconfigure: ${errText(e)}`);
         }
         fail(id, `reconfigure: ${errText(e)}`);
@@ -414,9 +449,12 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
   router.dispose = async () => {
     for (const id of [...activatedOrder].reverse()) {
       const m = moduleOf(id);
+      await unmount(id);
       await Promise.resolve(m?.dispose?.()).catch(() => {});
       clearRuntimeFailed(id);
     }
+    // modules mounted without completing activation (failed init) or registered cleanups late
+    for (const id of [...stops.keys()]) await runStops(id);
     for (const [id, st] of states) if (st.state === 'failed') clearRuntimeFailed(id);
     states.clear();
     activatedOrder.length = 0;

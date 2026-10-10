@@ -19,18 +19,24 @@ config schema v10 stays stable across every 10.x minor release, and its LTS date
 
 Please **do not** put vulnerability details in a public issue, pull request or discussion.
 
-GitHub private vulnerability reporting is **not enabled yet** on this repository (pending enablement by the
-maintainer; until then the "Report a vulnerability" form is unavailable). In the meantime:
+GitHub private vulnerability reporting is enabled on this repository — report privately through
+[Report a vulnerability](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new) (the "Security" tab →
+"Report a vulnerability"). Include the affected package (`@winstonsayno/mcp-gateway` or a client), versions, steps
+to reproduce and the impact you see. Only the maintainer ([@HarrisonCN](https://github.com/HarrisonCN)) and you can
+see the report; fixes are coordinated there and published as a GitHub security advisory.
 
-1. Open a public issue titled **"Security contact request"** that contains **no technical details** — only the
-   affected package (`@winstonsayno/mcp-gateway` or a client) and the major version.
-2. The maintainer ([@HarrisonCN](https://github.com/HarrisonCN)) will reply there with a private channel for the
-   report (steps to reproduce, affected versions, impact).
+If you cannot use GitHub's form, open a public issue titled **"Security contact request"** with **no technical
+details** (only the package and major version) and the maintainer will reply with a private channel.
 
-Once private reporting is enabled, use
-[GitHub private vulnerability reporting](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new) instead.
 You will get an answer within a few days; fixes are released as patch versions and credited in the CHANGELOG unless
 you prefer otherwise.
+
+## Audits
+
+There has been **no independent third-party security audit** of mcp-gateway. Security work so far is the
+maintainer's own: the [threat model](docs/security/threat-model.md) and its internal reviews, the fixes listed below,
+and automated checks in CI (CodeQL, OpenSSF Scorecard, Trivy, `npm audit`, property and contract tests). Treat the
+project accordingly when you assess it for production use.
 
 ## Security advisories
 
@@ -64,7 +70,7 @@ revocation, stdio environment allowlist).
   scanning and Dependabot. Verify an image with:
 
   ```bash
-  cosign verify ghcr.io/harrisoncn/mcp-gateway:11 \
+  cosign verify ghcr.io/harrisoncn/mcp-gateway:13 \
     --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
   ```

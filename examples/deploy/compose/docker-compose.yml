@@ -1,0 +1,27 @@
+# Docker Compose deployment example (docs/deployment.md#docker-compose).
+#   GATEWAY_API_KEY=$(openssl rand -hex 24) docker compose up -d
+#   curl -H "Authorization: Bearer $GATEWAY_API_KEY" http://localhost:4000/api/v1/tools
+# Pin a release in production: MGW_IMAGE=ghcr.io/harrisoncn/mcp-gateway:13.4.0 (or @sha256:<digest>).
+services:
+  mcp-gateway:
+    image: ${MGW_IMAGE:-ghcr.io/harrisoncn/mcp-gateway:13}
+    ports:
+      - "4000:4000"
+    environment:
+      MCP_GATEWAY_API_KEYS: ${GATEWAY_API_KEY:?set GATEWAY_API_KEY to the API key clients will use}
+    volumes:
+      - ./mcp-gateway.yml:/app/mcp-gateway.yml:ro
+      - ./echo-server.mjs:/app/examples/echo-server.mjs:ro
+      - gateway-data:/app/data
+    healthcheck:
+      # the image ships wget, not curl; /health/live is always public. 127.0.0.1, not localhost: busybox wget may
+      # resolve localhost to ::1 while the gateway listens on IPv4 0.0.0.0
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/api/v1/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  gateway-data:

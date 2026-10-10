@@ -1,0 +1,12 @@
+{
+  "lts": { "12.0": "12.0.6", "10.9": "10.9.7" },
+  "distTags": ["v12-0", "v10-lts"],
+  "historical": [
+    "docs/ROADMAP.md",
+    "docs/guides/migrating-to-v2.md", "docs/guides/migrating-to-v3.md", "docs/guides/migrating-to-v4.md",
+    "docs/guides/migrating-to-v5.md", "docs/guides/migrating-to-v6.md", "docs/guides/migrating-to-v7.md",
+    "docs/guides/migrating-to-v8.md", "docs/guides/migrating-to-v9.md", "docs/guides/migrating-to-v10.md",
+    "docs/guides/migrating-to-v11.md", "docs/guides/migrating-to-v12.md", "docs/guides/migrating-to-v13.md",
+    "docs/guides/plugins-v5.md"
+  ]
+}

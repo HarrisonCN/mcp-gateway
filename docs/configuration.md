@@ -12,7 +12,7 @@ hot reload is rejected and the running configuration kept.
 
 | Variable | Overrides |
 |---|---|
-| `MCP_GATEWAY_PORT` | `port` |
+| `MCP_GATEWAY_PORT` | `port` (must be numeric; a Kubernetes service-link value such as `tcp://10.96.0.10:80` is ignored with a warning) |
 | `MCP_GATEWAY_HOST` | `host` |
 | `MCP_GATEWAY_LOG_LEVEL` | `logLevel` |
 | `MCP_GATEWAY_API_KEYS` | comma-separated keys (plain or `sha256:<hex>`) → `auth.strategy: api-key`, `auth.apiKeys` (other `auth` settings from the file are kept) |
@@ -173,7 +173,7 @@ auth:
     jwksCacheSeconds: 600                       # JWKS cache; unknown "kid" triggers a refetch (30 s cooldown)
     issuer: https://idp.example.com/            # required "iss" (string or list)
     audience: mcp-gateway                       # required "aud" (string or list)
-    algorithms: [RS256]                         # default: every algorithm of the key type
+    algorithms: [HS256]                         # default: every algorithm of the key type (RS256 / ES256 / … with publicKey / jwksUrl)
     clockToleranceSeconds: 30                   # skew allowed on exp / nbf / iat (default 0)
     requireExp: true                            # reject tokens without "exp" (default false)
     maxTokenAgeSeconds: 3600                    # reject tokens whose "iat" is older
@@ -425,8 +425,14 @@ secrets:
 
 servers:
   - id: github
+    name: GitHub
+    transport: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-github"]
     env: { GITHUB_PERSONAL_ACCESS_TOKEN: "secret://vault/mcp/github#token" }
   - id: search
+    name: Search
+    transport: streamable-http
     url: https://search.example/mcp
     headers: { Authorization: "Bearer secret://kms/AQICAHh…" }   # KMS: path = base64 ciphertext
     inject:                                                     # per-call, per-tenant credentials
@@ -464,7 +470,12 @@ routing:
           guard: { maxErrorRate: 0.2, maxLatencyMs: 2000, minCalls: 20 }   # automatic rollback
 
 servers:
+  - { id: search, name: Search, transport: streamable-http, url: https://search.example/mcp }
+  - { id: search-v2, name: Search v2, transport: streamable-http, url: https://search-v2.example/mcp }
   - id: postgres
+    name: Postgres
+    transport: streamable-http
+    url: https://primary.example/mcp
     cost: 3                     # relative cost per call (smart strategy)
     replicas: [{ url: https://replica.example/mcp, cost: 1 }]
     loadBalancing:
@@ -641,7 +652,7 @@ policy:
   outputFilter:
     action: redact             # redact (default) | flag | block
     builtins: true             # built-in prompt-injection detectors
-    patterns: ["(?i)BEGIN PRIVATE KEY"]
+    patterns: ["BEGIN PRIVATE KEY"]
     tools: ["web/*", "fetch"]  # default: every tool
 ```
 
@@ -734,7 +745,7 @@ features:
     protect: ["hr/*"]                          # only DP aggregates of these tools leave the gateway
     maxEpsilonPerQuery: 1
     budget: { epsilon: 10, windowSeconds: 86400 }
-    peers: [{ id: eu, url: https://eu-gw.example.com, token: ${EU_GATEWAY_KEY} }]
+    peers: [{ id: eu, url: https://eu-gw.example.com, token: "${EU_GATEWAY_KEY}" }]
   pqIdentity:
     keyFile: keys/gateway.hybrid.json          # mcp-gateway pq keygen
     keyId: gw-2026
@@ -929,7 +940,7 @@ waits. 13.3 caps that wait at `busyTimeoutMs` (default 200 ms); past it the oper
 the store breaker keeps further operations from waiting until the lock is gone.
 
 Agent-token revocations (`features.agentIdentity`) live in this store (11.2) — see
-[agent identity](guides/agent-identity.md#revocation-11-2).
+[agent identity](guides/agent-identity.md#revocation-112).
 
 The Redis client is built in (RESP2, pipelined, `AUTH` / `SELECT` / TLS); no extra dependency. Embedders can pass any
 `StateStore` implementation: `new Gateway(config, { stateStore })`.
@@ -1077,6 +1088,9 @@ streaming:
   maxBufferedBytes: 8388608    # a consumer that falls further behind is disconnected
 servers:
   - id: search
+    name: Search
+    transport: streamable-http
+    url: https://search.example/mcp
     maxConcurrency: 10
     maxQueue: 50               # load shedding: the 51st waiting call gets 503 + Retry-After (-32014 on /mcp)
 ```
@@ -1098,6 +1112,7 @@ mtls:
   requireForAll: false                 # true: every https:// upstream uses mTLS
 servers:
   - id: search
+    name: Search
     transport: streamable-http
     url: https://search.internal:8443/mcp
     tls:

@@ -1,0 +1,29 @@
+{
+  "$comment": "Release gate (13.4.0): check runs that must be green on the commit a release is cut from (the merge commit on main). See docs/release-gates.md. Keep in sync with the job names in .github/workflows.",
+  "required": [
+    "Node 22",
+    "Node 24",
+    "Supply chain (Trivy, SBOM)",
+    "Docs check",
+    "JS client (Node 20)",
+    "JS client (Node 22)",
+    "JS client (Node 24)",
+    "Kotlin client",
+    "Analyze (javascript-typescript)"
+  ],
+  "conditional": [
+    "Lint and render chart",
+    "Load + faults (Node 22)",
+    "Compose example boots",
+    "Kubernetes and Helm examples boot (kind)"
+  ],
+  "informational": [
+    "Scorecard analysis",
+    "Build site",
+    "Deploy",
+    "assets",
+    "image",
+    "npm",
+    "maven-central"
+  ]
+}

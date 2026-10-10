@@ -17,7 +17,7 @@ Streamable HTTP at `/mcp` or a REST API under `/api/v1` — and the gateway auth
 do, routes the call to the right upstream and records what happened. Keys, scopes, rate limits, policy, logs and
 metrics live in one place instead of in every client.
 
-Current release: **13.3.0** (npm `latest`). Live dashboard demo with simulated traffic, no backend:
+Current release: **13.4.0** (npm `latest`). Live dashboard demo with simulated traffic, no backend:
 <https://harrisoncn.github.io/mcp-gateway/>
 
 ## Contents
@@ -162,7 +162,7 @@ Every image is signed with cosign (keyless, GitHub OIDC) and carries SLSA proven
 before you deploy, and pin the digest it prints:
 
 ```bash
-cosign verify ghcr.io/harrisoncn/mcp-gateway:13.3.0 \
+cosign verify ghcr.io/harrisoncn/mcp-gateway:13.4.0 \
   --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -292,8 +292,8 @@ property tests; there has been **no independent third-party audit**. Details: [t
 **Advisories.** MGW-2026-001 … MGW-2026-012 (reroute re-authorization, fail-closed modules, per-gateway module
 failures, transactional reload, split-aware cache keys, staged reload, delegated-call identity, issuer-qualified
 client ids, split-target credentials, final-argument checks, calls in flight across a reload, Redis reply alignment) are fixed in 13.3.0, with backports of the applicable fixes in 12.0.6 and 10.9.7 — see [SECURITY.md](SECURITY.md#security-advisories). Report vulnerabilities
-privately as described in [SECURITY.md](SECURITY.md#reporting-a-vulnerability) (GitHub private vulnerability
-reporting is not enabled yet), never with details in public issues.
+privately through [GitHub private vulnerability reporting](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new)
+(see [SECURITY.md](SECURITY.md#reporting-a-vulnerability)), never with details in public issues.
 
 ## Observability
 
@@ -317,7 +317,7 @@ See [Observability](docs/configuration.md#observability) and [Audit log](docs/co
 
 | Line | Latest | npm dist-tag | Image tag | Status |
 |---|---|---|---|---|
-| 13.x | 13.3.0 | `latest` | `:13`, `:latest` | Current — new features, bug and security fixes |
+| 13.x | 13.4.0 | `latest` | `:13`, `:latest` | Current — new features, bug and security fixes |
 | 12.x | 12.0.6 | `v12-0` | `:12` | Superseded — carries the MGW-2026-001, -005, -007, -008, -009, -010, -011 and -012 fixes; upgrade to 13.x |
 | 11.x | 11.2.0 | — | `:11` | Superseded — upgrade to 13.x |
 | 10.x (LTS) | 10.9.7 | `v10-lts` | `:10` | Bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |

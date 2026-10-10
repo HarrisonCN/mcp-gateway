@@ -8,7 +8,7 @@ checkpoints, resume, retry with capped exponential backoff and saga-style compen
 ```yaml
 features:
   a2aFederation:                         # needed only for remote nodes
-    remotes: [{ id: eu-gateway, url: https://eu.example.com, token: ${EU_KEY} }]
+    remotes: [{ id: eu-gateway, url: https://eu.example.com, token: "${EU_KEY}" }]
   taskGraphs:
     dir: .mcp-gateway/task-graphs        # checkpoints (relative to the config file); omit = memory only
     maxRuns: 500                         # finished runs kept (oldest dropped)
