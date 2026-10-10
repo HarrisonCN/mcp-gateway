@@ -5,9 +5,9 @@
 | Version | Supported |
 |---|---|
 | 13.x (current) | ✅ new features, bug and security fixes |
-| 12.x | ⚠️ superseded — upgrade to 13.x ([Migrating to 13.0](docs/guides/migrating-to-v13.md)) |
+| 12.x | ⚠️ superseded — 12.0.1 carries the MGW-2026-001 fix; upgrade to 13.x ([Migrating to 13.0](docs/guides/migrating-to-v13.md)) |
 | 11.x | ⚠️ superseded — 11.2.0 carries the 11.1 / 11.2 security fixes; upgrade to 12.x ([Migrating to 12.0](docs/guides/migrating-to-v12.md)) |
-| 10.x (LTS) | ✅ bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |
+| 10.x (LTS) | ✅ bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 — latest 10.9.2 (npm dist-tag `v10-lts`, image `:10`) |
 | < 10.0 | ❌ — please upgrade (`mcp-gateway migrate`, see [Migrating to 10.0](docs/guides/migrating-to-v10.md) and [Migrating to 11.0](docs/guides/migrating-to-v11.md)) |
 
 13.x is the current line (config schema v11, central authorizer, isolated stdio servers, on-demand feature modules). 10.x is the long-term-support line:
@@ -21,6 +21,21 @@ Please **do not** open a public issue. Use
 [GitHub private vulnerability reporting](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new)
 with steps to reproduce and the affected version. You will get an answer within a few days; fixes are released as
 patch versions and credited in the CHANGELOG unless you prefer otherwise.
+
+## Security advisories
+
+| ID | Severity | Fixed in | Summary |
+|---|---|---|---|
+| MGW-2026-001 | High | 13.1.0, 12.0.1, 10.9.2 | Re-authorization after reroute: call hooks (`rollouts`, `blue-green`, `self-healing`, `realtime-budgets` downgrade) and `routing` splits could move a call to another server after the central authorizer ran, so a client allowed only on the stable server could reach a canary / fallback it was not allowed on (scope, tool exposure, policy rules, data residency and guard modules were not re-checked). Fixed by a mandatory final authorization against the final target immediately before the upstream send, and a frozen authorized target. Affected: 7.5.0 – 13.0.0, only deployments that use rollouts, blue/green, self-healing fallbacks / rollbacks, budget downgrades or routing splits (for unrestricted keys only where policy rules, residency or guard modules differ between the two targets). |
+| MGW-2026-002 | High | 13.1.0 | Fail-open of failed security modules: in 13.0.0 the call hooks of a feature module that failed to load / initialise / reconfigure were skipped, so a failed DLP, policy-engine, agent-identity, confidential, privacy, sanitize or approval-flows module stopped protecting calls. Fixed by per-module failure policies (`closed` for security modules: calls refused with -32026). Affected: 13.0.0 only (12.x and earlier import every module statically, so a module that cannot load stops the gateway). |
+| MGW-2026-003 | Medium | 13.1.0 | Module runtime failures were tracked per process, not per gateway: a failure in one `Gateway` instance changed the call hooks of every gateway in the same process. Affected: 13.0.0 (embedders running several gateways in one process). |
+| MGW-2026-004 | Medium | 13.1.0 | Hot reload disconnected removed servers before the steps that can fail (module load, catalog refresh); a rollback restored config, auth and routing but not those connections. Fixed by Prepare → Validate → Commit. Affected: 12.0.0 – 13.0.0 (availability only; earlier versions applied reloads without rollback). |
+
+Earlier security fixes are listed in the [CHANGELOG](CHANGELOG.md) (search for “Security”): 10.1.0 and 10.2.0
+(baseline audit), 11.1.0 / 11.2.0 / 12.0.0 (central authorizer, delegation bounds, blob ownership, fail-closed
+revocation, stdio isolation) and **10.9.1** (2026-10-09, LTS backport of the 11.1 – 12.0 fixes to 10.x: central
+authorizer, delegation bounded by the caller, strict `narrowScope`, blob ownership and byte budgets, shared fail-closed
+revocation, stdio environment allowlist).
 
 ## Incident response and supply chain
 

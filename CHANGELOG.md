@@ -78,7 +78,7 @@ needed). Guide: [Migrating to 13.0](docs/guides/migrating-to-v13.md). 10.x stays
 
 **Breaking security release.** Third-party stdio MCP servers are isolated from the gateway core — environment
 allowlist, optional uid/gid, working directory and sandbox wrapper with networking off — multimodal per-item limits
-are lower, and hot reload is transactional. Config schema stays **v11** (no `migrate` needed). Guide:
+are lower, and a failed hot reload rolls back its config (not fully transactional, see 13.1.0). Config schema stays **v11** (no `migrate` needed). Guide:
 [Migrating to 12.0](docs/guides/migrating-to-v12.md). 10.x stays LTS.
 
 ### Security
@@ -93,8 +93,10 @@ are lower, and hot reload is transactional. Config schema stays **v11** (no `mig
 ### Breaking
 - stdio environment allowlist (above). Servers that relied on inherited variables need `env` / `envPassthrough`.
 - Multimodal defaults: `maxItemBytes` 10 MiB → 4 MiB, `maxTotalBytes` 32 MiB → 16 MiB.
-- Hot reload is transactional: a failure while applying a config (catalog, plugins, mTLS, …) restores the previous
-  config and rejects the reload (`POST /admin/config` fails) instead of leaving it half-applied.
+- Hot reload rolls back on failure: a failure while applying a config (catalog, plugins, mTLS, …) restores the
+  previous config (auth, routing, policy) and rejects the reload (`POST /admin/config` fails). *Correction (13.1):
+  this was not fully transactional — servers removed by the new config were disconnected before the failure point
+  and were not reconnected by the rollback (MGW-2026-004, fixed in 13.1.0).*
 - `GET /admin/kernel` `line: 12.x`; `RELEASE_LINE` = `{ line: '12.x', lts: false }`.
 
 ### Added
