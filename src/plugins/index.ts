@@ -42,7 +42,7 @@
 import { isAbsolute, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { readFile } from 'fs/promises';
-import { PluginTrustSchema, verifyArtifact, type PluginTrustConfig } from './trust.js';
+import { PluginTrustSchema, type PluginTrustConfig } from './trust-schema.js';
 import express, { type NextFunction, type Request, type Response, type Router } from 'express';
 import type { PluginConfig, ProxyResponse } from '../utils/types.js';
 import { logger, type Logger } from '../utils/logger.js';
@@ -349,6 +349,8 @@ export async function checkSignature(cfg: PluginConfig, baseDir: string, trust?:
     if (t.requireSigned) throw new Error(`Plugin "${label}" is not signed (no ${sigFile}) and pluginTrust.requireSigned is on`);
     return undefined;
   }
+  // 13.3.0: loaded only when a signature is actually checked (keeps @noble/* out of the default startup)
+  const { verifyArtifact } = await import('./trust.js');
   const r = verifyArtifact(await readFile(file), sig, t.keys, { requirePostQuantum: t.requirePostQuantum });
   if (!r.ok) throw new Error(`Plugin "${label}" failed signature verification: ${r.reason}`);
   return r.keyId;

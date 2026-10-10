@@ -10,6 +10,10 @@
  * dist/features/<id>.js modules were evaluated (not schemas/ or the manifest) (module-load tracing via module.registerHooks). Two profiles:
  * `minimal` (no features configured) and `all` (every feature section that validates with an empty object).
  *
+ * 13.3.0: also `modules` / `moduleKb` — every JS module (dist + node_modules) evaluated and its source size; unlike
+ * the timings these do not depend on machine load, so they are held to 10 % of the baseline; `lazyDeps` counts the
+ * on-demand packages (jose, ws, yaml, @noble/*) a profile evaluated and may never exceed the baseline (minimal: 0).
+ *
  * --compare prints the delta against a recorded baseline and exits 1 only on a gross regression (> 2× the baseline
  * median for time, > 1.5× for memory) — CI runners are noisy, so the numbers are recorded, not tightly asserted.
  * Baselines are per platform (`platforms["linux-x64"]` = GitHub Actions runners); memory is only checked against a
@@ -20,7 +24,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const root = process.env.MGW_ROOT ?? join(dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (n, d) => {
   const i = process.argv.indexOf(n);
   return i > 0 ? process.argv[i + 1] : d;
@@ -31,7 +35,9 @@ const child = String.raw`
 const t0 = performance.now();
 const { registerHooks } = await import('node:module');
 const loaded = new Set();
-registerHooks({ load(url, ctx, next) { const m = /\/dist\/features\/([a-z0-9-]+)\.js$/.exec(url); if (m && m[1] !== 'manifest') loaded.add(m[1]); return next(url, ctx); } });
+let modules = 0, bytes = 0;
+const lazy = new Set();
+registerHooks({ load(url, ctx, next) { const m = /\/dist\/features\/([a-z0-9-]+)\.js$/.exec(url); if (m && m[1] !== 'manifest') loaded.add(m[1]); const d = /\/node_modules\/(jose|ws|yaml|@noble)\//.exec(url); if (d) lazy.add(d[1]); const r = next(url, ctx); if (!url.startsWith('node:')) { modules++; bytes += r.source ? r.source.length : 0; } return r; } });
 const profile = process.argv[process.argv.length - 1];
 const { Gateway, logger } = await import(process.env.MGW_DIST + '/gateway/public.js');
 logger.setLevel('error');
@@ -53,7 +59,7 @@ const t2 = performance.now();
 globalThis.gc?.(); globalThis.gc?.();
 const m = process.memoryUsage();
 await gw.stop();
-console.log(JSON.stringify({ importMs: t1 - t0, startMs: t2 - t1, totalMs: t2 - t0, rssMb: m.rss / 1048576, heapMb: m.heapUsed / 1048576, featureModules: loaded.size }));
+console.log(JSON.stringify({ importMs: t1 - t0, startMs: t2 - t1, totalMs: t2 - t0, rssMb: m.rss / 1048576, heapMb: m.heapUsed / 1048576, featureModules: loaded.size, modules, moduleKb: bytes / 1024, lazyDeps: lazy.size }));
 `;
 
 const median = (xs) => {
@@ -101,6 +107,10 @@ else {
       if (b && /Mb$/.test(k) && samePlatform && x > 1.5 * b + 10) failed = true;
       // 13.0: a profile must never evaluate more feature modules than recorded (minimal: none)
       if (b !== undefined && k === 'featureModules' && x > b) failed = true;
+      // 13.3.0: module count / bytes loaded are deterministic (not timing noise): > 10 % more than recorded fails
+      if (b !== undefined && (k === 'modules' || k === 'moduleKb') && x > b * 1.1 + 5) failed = true;
+      // 13.3.0: jose / ws / yaml / @noble are loaded on demand — a profile that does not use them must not load them
+      if (b !== undefined && k === 'lazyDeps' && x > b) failed = true;
     }
   }
 }

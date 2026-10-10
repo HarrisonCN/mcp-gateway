@@ -10,12 +10,14 @@ import { invalidFilterPattern } from '../policy/output-filter.js';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { dirname, resolve } from 'path';
-import { parse as parseYaml } from 'yaml';
+import { yaml } from '../utils/lazy.js';
+// 13.3.0: `yaml` (≈280 KB, 70+ modules) is loaded on first use — a gateway built from a config object never needs it.
+const parseYaml = (src: string): unknown => yaml().parse(src);
 import { z } from 'zod';
 import { manifestEntry } from '../features/manifest.js';
 import { RegionsSchema } from '../features/schemas/regions.js';
 import { EdgeFleetSchema } from '../features/schemas/edge-fleet.js';
-import { PluginTrustSchema } from '../plugins/trust.js';
+import { PluginTrustSchema } from '../plugins/trust-schema.js';
 import { MarketplaceSchema } from '../features/schemas/marketplace.js';
 import { SessionsSchema } from '../features/schemas/sessions.js';
 import { DlpSchema } from '../features/schemas/dlp.js';

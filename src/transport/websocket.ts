@@ -12,7 +12,12 @@
  * @module transport/websocket
  */
 
-import WebSocket from 'ws';
+import type WebSocket from 'ws';
+import { ws as loadWs } from '../utils/lazy.js';
+
+/** WebSocket readyState values (RFC 6455 / ws), so `ws` itself is only loaded when a WebSocket upstream connects. */
+const WS_OPEN = 1;
+const WS_CLOSED = 3;
 import type { McpServerConfig } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { expandRecord, type ChannelOptions, type JsonRpcMessage, type UpstreamChannel } from './channel.js';
@@ -47,7 +52,8 @@ export class WebSocketChannel implements UpstreamChannel {
       let settled = false;
       // `subprotocol: ""` connects without requesting one (for servers that reject it).
       const sub = this.config.subprotocol ?? SUBPROTOCOL;
-      const ws = new WebSocket(this.config.url!, sub ? [sub] : [], {
+      const WebSocketImpl = loadWs() as unknown as typeof WebSocket;
+      const ws = new WebSocketImpl(this.config.url!, sub ? [sub] : [], {
         headers: expandRecord(this.config.headers),
         handshakeTimeout: this.options.connectTimeoutMs,
         maxPayload: MAX_PAYLOAD,
@@ -121,7 +127,7 @@ export class WebSocketChannel implements UpstreamChannel {
     if (!(interval > 0)) return;
     this.pingTimer = setInterval(() => {
       const ws = this.ws;
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      if (!ws || ws.readyState !== WS_OPEN) return;
       if (this.awaitingPong) {
         // No pong since the last ping: the connection is dead.
         ws.terminate();
@@ -144,7 +150,7 @@ export class WebSocketChannel implements UpstreamChannel {
 
   send(message: JsonRpcMessage): Promise<void> {
     const ws = this.ws;
-    if (this.closed || this.lost || !ws || ws.readyState !== WebSocket.OPEN) {
+    if (this.closed || this.lost || !ws || ws.readyState !== WS_OPEN) {
       return Promise.reject(new Error('WebSocket channel is not connected'));
     }
     return new Promise<void>((resolve, reject) => {
@@ -158,7 +164,7 @@ export class WebSocketChannel implements UpstreamChannel {
     this.stopPing();
     const ws = this.ws;
     if (!ws) return;
-    if (ws.readyState === WebSocket.CLOSED) return;
+    if (ws.readyState === WS_CLOSED) return;
     await new Promise<void>((resolve) => {
       const force = setTimeout(() => {
         ws.terminate();
