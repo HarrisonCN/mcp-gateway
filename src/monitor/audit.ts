@@ -127,8 +127,12 @@ export class SqliteAuditStore implements AuditStore {
       CREATE INDEX IF NOT EXISTS requests_server ON requests (server, ts);
       CREATE INDEX IF NOT EXISTS requests_client ON requests (client_id, ts);
     `);
+    // 13.1.2: delegation chain columns (added to databases created by older versions).
+    const cols = new Set((this.db.prepare('PRAGMA table_info(requests)').all() as Array<{ name: string }>).map((c) => String(c.name)));
+    if (!cols.has('actor')) this.db.exec('ALTER TABLE requests ADD COLUMN actor TEXT');
+    if (!cols.has('chain')) this.db.exec('ALTER TABLE requests ADD COLUMN chain TEXT');
     this.insert = this.db.prepare(
-      'INSERT OR IGNORE INTO requests (id, ts, server, tool, kind, duration_ms, success, error, client_id, via) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT OR IGNORE INTO requests (id, ts, server, tool, kind, duration_ms, success, error, client_id, via, actor, chain) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
   }
 
@@ -144,6 +148,8 @@ export class SqliteAuditStore implements AuditStore {
       m.errorMessage ?? null,
       m.clientId ?? null,
       m.via ?? null,
+      m.actor ?? null,
+      m.chain?.length ? JSON.stringify(m.chain) : null,
     );
   }
 
@@ -184,6 +190,14 @@ export class SqliteAuditStore implements AuditStore {
       if (r.client_id !== null && r.client_id !== undefined) m.clientId = String(r.client_id);
       if (r.via !== null && r.via !== undefined) m.via = r.via as RequestMetric['via'];
       if (r.kind && r.kind !== 'tool') m.kind = r.kind as RequestMetric['kind'];
+      if (r.actor !== null && r.actor !== undefined) m.actor = String(r.actor);
+      if (typeof r.chain === 'string') {
+        try {
+          m.chain = JSON.parse(r.chain) as string[];
+        } catch {
+          /* ignore a damaged row */
+        }
+      }
       return m;
     });
     const last = page[page.length - 1];

@@ -26,12 +26,15 @@ import { createRemoteJWKSet, decodeJwt, jwtVerify, type JWTPayload, type JWTVeri
 import type { OAuthConfig } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { scopeFromJwt } from './scopes.js';
+import { issuerQualified, tokenClientId } from './identity.js';
 import type { AuthedRequest, AuthMiddleware } from './middleware.js';
 import { ASYMMETRIC_ALGORITHMS } from './middleware.js';
 
 export const PROTECTED_RESOURCE_METADATA_PATH = '/.well-known/oauth-protected-resource';
 
 export interface TokenInfo {
+  /** Issuer of the token (13.1.2: part of the client id when several issuers are trusted). */
+  issuer?: string;
   subject?: string;
   clientId?: string;
   scopes: string[];
@@ -195,6 +198,7 @@ export class OAuthVerifier {
     }
     const claims = payload as Record<string, unknown>;
     return {
+      issuer: payload.iss,
       subject: payload.sub,
       clientId: typeof claims.client_id === 'string' ? claims.client_id : typeof claims.azp === 'string' ? claims.azp : undefined,
       scopes: tokenScopes(claims),
@@ -243,6 +247,8 @@ export class OAuthVerifier {
     }
     if (!aud && ic.requireAudience !== false) throw new TokenError('token has no audience');
     const info: TokenInfo = {
+      // An introspection response without `iss` speaks for the authorization server the endpoint belongs to.
+      issuer: typeof body.iss === 'string' ? body.iss : this.issuers()[0],
       subject: typeof body.sub === 'string' ? body.sub : undefined,
       clientId: typeof body.client_id === 'string' ? body.client_id : undefined,
       scopes: tokenScopes(body),
@@ -327,6 +333,8 @@ export interface OAuthMiddlewareOptions extends OAuthVerifierOptions {
 /** Express middleware for `auth.strategy: oauth2`. */
 export function oauthMiddleware(config: OAuthConfig, options: OAuthMiddlewareOptions): AuthMiddleware & { verifier: OAuthVerifier } {
   const verifier = new OAuthVerifier(config, options);
+  // 13.1.2: `sub` is unique per issuer only — with several trusted issuers the client id carries the issuer.
+  const qualified = issuerQualified({ strategy: 'oauth2', oauth: config });
   const hostWarning = resourceWarning(config);
   if (hostWarning) logger.warn(hostWarning);
   const mw = ((req: Request, res: Response, next: NextFunction) => {
@@ -343,7 +351,7 @@ export function oauthMiddleware(config: OAuthConfig, options: OAuthMiddlewareOpt
         const r = req as AuthedRequest;
         r.jwtPayload = info.claims;
         r.oauth = info;
-        r.clientId = `oauth:${info.subject ?? info.clientId ?? 'unknown'}`;
+        r.clientId = tokenClientId('oauth', info.subject ?? info.clientId ?? 'unknown', info.issuer, qualified);
         const scope = scopeFromJwt(info.claims);
         if (scope) r.scope = scope;
         next();

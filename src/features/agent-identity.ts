@@ -370,7 +370,8 @@ registerCallHook({
 export function delegatedPrincipal(ctx: { resolveScope?: (id: string | undefined) => { known: boolean; scope?: AccessScope } | undefined }, k: AgentTokenClaims, _token?: string): Principal {
   const r = ctx.resolveScope?.(k.sub);
   const base = r ? (r.known ? clientPrincipal(k.sub, r.scope) : deniedPrincipal(k.sub)) : clientPrincipal(k.sub, k.dsc ?? { servers: [], tools: [] });
-  return { ...base, delegation: [{ agent: chainOf(k.act).join(' > '), tools: k.scope, jti: k.jti }] };
+  // MGW-2026-007: one hop per acting agent, outermost delegation first (`[sub, agent:first, …, agent:current]`).
+  return { ...base, delegation: chainOf(k.act).reverse().map((agent) => ({ agent, tools: k.scope, jti: k.jti })) };
 }
 
 registerFeature({
@@ -464,6 +465,8 @@ registerFeature({
       const rec = agentState.issued.get(v.claims.jti);
       if (rec) rec.calls++;
       // 11.1: authorized centrally as delegator scope ∩ token grant (∩ tenant ∩ server filter ∩ policy).
+      // MGW-2026-007: the call is made FOR the delegator (sub): the invoker keys tenancy, policy, quotas, budgets,
+      // residency, caches and audit on it; the agent is recorded as the actor.
       const r = await ctx.invoke(b.server, b.tool, args, delegatedPrincipal(ctx, v.claims, b.token), `agent:${v.claims.agent}`);
       if (!r.success && r.error?.code === ERR_FORBIDDEN) return void res.status(403).json({ error: 'Forbidden', message: r.error.message, scope: v.claims.scope });
       res.status(r.success ? 200 : 502).json({ ...r, onBehalfOf: v.claims.sub, chain: chainOf(v.claims.act) });
