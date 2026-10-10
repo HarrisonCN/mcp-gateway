@@ -1,0 +1,92 @@
+name: Deployment examples
+
+# Boots every example in examples/deploy (referenced by docs/deployment.md): Docker Compose with the published image
+# the example names and with an image built from this commit, then the plain Kubernetes manifests and the Helm chart
+# on a kind cluster. Release gate: conditional checks (scripts/required-checks.json).
+on:
+  push:
+    branches: [main]
+    paths: ['examples/deploy/**', 'docs/deployment.md', 'deploy/**', 'Dockerfile', 'src/**', 'package-lock.json', '.github/workflows/deploy-examples.yml']
+  pull_request:
+    paths: ['examples/deploy/**', 'docs/deployment.md', 'deploy/**', 'Dockerfile', 'src/**', 'package-lock.json', '.github/workflows/deploy-examples.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-examples-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KEY: ci-deploy-example-key-0123456789abcdef
+
+jobs:
+  compose:
+    name: Compose example boots
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the image from this commit
+        run: docker build -t mcp-gateway:ci .
+      - name: Boot the Compose example (published image it names, then this commit's image)
+        working-directory: examples/deploy/compose
+        run: |
+          set -euo pipefail
+          check() {
+            for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4000/api/v1/health/ready >/dev/null && break; sleep 2; done
+            curl -fsS -H "Authorization: Bearer $KEY" http://127.0.0.1:4000/api/v1/tools | grep -q '"echo"'
+            curl -fsS -X POST -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
+              -d '{"server":"echo","tool":"echo","arguments":{"hello":"compose"}}' http://127.0.0.1:4000/api/v1/tools/call | grep -q compose
+            test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/api/v1/tools)" = 401
+          }
+          for image in "" mcp-gateway:ci; do
+            echo "::group::compose up (${image:-default image})"
+            MGW_IMAGE="$image" GATEWAY_API_KEY="$KEY" docker compose up -d --wait --wait-timeout 120 || { docker compose logs; exit 1; }
+            check || { docker compose logs; exit 1; }
+            docker compose down -v
+            echo "::endgroup::"
+          done
+        env:
+          MGW_IMAGE: ""
+
+  kind:
+    name: Kubernetes and Helm examples boot (kind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
+      - name: Build the image from this commit
+        run: docker build -t mcp-gateway:ci .
+      - name: Create a kind cluster (retries: the node image comes from Docker Hub)
+        run: |
+          set -euo pipefail
+          curl -fsSLo kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64 && chmod +x kind && sudo mv kind /usr/local/bin/kind
+          for i in 1 2 3; do kind create cluster --wait 120s && break; echo "retry $i"; kind delete cluster || true; sleep 20; done
+          kubectl get nodes
+          kind load docker-image mcp-gateway:ci
+      - name: Plain manifests (examples/deploy/kubernetes)
+        run: |
+          set -euo pipefail
+          kubectl create namespace plain
+          sed 's#ghcr.io/harrisoncn/mcp-gateway:13#mcp-gateway:ci#' examples/deploy/kubernetes/mcp-gateway.yaml \
+            | sed "s#change-me-to-a-long-random-key#$KEY#" | kubectl -n plain apply -f -
+          kubectl -n plain rollout status deployment/mcp-gateway --timeout=180s || { kubectl -n plain describe pods; kubectl -n plain logs deploy/mcp-gateway; exit 1; }
+          kubectl -n plain port-forward svc/mcp-gateway 18080:80 >/dev/null 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/api/v1/health/ready >/dev/null && break; sleep 1; done
+          curl -fsS -X POST -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
+            -d '{"server":"echo","tool":"echo","arguments":{"hello":"k8s"}}' http://127.0.0.1:18080/api/v1/tools/call | grep -q k8s
+      - name: Helm chart with examples/deploy/helm/values.yaml
+        run: |
+          set -euo pipefail
+          helm lint --strict deploy/helm/mcp-gateway -f examples/deploy/helm/values.yaml
+          kubectl create namespace helm
+          kubectl -n helm create secret generic gw-secrets --from-literal=MCP_GATEWAY_API_KEYS="$KEY"
+          helm install gw deploy/helm/mcp-gateway -n helm -f examples/deploy/helm/values.yaml \
+            --set image.repository=mcp-gateway --set image.tag=ci --wait --timeout 180s \
+            || { kubectl -n helm describe pods; kubectl -n helm logs deploy/gw-mcp-gateway; exit 1; }
+          kubectl -n helm port-forward svc/gw-mcp-gateway 18081:80 >/dev/null 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18081/api/v1/health/ready >/dev/null && break; sleep 1; done
+          curl -fsS -X POST -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
+            -d '{"server":"echo","tool":"echo","arguments":{"hello":"helm"}}' http://127.0.0.1:18081/api/v1/tools/call | grep -q helm

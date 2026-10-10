@@ -84,6 +84,20 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  docs:
+    name: Docs check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Docs auto-check (config snippets vs schema v11, CLI flags, links, image tags, versions)
+        run: npx tsx scripts/docs-check.ts
+
   supply-chain:
     name: Supply chain (Trivy, SBOM)
     runs-on: ubuntu-latest
