@@ -50,6 +50,8 @@ Any other check run on the release commit that concludes `failure`, `cancelled`,
 and `Deploy` (dashboard demo on GitHub Pages) and the post-release jobs `assets`, `image`, `npm`, `maven-central`
 (they run *because* of the release).
 
+`MCP compat matrix` (CI, 13.6.0) is gated by this rule until it has run green on `main`; then it moves to `required`.
+
 A re-run that succeeds replaces the failed attempt (the most recent run of a check counts). After two failed re-runs
 of the same infrastructure failure (registry rate limits, an arm64 emulation hang) the release is stopped and the
 cause reported rather than retried further.
