@@ -47,6 +47,13 @@ describe('release gate', () => {
     expect(seen[1]).toContain('page=2');
   });
 
+  it('every workflow file is valid YAML (an invalid one never reports its checks)', async () => {
+    const { readdirSync } = await import('fs');
+    const { parse } = await import('yaml');
+    const dir = fileURLToPath(new URL('../.github/workflows/', import.meta.url));
+    for (const f of readdirSync(dir).filter((x) => x.endsWith('.yml'))) expect(() => parse(readFileSync(dir + f, 'utf8')), f).not.toThrow();
+  });
+
   it('the required checks exist as job names in the workflows, and the policy is documented', () => {
     const wf = ['ci.yml', 'codeql.yml', 'helm.yml', 'perf.yml', 'deploy-examples.yml'].map((f) => readFileSync(fileURLToPath(new URL(`../.github/workflows/${f}`, import.meta.url)), 'utf8')).join('\n');
     for (const n of [...policy.required, ...policy.conditional]) {

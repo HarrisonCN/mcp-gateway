@@ -59,7 +59,7 @@ jobs:
       - uses: azure/setup-helm@v5
       - name: Build the image from this commit
         run: docker build -t mcp-gateway:ci .
-      - name: Create a kind cluster (retries: the node image comes from Docker Hub)
+      - name: Create a kind cluster (with retries, the node image comes from Docker Hub)
         run: |
           set -euo pipefail
           curl -fsSLo kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64 && chmod +x kind && sudo mv kind /usr/local/bin/kind
