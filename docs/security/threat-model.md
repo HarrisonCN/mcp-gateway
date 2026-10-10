@@ -161,6 +161,7 @@ Admin traffic (`/api/v1/admin/*`, dashboard, control plane) takes steps 1–2 an
 | MGW-2026-010 | B5 (argument rewrites) | 2, 3 |
 | MGW-2026-011 | B6 (calls across reloads) | 5 |
 | MGW-2026-012 | B7 (Redis reply desync) | 7 |
+| MGW-2026-013 | B4 (client-supplied scope globs in agent-identity token requests) | — (availability: glob matching is linear since 13.5.0) |
 
 Details, affected ranges and fixed versions: [SECURITY.md](../../SECURITY.md#security-advisories).
 

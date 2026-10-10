@@ -5,9 +5,9 @@
 | Version | Supported |
 |---|---|
 | 13.x (current) | ✅ new features, bug and security fixes |
-| 12.x | ⚠️ superseded — latest 12.0.7 (npm dist-tag `v12-0`, image `:12`) carries the MGW-2026-001, MGW-2026-005, MGW-2026-007, MGW-2026-008, MGW-2026-009, MGW-2026-010, MGW-2026-011 and MGW-2026-012 fixes; upgrade to 13.x ([Migrating to 13.0](docs/guides/migrating-to-v13.md)) |
+| 12.x | ⚠️ superseded — latest 12.0.8 (npm dist-tag `v12-0`, image `:12`) carries the MGW-2026-001, MGW-2026-005, MGW-2026-007, MGW-2026-008, MGW-2026-009, MGW-2026-010, MGW-2026-011, MGW-2026-012 and MGW-2026-013 fixes; upgrade to 13.x ([Migrating to 13.0](docs/guides/migrating-to-v13.md)) |
 | 11.x | ⚠️ superseded — 11.2.0 carries the 11.1 / 11.2 security fixes; upgrade to 12.x ([Migrating to 12.0](docs/guides/migrating-to-v12.md)) |
-| 10.x (LTS) | ✅ bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 — latest 10.9.8 (npm dist-tag `v10-lts`, image `:10`) |
+| 10.x (LTS) | ✅ bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 — latest 10.9.9 (npm dist-tag `v10-lts`, image `:10`) |
 | < 10.0 | ❌ — please upgrade (`mcp-gateway migrate`, see [Migrating to 10.0](docs/guides/migrating-to-v10.md) and [Migrating to 11.0](docs/guides/migrating-to-v11.md)) |
 
 13.x is the current line (config schema v11, central authorizer, isolated stdio servers, on-demand feature modules). 10.x is the long-term-support line:

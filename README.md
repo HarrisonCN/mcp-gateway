@@ -289,9 +289,9 @@ inherit `MCP_GATEWAY_*` variables. `mcp-gateway validate --strict` fails on secu
 property tests; there has been **no independent third-party audit**. Details: [threat model](docs/security/threat-model.md),
 [deployment checklist](docs/deployment.md#security-checklist).
 
-**Advisories.** MGW-2026-001 … MGW-2026-012 (reroute re-authorization, fail-closed modules, per-gateway module
+**Advisories.** MGW-2026-001 … MGW-2026-013 (reroute re-authorization, fail-closed modules, per-gateway module
 failures, transactional reload, split-aware cache keys, staged reload, delegated-call identity, issuer-qualified
-client ids, split-target credentials, final-argument checks, calls in flight across a reload, Redis reply alignment) are fixed in 13.3.0, with backports of the applicable fixes in 12.0.6 and 10.9.7 — see [SECURITY.md](SECURITY.md#security-advisories). Report vulnerabilities
+client ids, split-target credentials, final-argument checks, calls in flight across a reload, Redis reply alignment) are fixed in 13.3.0, with backports of the applicable fixes in 12.0.6 and 10.9.7; MGW-2026-013 (glob-matching ReDoS via agent-identity token scopes) is fixed in 13.5.0, 12.0.8 and 10.9.9 — see [SECURITY.md](SECURITY.md#security-advisories). Report vulnerabilities
 privately through [GitHub private vulnerability reporting](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new)
 (see [SECURITY.md](SECURITY.md#reporting-a-vulnerability)), never with details in public issues.
 
@@ -318,9 +318,9 @@ See [Observability](docs/configuration.md#observability) and [Audit log](docs/co
 | Line | Latest | npm dist-tag | Image tag | Status |
 |---|---|---|---|---|
 | 13.x | 13.5.0 | `latest` | `:13`, `:latest` | Current — new features, bug and security fixes |
-| 12.x | 12.0.7 | `v12-0` | `:12` | Superseded — carries the MGW-2026-001, -005, -007, -008, -009, -010, -011 and -012 fixes; upgrade to 13.x |
+| 12.x | 12.0.8 | `v12-0` | `:12` | Superseded — carries the MGW-2026-001, -005, -007, -008, -009, -010, -011, -012 and -013 fixes; upgrade to 13.x |
 | 11.x | 11.2.0 | — | `:11` | Superseded — upgrade to 13.x |
-| 10.x (LTS) | 10.9.8 | `v10-lts` | `:10` | Bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |
+| 10.x (LTS) | 10.9.9 | `v10-lts` | `:10` | Bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |
 | < 10.0 | — | — | — | Unsupported — upgrade with `mcp-gateway migrate` |
 
 ```bash
