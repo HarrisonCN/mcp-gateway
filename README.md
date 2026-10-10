@@ -347,7 +347,10 @@ reachable by clients that were only allowed on stable; also fixed in 12.0.1 and 
 closed:** every feature module has a failure policy (`closed` / `open` / `degrade`), so a broken DLP, policy-engine or
 agent-identity module refuses the calls it protects (`-32026`) instead of silently letting them through. Module
 failures are per gateway, and hot reload is Prepare → Validate → Commit: removed servers are only disconnected after a
-successful commit. See [SECURITY.md](SECURITY.md#security-advisories).
+successful commit. **13.1.1** narrows fail-closed to the calls a failed module would have governed (its configured
+servers / tools / tenants / clients; global or unreadable config still refuses everything), keeps servers prepared by a
+reload hidden until the commit, and keys the tool and semantic caches on the routing-split target (also fixed in
+12.0.2 and 10.9.3). See [SECURITY.md](SECURITY.md#security-advisories).
 
 ## Documentation
 
