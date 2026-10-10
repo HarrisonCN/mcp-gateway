@@ -267,9 +267,9 @@ API Key 打包进网页或 App：要么经由你自己的后端转发，要么�
 CI 中运行 CodeQL、OpenSSF Scorecard、Trivy、`npm audit` 和属性测试；项目**尚未经过独立第三方安全审计**。详见
 [威胁模型](docs/security/threat-model.md)和[部署安全清单](docs/deployment.md#security-checklist)。
 
-**安全公告。** MGW-2026-001 至 MGW-2026-012（改道后重新授权、安全模块失效关闭、按网关隔离模块故障、事务化热更新、
+**安全公告。** MGW-2026-001 至 MGW-2026-013（改道后重新授权、安全模块失效关闭、按网关隔离模块故障、事务化热更新、
 分流感知的缓存键、分阶段热更新、委托调用身份上下文、按签发方区分的客户端 ID、分流目标凭据隔离、最终参数复核、热更新期间在途调用的配置隔离、Redis 回复错位）均已在 13.3.0 中修复，适用的修复也已回移到
-12.0.6 和 10.9.7——见
+12.0.6 和 10.9.7；MGW-2026-013（通过 agent-identity 令牌作用域触发的通配符匹配正则拒绝服务）已在 13.5.0、12.0.8 和 10.9.9 中修复——见
 [SECURITY.md](SECURITY.md#security-advisories)。发现漏洞请按 [SECURITY.md](SECURITY.md#reporting-a-vulnerability)
 中的方式私下报告（已启用 GitHub 私密漏洞报告：[Report a vulnerability](https://github.com/HarrisonCN/mcp-gateway/security/advisories/new)），不要在公开 issue 中披露细节。
 
