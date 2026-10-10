@@ -131,6 +131,11 @@ ranged p50 22–36 ms); the heap growth is the bounded request history filling u
 clears. 13.2.0 shows the same numbers for these three faults; the faults 13.3.0 fixes (stalled Redis, locked SQLite,
 hung child, upstream `-32000`) are covered by `test/reliability-13-3-0.test.ts`, which fails 9 of 16 cases on 13.2.0.
 
+GitHub Actions `ubuntu-latest` (linux-x64, Node 22.23.3), first Performance run of the 13.3.0 PR — recorded as
+`load.platforms["linux-x64"]`: ci 774 req/s, p50 19.2 / p95 37.5 / p99 47.2 ms, 0 errors; ci + faults 671 req/s,
+p99 46.6 ms, 0.11 % errors (the 9 stdio-stall timeouts), recoveries 0.9 ms / 1006 ms / 0.1 ms, 0 errors after. Kernel
+on the same runner: minimal 267 modules, 248 ms, 88.6 MiB RSS.
+
 ### Regression rule
 
 `.github/workflows/perf.yml` (separate from CI, so a noisy runner never blocks other work) runs the kernel benchmark,
