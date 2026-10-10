@@ -1123,6 +1123,18 @@ export function resolveConfigPath(configPath?: string): string | undefined {
 }
 
 /** Validate (and apply defaults to) a raw config object; throws a readable error listing every issue. */
+/**
+ * Top-level keys the config parser knows (13.4.0): the file-format keys `version`, `features` and `store` plus the
+ * runtime config keys (feature sections among them are only accepted under `features:` since 10.0, and `state` is the
+ * runtime form of `store`). Used by tooling (`scripts/docs-check.ts`) to recognise config snippets and flag unknown keys.
+ */
+export const CONFIG_FILE_KEYS: readonly string[] = [
+  'version',
+  'features',
+  'store',
+  ...Object.keys(((GatewayConfigSchema as unknown as { _def: { schema?: { shape: object } } })._def.schema ?? (GatewayConfigSchema as unknown as { shape: object })).shape),
+];
+
 export function validateConfig(raw: unknown): GatewayConfig {
   const removed = removedConfigKeys(raw);
   const v4 = normalizeApiKeyScopes(normalizeSchemaV5(removed.length ? raw : normalizeStoreV9(normalizeFeaturesV10(raw))));
