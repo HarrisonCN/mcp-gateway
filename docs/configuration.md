@@ -74,6 +74,16 @@ servers:
 
 Changing a server (any field) reconnects it on hot reload; removing or disabling disconnects it.
 
+**Transactional reload (13.2).** A reload prepares everything aside first — new servers (connected, not yet listed or
+routable), a second session for each changed server (the current one keeps serving), plugin instances and feature
+module code — then commits, and only then publishes the next numbered **config generation**. If any step fails the
+reload is rolled back and the running generation keeps serving unchanged: a changed server whose new settings cannot
+connect, a plugin that cannot be loaded, or a feature module whose `init` / `reconfigure` / `disable` throws all fail
+the reload (`POST /api/v1/admin/reload` answers with the error). Calls already running finish with the generation
+they started in — its servers, credentials, policy and plugins — and the sessions and plugins of a previous generation
+are closed once its last call is done. `GET /api/v1/admin/kernel` shows the current generation, generations still
+pinned by calls and the rollback count.
+
 ## Authentication
 
 ```yaml

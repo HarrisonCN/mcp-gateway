@@ -309,7 +309,7 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
       return true;
     })();
     activating.set(id, p);
-    void p.finally(() => activating.delete(id));
+    void p.finally(() => activating.delete(id)).catch(() => undefined);
     return p;
   };
 
