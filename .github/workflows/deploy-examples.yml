@@ -29,13 +29,15 @@ jobs:
       - uses: actions/checkout@v7
       - name: Build the image from this commit
         run: docker build -t mcp-gateway:ci .
-      - name: Image healthcheck address (diagnostic)
+      - name: The image HEALTHCHECK reports healthy
         run: |
-          docker run -d --name diag -e MCP_GATEWAY_API_KEYS="$KEY" mcp-gateway:ci start
-          sleep 8
-          docker exec diag sh -c 'getent hosts localhost; wget -qO- http://localhost:4000/api/v1/health/live && echo " localhost OK" || echo "localhost FAILED"; wget -qO- http://127.0.0.1:4000/api/v1/health/live && echo " 127.0.0.1 OK"'
-          docker inspect --format '{{json .State.Health.Status}}' diag || true
-          docker rm -f diag
+          docker run -d --name hc -e MCP_GATEWAY_API_KEYS="$KEY" mcp-gateway:ci start
+          for i in $(seq 1 45); do
+            s=$(docker inspect --format '{{.State.Health.Status}}' hc); [ "$s" = healthy ] && break; sleep 2
+          done
+          docker inspect --format '{{json .State.Health}}' hc
+          test "$(docker inspect --format '{{.State.Health.Status}}' hc)" = healthy
+          docker rm -f hc
       - name: Boot the Compose example (published image it names, then this commit's image)
         working-directory: examples/deploy/compose
         run: |
