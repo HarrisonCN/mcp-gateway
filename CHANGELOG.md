@@ -9,6 +9,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.2.0] - 2026-10-10
+
+**Minor release — transactional kernel reload.** Config schema stays **v11** (no new or changed keys; every 13.1
+config loads unchanged). Includes a security fix, **MGW-2026-011** (Medium):
+[SECURITY.md](SECURITY.md#security-advisories); backports in 12.0.5 and 10.9.6.
+
+### Added
+- **Versioned config generations.** Every committed configuration is a numbered, immutable generation: a deep-frozen
+  snapshot of the config, the server configs it registers (replicas and catalog installs included) and the plugin
+  instances that were active. The gateway starts at generation 1; every committed hot reload (and catalog
+  install / uninstall) publishes the next one; a reload that fails publishes nothing. `GET /api/v1/admin/kernel` has a
+  `reload` block (`generation`, `committedAt`, `alive`, `pinned`, `committed`, `rollbacks`); embedders have
+  `gateway.generation` and `gateway.generations()`.
+- **Calls are pinned to one generation.** A call pins the current generation when it starts and every config read of
+  that call — policy, tenants, quotas, budgets, compliance, routing splits, call hooks, server config, injected
+  credentials, plugins and the upstream session — comes from it, never from a generation committed while it was in
+  flight. The final security snapshot (13.1.3) carries the `generation`; the send refuses a call that is no longer
+  running in it (`config-generation-changed`), and spans carry `mcp.config.generation`.
+- **Prepare / Commit / Rollback per server.** New servers are connected staged (13.1.1); **modified** servers now get
+  a second session with the new config in the Prepare phase while the current session keeps serving, and the new
+  session is swapped in at commit. A modify whose new config cannot connect fails the reload — the old server stays
+  callable (a server that is down anyway is still reconnected after the commit, as before). The replaced session and
+  the sessions of **removed** servers are retired, not closed: they finish the calls pinned to the previous generation
+  and close when it retires (its last pinned call ended). Calls in flight are no longer cut off by a reload.
+- **Fault injection.** `gateway.faults` takes a function per reload phase (`prepare:catalog`, `prepare:plugins`,
+  `prepare:modules`, `prepare:servers`, `commit:router`, `commit:modules`, `commit:plugins`, `commit:servers`,
+  `commit:final`) for tests and chaos drills; the regression suite fails a reload at every phase.
+
+### Changed
+- **Plugin updates are transactional.** A plugin that cannot be loaded now **fails the whole reload** (12.x–13.1 kept
+  the running plugins but applied the rest of the config, so plugins and config disagreed). Instances built before the
+  failure are closed. Replaced plugin instances stay open until the calls pinned to their generation are done; a
+  commit failure after the swap brings the old instances back (never closed) and closes the new ones.
+- **Feature module lifecycle is transactional.** During a reload a module `init`, `reconfigure` or `disable` that
+  throws fails the reload instead of leaving the module failed (and, for `closed` security modules, refusing calls).
+  Every step already taken is compensated in reverse order: reconfigured modules are reconfigured back, disabled ones
+  initialised again, modules activated by the reload disposed (also a module whose `init` failed half-way). Only a
+  compensation that itself throws marks a module failed (logged).
+- **Rollback covers more.** A failed commit also restores mTLS, secret providers / rotation, federation peers, body
+  limits and the trust-proxy setting; `pluginTrust` is now part of the reloaded config (it was compared but never
+  applied).
+- **Races.** Reloads stay serialized (one generation each). A reconnect of a server's old config that is still in
+  progress when a reload installs the new session can no longer replace it (the supervisor's attempt is re-checked
+  under the proxy's connect lock). Notifications (tools / resources changed) of a prepared or retired session are not
+  published.
+- Cached results of servers that were modified or removed are purged when the reload commits.
+
+### Security
+- **Calls in flight across a hot reload ran with the new configuration (MGW-2026-011).** A call that was waiting — for
+  an approval (`approve` rule) or in a slow plugin / hook — while a reload committed was authorized under the previous
+  configuration but sent with the new one: the new upstream session of a modified server and that server's new
+  `inject:` credentials, without the new policy being applied (a call approved under a policy that the new
+  configuration replaced with `deny` still ran, with the new credentials). Calls are now pinned to the generation they
+  were authorized in (see above).
+
+### Tests
+- `test/reload-13-2-0.test.ts` (25 cases, written first: 23 failed on 13.1.3) — generations, modify / remove
+  prepare-commit-rollback, in-flight pinning, plugin and module transactions, races, fault injection at all 9 phases,
+  and a loop of 20 × 3 reloads asserting flat handles / timers / listeners / sessions / generations.
+
 ## [13.1.3] - 2026-10-10
 
 **Security patch — final call security.** Config schema stays **v11**; no configuration changes. Advisories

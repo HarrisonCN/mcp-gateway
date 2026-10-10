@@ -46,6 +46,8 @@ export { ERR_QUOTA_EXCEEDED };
 import { NOOP_TRACER, type Tracer } from '../observability/tracing.js';
 import { ERR_FORBIDDEN as ERR_FORBIDDEN_TARGET } from '../auth/authorizer.js';
 import type { ReplayRecorder } from './replay.js';
+import { callGeneration, type GenerationPin } from './generation.js';
+import type { GatewayPlugin } from '../plugins/index.js';
 import { argsDigest, makeSnapshot, snapshotMismatch, type FinalCallSnapshot } from './final-call.js';
 export type { FinalCallSnapshot } from './final-call.js';
 
@@ -157,6 +159,16 @@ export interface InvokerDeps {
   moduleFailure?: FailureLookup;
   /** 13.1.1: server ids connected by a hot reload that has not committed yet — never sent a call. */
   staged?: (serverId: string) => boolean;
+  /**
+   * 13.2.0: pins the current config generation for one call. Every config read of the call (the `config`, `policy`,
+   * `tenantsOf`, `serverConfig`, `exposed`, `serverKey`, `pluginList` deps) resolves in the pinned generation while
+   * the call runs — the gateway's closures read `callGeneration`.
+   */
+  generations?: { acquire(): GenerationPin };
+  /** 13.2.0: identity of a server's config in the pinned generation (selects the upstream session of that config). */
+  serverKey?: (serverId: string) => string | undefined;
+  /** 13.2.0: plugin instances of the pinned generation (default: the host's active ones). */
+  pluginList?: () => readonly GatewayPlugin[];
 }
 
 /** A routing-split decision made once per call and authorized before any cache lookup (13.1.1). */
@@ -432,6 +444,26 @@ export class ToolInvoker {
   }
 
   async invoke(ctx: InvokeContext): Promise<InvokeResult> {
+    // 13.2.0: one config generation per call — pinned here, released when the call (and its plugin / hook `after`
+    // steps) is done. A call that is already running in a generation (a nested feature call) keeps it.
+    const running = callGeneration.getStore();
+    const pin = running ? undefined : this.deps.generations?.acquire();
+    if (!pin) return this.invokePinned(ctx);
+    try {
+      return await callGeneration.run(pin.generation, () => this.invokePinned(ctx));
+    } finally {
+      pin.release();
+    }
+  }
+
+  /** Plugins of the call's generation (13.2.0). */
+  private pluginSet(): readonly GatewayPlugin[] | undefined {
+    if (!this.deps.plugins) return undefined;
+    const list = this.deps.pluginList?.() ?? this.deps.plugins.list();
+    return list.length ? list : undefined;
+  }
+
+  private async invokePinned(ctx: InvokeContext): Promise<InvokeResult> {
     // 13.1.2: one identity context. The principal is authoritative: `clientId` becomes the call's subject (the original
     // caller of a delegated call); a different label from the call site is kept only as the audit origin.
     const identity = identityOf(ctx.principal, ctx.clientId);
@@ -457,13 +489,14 @@ export class ToolInvoker {
     const actor = actorOf(identity);
     if (actor) span.setAttribute('mcp.actor', actor);
     ctx = { ...ctx, authorizedTarget: Object.freeze({ serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, principal: ctx.principal.id }) };
-    const plugins = this.deps.plugins && this.deps.plugins.size > 0 ? this.deps.plugins : undefined;
+    const pluginSet = this.pluginSet();
+    const plugins = pluginSet ? this.deps.plugins : undefined;
     const call: PluginCall | undefined = plugins
       ? { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, method: ctx.method, arguments: ctx.params, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], via: ctx.via, state: new Map() }
       : undefined;
     if (plugins && call) {
       try {
-        const pre = await plugins.beforeCall(call);
+        const pre = await plugins.beforeCall(call, pluginSet);
         if (pre && 'deny' in pre) {
           return this.refuse(ctx, ERR_PLUGIN_REJECTED, pre.deny, { decision: 'deny', plugin: pre.plugin }, span);
         }
@@ -553,7 +586,9 @@ export class ToolInvoker {
     }
     // 13.1.3: the final security snapshot — what the upstream may receive, compared again at the send.
     const sendCtx = pre?.ctx ?? ctx;
-    const snapshot = makeSnapshot({ principal: ctx.principal.id, subject: identity.subject, actors: identity.actors, serverId: sendCtx.serverId, requestedServer: ctx.serverId, tool: sendCtx.name, kind: sendCtx.kind, args: sendCtx.params });
+    const generation = callGeneration.getStore()?.id;
+    const snapshot = makeSnapshot({ principal: ctx.principal.id, subject: identity.subject, actors: identity.actors, serverId: sendCtx.serverId, requestedServer: ctx.serverId, tool: sendCtx.name, kind: sendCtx.kind, args: sendCtx.params, ...(generation !== undefined ? { generation } : {}) });
+    if (generation !== undefined) span.setAttribute('mcp.config.generation', generation);
     if (pre) pre = { route: pre.route, ctx: { ...pre.ctx, snapshot } };
     else ctx = { ...ctx, snapshot };
     span.setAttribute('mcp.final.server', snapshot.serverId);
@@ -659,7 +694,7 @@ export class ToolInvoker {
     }
     // 13.1.3: the call must be the one the final security snapshot approved (business arguments, credential target).
     if (ctx.snapshot) {
-      const why = snapshotMismatch(ctx.snapshot, { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, principal: ctx.principal?.id, params: ctx.params }, ctx.injected);
+      const why = snapshotMismatch(ctx.snapshot, { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, principal: ctx.principal?.id, params: ctx.params, generation: callGeneration.getStore()?.id }, ctx.injected);
       if (why) {
         this.rerouteDenials++;
         const message = `Call differs from its final security snapshot (${why}): refused`;
@@ -671,9 +706,11 @@ export class ToolInvoker {
     if (this.deps.staged?.(target) || this.deps.staged?.(ctx.serverId)) {
       return Promise.resolve({ success: false, durationMs: 0, error: { code: ERR_NOT_CONNECTED, message: `Server "${ctx.serverId}" not found`, data: { reason: 'not-committed' } } });
     }
+    // 13.2.0: the session opened with the server config of the call's generation (never one of another generation).
+    const configKey = this.deps.serverKey?.(target);
     return ctx.kind === 'tool'
-      ? this.deps.proxy.callTool(target, ctx.name, ctx.params, ctx.timeoutMs, { signal: ctx.signal, onProgress: ctx.onProgress, caller: ctx.caller, meta: ctx.meta })
-      : this.deps.proxy.request(target, ctx.method, ctx.meta ? { ...ctx.params, _meta: { ...((ctx.params._meta as Record<string, unknown>) ?? {}), ...ctx.meta } } : ctx.params, ctx.timeoutMs, { signal: ctx.signal, caller: ctx.caller });
+      ? this.deps.proxy.callTool(target, ctx.name, ctx.params, ctx.timeoutMs, { signal: ctx.signal, onProgress: ctx.onProgress, caller: ctx.caller, meta: ctx.meta, configKey })
+      : this.deps.proxy.request(target, ctx.method, ctx.meta ? { ...ctx.params, _meta: { ...((ctx.params._meta as Record<string, unknown>) ?? {}), ...ctx.meta } } : ctx.params, ctx.timeoutMs, { signal: ctx.signal, caller: ctx.caller, configKey });
   }
 
   /** One upstream call, spread over replicas and failed over when the server has `replicas:`. */
@@ -796,7 +833,7 @@ export class ToolInvoker {
 
     if (call && this.deps.plugins) {
       try {
-        result = await this.deps.plugins.afterCall(call, result);
+        result = await this.deps.plugins.afterCall(call, result, this.pluginSet() ?? []);
       } catch (err) {
         const plugin = err instanceof PluginError ? err.plugin : undefined;
         result = { success: false, durationMs: result.durationMs, error: { code: ERR_PLUGIN_REJECTED, message: err instanceof Error ? err.message : String(err), data: { plugin } } };

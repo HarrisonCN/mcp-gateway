@@ -33,6 +33,11 @@ export type FinalCallSnapshot = Readonly<{
   argsDigest: string;
   /** The only server whose `inject:` credentials may be added to the call: always `serverId`. */
   credentialTarget: string;
+  /**
+   * 13.2.0: config generation the call was authorized in. Server config, credentials, session, policy and plugins of
+   * the call all come from it; the send is refused when the call is no longer running in it.
+   */
+  generation?: number;
 }>;
 
 /** Canonical JSON (object keys sorted, recursively) — stable across key order. */
@@ -81,10 +86,11 @@ export function makeSnapshot(s: Omit<FinalCallSnapshot, 'args' | 'argsDigest' | 
  */
 export function snapshotMismatch(
   snap: FinalCallSnapshot,
-  call: { serverId: string; name: string; kind: CallKind; principal?: string; params: Record<string, unknown> },
+  call: { serverId: string; name: string; kind: CallKind; principal?: string; params: Record<string, unknown>; generation?: number },
   injected?: { target: string; arguments: readonly string[] },
 ): string | undefined {
   if (call.serverId !== snap.serverId || call.name !== snap.tool || call.kind !== snap.kind) return 'target-changed-after-authorization';
+  if (snap.generation !== undefined && call.generation !== undefined && call.generation !== snap.generation) return 'config-generation-changed';
   if (call.principal !== undefined && call.principal !== snap.principal) return 'principal-changed-after-authorization';
   if (injected && injected.arguments.length && injected.target !== snap.credentialTarget) return 'credentials-of-another-server';
   const keys = injected?.arguments ?? [];

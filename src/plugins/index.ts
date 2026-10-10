@@ -400,7 +400,12 @@ export async function loadPlugin(cfg: PluginConfig, baseDir = process.cwd(), tru
   const plugin = await instantiate(exported, contextFor(cfg), spec);
   const out = cfg.name ? { ...plugin, name: cfg.name, close: plugin.close?.bind(plugin) } : plugin;
   if (cfg.secrets) grants.set(out, { ...cfg.secrets });
-  parsedOptions.set(out, validatePluginOptions(out, cfg.options ?? {}));
+  try {
+    parsedOptions.set(out, validatePluginOptions(out, cfg.options ?? {}));
+  } catch (err) {
+    await closeQuietly(out); // 13.2.0: a refused plugin is not left running
+    throw err;
+  }
   if (cfg.timeoutMs) hookTimeouts.set(out, cfg.timeoutMs);
   return out;
 }
@@ -536,30 +541,47 @@ export class PluginHost {
     }
   }
 
-  /** Replace the active plugins (closes the ones that are dropped). */
-  async set(next: GatewayPlugin[]): Promise<void> {
+  /**
+   * Replace the active plugins. The dropped ones are closed — unless `close: false` (13.2.0 hot reload: calls pinned
+   * to the previous config generation may still run their hooks; the gateway closes them when it retires) — and
+   * returned.
+   */
+  async set(next: readonly GatewayPlugin[], opts: { close?: boolean } = {}): Promise<GatewayPlugin[]> {
     const old = this.plugins;
-    this.plugins = next;
+    this.plugins = [...next];
     this.buildRouters();
-    await Promise.all(old.filter((p) => !next.includes(p)).map((p) => closeQuietly(p)));
+    const dropped = old.filter((p) => !next.includes(p));
+    if (opts.close !== false) await Promise.all(dropped.map((p) => closeQuietly(p)));
+    return dropped;
+  }
+
+  /** Close plugin instances that are no longer active (13.2.0: after their config generation retired). */
+  static async closeAll(list: readonly GatewayPlugin[]): Promise<void> {
+    await Promise.all(list.map((p) => closeQuietly(p)));
   }
 
   /** Build plugin instances from config entries plus embedder-supplied sources. */
   static async build(configs: PluginConfig[] | undefined, extra: PluginSource[] = [], baseDir?: string, trust?: PluginTrustConfig): Promise<GatewayPlugin[]> {
     const out: GatewayPlugin[] = [];
-    for (const src of extra) {
-      const p = await instantiate(src, contextFor({}), 'option');
-      parsedOptions.set(p, validatePluginOptions(p, {}));
-      out.push(p);
-    }
-    for (const cfg of configs ?? []) {
-      if (cfg.enabled === false) continue;
-      out.push(await loadPlugin(cfg, baseDir, trust));
-    }
-    const names = new Set<string>();
-    for (const p of out) {
-      if (names.has(p.name)) throw new Error(`Duplicate plugin name "${p.name}"`);
-      names.add(p.name);
+    try {
+      for (const src of extra) {
+        const p = await instantiate(src, contextFor({}), 'option');
+        out.push(p);
+        parsedOptions.set(p, validatePluginOptions(p, {}));
+      }
+      for (const cfg of configs ?? []) {
+        if (cfg.enabled === false) continue;
+        out.push(await loadPlugin(cfg, baseDir, trust));
+      }
+      const names = new Set<string>();
+      for (const p of out) {
+        if (names.has(p.name)) throw new Error(`Duplicate plugin name "${p.name}"`);
+        names.add(p.name);
+      }
+    } catch (err) {
+      // 13.2.0: a failed build leaves nothing running — instances built before the failure are closed.
+      await Promise.all(out.map((p) => closeQuietly(p)));
+      throw err;
     }
     return out;
   }
@@ -593,8 +615,8 @@ export class PluginHost {
   }
 
   /** Run `onToolCall` hooks. Returns a refusal / short-circuit or undefined to proceed. */
-  async beforeCall(call: PluginCall): Promise<{ deny: string; plugin: string } | { respond: unknown; plugin: string } | undefined> {
-    for (const p of this.plugins) {
+  async beforeCall(call: PluginCall, plugins: readonly GatewayPlugin[] = this.plugins): Promise<{ deny: string; plugin: string } | { respond: unknown; plugin: string } | undefined> {
+    for (const p of plugins) {
       if (!p.onToolCall) continue;
       let out: ToolCallOutcome;
       try {
@@ -612,9 +634,9 @@ export class PluginHost {
   }
 
   /** Run `onResponse` hooks (in order, each sees the previous result). */
-  async afterCall(call: PluginCall, result: ProxyResponse): Promise<ProxyResponse> {
+  async afterCall(call: PluginCall, result: ProxyResponse, plugins: readonly GatewayPlugin[] = this.plugins): Promise<ProxyResponse> {
     let current = result;
-    for (const p of this.plugins) {
+    for (const p of plugins) {
       if (!p.onResponse) continue;
       try {
         const next = normalizeResponseOutcome(await withTimeout(p, 'onResponse', hookTimeouts.get(p), () => p.onResponse!(call, current, this.ctxOf(p, call))), current);
@@ -625,7 +647,7 @@ export class PluginHost {
     }
     if (!current.success) {
       const error = { code: current.error?.code, message: current.error?.message ?? 'Call failed' };
-      for (const p of this.plugins) {
+      for (const p of plugins) {
         if (!p.onError) continue;
         try {
           await p.onError(call, error, this.ctxOf(p, call));

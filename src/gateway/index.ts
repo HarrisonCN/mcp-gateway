@@ -11,7 +11,9 @@ import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import type { GatewayConfig, McpServerConfig, RequestMetric } from '../utils/types.js';
 import { ServerRegistry } from '../registry/index.js';
-import { McpProxy } from '../proxy/index.js';
+import { McpProxy, type PreparedSession, type RetiredSession } from '../proxy/index.js';
+import { Generations, callGeneration, frozenCopy, serverKey, type ConfigGeneration } from './generation.js';
+import { isToolAllowed } from '../utils/tool-filter.js';
 import { MetricsCollector, registerMetricSource } from '../monitor/index.js';
 import { createApiRouter, serverStateSamples, type ApiRouter, type ToolCallResponse } from './api.js';
 import { createOpenAIRouter } from '../bridges/openai.js';
@@ -55,7 +57,7 @@ import { Catalog, InstalledServers, buildServerConfig, type InstallRequest } fro
 import { ChainService } from '../orchestration/service.js';
 import { MtlsManager, setUpstreamTls } from '../security/mtls.js';
 import { CostLedger, costsRouter } from '../costs/index.js';
-import { PluginHost, type PluginSource } from '../plugins/index.js';
+import { PluginHost, type GatewayPlugin, type PluginSource } from '../plugins/index.js';
 import { PROTECTED_RESOURCE_METADATA_PATH, protectedResourceMetadata } from '../auth/oauth.js';
 import { createControlPlaneRouter, DataPlaneSync, roleOf } from './control-plane.js';
 import { diffAgainst, portableConfig, prepareConfig } from './admin.js';
@@ -67,6 +69,18 @@ function findDashboard(): string | undefined {
   const file = resolve(here, '../../dashboard/index.html');
   return existsSync(file) ? file : undefined;
 }
+
+/** 13.2.0: phases of a hot reload (fault injection points, see {@link Gateway.faults}). */
+export type ReloadPhase =
+  | 'prepare:catalog'
+  | 'prepare:plugins'
+  | 'prepare:modules'
+  | 'prepare:servers'
+  | 'commit:router'
+  | 'commit:modules'
+  | 'commit:plugins'
+  | 'commit:servers'
+  | 'commit:final';
 
 export interface GatewayOptions {
   /** Use this state store instead of building one from `config.state` (embedding / custom backends). */
@@ -99,12 +113,46 @@ export class Gateway {
   /** 10.9: feature router (mounts modules that become active on reload). */
   private featureRouter?: FeatureRouter;
 
+  /** 13.2.0: the config of the running call's pinned generation, else the current config. */
+  private cfgNow(): GatewayConfig {
+    return (callGeneration.getStore()?.config as GatewayConfig | undefined) ?? this.config;
+  }
+
+  /** 13.2.0: the committed config generation (number, frozen config snapshot, servers, plugins). */
+  get generation(): ConfigGeneration {
+    return this.gens.current;
+  }
+
+  /** 13.2.0: generation bookkeeping (current id, generations still alive because calls pin them). */
+  generations(): { current: number; alive: number; pinned: Record<string, number>; committed: number; rollbacks: number } {
+    return { ...this.gens.stats(), committed: this.gens.committed, rollbacks: this.rollbacks };
+  }
+
+  /** Snapshot of the running config for the next generation. */
+  private snapshot(): Omit<ConfigGeneration, 'id' | 'committedAt'> {
+    const config = frozenCopy(this.config);
+    const servers = new Map(
+      expandReplicas(this.withInstalled(this.config.servers))
+        .filter((s) => s.enabled !== false)
+        .map((s) => [s.id, frozenCopy(s)] as const),
+    );
+    return { config, servers, plugins: Object.freeze([...this.plugins.list()]) };
+  }
+
   /** Current principal of a client id (11.1): api-key scope + tenants re-resolved; unknown or unresolvable ids may call nothing. */
   principalFor(clientId: string | undefined): Principal {
     const r = this.router?.resolveClient(clientId);
     return r?.known ? clientPrincipal(clientId, r.scope) : deniedPrincipal(clientId);
   }
   private readonly reloadLock = new Mutex();
+  /** 13.2.0: committed config generations (immutable snapshots); calls pin one. */
+  private gens!: Generations;
+  /**
+   * 13.2.0 fault injection (tests / chaos drills): a function per reload phase, called when the reload reaches it; a
+   * throw fails the reload there. Phases: prepare:catalog, prepare:plugins, prepare:modules, prepare:servers,
+   * commit:router, commit:modules, commit:plugins, commit:servers, commit:final.
+   */
+  faults?: Partial<Record<ReloadPhase, () => void>>;
   /** Developer portal keys (3.8). */
   readonly portal: PortalStore;
   /** Peer gateways (3.6). */
@@ -119,7 +167,7 @@ export class Gateway {
   /** 4.5: upstream mTLS / SPIFFE identity. */
   readonly mtls = new MtlsManager(() => this.config.mtls, () => this.config.configDir ?? process.cwd());
   /** 4.3: cost accounting and budgets. */
-  readonly costs = new CostLedger(() => this.config.costs);
+  readonly costs = new CostLedger(() => this.cfgNow().costs);
   /** 4.2: tool chains. */
   readonly chains = new ChainService({
     config: () => this.config.chains,
@@ -158,6 +206,7 @@ export class Gateway {
     this.cors = corsMiddleware({ origins: this.corsOrigins(config) });
     this.jsonParser = express.json({ limit: this.maxBodyBytes() });
     configureRedaction(config.security?.redactPatterns);
+    this.gens = new Generations(this.snapshot());
     this.ipFilter = config.security?.ipAllowlist ? ipAllowlistMiddleware(config.security.ipAllowlist) : undefined;
   }
 
@@ -219,6 +268,8 @@ export class Gateway {
       throw err;
     }
     if (this.plugins.size > 0) logger.info(`Plugins: ${this.plugins.list().map((p) => p.name).join(', ')}`);
+    // 13.2.0: generation 1 = the config the gateway started with, with its plugin instances.
+    this.gens = new Generations(this.snapshot());
 
     this.tracer = await createTracer(this.config.observability?.tracing);
     if (this.tracer.enabled) logger.info(`Tracing enabled (${this.config.observability?.tracing?.exporter ?? 'otlp-http'})`);
@@ -240,19 +291,32 @@ export class Gateway {
       proxy: this.proxy,
       metrics: this.metrics,
       tracer: () => this.tracer,
-      requestLog: () => this.config.monitor?.requestLog !== false,
-      policy: () => this.config.policy,
+      // 13.2.0: every config read of a call resolves in the generation the call pinned (cfgNow / callGeneration).
+      requestLog: () => this.cfgNow().monitor?.requestLog !== false,
+      policy: () => this.cfgNow().policy,
       plugins: this.plugins,
-      cache: new ToolCache(() => this.config.cache),
-      recorder: new ReplayRecorder(() => this.config.replay),
-      usage: new UsageMeter(() => this.config.quotas),
+      pluginList: () => callGeneration.getStore()?.plugins ?? this.plugins.list(),
+      generations: { acquire: () => this.gens.acquire() },
+      cache: new ToolCache(() => this.cfgNow().cache),
+      recorder: new ReplayRecorder(() => this.cfgNow().replay),
+      usage: new UsageMeter(() => this.cfgNow().quotas),
       costs: this.costs,
-      tenantsOf: (clientId) => (this.config.tenants?.length ? membershipsOf(this.config.tenants, clientId).map((m) => m.tenant) : []),
+      tenantsOf: (clientId) => {
+        const tenants = this.cfgNow().tenants;
+        return tenants?.length ? membershipsOf(tenants, clientId).map((m) => m.tenant) : [];
+      },
       secrets: this.secrets,
-      serverConfig: (id) => this.registry.getServer(id),
-      compliance: new ComplianceEngine(() => this.config.compliance),
-      config: () => this.config,
-      exposed: (serverId, tool) => this.registry.isToolExposed(serverId, tool),
+      serverConfig: (id) => {
+        const g = callGeneration.getStore();
+        return g ? g.servers.get(id) : this.registry.getServer(id);
+      },
+      serverKey: (id) => serverKey(callGeneration.getStore()?.servers.get(id)),
+      compliance: new ComplianceEngine(() => this.cfgNow().compliance),
+      config: () => this.cfgNow(),
+      exposed: (serverId, tool) => {
+        const pinned = callGeneration.getStore()?.servers.get(serverId);
+        return pinned ? !this.registry.isStaged(serverId) && isToolAllowed(tool, pinned.tools) : this.registry.isToolExposed(serverId, tool);
+      },
       moduleFailure: (id) => (this.featureRouter ? this.featureRouter.failureOf(id) : loadFailureOf(id)),
       staged: (id) => this.registry.isStaged(id),
       federation: (this.federation = new Federation({
@@ -269,7 +333,7 @@ export class Gateway {
               tools: this.registry.getTools(s.id).filter((t) => this.registry.isToolExposed(s.id, t.name)).map((t) => t.name),
             })),
       })),
-      router: new SmartRouter(() => this.config.routing, { isConnected: (id) => this.proxy.isConnected(id) && !this.registry.isStaged(id) }),
+      router: new SmartRouter(() => this.cfgNow().routing, { isConnected: (id) => this.proxy.isConnected(id) && !this.registry.isStaged(id) }),
       balancer: new LoadBalancer({
         servers: () => this.registry.getAllServers(),
         isConnected: (id) => this.proxy.isConnected(id) && !this.registry.isStaged(id),
@@ -424,6 +488,10 @@ export class Gateway {
           invoke: (serverId, name, args, principal, clientId) =>
             this.invoker!.invoke({ serverId, name, kind: 'tool', method: 'tools/call', params: args, clientId: clientId ?? principal?.id ?? 'feature', principal, via: 'rest', timeoutMs: this.registry.getServer(serverId)?.timeout }),
           principalFor: (clientId) => this.principalFor(clientId),
+          reloadState: () => {
+            const g = this.generations();
+            return { generation: g.current, committedAt: this.gens.current.committedAt, alive: g.alive, pinned: g.pinned, committed: g.committed, rollbacks: g.rollbacks };
+          },
           store: () => this.stateStore,
           resolveScope: (clientId) => this.router?.resolveClient(clientId),
           recent: (limit) => this.metrics.getRecent(limit),
@@ -693,6 +761,7 @@ export class Gateway {
     this.mtls.stop();
     setUpstreamTls(undefined);
     this.federation?.stop();
+    await this.gens.drainAll();
     await this.proxy.disconnectAll();
     if (this.stateStore && !this.options.stateStore) await this.stateStore.close().catch(() => undefined);
     await this.tracer.shutdown().catch(() => undefined);
@@ -713,6 +782,8 @@ export class Gateway {
   async reload(next: GatewayConfig): Promise<void> {
     const insecure = insecureBindError({ ...next, host: this.config.host, security: { ...next.security, insecure: next.security?.insecure ?? this.config.security?.insecure } });
     if (insecure) throw new Error(insecure.replace('Refusing to start', 'Refusing to reload'));
+    // Concurrent reloads (admin API, file watcher, control plane, catalog installs) are serialized: each one prepares
+    // and commits against the generation the previous one published.
     await this.reloadLock.runExclusive(async () => {
       if (this.stopping) return;
       const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -722,8 +793,6 @@ export class Gateway {
 
       const toRemove = [...current.keys()].filter((id) => !wanted.has(id));
       const reconnectChanged = !same(this.config.reconnect, next.reconnect);
-      // 13.1: brand-new server ids are connected in the prepare phase; servers whose config changed are reconnected
-      // only after everything else committed (one session per id).
       const toAdd = [...wanted.values()].filter((s) => !current.has(s.id));
       const toChange = [...wanted.values()].filter((s) => {
         const prev = current.get(s.id);
@@ -748,17 +817,25 @@ export class Gateway {
       if (this.config.monitor?.retentionHours !== next.monitor?.retentionHours) {
         logger.warn('Config "monitor.retentionHours" changed — restart required for it to take effect');
       }
+      const fault = (phase: ReloadPhase) => this.faults?.[phase]?.();
 
-      // 13.1: Prepare → Validate → Commit. (12.0 disconnected removed servers first and could not restore them on
-      // rollback.)
-      //  - Prepare: build the new resources aside — catalog entries, plugin instances, connections to new server ids.
-      //    Nothing the running gateway uses is changed or closed.
-      //  - Validate: feature modules that the new config activates must evaluate.
-      //  - Commit: swap config, auth, routing, modules, catalog, plugins; reconnect changed servers. A failure restores
-      //    the previous config and disposes what Prepare built; old servers were never touched, so they keep serving.
-      //  - Only after a successful commit are removed servers disconnected and unregistered.
+      // 13.2.0: Prepare → Commit → Publish, per resource kind, with a rollback for each step.
+      //  - Prepare builds everything the new generation needs aside: catalog entries, plugin instances, feature module
+      //    code, sessions for NEW servers (staged: connected, invisible) and for MODIFIED servers (a second session with
+      //    the new config; the current one keeps serving). Any failure: dispose what was built, nothing changed.
+      //  - Commit applies router / auth settings, the config, feature modules (a module transaction), catalog,
+      //    plugins (old instances kept, not closed), policy, then swaps the prepared sessions in and un-stages the new
+      //    servers. Any failure: every step is compensated in reverse — old sessions, old plugin instances, old module
+      //    configs come back.
+      //  - Publish: the next config generation becomes current. New calls pin it; calls in flight finish in the
+      //    generation they pinned (their sessions / plugins / config), and what only the old generation used —
+      //    replaced or removed sessions, replaced plugins — is closed when it retires (its last pinned call ended).
       const prevConfig = this.config;
       const connectedAside: string[] = [];
+      const prepared: PreparedSession[] = [];
+      const deferredChange: McpServerConfig[] = [];
+      let preparedCatalog: Awaited<ReturnType<Catalog['prepare']>> | undefined;
+      let preparedPlugins: GatewayPlugin[] | undefined;
       const disposeAside = async () => {
         await Promise.all(
           connectedAside.map(async (id) => {
@@ -773,184 +850,275 @@ export class Gateway {
         );
         connectedAside.length = 0;
       };
-      let preparedCatalog: Awaited<ReturnType<Catalog['prepare']>> | undefined;
-      let preparedPlugins: Awaited<ReturnType<typeof PluginHost.build>> | undefined;
+      const disposePrepared = async (keep: ReadonlySet<PreparedSession> = new Set()) => {
+        await disposeAside();
+        await Promise.all(prepared.filter((p) => !keep.has(p)).map((p) => this.proxy.discard(p).catch(() => undefined)));
+        if (preparedPlugins) await PluginHost.closeAll(preparedPlugins);
+      };
       try {
+        fault('prepare:catalog');
         if (!same(prevCatalog, next.catalog)) preparedCatalog = await this.catalog.prepare(next.catalog);
+        fault('prepare:plugins');
         if (!same(prevPlugins, next.plugins) || !same(prevTrust, next.pluginTrust)) {
+          // 13.2.0: a plugin that cannot be loaded fails the reload (12.x–13.1 kept the old plugins but applied the
+          // rest of the config, so the running plugins no longer matched the config). Partial builds are closed.
           try {
             preparedPlugins = await PluginHost.build(next.plugins, this.options.plugins, next.configDir ?? this.config.configDir, next.pluginTrust);
           } catch (err) {
-            logger.error(`Plugins not reloaded (keeping the current ones): ${err instanceof Error ? err.message : String(err)}`);
+            throw new Error(`plugins: ${err instanceof Error ? err.message : String(err)} (the current plugins keep running)`);
           }
         }
+        fault('prepare:modules');
         for (const e of FEATURE_MANIFEST) {
           if (!(e.activation?.length || e.hook) || !isFeatureActive(next, e.id) || isFeatureActive(prevConfig, e.id)) continue;
           if (!(await loadFeature(e.id))) throw new Error(`feature module "${e.id}" cannot be loaded: ${loadRecord(e.id)?.error ?? 'unknown error'}`);
         }
-        connectedAside.push(...toAdd.filter((s) => s.enabled !== false).map((s) => s.id));
-        // 13.1.1: staged — connected, but not listed or routable (tools/list, resources, invoke, splits, rollouts)
-        // until the commit below.
+        fault('prepare:servers');
+        // Modified servers: the new config gets its own session now; the current session keeps serving until commit.
+        // A server that is down anyway (nothing to keep serving) is reconnected after the commit, as before.
+        await Promise.all(
+          toChange.map(async (s) => {
+            if (!this.proxy.isConnected(s.id)) {
+              deferredChange.push(s);
+              return;
+            }
+            try {
+              prepared.push(await this.supervisor.prepareSession(s));
+            } catch (err) {
+              throw new Error(`server "${s.id}": the new config could not be connected (${err instanceof Error ? err.message : String(err)}); the current one keeps serving`);
+            }
+          }),
+        );
+        connectedAside.push(...toAdd.map((s) => s.id));
+        // 13.1.1: staged — connected, but not listed or routable until the commit below.
         await this.connectServers(toAdd, { staged: true });
       } catch (err) {
         this.rollbacks++;
-        await disposeAside();
+        await disposePrepared();
         logger.error(`Hot reload rejected while preparing (nothing changed): ${err instanceof Error ? err.message : String(err)}`);
         throw err;
       }
 
+      const txn = this.featureRouter?.begin();
+      let pluginsBefore: GatewayPlugin[] | undefined;
+      const installed: Array<{ prepared: PreparedSession; old?: RetiredSession; oldConfig?: McpServerConfig; oldTools: ReturnType<ServerRegistry['getTools']>; oldCatalog: ReturnType<ServerRegistry['getCatalog']> }> = [];
+      let rolledMtls = false;
       try {
-      // Router-level settings (auth may be rejected and kept; the router logs that).
-      this.router?.update(this.withPortalKeys(next));
-      if (!same(this.config.auth, next.auth)) {
-        applied.push('auth');
-        this.mcp?.refreshClients();
-      }
-      if (!same(this.config.rateLimit, next.rateLimit)) applied.push('rateLimit');
-      if (!same(this.config.monitor, next.monitor)) applied.push('monitor');
-      if (!same(this.config.mcp, next.mcp)) {
-        this.mcp?.update(next.mcp);
-        applied.push('mcp');
-      }
-      if (!same(this.corsOrigins(), this.corsOrigins(next))) {
-        this.cors = corsMiddleware({ origins: this.corsOrigins(next) });
-        applied.push('cors');
-      }
-      if (!same(this.config.security, next.security)) {
-        const sec = next.security;
-        configureRedaction(sec?.redactPatterns);
-        this.ipFilter = sec?.ipAllowlist ? ipAllowlistMiddleware(sec.ipAllowlist) : undefined;
-        if ((sec?.maxBodyBytes ?? 0) !== (this.config.security?.maxBodyBytes ?? 0)) {
-          this.jsonParser = express.json({ limit: sec?.maxBodyBytes ?? 10 * 1024 * 1024 });
+        fault('commit:router');
+        // Router-level settings (auth may be rejected and kept; the router logs that).
+        this.router?.update(this.withPortalKeys(next));
+        if (!same(this.config.auth, next.auth)) {
+          applied.push('auth');
+          this.mcp?.refreshClients();
         }
-        applied.push('security');
-      }
-      if (reconnectChanged) {
-        this.supervisor.setReconnectDefaults(next.reconnect);
-        applied.push('reconnect');
-      }
-      if (next.logLevel && next.logLevel !== this.config.logLevel) {
-        logger.setLevel(next.logLevel);
-        applied.push('logLevel');
-      }
-      this.config = {
-        ...this.config,
-        servers: next.servers,
-        logLevel: next.logLevel ?? this.config.logLevel,
-        auth: next.auth,
-        rateLimit: next.rateLimit,
-        monitor: next.monitor ? { ...next.monitor, retentionHours: this.config.monitor?.retentionHours } : next.monitor,
-        cors: next.cors,
-        reconnect: next.reconnect,
-        mcp: next.mcp,
-        security: next.security,
-        policy: next.policy,
-        plugins: next.plugins,
-        cache: next.cache,
-        tenants: next.tenants,
-        catalog: next.catalog,
-        quotas: next.quotas,
-        routing: next.routing,
-        secrets: next.secrets,
-        federation: next.federation,
-        compliance: next.compliance,
-        portal: next.portal,
-        // openai.path is fixed at start; other bridge settings hot reload
-        openai: next.openai ? { ...next.openai, path: this.config.openai?.path } : next.openai,
-        a2a: next.a2a,
-        ...featureSections(next),
-        // 10.9: schema version and module activation hot reload (newly active modules are mounted below)
-        version: next.version,
-        kernel: next.kernel,
-        configDir: next.configDir ?? this.config.configDir,
-      };
-      const activated = (await this.featureRouter?.reconcile(prevConfig)) ?? [];
-      if (activated.length) applied.push(`modules (${activated.join(', ')})`);
-      if (preparedCatalog) {
-        this.catalog.commit(preparedCatalog);
-        applied.push('catalog');
-      }
-      if (!same(prevTenants, next.tenants)) {
-        this.mcp?.refreshClients();
-        applied.push('tenants');
-      }
-      if (!same(prevFederation, next.federation)) {
-        this.federation?.refreshPeers();
-        this.federation?.start();
-        applied.push('federation');
-      }
-      if (!same(prevMtls, next.mtls)) {
-        this.mtls.stop();
-        if (next.mtls) {
-          this.mtls.start();
-          setUpstreamTls(this.mtls);
-        } else setUpstreamTls(undefined);
-        applied.push('mtls');
-      }
-      if (!same(prevSecrets, next.secrets)) {
-        this.secrets.configure();
-        this.startSecretRotation();
-        applied.push('secrets');
-      }
-      if (!same(prevCache, next.cache)) {
-        this.invoker?.cache?.purge();
-        applied.push('cache');
-      }
-      if (preparedPlugins) {
-        await this.plugins.set(preparedPlugins);
-        applied.push('plugins');
-      }
-      if (!same(prevPolicy, next.policy)) {
-        this.invoker?.refreshPolicy();
-        applied.push('policy');
-      }
-      if (applied.includes('security')) {
-        try {
-          this.applyTrustProxy();
-        } catch (err) {
-          logger.error(err instanceof Error ? err.message : String(err));
+        if (!same(this.config.rateLimit, next.rateLimit)) applied.push('rateLimit');
+        if (!same(this.config.monitor, next.monitor)) applied.push('monitor');
+        if (!same(this.config.mcp, next.mcp)) {
+          this.mcp?.update(next.mcp);
+          applied.push('mcp');
         }
-      }
-      await this.connectServers(toChange);
-      // 13.1.1: everything committed — the servers prepared aside become visible and routable.
-      this.registry.commitStaged(connectedAside);
+        if (!same(this.corsOrigins(), this.corsOrigins(next))) {
+          this.cors = corsMiddleware({ origins: this.corsOrigins(next) });
+          applied.push('cors');
+        }
+        if (!same(this.config.security, next.security)) {
+          const sec = next.security;
+          configureRedaction(sec?.redactPatterns);
+          this.ipFilter = sec?.ipAllowlist ? ipAllowlistMiddleware(sec.ipAllowlist) : undefined;
+          if ((sec?.maxBodyBytes ?? 0) !== (this.config.security?.maxBodyBytes ?? 0)) {
+            this.jsonParser = express.json({ limit: sec?.maxBodyBytes ?? 10 * 1024 * 1024 });
+          }
+          applied.push('security');
+        }
+        if (reconnectChanged) {
+          this.supervisor.setReconnectDefaults(next.reconnect);
+          applied.push('reconnect');
+        }
+        if (next.logLevel && next.logLevel !== this.config.logLevel) {
+          logger.setLevel(next.logLevel);
+          applied.push('logLevel');
+        }
+        this.config = {
+          ...this.config,
+          servers: next.servers,
+          logLevel: next.logLevel ?? this.config.logLevel,
+          auth: next.auth,
+          rateLimit: next.rateLimit,
+          monitor: next.monitor ? { ...next.monitor, retentionHours: this.config.monitor?.retentionHours } : next.monitor,
+          cors: next.cors,
+          reconnect: next.reconnect,
+          mcp: next.mcp,
+          security: next.security,
+          policy: next.policy,
+          plugins: next.plugins,
+          pluginTrust: next.pluginTrust,
+          cache: next.cache,
+          tenants: next.tenants,
+          catalog: next.catalog,
+          quotas: next.quotas,
+          routing: next.routing,
+          secrets: next.secrets,
+          federation: next.federation,
+          compliance: next.compliance,
+          portal: next.portal,
+          // openai.path is fixed at start; other bridge settings hot reload
+          openai: next.openai ? { ...next.openai, path: this.config.openai?.path } : next.openai,
+          a2a: next.a2a,
+          ...featureSections(next),
+          // 10.9: schema version and module activation hot reload (newly active modules are mounted below)
+          version: next.version,
+          kernel: next.kernel,
+          configDir: next.configDir ?? this.config.configDir,
+        };
+        fault('commit:modules');
+        // 13.2.0: one module transaction — init / reconfigure / disable failures throw and are compensated below.
+        const activated = (await this.featureRouter?.reconcile(prevConfig, txn)) ?? [];
+        if (activated.length) applied.push(`modules (${activated.join(', ')})`);
+        if (preparedCatalog) {
+          this.catalog.commit(preparedCatalog);
+          applied.push('catalog');
+        }
+        if (!same(prevTenants, next.tenants)) {
+          this.mcp?.refreshClients();
+          applied.push('tenants');
+        }
+        if (!same(prevFederation, next.federation)) {
+          this.federation?.refreshPeers();
+          this.federation?.start();
+          applied.push('federation');
+        }
+        if (!same(prevMtls, next.mtls)) {
+          rolledMtls = true;
+          this.mtls.stop();
+          if (next.mtls) {
+            this.mtls.start();
+            setUpstreamTls(this.mtls);
+          } else setUpstreamTls(undefined);
+          applied.push('mtls');
+        }
+        if (!same(prevSecrets, next.secrets)) {
+          this.secrets.configure();
+          this.startSecretRotation();
+          applied.push('secrets');
+        }
+        if (!same(prevCache, next.cache)) applied.push('cache');
+        fault('commit:plugins');
+        if (preparedPlugins) {
+          // old instances are kept open: calls pinned to the current generation still run their hooks
+          pluginsBefore = [...this.plugins.list()];
+          await this.plugins.set(preparedPlugins, { close: false });
+          applied.push('plugins');
+        }
+        if (!same(prevPolicy, next.policy)) {
+          this.invoker?.refreshPolicy();
+          applied.push('policy');
+        }
+        if (applied.includes('security')) {
+          try {
+            this.applyTrustProxy();
+          } catch (err) {
+            logger.error(err instanceof Error ? err.message : String(err));
+          }
+        }
+        fault('commit:servers');
+        for (const p of prepared) {
+          const cfg = wanted.get(p.serverId)!;
+          const entry: (typeof installed)[number] = {
+            prepared: p,
+            oldConfig: this.registry.getServer(p.serverId),
+            oldTools: this.registry.getTools(p.serverId),
+            oldCatalog: this.registry.getCatalog(p.serverId),
+          };
+          entry.old = await this.proxy.install(p);
+          installed.push(entry);
+          this.registry.register(cfg);
+          this.supervisor.adopt(cfg, p);
+        }
+        // 13.1.1: the servers prepared aside become visible and routable.
+        this.registry.commitStaged(connectedAside);
+        fault('commit:final');
       } catch (err) {
         this.rollbacks++;
         logger.error(`Hot reload failed, rolled back to the previous config: ${err instanceof Error ? err.message : String(err)}`);
         this.config = prevConfig;
+        // Servers: the previous sessions come back; prepared ones are closed.
+        for (const i of installed.reverse()) {
+          try {
+            await this.proxy.uninstall(i.prepared, i.old);
+            if (i.oldConfig) {
+              this.registry.register(i.oldConfig);
+              this.supervisor.adopt(i.oldConfig, { tools: i.oldTools, catalog: i.oldCatalog });
+            }
+          } catch (e) {
+            logger.error(`Rollback of server ${i.prepared.serverId} incomplete: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+        // Plugins: the previous instances (never closed) come back; the new ones are closed.
+        if (pluginsBefore) await this.plugins.set(pluginsBefore, { close: false }).catch(() => undefined);
+        // Feature modules: compensations in reverse order (reconfigure back, re-init disabled, dispose activated).
+        await txn?.rollback();
         try {
           this.router?.update(this.withPortalKeys(prevConfig));
           this.mcp?.update(prevConfig.mcp);
           this.cors = corsMiddleware({ origins: this.corsOrigins(prevConfig) });
           configureRedaction(prevConfig.security?.redactPatterns);
           this.ipFilter = prevConfig.security?.ipAllowlist ? ipAllowlistMiddleware(prevConfig.security.ipAllowlist) : undefined;
+          this.jsonParser = express.json({ limit: this.maxBodyBytes() });
           this.supervisor.setReconnectDefaults(prevConfig.reconnect);
           if (prevConfig.logLevel) logger.setLevel(prevConfig.logLevel);
           this.invoker?.refreshPolicy();
           this.mcp?.refreshClients();
+          if (!same(prevFederation, next.federation)) this.federation?.refreshPeers();
+          if (rolledMtls) {
+            this.mtls.stop();
+            if (prevConfig.mtls) {
+              this.mtls.start();
+              setUpstreamTls(this.mtls);
+            } else setUpstreamTls(undefined);
+          }
+          if (!same(prevSecrets, next.secrets)) {
+            this.secrets.configure();
+            this.startSecretRotation();
+          }
           if (preparedCatalog) await this.catalog.refresh().catch(() => {});
+          this.applyTrustProxy();
         } catch (e) {
           logger.error(`Rollback incomplete: ${e instanceof Error ? e.message : String(e)}`);
         }
-        await disposeAside();
+        await disposePrepared(new Set(installed.map((i) => i.prepared)));
         throw err;
       }
+      txn?.commit();
 
-      // Committed: only now are removed servers closed.
+      // ── Publish: generation N+1 becomes current (the commit point). ──
+      const prevGen = this.gens.current.id;
+      const gen = this.gens.publish(this.snapshot());
+      // What only generation N still uses is released when N retires (its last pinned call ended).
+      for (const i of installed) {
+        const old = i.old;
+        this.gens.onRetire(prevGen, () => this.proxy.closeRetired(old));
+      }
+      if (pluginsBefore) {
+        const dropped = pluginsBefore.filter((p) => !preparedPlugins!.includes(p));
+        this.gens.onRetire(prevGen, () => PluginHost.closeAll(dropped));
+      }
+      // Removed servers: unlisted and unroutable now; their sessions drain the calls pinned to generation N.
       await Promise.all(
         toRemove.map(async (id) => {
-          try {
-            this.supervisor.forget(id);
-            await this.proxy.disconnect(id);
-          } catch (e) {
-            logger.warn(`Removed server ${id} did not disconnect cleanly: ${e instanceof Error ? e.message : String(e)}`);
-          }
+          this.supervisor.forget(id);
+          const r = await this.proxy.retire(id).catch(() => undefined);
           this.registry.unregister(id);
+          this.gens.onRetire(prevGen, () => this.proxy.closeRetired(r));
         }),
       );
+      // Modified servers that were down: reconnect with the new config (background retries).
+      await this.connectServers(deferredChange);
+      // Cached answers of a server whose config changed or that is gone are not served by the new generation.
+      if (applied.includes('cache')) this.invoker?.cache?.purge();
+      else for (const id of [...toRemove, ...toChange.map((s) => s.id)]) this.invoker?.cache?.purge(id);
       this.invoker?.balancer?.prune();
       logger.info(
-        `Hot reload applied: ${toAdd.length + toChange.length} (re)connected, ${toRemove.length} removed` +
+        `Hot reload applied (generation ${gen.id}): ${toAdd.length + toChange.length} (re)connected, ${toRemove.length} removed` +
           (applied.length ? `; updated ${applied.join(', ')}` : ''),
       );
       try {
@@ -1034,6 +1202,7 @@ export class Gateway {
       }
       await this.installed.add(server);
       await this.connectServers([server]);
+      this.gens.publish(this.snapshot()); // 13.2.0: the server set changed → next generation
       logger.info(`Installed "${server.id}" from catalog entry "${entry.id}"`);
       return { status: 201, body: { server: server.id, entry: entry.id, connected: this.proxy.isConnected(server.id), persisted: !!this.config.catalog?.serversFile } };
     });
@@ -1045,10 +1214,14 @@ export class Gateway {
       if (!this.installed.list().some((s) => s.id === id)) return false;
       await this.installed.remove(id);
       if (!this.config.servers.some((s) => s.id === id)) {
+        // 13.2.0: like a removal by reload — unroutable now, its session drains the calls pinned before.
+        const prevGen = this.gens.current.id;
         this.supervisor.forget(id);
-        await this.proxy.disconnect(id);
+        const r = await this.proxy.retire(id);
         this.registry.unregister(id);
-      }
+        this.gens.publish(this.snapshot());
+        this.gens.onRetire(prevGen, () => this.proxy.closeRetired(r));
+      } else this.gens.publish(this.snapshot());
       return true;
     });
   }

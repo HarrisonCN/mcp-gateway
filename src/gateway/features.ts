@@ -10,6 +10,7 @@
 import express, { type Request, type RequestHandler, type Router } from 'express';
 import type { GatewayConfig, ToolInfo, RequestMetric, ProxyResponse } from '../utils/types.js';
 import { VERSION } from '../utils/version.js';
+import { logger } from '../utils/logger.js';
 import { clientPrincipal, type Principal } from '../auth/authorizer.js';
 import type { AccessScope } from '../auth/scopes.js';
 import { FEATURE_MANIFEST, failurePolicyOf, manifestEntry } from '../features/manifest.js';
@@ -48,6 +49,8 @@ export interface FeatureContext {
   applyConfig?: (raw: Record<string, unknown>, dryRun?: boolean) => Promise<{ changes: import('../config/diff.js').ConfigChange[] }>;
   /** Module states of this gateway's kernel (13.0; set by {@link createFeatureRouter}). */
   kernel?: () => KernelModuleView[];
+  /** 13.2.0: hot reload state — committed config generation, generations kept alive by in-flight calls, rollbacks. */
+  reloadState?: () => { generation: number; committedAt: string; alive: number; pinned: Record<string, number>; committed: number; rollbacks: number };
 }
 
 /** Health a module reports (13.0 lifecycle). */
@@ -161,8 +164,14 @@ export interface FeatureRouterDeps {
 export type FeatureRouter = express.Router & {
   /** Load → init → mount every module that runs from the start under the current config (dependency order). */
   activate: () => Promise<string[]>;
-  /** After a config reload (`prev` = the config before it): reconfigure, disable and activate modules. Returns the newly activated ids. */
-  reconcile: (prev: GatewayConfig) => Promise<string[]>;
+  /**
+   * After a config reload (`prev` = the config before it): reconfigure, disable and activate modules. Returns the
+   * newly activated ids. With a transaction (13.2.0) a failing init / reconfigure / disable throws instead of marking
+   * the module failed, and every step already taken is recorded so {@link KernelTxn.rollback} can compensate it.
+   */
+  reconcile: (prev: GatewayConfig, txn?: KernelTxn) => Promise<string[]>;
+  /** 13.2.0: start a module transaction for one hot reload. */
+  begin: () => KernelTxn;
   /** 10.9 name of {@link activate}. */
   sync: () => Promise<string[]>;
   /** Dispose every module that was activated (reverse dependency order). */
@@ -176,6 +185,17 @@ export type FeatureRouter = express.Router & {
 };
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/**
+ * 13.2.0: the module steps of one hot reload and their compensations. `rollback()` undoes them in reverse order (a
+ * reconfigure is undone by reconfiguring back, a disable by initialising again, an activation by disposing); a
+ * compensation that fails marks that module failed (logged) — the only state that cannot be restored automatically.
+ */
+export interface KernelTxn {
+  readonly steps: readonly string[];
+  rollback(): Promise<void>;
+  commit(): void;
+}
 
 /**
  * Router for `/api/v1`: `GET /admin/features` and every module under `/admin/<id>` (client routes under
@@ -237,44 +257,59 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
     }
   };
 
-  const activateOne = (id: string): Promise<boolean> => {
+  type Txn = KernelTxn & { undo: Array<{ id: string; step: string; fn: () => Promise<void> }> };
+  const activateOne = (id: string, txn?: Txn): Promise<boolean> => {
     const st = states.get(id);
     if (st?.state === 'active') return Promise.resolve(true);
     if (st?.state === 'failed') return Promise.resolve(false);
     let p = activating.get(id);
-    if (p) return p;
+    if (p && !txn) return p;
+    // 13.2.0: inside a reload transaction a failure throws (the reload rolls back) instead of marking the module failed.
+    const refuse = (error: string): false => {
+      if (txn) throw new Error(`feature module "${id}" ${error}`);
+      fail(id, error);
+      return false;
+    };
     p = (async () => {
       const entry = explicit ? undefined : manifestEntry(id);
       // dependencies first: evaluated always, initialised when they are active themselves
       for (const d of entry?.dependsOn ?? []) {
-        if (isFeatureActive(cfg(), d) && !(await activateOne(d))) {
-          fail(id, `dependency "${d}" failed: ${states.get(d)?.error ?? failureOf(d) ?? 'unknown error'}`);
-          return false;
+        if (isFeatureActive(cfg(), d) && !(await activateOne(d, txn))) {
+          return refuse(`dependency "${d}" failed: ${states.get(d)?.error ?? failureOf(d) ?? 'unknown error'}`);
         }
       }
-      if (!explicit && !(await loadFeature(id))) {
-        fail(id, loadRecord(id)?.error ?? 'failed to load');
-        return false;
-      }
+      if (!explicit && !(await loadFeature(id))) return refuse(loadRecord(id)?.error ?? 'failed to load');
       const m = moduleOf(id);
-      if (!m) {
-        fail(id, 'the module did not register itself');
-        return false;
-      }
+      if (!m) return refuse('the module did not register itself');
       try {
         await m.init?.(ctx);
         mount(m);
       } catch (e) {
-        fail(id, `init: ${errText(e)}`);
-        return false;
+        if (txn) {
+          // compensation of a partial init: give the module the chance to release what it acquired
+          await Promise.resolve(m.dispose?.()).catch((err) => logger.warn(`feature module "${id}" dispose after failed init: ${errText(err)}`));
+          states.delete(id);
+          clearRuntimeFailed(id);
+        }
+        return refuse(`init: ${errText(e)}`);
       }
       states.set(id, { state: 'active' });
       clearRuntimeFailed(id);
       if (!activatedOrder.includes(id)) activatedOrder.push(id);
+      txn?.undo.push({
+        id,
+        step: 'activate',
+        fn: async () => {
+          await m.dispose?.();
+          states.delete(id);
+          const i = activatedOrder.indexOf(id);
+          if (i >= 0) activatedOrder.splice(i, 1);
+        },
+      });
       return true;
     })();
     activating.set(id, p);
-    void p.finally(() => activating.delete(id));
+    void p.finally(() => activating.delete(id)).catch(() => undefined);
     return p;
   };
 
@@ -305,7 +340,31 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
   };
   router.sync = router.activate;
 
-  router.reconcile = async (prev: GatewayConfig) => {
+  router.begin = () => {
+    const txn: Txn = {
+      undo: [],
+      get steps() {
+        return txn.undo.map((u) => `${u.step}:${u.id}`);
+      },
+      rollback: async () => {
+        for (const u of txn.undo.splice(0).reverse()) {
+          try {
+            await u.fn();
+          } catch (e) {
+            logger.error(`Module rollback of ${u.step} "${u.id}" failed — module marked failed: ${errText(e)}`);
+            fail(u.id, `rollback of ${u.step}: ${errText(e)}`);
+          }
+        }
+      },
+      commit: () => {
+        txn.undo.length = 0;
+      },
+    };
+    return txn;
+  };
+
+  router.reconcile = async (prev: GatewayConfig, txnIn?: KernelTxn) => {
+    const txn = txnIn as Txn | undefined;
     const next = cfg();
     for (const id of order([...states.keys()])) {
       const st = states.get(id);
@@ -315,19 +374,41 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
         try {
           await m?.disable?.(ctx);
           states.set(id, { state: 'disabled' });
+          txn?.undo.push({
+            id,
+            step: 'disable',
+            fn: async () => {
+              await m?.init?.(ctx);
+              states.set(id, { state: 'active' });
+            },
+          });
         } catch (e) {
+          if (txn) throw new Error(`feature module "${id}" disable: ${errText(e)}`);
           fail(id, `disable: ${errText(e)}`);
         }
         continue;
       }
       try {
         await m?.reconfigure?.(next, prev, ctx);
+        if (m?.reconfigure) txn?.undo.push({ id, step: 'reconfigure', fn: async () => void (await m.reconfigure!(prev, next, ctx)) });
       } catch (e) {
+        if (txn) {
+          // the module may have applied part of the new config: reconfigure it back first
+          if (m?.reconfigure) txn.undo.push({ id, step: 'reconfigure', fn: async () => void (await m.reconfigure!(prev, next, ctx)) });
+          throw new Error(`feature module "${id}" reconfigure: ${errText(e)}`);
+        }
         fail(id, `reconfigure: ${errText(e)}`);
       }
     }
     for (const [id, st] of states) if (st.state === 'disabled' && isFeatureActive(next, id)) states.delete(id);
-    return router.activate();
+    if (!txn) return router.activate();
+    const added: string[] = [];
+    for (const id of order(startIds(next))) {
+      const before = states.get(id)?.state;
+      if (before === 'disabled' || before === 'failed') continue;
+      if ((await activateOne(id, txn)) && before !== 'active') added.push(id);
+    }
+    return added;
   };
 
   router.dispose = async () => {

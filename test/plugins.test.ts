@@ -242,9 +242,10 @@ describe('plugins in the gateway', () => {
     const denied = await call(url, {});
     expect(denied.status).toBe(403);
     expect(await denied.json()).toMatchObject({ message: 'cfg deny' });
-    // A broken plugin config keeps the current plugins.
-    await gw!.reload({ ...base, configDir: dir, plugins: [{ module: './missing.mjs' }] });
+    // A broken plugin config keeps the current plugins — 13.2.0: and fails the whole reload (nothing else applied).
+    await expect(gw!.reload({ ...base, logLevel: 'warn', configDir: dir, plugins: [{ module: './missing.mjs' }] })).rejects.toThrow(/plugins: .*missing\.mjs.*current plugins keep running/);
     expect(gw!.getPlugins()).toEqual(['thrower', 'cfg']);
+    expect((await call(url, {})).status).toBe(403);
   });
 
   it('refuses to start with a plugin that cannot be loaded', async () => {
