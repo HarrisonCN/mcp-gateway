@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [12.0.7] - 2026-10-10
+
+**Maintenance backport (12.x).** Two deployment fixes from 13.4.0; no other changes. Not a security release. The
+config schema is unchanged.
+
+### Fixed
+- The container image's `HEALTHCHECK` probed `http://localhost:4000`, which busybox `wget` resolves to `::1` while the
+  gateway listens on IPv4 `0.0.0.0`, so containers were always reported `unhealthy` (Docker / Compose `--wait` /
+  `depends_on: service_healthy`, Swarm restarts). It now probes `127.0.0.1`; the Compose example too. CI now asserts
+  the image reports healthy.
+- On Kubernetes, a Service named `mcp-gateway` (for example a Helm release whose name contains `mcp-gateway`) makes
+  the kubelet inject the service-link variable `MCP_GATEWAY_PORT=tcp://<cluster-ip>:<port>`, which the gateway read as
+  its listen port (`NaN`) and refused to start (CrashLoopBackOff). A `tcp://` / `udp://` / `sctp://` value is now
+  ignored with a warning, any other non-numeric value is a clear startup error, and the Helm chart sets
+  `enableServiceLinks: false`.
+
 ## [12.0.6] - 2026-10-10
 
 **Security backport (12.x).** Fix for MGW-2026-012 from 13.3.0 (the Redis client change only; none of the other
