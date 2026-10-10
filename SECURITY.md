@@ -17,6 +17,14 @@ Please **do not** open a public issue. Use
 with steps to reproduce and the affected version. You will get an answer within a few days; fixes are released as
 patch versions and credited in the CHANGELOG unless you prefer otherwise.
 
+## Security advisories
+
+| ID | Severity | Fixed in | Summary |
+|---|---|---|---|
+| MGW-2026-001 | High | 13.1.0, 12.0.1, 10.9.2 | Re-authorization after reroute: call hooks (`rollouts`, `blue-green`, `self-healing`, `realtime-budgets` downgrade) and `routing` splits could move a call to another server after the central authorizer ran, so a client allowed only on the stable server could reach a canary / fallback it was not allowed on. Fixed by a mandatory final authorization against the final target immediately before the upstream send, and a frozen authorized target. Affected: 7.5.0 – 13.0.0, only deployments that use rollouts, blue/green, self-healing fallbacks / rollbacks, budget downgrades or routing splits. |
+
+The full list (including 13.x-only advisories) is in SECURITY.md on the `main` branch.
+
 ## Incident response and supply chain
 
 - [docs/security/incident-response.md](docs/security/incident-response.md) — triage targets by severity, fix and
