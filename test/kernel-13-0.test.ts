@@ -9,7 +9,7 @@ import { readFileSync, readdirSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { FEATURE_MANIFEST, manifestEntry } from '../src/features/manifest.js';
-import { dependencyOrder, dependentsOf, requireDependency, markRuntimeFailed, clearRuntimeFailed } from '../src/gateway/kernel-runtime.js';
+import { dependencyOrder, dependentsOf, requireDependency, ModuleFailures } from '../src/gateway/kernel-runtime.js';
 import { createFeatureRouter, FEATURE_ACTIVATION, type FeatureModule, type FeatureRouter } from '../src/gateway/features.js';
 import { activeCallHooks, registerCallHook } from '../src/gateway/hooks.js';
 import { RELEASE_LINE } from '../src/features/kernel.js';
@@ -194,7 +194,6 @@ describe('13.0: lifecycle, dependency ordering and failure isolation', () => {
     expect(calls).toEqual(['reconfigure:a', 'reconfigure:b']);
     await router.dispose();
     expect(calls.slice(2)).toEqual(['dispose:b', 'dispose:a']);
-    clearRuntimeFailed();
     await s.close();
   });
 
@@ -230,10 +229,11 @@ describe('13.0: lifecycle, dependency ordering and failure isolation', () => {
     const ids = activeCallHooks(cfg).map((h) => h.id);
     expect(ids.indexOf('dlp')).toBeLessThan(ids.indexOf('sla'));
     expect(ids.indexOf('sla')).toBeLessThan(ids.indexOf('zz-plugin-13'));
-    markRuntimeFailed('dlp', 'test');
-    expect(activeCallHooks(cfg).map((h) => h.id)).not.toContain('dlp');
-    clearRuntimeFailed('dlp');
-    expect(activeCallHooks(cfg).map((h) => h.id)).toContain('dlp');
+    const failures = new ModuleFailures();
+    failures.mark('dlp', 'test');
+    expect(activeCallHooks(cfg, (id) => failures.get(id)).map((h) => h.id)).not.toContain('dlp');
+    failures.clear('dlp');
+    expect(activeCallHooks(cfg, (id) => failures.get(id)).map((h) => h.id)).toContain('dlp');
   });
 
   it('GET /admin/kernel reports state, dependencies and evaluation on a real gateway', async () => {

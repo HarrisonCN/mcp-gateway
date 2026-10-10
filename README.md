@@ -338,15 +338,16 @@ The project follows [Semantic Versioning](https://semver.org/). Within a major l
 Prometheus metric names change only in backward-compatible ways. Deep imports, log format, the dashboard and the
 audit database schema are not covered — see [stability and versioning](docs/api-reference.md#stability-and-versioning).
 
-## What's New in v13.0
+## What's New in v13.1
 
-**Breaking: true modular kernel.** Feature modules are now loaded with `import()` only when you enable them — a
-gateway with no feature sections evaluates none of the 47 modules (12.0 evaluated all of them): import −28 %, RSS
-60 → 54 MiB in the minimal profile. Modules get a lifecycle contract (`init` / `reconfigure` / `disable` / `dispose` /
-`health`) with declared dependencies, dependency ordering and failure isolation (a broken module answers 503 instead
-of stopping the gateway), visible in `GET /api/v1/admin/kernel`. New lean entry `@winstonsayno/mcp-gateway/gateway`.
-Every tool call still goes through the one central authorizer. Config schema stays v11.
-[Migrating to 13.0](docs/guides/migrating-to-v13.md).
+**Security release.** A call that a hook (rollouts, blue/green, self-healing, budget downgrade) or a routing split
+reroutes is now **authorized again against its final target** right before the upstream send — scope, tool exposure,
+policy rules, data residency and the security guard modules — and the target is frozen afterwards (fixes a canary
+reachable by clients that were only allowed on stable; also fixed in 12.0.1 and 10.9.2). **Security modules fail
+closed:** every feature module has a failure policy (`closed` / `open` / `degrade`), so a broken DLP, policy-engine or
+agent-identity module refuses the calls it protects (`-32026`) instead of silently letting them through. Module
+failures are per gateway, and hot reload is Prepare → Validate → Commit: removed servers are only disconnected after a
+successful commit. See [SECURITY.md](SECURITY.md#security-advisories).
 
 ## Documentation
 

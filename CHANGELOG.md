@@ -9,6 +9,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.1.0] - 2026-10-10
+
+**Security release.** Fixes an authorization bypass when a call is rerouted (P0), makes failed security modules fail
+closed (P0), keeps module failures per gateway (P1) and makes hot reload Prepare → Validate → Commit (P1). Config
+schema stays **v11**. Advisories: [SECURITY.md](SECURITY.md#security-advisories) (MGW-2026-001 … 004).
+
+### Security
+- **MGW-2026-001 (high) — re-authorization after reroute.** The central authorizer ran once at the start of the call
+  pipeline, but call hooks (`rollouts` stable → canary, `blue-green`, `self-healing` fallback / rollback,
+  `realtime-budgets` downgrade) and `routing` splits could change the target server afterwards without a new check:
+  a client allowed only on the stable server could reach the canary. The invoker now runs a **mandatory final
+  authorization immediately before the upstream send, against the final target**: the central authorizer (client /
+  tenant / delegation scope ∩ the server's tool exposure) always runs again; when the target changed, the tool policy
+  rules (incl. approval holds), data residency and the `before` hooks of the security guard modules that had not seen
+  the final target (DLP, agent identity, confidential computing, policy engine, privacy, sanitize, approval flows)
+  are evaluated for the new target too. The authorized target (server, tool, kind, principal) is then frozen; the
+  send refuses any call whose target differs from it. A refused reroute answers `-32003` with
+  `data.decision: "reroute-denied"` (`from`, `to`, `reroutedBy`, `reason`), is recorded in history / the audit store
+  and logged as an `audit:` line, and counts in `mcp_gateway_reroute_denials_total`. Also fixed in **12.0.1** and
+  **10.9.2**.
+- **MGW-2026-002 (high) — no fail-open for security modules.** 13.0 skipped the call hooks of a failed module, so a
+  DLP / policy-engine / agent-identity module that failed to load or initialise silently stopped protecting calls.
+  Every feature module now has a **failure policy** in the manifest (`failurePolicy: open | closed | degrade`):
+  - `closed` — security and enforcement modules (`dlp`, `agent-identity`, `confidential`, `policy-engine`,
+    `privacy`, `sanitize`, `approval-flows`, `anomaly`, `multimodal`) and the quota modules `console` and
+    `realtime-budgets`: while the module is configured but failed, tool calls are refused with **`-32026`**
+    (`data.decision: "module-failed"`, `modules`), audited, counted in `mcp_gateway_module_failure_denials_total`;
+    the gateway itself keeps running;
+  - `open` — analytics (`genai-otel`, `billing`, `cost-advisor`, `data-lineage`, `sla`, `time-travel`, `adaptive`,
+    `policy-sim`, `chaos`, `semantic-cache`, `rollouts`): hooks skipped;
+  - `degrade` — `offline`, `self-healing`, `blue-green`, `edge-autonomy`, `pq-identity`, `debug-sessions`: hooks
+    skipped and results carry `_meta["mcp-gateway/degraded"]` (`mcp_gateway_degraded_calls_total`).
+  A module that is not in the manifest (plugins, embedder modules) and registers a request-blocking hook defaults to
+  `closed`. A module whose load failed before its hook registered is caught too. `kernel.failurePolicy` may override
+  the policy of `console`, `realtime-budgets` and `billing` only; security modules are fixed (validation error).
+  `GET /api/v1/admin/kernel` shows each module's `failurePolicy`.
+- **MGW-2026-003 (medium) — module failures were process-wide.** The runtime failure registry was a process-global
+  map, so a module that failed in one `Gateway` changed the hooks of every gateway in the process. Failures are now
+  per kernel (`ModuleFailures`, owned by each gateway's feature router); the process keeps only the immutable manifest
+  and the module load cache.
+- **MGW-2026-004 (medium) — hot reload was not transactional for connections.** 12.0 disconnected and unregistered
+  removed servers before loading modules / refreshing the catalog; a later failure restored config, auth and routing
+  but not the closed connections. `Gateway.reload()` is now **Prepare → Validate → Commit**: the catalog, plugins and
+  connections to new server ids are built aside, newly activated feature modules must load, then the config is swapped
+  atomically; only after a successful commit are removed servers disconnected. A failure disposes what was prepared
+  and the old servers keep serving. (12.0's CHANGELOG and migration guide called the old behaviour "transactional";
+  that wording is corrected.)
+
+### Changed
+- `failureOf()` / `markRuntimeFailed()` / `clearRuntimeFailed()` (internal kernel-runtime exports) are replaced by
+  `ModuleFailures` and `failureOf(id, failures?)`; `activeCallHooks(cfg, failure?)` takes the gateway's failure
+  lookup; new `callHookPlan()`. `Catalog.refresh()` is now `prepare()` + `commit()`.
+- `KernelModuleView.failurePolicy`; `FeatureRouter.failureOf(id)`.
+
+### Notes
+- 10.9.1 (2026-10-09, `lts/10.x`, npm `v10-lts`) backported the 11.1–12.0 authorization fixes to the 10.x LTS line;
+  10.9.2 adds MGW-2026-001.
+
 ## [13.0.0] - 2026-10-09
 
 **Breaking: true modular kernel.** Feature modules are evaluated only when they are enabled — a gateway that
@@ -78,7 +136,7 @@ needed). Guide: [Migrating to 13.0](docs/guides/migrating-to-v13.md). 10.x stays
 
 **Breaking security release.** Third-party stdio MCP servers are isolated from the gateway core — environment
 allowlist, optional uid/gid, working directory and sandbox wrapper with networking off — multimodal per-item limits
-are lower, and hot reload is transactional. Config schema stays **v11** (no `migrate` needed). Guide:
+are lower, and a failed hot reload rolls back its config (not fully transactional, see 13.1.0). Config schema stays **v11** (no `migrate` needed). Guide:
 [Migrating to 12.0](docs/guides/migrating-to-v12.md). 10.x stays LTS.
 
 ### Security
@@ -93,8 +151,10 @@ are lower, and hot reload is transactional. Config schema stays **v11** (no `mig
 ### Breaking
 - stdio environment allowlist (above). Servers that relied on inherited variables need `env` / `envPassthrough`.
 - Multimodal defaults: `maxItemBytes` 10 MiB → 4 MiB, `maxTotalBytes` 32 MiB → 16 MiB.
-- Hot reload is transactional: a failure while applying a config (catalog, plugins, mTLS, …) restores the previous
-  config and rejects the reload (`POST /admin/config` fails) instead of leaving it half-applied.
+- Hot reload rolls back on failure: a failure while applying a config (catalog, plugins, mTLS, …) restores the
+  previous config (auth, routing, policy) and rejects the reload (`POST /admin/config` fails). *Correction (13.1):
+  this was not fully transactional — servers removed by the new config were disconnected before the failure point
+  and were not reconnected by the rollback (MGW-2026-004, fixed in 13.1.0).*
 - `GET /admin/kernel` `line: 12.x`; `RELEASE_LINE` = `{ line: '12.x', lts: false }`.
 
 ### Added

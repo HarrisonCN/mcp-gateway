@@ -147,7 +147,11 @@ export class Catalog {
 
   /** (Re)load `catalog.sources`; failures are logged and skipped. */
   async refresh(fetchImpl?: typeof fetch): Promise<void> {
-    const cfg = this.config();
+    this.commit(await this.prepare(this.config(), fetchImpl));
+  }
+
+  /** Build the entries of a catalog config without applying them (13.1: hot reload prepare phase). */
+  async prepare(cfg: CatalogConfig | undefined, fetchImpl?: typeof fetch): Promise<CatalogEntry[]> {
     const out = cfg?.builtins === false ? [] : [...BUILTIN_CATALOG];
     for (const src of cfg?.sources ?? []) {
       try {
@@ -160,7 +164,12 @@ export class Catalog {
         logger.warn(`Catalog source ${src} failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    this.entries = out;
+    return out;
+  }
+
+  /** Apply entries built by {@link prepare}. */
+  commit(entries: CatalogEntry[]): void {
+    this.entries = entries;
   }
 
   list(): readonly CatalogEntry[] {

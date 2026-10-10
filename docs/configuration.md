@@ -29,6 +29,7 @@ hot reload is rejected and the running configuration kept.
 | `logLevel` | `info` | ✓ | `debug` \| `info` \| `warn` \| `error` |
 | `version` | — | | config schema version; optional, `11` when set (11.0 refuses `10` — run `mcp-gateway migrate --to 11`) |
 | `kernel.modules` | `lazy` | ✓ | `lazy`: only feature modules whose `features.*` section is configured are mounted (others answer 404); `eager`: every module mounted, as in 10.x — see [Migrating to 11.0](guides/migrating-to-v11.md) |
+| `kernel.failurePolicy` | — | ✓ | 13.1: override the failure policy (`open` / `closed` / `degrade`) of `console`, `realtime-budgets` (default `closed`) or `billing` (default `open`). Security modules are always `closed`: while one is configured but failed, tool calls are refused with -32026 |
 | `features` | — | ✓ | every feature-module section (`chaos`, `sla`, `dlp`, …) nested here — see [Migrating to 10.0](guides/migrating-to-v10.md) |
 | `cors.origins` | `["*"]` | ✓ | allowed browser origins: exact values, `*`, or `/regex/` |
 | `health.intervalMs` | `30000` | restart | MCP `ping` interval (min 1000) |

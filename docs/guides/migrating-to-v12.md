@@ -18,9 +18,10 @@ defaults change.
 3. **Feature-module and plugin SDK** (from 11.1, now final): `ctx.invoke(server, tool, args, principal, clientId?)`;
    plugin routes `ctx.invoke(server, tool, args, req | clientId)`. Every call is authorized by the gateway's central
    authorizer.
-4. **Hot reload is transactional:** when applying a new config fails midway (catalog, plugins, mTLS, …) the previous
-   config is restored and the reload call / `POST /admin/config` fails, instead of leaving a half-applied config.
-   Servers already reconnected keep running.
+4. **Hot reload rolls back on failure:** when applying a new config fails midway (catalog, plugins, mTLS, …) the
+   previous config is restored and the reload call / `POST /admin/config` fails, instead of leaving a half-applied
+   config. Servers already reconnected keep running. *Correction (13.1): servers removed by the failed config had
+   already been disconnected and stayed down (MGW-2026-004); 13.1.0 makes reload Prepare → Validate → Commit.*
 5. `GET /api/v1/admin/kernel` reports `line: 12.x`. 10.x stays LTS (fixes until 2027-10-31, security until 2028-10-31).
 
 ## Also new

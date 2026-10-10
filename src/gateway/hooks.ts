@@ -10,8 +10,8 @@
 
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { isFeatureActive } from './features.js';
-import { FEATURE_MANIFEST, hookOwner } from '../features/manifest.js';
-import { failureOf } from './kernel-runtime.js';
+import { FEATURE_MANIFEST, failurePolicyOf, hookOwner, manifestEntry, type FailurePolicy } from '../features/manifest.js';
+import { loadFailureOf } from './kernel-runtime.js';
 
 export interface HookCall {
   serverId: string;
@@ -35,7 +35,7 @@ export interface CallHook {
   refused?: (call: HookCall, error: { code: number; message: string; data?: Record<string, unknown> }, cfg: GatewayConfig) => void;
 }
 
-const hooks: CallHook[] = [];
+const callHooksList: CallHook[] = [];
 const firsts = new Set<string>();
 
 /**
@@ -52,29 +52,85 @@ const rank = (id: string): number => {
 
 /** Register (or replace by id) a call hook. `first` puts a new hook ahead of the others (10.7: edge autonomy). */
 export function registerCallHook(h: CallHook, opts: { first?: boolean } = {}): void {
-  const i = hooks.findIndex((x) => x.id === h.id);
+  const i = callHooksList.findIndex((x) => x.id === h.id);
   if (i >= 0) {
-    hooks[i] = h;
+    callHooksList[i] = h;
     return;
   }
   if (opts.first) firsts.add(h.id);
   const r = rank(h.id);
-  const at = hooks.findIndex((x) => rank(x.id) > r);
-  if (at < 0) hooks.push(h);
-  else hooks.splice(at, 0, h);
+  const at = callHooksList.findIndex((x) => rank(x.id) > r);
+  if (at < 0) callHooksList.push(h);
+  else callHooksList.splice(at, 0, h);
+}
+
+/** Failure lookup of one gateway's kernel (runtime or load failure of a module id). */
+export type FailureLookup = (id: string) => string | undefined;
+
+/** A failed module and what its failure policy did to the call (13.1). */
+export interface FailedHookModule {
+  id: string;
+  policy: FailurePolicy;
+  error: string;
+}
+
+/** What the call pipeline runs under `cfg` (13.1). */
+export interface CallHookPlan {
+  /** Hooks of active, healthy modules (and unknown hooks, e.g. plugins), in pipeline order. */
+  hooks: readonly CallHook[];
+  /** Active modules with failure policy `closed` that failed or are not ready: calls are refused. */
+  closed: FailedHookModule[];
+  /** Active modules with failure policy `degrade` that failed: hooks skipped, results marked degraded. */
+  degraded: FailedHookModule[];
+  /** Active modules with failure policy `open` that failed: hooks skipped. */
+  open: FailedHookModule[];
 }
 
 /**
- * Hooks of active feature modules under `cfg` (10.9 lazy activation; hooks of unknown ids, e.g. plugins, always
- * run). 13.0: hooks of a module that failed (load, init, reconfigure or a failed dependency) are skipped.
+ * The call-hook plan of a gateway under `cfg` (13.1). A hook runs while its module is active (10.9 lazy activation)
+ * and healthy. A module that is active but failed — load, init, reconfigure, a failed dependency, or a hook module
+ * whose hook never registered — is handled by its failure policy ({@link failurePolicyOf}): security modules are
+ * `closed` (the caller refuses the call), analytics `open`, presentation `degrade`. 13.0 skipped every failed
+ * module's hooks (fail-open).
  */
-export function activeCallHooks(cfg: GatewayConfig): readonly CallHook[] {
-  return hooks.filter((h) => {
+export function callHookPlan(cfg: GatewayConfig, failure: FailureLookup = loadFailureOf): CallHookPlan {
+  const plan: CallHookPlan = { hooks: [], closed: [], degraded: [], open: [] };
+  const add = (id: string, policy: FailurePolicy, error: string) => {
+    const list = policy === 'closed' ? plan.closed : policy === 'degrade' ? plan.degraded : plan.open;
+    if (!list.some((x) => x.id === id)) list.push({ id, policy, error });
+  };
+  const hooks: CallHook[] = [];
+  for (const h of callHooksList) {
     const owner = hookOwner(h.id) ?? h.id;
-    return isFeatureActive(cfg, owner) && !failureOf(owner);
-  });
+    if (!isFeatureActive(cfg, owner)) continue;
+    const f = failure(owner);
+    if (!f) hooks.push(h);
+    else add(owner, failurePolicyOf(owner, cfg, !!h.before), f);
+  }
+  // Manifest hook modules that are active but whose hook is not registered: the module failed before it could
+  // register (load / dependency failure) — never a silent bypass.
+  for (const e of FEATURE_MANIFEST) {
+    if (!e.hook || !isFeatureActive(cfg, e.id)) continue;
+    if (e.hookWhen && cfg[e.hookWhen] === undefined) continue;
+    if (callHooksList.some((h) => h.id === e.hook)) continue;
+    const f = failure(e.id);
+    if (f) add(e.id, failurePolicyOf(e.id, cfg), f);
+  }
+  plan.hooks = hooks;
+  return plan;
 }
 
+/** Hooks of active, healthy feature modules under `cfg` (see {@link callHookPlan} for failed modules). */
+export function activeCallHooks(cfg: GatewayConfig, failure: FailureLookup = loadFailureOf): readonly CallHook[] {
+  return callHookPlan(cfg, failure).hooks;
+}
+
+/** Whether a hook id belongs to a security guard module (re-evaluated against the final target after a reroute, 13.1). */
+export const isGuardHook = (hookId: string): boolean => {
+  const owner = hookOwner(hookId);
+  return !!owner && manifestEntry(owner)?.guard === true;
+};
+
 export function callHooks(): readonly CallHook[] {
-  return hooks;
+  return callHooksList;
 }

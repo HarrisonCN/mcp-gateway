@@ -12,8 +12,8 @@ import type { GatewayConfig, ToolInfo, RequestMetric, ProxyResponse } from '../u
 import { VERSION } from '../utils/version.js';
 import { clientPrincipal, type Principal } from '../auth/authorizer.js';
 import type { AccessScope } from '../auth/scopes.js';
-import { FEATURE_MANIFEST, manifestEntry } from '../features/manifest.js';
-import { loadFeature, loadRecord, dependencyOrder, dependentsOf, markRuntimeFailed, clearRuntimeFailed, failureOf } from './kernel-runtime.js';
+import { FEATURE_MANIFEST, failurePolicyOf, manifestEntry } from '../features/manifest.js';
+import { loadFeature, loadRecord, dependencyOrder, dependentsOf, failureOf as moduleFailureOf, ModuleFailures } from './kernel-runtime.js';
 export type { Principal };
 
 export interface FeatureContext {
@@ -66,6 +66,8 @@ export interface KernelModuleView {
   state: 'inactive' | 'available' | 'active' | 'disabled' | 'failed';
   evaluated: boolean;
   dependsOn: readonly string[];
+  /** What tool calls get while the module is failed (13.1). */
+  failurePolicy: import('../features/manifest.js').FailurePolicy;
   loadMs?: number;
   error?: string;
   health?: ModuleHealth;
@@ -151,6 +153,8 @@ export interface FeatureRouterDeps {
   isOperator: (req: Request) => boolean;
   context: FeatureContext;
   features?: FeatureModule[];
+  /** Runtime failure registry of this gateway's kernel (13.1); a new one when absent. */
+  failures?: ModuleFailures;
 }
 
 /** The `/api/v1` feature router plus this gateway's kernel (13.0). */
@@ -167,6 +171,8 @@ export type FeatureRouter = express.Router & {
   modules: () => KernelModuleView[];
   /** Ids of mounted modules. */
   mountedIds: () => string[];
+  /** Runtime or load failure of a module in this gateway (13.1). */
+  failureOf: (id: string) => string | undefined;
 };
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -192,6 +198,10 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
   const activating = new Map<string, Promise<boolean>>();
   const activatedOrder: string[] = [];
   const ctx: FeatureContext = { ...deps.context, kernel: () => views() };
+  const failures = deps.failures ?? new ModuleFailures();
+  const failureOf = (id: string) => moduleFailureOf(id, failures);
+  const markRuntimeFailed = (id: string, error: string) => failures.mark(id, error);
+  const clearRuntimeFailed = (id?: string) => failures.clear(id);
 
   // Each module gets a fixed holder router in the stack (so route listings and the auth matrix see every mounted
   // route); the module's own routers are added to its holder once it is active.
@@ -353,6 +363,7 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
         state,
         evaluated: explicit ? true : e ? rec?.status === 'loaded' : true,
         dependsOn: e?.dependsOn ?? [],
+        failurePolicy: failurePolicyOf(id, cfg(), !!e?.hook),
         ...(rec?.loadMs !== undefined ? { loadMs: rec.loadMs } : {}),
         ...(st?.error ?? failureOf(id) ? { error: st?.error ?? failureOf(id) } : {}),
         ...(health ? { health } : {}),
@@ -360,6 +371,7 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
     });
   router.modules = views;
   router.mountedIds = () => [...mounted.keys()];
+  router.failureOf = failureOf;
 
   router.get('/admin/features', deps.authenticate, operator, (_req, res) => {
     const c = cfg();
