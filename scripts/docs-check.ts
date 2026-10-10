@@ -201,7 +201,7 @@ async function check(root: string, opts: { external?: boolean }) {
 
   const checkLine = (rel: string, abs: string, n: number, l: string, hist: boolean, inFence: boolean) => {
     // image tags
-    for (const m of l.matchAll(/(?:^|[^\w.-])ghcr\.io\/harrisoncn\/mcp-gateway(?::([A-Za-z0-9._-]+))?(@sha256:[\w<>.-]+)?/g)) {
+    for (const m of l.matchAll(/(?:^|[^\w.])ghcr\.io\/harrisoncn\/mcp-gateway(?::([A-Za-z0-9._-]+))?(@sha256:[\w<>.-]+)?/g)) {
       stats.images++;
       const tag = m[1];
       if (!tag || hist) continue;
