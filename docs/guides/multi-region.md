@@ -11,7 +11,7 @@ regions:
   syncIntervalMs: 5000   # default 5000, min 250
   downAfter: 3           # failed syncs before a peer is "down"
   peers:
-    - { id: us-east, url: https://us.gw.example.com, apiKey: ${US_ADMIN_KEY}, priority: 1 }
+    - { id: us-east, url: https://us.gw.example.com, apiKey: "${US_ADMIN_KEY}", priority: 1 }
 ```
 
 Configure the mirror image on `us-east`. `apiKey` must be an operator (unscoped) key on the peer. A peer only

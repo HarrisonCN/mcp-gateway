@@ -19,6 +19,7 @@ kernel** and **config schema v10**. A config that **9.9** loads without deprecat
 | `version: 9` (or none) | `version: 10` — 10.0 refuses `version: 9` | ✓ |
 | feature sections at the top level (`chaos:`, `sla:`, `dlp:`, `sessions:`, …) | nested under `features:` | ✓ (moved, comments kept) |
 
+<!-- docs-check: skip -->
 ```yaml
 # 9.x                              # 10.0
 version: 9                         version: 10

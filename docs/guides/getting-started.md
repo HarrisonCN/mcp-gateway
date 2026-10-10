@@ -81,6 +81,6 @@ Visit `http://localhost:4000/dashboard`. If you enabled auth, paste your API key
 ## Next Steps
 
 - [Remote servers, reconnect and hot reload](./remote-servers.md)
-- [Configuration reference](../../README.md#configuration-reference) — auth, rate limiting, CORS
+- [Configuration reference](../configuration.md) — auth, rate limiting, CORS
 - [Monitor with Prometheus](../../examples/docker/prometheus.yml)
 - [Deploy with Docker](../../examples/docker/docker-compose.yml)

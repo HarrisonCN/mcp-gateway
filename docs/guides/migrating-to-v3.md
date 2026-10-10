@@ -45,6 +45,7 @@ health:
 
 ## Plugins: before / after
 
+<!-- docs-check: skip -->
 ```js
 // 2.x (plugin API v1)
 export default { name: 'audit', onResponse(call, result) { return result; } };

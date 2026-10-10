@@ -162,7 +162,7 @@ Admin traffic (`/api/v1/admin/*`, dashboard, control plane) takes steps 1–2 an
 | MGW-2026-011 | B6 (calls across reloads) | 5 |
 | MGW-2026-012 | B7 (Redis reply desync) | 7 |
 
-Details, affected ranges and fixed versions: [SECURITY.md](../../SECURITY.md#advisories).
+Details, affected ranges and fixed versions: [SECURITY.md](../../SECURITY.md#security-advisories).
 
 ## Known limitations / accepted risks
 

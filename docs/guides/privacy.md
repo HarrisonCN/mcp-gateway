@@ -11,7 +11,7 @@ features:
     maxEpsilonPerQuery: 1
     budget: { epsilon: 10, windowSeconds: 86400 }        # per client key, sequential composition
     peers:                             # other gateways with features.privacy, for federated queries
-      - { id: eu, url: https://eu-gw.example.com, token: ${EU_GATEWAY_KEY} }
+      - { id: eu, url: https://eu-gw.example.com, token: "${EU_GATEWAY_KEY}" }
 ```
 
 ## Aggregate (any authenticated client allowed to call the tool)

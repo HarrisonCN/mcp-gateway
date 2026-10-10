@@ -168,10 +168,13 @@ async function check(root: string, opts: { external?: boolean }) {
       const real = issues.filter((iss) => {
         const path = /^([\w.]+):/.exec(iss)?.[1];
         if (!path) return true;
-        let v: unknown = filled;
-        for (const k of path.split('.')) v = v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined;
-        const text = typeof v === 'string' ? v : v && typeof v === 'object' ? JSON.stringify(v) : '';
-        return !PLACEHOLDER.test(text);
+        // the error path is the runtime path: feature sections live under `features:` in the file
+        const at = (base: unknown, keys: string[]) => keys.reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), base);
+        const keys = path.split('.');
+        const lookup = (ks: string[]) => at(filled, ks) ?? at(filled.features, ks);
+        const text = (v: unknown) => (typeof v === 'string' ? v : v && typeof v === 'object' ? JSON.stringify(v) : '');
+        // a placeholder in the value itself, or in the object that holds it (`{ id: a, ... }`, `# ...`)
+        return !PLACEHOLDER.test(text(lookup(keys))) && !PLACEHOLDER.test(text(lookup(keys.slice(0, -1))));
       });
       if (real.length) add(rel, line, 'config', real.join('; '));
     }

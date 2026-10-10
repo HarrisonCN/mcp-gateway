@@ -12,7 +12,7 @@ dlp:
   tenants:
     finance: { clearance: restricted }                # sees card numbers
     trial:   { clearance: public, strategy: block }   # any sensitive data fails the call
-    analytics: { strategy: hash, salt: ${DLP_SALT} }  # stable pseudonyms for joins
+    analytics: { strategy: hash, salt: "${DLP_SALT}" }  # stable pseudonyms for joins
   detectors:
     - { name: employee-id, pattern: "EMP-\\d{6}", level: confidential }
   levels: { ipv4: public }           # override a built-in level

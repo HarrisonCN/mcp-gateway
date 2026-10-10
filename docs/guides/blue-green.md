@@ -6,8 +6,8 @@ step — and switch back just as fast.
 
 ```yaml
 servers:
-  - {id: search-v1, transport: streamable-http, url: https://search-v1.internal/mcp}
-  - {id: search-v2, transport: streamable-http, url: https://search-v2.internal/mcp}
+  - {id: search-v1, name: Search v1, transport: streamable-http, url: https://search-v1.internal/mcp}
+  - {id: search-v2, name: Search v2, transport: streamable-http, url: https://search-v2.internal/mcp}
 features:
   blueGreen:
     - id: search

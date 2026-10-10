@@ -64,7 +64,7 @@ revocation, stdio environment allowlist).
   scanning and Dependabot. Verify an image with:
 
   ```bash
-  cosign verify ghcr.io/harrisoncn/mcp-gateway:11 \
+  cosign verify ghcr.io/harrisoncn/mcp-gateway:13 \
     --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
   ```
