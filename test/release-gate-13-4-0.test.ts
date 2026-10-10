@@ -50,8 +50,8 @@ describe('release gate', () => {
   it('the required checks exist as job names in the workflows, and the policy is documented', () => {
     const wf = ['ci.yml', 'codeql.yml', 'helm.yml', 'perf.yml', 'deploy-examples.yml'].map((f) => readFileSync(fileURLToPath(new URL(`../.github/workflows/${f}`, import.meta.url)), 'utf8')).join('\n');
     for (const n of [...policy.required, ...policy.conditional]) {
-      const base = n.replace(/ \(Node \d+\)$/, '').replace(/ \(javascript-typescript\)$/, '');
-      expect(wf.includes(n) || wf.includes(base), `job "${n}" not found in workflows`).toBe(true);
+      const matrix = n.replace(/\b(Node )\d+\b/, '$1${{ matrix.node }}');
+      expect(wf.includes(`name: ${n}`) || wf.includes(`name: ${matrix}`), `job "${n}" not found in workflows`).toBe(true);
     }
     const doc = readFileSync(fileURLToPath(new URL('../docs/release-gates.md', import.meta.url)), 'utf8');
     for (const n of policy.required) expect(doc).toContain(n);
