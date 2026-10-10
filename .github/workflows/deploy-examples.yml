@@ -29,6 +29,13 @@ jobs:
       - uses: actions/checkout@v7
       - name: Build the image from this commit
         run: docker build -t mcp-gateway:ci .
+      - name: Image healthcheck address (diagnostic)
+        run: |
+          docker run -d --name diag -e MCP_GATEWAY_API_KEYS="$KEY" mcp-gateway:ci start
+          sleep 8
+          docker exec diag sh -c 'getent hosts localhost; wget -qO- http://localhost:4000/api/v1/health/live && echo " localhost OK" || echo "localhost FAILED"; wget -qO- http://127.0.0.1:4000/api/v1/health/live && echo " 127.0.0.1 OK"'
+          docker inspect --format '{{json .State.Health.Status}}' diag || true
+          docker rm -f diag
       - name: Boot the Compose example (published image it names, then this commit's image)
         working-directory: examples/deploy/compose
         run: |
@@ -40,15 +47,16 @@ jobs:
               -d '{"server":"echo","tool":"echo","arguments":{"hello":"compose"}}' http://127.0.0.1:4000/api/v1/tools/call | grep -q compose
             test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/api/v1/tools)" = 401
           }
+          export GATEWAY_API_KEY="$KEY"
+          fail() { docker compose ps; docker compose logs; docker inspect --format '{{json .State.Health}}' "$(docker compose ps -q mcp-gateway)" || true; exit 1; }
           for image in "" mcp-gateway:ci; do
             echo "::group::compose up (${image:-default image})"
-            MGW_IMAGE="$image" GATEWAY_API_KEY="$KEY" docker compose up -d --wait --wait-timeout 120 || { docker compose logs; exit 1; }
-            check || { docker compose logs; exit 1; }
+            export MGW_IMAGE="$image"
+            docker compose up -d --wait --wait-timeout 120 || fail
+            check || fail
             docker compose down -v
             echo "::endgroup::"
           done
-        env:
-          MGW_IMAGE: ""
 
   kind:
     name: Kubernetes and Helm examples boot (kind)

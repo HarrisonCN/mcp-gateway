@@ -14,8 +14,9 @@ services:
       - ./echo-server.mjs:/app/examples/echo-server.mjs:ro
       - gateway-data:/app/data
     healthcheck:
-      # the image ships wget, not curl; /health/live is always public
-      test: ["CMD", "wget", "-qO-", "http://localhost:4000/api/v1/health/live"]
+      # the image ships wget, not curl; /health/live is always public. 127.0.0.1, not localhost: busybox wget may
+      # resolve localhost to ::1 while the gateway listens on IPv4 0.0.0.0
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/api/v1/health/live"]
       interval: 10s
       timeout: 5s
       retries: 6
