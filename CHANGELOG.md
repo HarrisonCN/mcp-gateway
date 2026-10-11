@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [15.0.0-rc.2] - 2026-10-11
+
+**Prerelease** (npm dist-tag `next`, image `:15.0.0-rc.2` only — `latest`, `:latest` and `:14` stay on 14.9.x). Second 15.0 release candidate: rc.1 plus the 14.9.1 P0 fix. No change to the frozen surface (REST / admin API, `/mcp`, CLI, plugin API v5, config schema v12, metrics, state formats) and no change to the four 15.0 migration changes of rc.1.
+
+### Fixed
+
+- **Gateway memory grew with the number of durable task-graph runs kept** (the rc.1 known issue; same fix as [14.9.1](#1491---2026-10-11)). The durable sweep's full pass loaded every retained run record at once, so the peak heap — and the process RSS — rose with each run started. Records are now read in chunks of 128, and ids of runs deleted by retention leave the run index (memory and store). 30-minute soak (2 instances + Redis): RSS growth +97 MB/h (rc.1 / 14.9.0: about +620 MB/h; 13.3.0: +30 MB/h on the same harness); gate A (72-hour soak) still has to be run.
+
+### Tests
+
+- `test/durable-memory-14-9-1.test.ts`.
+
 ## [15.0.0-rc.1] - 2026-10-11
 
 **Prerelease** (npm dist-tag `next`, image `:15.0.0-rc.1` only — `latest`, `:latest` and `:14` stay on 14.9.0). The first 15.0 release candidate: exactly the four changes announced in 14.9.0 ([freeze list](docs/v15/freeze.md), [migrating to v15](docs/migrating-to-v15.md)); the rest of the frozen surface — REST / admin API, `/mcp`, CLI, plugin API v5, metrics, state formats — is unchanged. 15.0.0 itself waits for the v15 gates ([release candidate notice](docs/v15/release-candidate.md), [roadmap](docs/ROADMAP.md)).
