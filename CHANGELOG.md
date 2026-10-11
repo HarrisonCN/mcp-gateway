@@ -29,12 +29,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Known issue
 
-- Memory grows under sustained load in the 30-minute soak (about 600 MB/h on the test box vs about 30 MB/h for 13.3.0, same harness); under investigation, blocks gate A.
+- Memory grows under sustained load in the 30-minute soak (about 600 MB/h on the test box vs about 30 MB/h for 13.3.0, same harness). Fixed in 15.0.0-rc.2 and [14.9.1](#1491---2026-10-11).
 
 ### Tests
 
 - `test/v15-changes-15-0-0.test.ts` (C1–C5; replaces `test/v15-deprecations-14-9-0.test.ts`); tests that used schema v11 input now use v12 (or the migration path where v11 is the subject); plugin tests that rely on in-process state say `runtime: inline`.
 - Upgrade / rollback on real SQLite and Redis from 13.9.5, 14.8.0 and 14.9.0 to the candidate (`test/upgrade-14-9-0.test.ts` via `scripts/upgrade-test.sh`).
+
+## [14.9.1] - 2026-10-11
+
+P0 fix for the memory growth the 14.9.0 soak found (and that 14.9.0 did not fix — see its corrected notes). No API, configuration, schema, metrics or state-format change; the 15.0 freeze is untouched.
+
+### Fixed
+
+- **Gateway memory grew with the number of durable task-graph runs kept** (RSS about +620 MB/h in the 30-minute soak, 2 instances + Redis, against about 30 MB/h for 13.3.0 on the same harness). Root cause: the durable sweep's full pass (every 30th sweep, every 15 s with `sweepIntervalMs: 500`) loaded **every** retained run record — `retentionHours` keeps them 168 h by default — at once, on every instance; the peak heap of that pass, and with it the process RSS (which does not shrink back), rose with each run started. Heap snapshots showed little retained memory; the growth was the sweep's working set. A sweep now reads run records in chunks of 128 (`SWEEP_CHUNK`), so its working set no longer depends on how many runs are kept. Same 30-minute soak: RSS growth **+97 MB/h** (14.9.0: +623 MB/h), V8 heap total flat at 76–107 MB (14.9.0 spiked to 190 MB), p95 15.6 ms, 0 invariant violations.
+- **The durable run index kept every id ever started** — in memory (an array copied on every listing) and in the state store (`task-graphs:runs:<n>` keys). Ids of runs deleted by retention now leave the index on the instance that deleted them, and a peer drops them on its next full sweep when the record is gone.
+
+### Notes
+
+- What still grows after a restart is bounded: the request log fills up to its cap (`maxEntries`, 100 000 entries, as in 13.3), and each finished durable run kept by `retentionHours` costs roughly 0.2 KB per instance until it expires. With a high durable-run rate, a lower `taskGraphs.durable.retentionHours` lowers that ceiling.
+- 13.9.x (LTS) is not affected: it has no durable sweep (durable task graphs came in 14.4.0). 12.0.x and 10.9.x neither.
+
+### Tests
+
+- `test/durable-memory-14-9-1.test.ts` — a full sweep over 3 000 retained runs holds at most `SWEEP_CHUNK` records at once (14.9.0: 3 001); runs deleted by retention leave the index in memory and in the store; a peer forgets runs another instance deleted; repeated create → finish → expire cycles keep the index flat.
 
 ## [14.9.0] - 2026-10-11
 
@@ -55,7 +73,7 @@ v15 release candidate line (roadmap 14.9 "v15 候选版"). 14.9.0 freezes the 15
 
 ### Known issue
 
-- **Memory growth under sustained load is not fixed in 14.9.0.** In the 30-minute soak (2 instances + Redis, durable task graphs enabled) gateway RSS still grew about 620 MB/h with this release, against about 30 MB/h for 13.3.0 on the same harness and machine. Under investigation; it blocks v15 gate A.
+- **Memory growth under sustained load is not fixed in 14.9.0.** In the 30-minute soak (2 instances + Redis, durable task graphs enabled) gateway RSS still grew about 620 MB/h with this release, against about 30 MB/h for 13.3.0 on the same harness and machine. Cause: the durable sweep's full pass loaded every retained run record at once — fixed in [14.9.1](#1491---2026-10-11).
 
 ### Changed
 

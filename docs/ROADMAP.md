@@ -18,9 +18,9 @@
 | 14.6 | Edge Autonomy 正式化 | ✅ | 离线队列加密与对账测试 |
 | 14.7 | GitOps 与治理 | ✅ | bundle / release manifest、策略模拟 |
 | 14.8 | 运维控制台 | ✅ | 集群状态、调用追踪、拒绝解释、故障向导 |
-| 14.9 | v15 候选线：15.0 API / 配置冻结、15.0 变更提前告警、升级 / 回滚 / 安全回归 / 模糊 / soak 验证 | ✅ 14.9.0（`latest`） | [冻结清单](v15/freeze.md)；soak 发现 durable 状态无界增长并修复（`retentionHours`） |
+| 14.9 | v15 候选线：15.0 API / 配置冻结、15.0 变更提前告警、升级 / 回滚 / 安全回归 / 模糊 / soak 验证 | ✅ 14.9.1（`latest`） | [冻结清单](v15/freeze.md)；soak 发现 durable 状态无界增长：14.9.0 修复 sweep 开销与保留期（`retentionHours`），内存增长在 14.9.1 修复（sweep 分块读取、索引清理；30 分钟 soak +97 MB/h） |
 | 14.10 – 14.13 | — | ✖ 取消 | 后续工作改为 GA 之后的 15.1 / 15.2 |
-| 15.0.0-rc.1 | 15.0 候选：只包含 14.9 公告的四项变更（拒绝 v11 配置、模块插件默认 `worker`（`runtime: inline` 显式保留）、拒绝未知顶层键、移除 `schema/v12-draft`） | 🧪 npm `next`，GHCR `:15.0.0-rc.1` | 13.9.x / 14.8 / 14.9 → rc.1 的迁移与回滚（SQLite + Redis）；冻结面无其他 API 变化 |
+| 15.0.0-rc.1 | 15.0 候选：只包含 14.9 公告的四项变更（拒绝 v11 配置、模块插件默认 `worker`（`runtime: inline` 显式保留）、拒绝未知顶层键、移除 `schema/v12-draft`） | 🧪 rc.2 在 npm `next`，GHCR `:15.0.0-rc.2`（rc.1 `:15.0.0-rc.1`） | 13.9.x / 14.8 / 14.9 → rc.1 的迁移与回滚（SQLite + Redis）；冻结面无其他 API 变化 |
 | 15.0.0 | Governed AI Infrastructure（GA） | ⬜ | 需要下列 v15 发布闸门 A / B / C 全部关闭 |
 | 15.1 / 15.2 | GA 之后的后续工作（原 14.10 – 14.13 范围） | ⬜ | 在 15.0.0 GA 后规划 |
 
@@ -30,7 +30,7 @@
 
 | 闸门 | 要求 | 状态 | 证据 / 说明 |
 |---|---|---|---|
-| A | 72 小时负载 + 故障注入，至少两个实例共享 Redis；无跨租户访问、无非幂等调用重复执行 | ⬜ 未关闭 | 仅有 30 分钟本地 soak（`scripts/soak.mjs`，非固定硬件）：无跨租户访问、无重复执行，但持续负载下内存仍在增长（约 600 MB/h，13.3.0 约 30 MB/h），待排查；72 小时运行需要 self-hosted `soak` runner（`.github/workflows/soak.yml`） |
+| A | 72 小时负载 + 故障注入，至少两个实例共享 Redis；无跨租户访问、无非幂等调用重复执行 | ⬜ 未关闭 | 仅有 30 分钟本地 soak（`scripts/soak.mjs`，非固定硬件）：无跨租户访问、无重复执行，14.9.0 / rc.1 内存增长约 600 MB/h（13.3.0 约 30 MB/h），根因为 durable sweep 全量读取，14.9.1 / rc.2 已修复（+97 MB/h，30 分钟）；72 小时运行需要 self-hosted `soak` runner（`.github/workflows/soak.yml`） |
 | B | 在固定硬件、等价负载下与 v13.3 基线比较 p95 / p99 / 吞吐 / 内存增长 / 恢复时间 | ⬜ 未关闭 | 本地 30 分钟对比仅供参考（共享沙箱、负载不固定，不是基准）；需在固定硬件上用同一 harness（`--impl` 指向 13.3.0）重跑 |
 | C | 独立安全审计，或至少一位外部专家评审，范围内高危问题全部关闭 | ⬜ 未关闭 | 尚未安排 |
 | D | 13.x / 14.x → 15 的迁移与回滚验证 | ⏳ | `test/upgrade-14-9-0.test.ts`、`test/rc-migration-14-9-0.test.ts`、`test/upgrade-15-0-0-rc.test.ts` |
