@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [12.0.15] - 2026-10-11
+
+**Security backport (12.x).** Backports the MGW-2026-019 fix from 14.7.0; no other changes. The config schema is
+unchanged.
+
+### Security
+- **MGW-2026-019 (High): `${VAR}` in string-form API keys and in `controlPlane.token` was used literally.**
+  `auth.apiKeys: ["${OPERATOR_KEY}"]` — the form the control-plane guide shows — made the text `${OPERATOR_KEY}` a
+  valid operator key, and a data plane with `token: ${OPERATOR_KEY}` sent the same literal, so a cluster set up from
+  the docs worked while anyone who could reach it could call the admin API with `Authorization: Bearer ${OPERATOR_KEY}`.
+  References are now expanded in every API key form and in `controlPlane.token`; a reference to an unset or empty
+  variable is a config error (it was an empty key in the object form). **Rotate any key that was written as a string
+  reference.** Regression test `test/apikeys-env-mgw-2026-019.test.ts`.
+
 ## [12.0.14] - 2026-10-11
 
 **Security backport (12.x).** Backports the MGW-2026-018 fix from 14.6.0 (the fix only — the 14.6 edge-autonomy
