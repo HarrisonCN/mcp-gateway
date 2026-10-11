@@ -11,15 +11,25 @@
  * @module config/v15-deprecations
  */
 import type { Deprecation } from '../utils/deprecations.js';
-import { buildV12ConfigSchema } from './v12.js';
 
 /** Id prefixes of the 15.0.0 deprecations (docs/deprecations.md, docs/v15/freeze.md). */
 export const V15_DEPRECATION_IDS = ['v15.plugins.<i>.runtime', 'v15.config.unknown-key.<key>', 'schema.v11'] as const;
 
+/**
+ * Top-level keys of config schema v12 (frozen for 15.0, docs/v15/freeze.md) plus `$schema`, which editors add.
+ * Listed here rather than derived from `buildV12ConfigSchema()` so the loader does not import the schema builder
+ * (and every feature schema) at start; test/v15-deprecations-14-9-0.test.ts keeps the two in sync.
+ */
+export const V12_TOP_LEVEL_KEYS: readonly string[] = [
+  '$schema', 'version', 'modules', 'features', 'a2a', 'audit', 'auth', 'cache', 'catalog', 'chains', 'compliance',
+  'controlPlane', 'cors', 'costs', 'federation', 'health', 'host', 'logLevel', 'mcp', 'monitor', 'mtls', 'observability',
+  'openai', 'overload', 'plugins', 'policy', 'port', 'portal', 'quotas', 'rateLimit', 'reconnect', 'replay', 'routing',
+  'secrets', 'security', 'servers', 'store', 'streaming', 'tenancy', 'tenants',
+];
 let topLevel: Set<string> | undefined;
-/** Top-level keys of config schema v12 (plus `$schema`, which editors add). */
+/** Top-level keys of config schema v12 (plus `$schema`). */
 export function v12TopLevelKeys(): Set<string> {
-  topLevel ??= new Set(['$schema', ...Object.keys((buildV12ConfigSchema() as { properties?: object }).properties ?? {})]);
+  topLevel ??= new Set(V12_TOP_LEVEL_KEYS);
   return topLevel;
 }
 

@@ -12,7 +12,8 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { validateConfig } from '../src/config/loader.js';
-import { V15_DEPRECATION_IDS, v15DeprecationsIn } from '../src/config/v15-deprecations.js';
+import { V15_DEPRECATION_IDS, V12_TOP_LEVEL_KEYS, v15DeprecationsIn } from '../src/config/v15-deprecations.js';
+import { buildV12ConfigSchema } from '../src/config/v12.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -33,6 +34,11 @@ describe('15.0 deprecations announced in 14.9.0', () => {
     expect((c.deprecations ?? []).map((d) => d.id)).toEqual(expect.arrayContaining(['v12.kernel.modules', 'v15.plugins.0.runtime']));
     expect(validateConfig({ version: 12, servers: [] }).deprecations ?? []).toEqual([]);
     expect(v15DeprecationsIn(null)).toEqual([]);
+  });
+  it('D5 the top-level key list matches generated schema v12 (the loader does not import the schema builder)', () => {
+    const gen = Object.keys((buildV12ConfigSchema() as { properties: object }).properties);
+    expect([...V12_TOP_LEVEL_KEYS].filter((k) => k !== '$schema').sort()).toEqual(gen.sort());
+    expect(readFileSync(join(ROOT, 'src/config/v15-deprecations.ts'), 'utf8')).not.toMatch(/from '\.\/v12\.js'/);
   });
   it('D4 the docs name every 15.0 id', () => {
     const dep = readFileSync(join(ROOT, 'docs/deprecations.md'), 'utf8');
