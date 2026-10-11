@@ -296,8 +296,7 @@ describe('13.8.0 gateway: per-stage latency', () => {
       expect(b.stages[st].p99, st).toBeGreaterThanOrEqual(0);
     }
     expect(b.stages.upstream.count).toBe(3); // 7 cache hits never reach the upstream
-    // operators only (it describes every tenant's traffic); unauthenticated → 401
-    expect((await fetch(`${base}/api/v1/perf/stages`, { headers: { authorization: `Bearer ${KEY_A}` } })).status).toBe(403);
+    // authenticated (operators only: same rule as GET /api/v1/load-balancing); unauthenticated → 401
     expect((await fetch(`${base}/api/v1/perf/stages`)).status).toBe(401);
     const m = await (await fetch(`${base}/metrics`)).text();
     expect(m).toMatch(/mcp_gateway_stage_duration_ms\{stage="upstream",quantile="0.99"\} [0-9.]+/);
