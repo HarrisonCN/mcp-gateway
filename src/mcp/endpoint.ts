@@ -127,6 +127,8 @@ interface DownstreamSession {
   subscriptions: Set<string>;
   /** Last time the shared-store record was refreshed (ms). */
   storeTouchedAt?: number;
+  /** 13.7.0: last time this instance checked the shared-store record (termination elsewhere / store data loss). */
+  storeCheckedAt?: number;
   /** Client capabilities from `initialize` (sampling / elicitation / roots passthrough). */
   capabilities: Record<string, unknown>;
   /** Requests the gateway sent to the client, awaiting its response (by JSON-RPC id). */
@@ -232,6 +234,11 @@ const SSE_KEEPALIVE_MS = 25_000;
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const idKey = (id: JsonRpcId) => `${typeof id}:${String(id)}`;
+/** 13.7.0: how stale an instance's view of a shared session may be (termination / store data loss), ms. */
+export const SESSION_SYNC_MS = 1_000;
+/** 13.7.0: how often an in-flight request polls the shared store for a cancellation sent to another instance, ms. */
+export const REMOTE_CANCEL_POLL_MS = 250;
+const cancelKey = (sessionId: string, key: string) => `sesscancel:${sessionId}:${key}`;
 
 const traceparentOf = (req: Request): string | undefined =>
   typeof req.headers.traceparent === 'string' ? req.headers.traceparent : undefined;
@@ -483,12 +490,14 @@ export class McpEndpoint {
         controllers.push(ctrl);
         const key = idKey(m.id as JsonRpcId);
         session.inflight.set(key, ctrl);
+        const watch = this.watchRemoteCancel(session, key, ctrl);
         return this.handleRequest(session, req, res, m, ctrl.signal, !batch, stream)
           .catch((err: unknown): JsonRpcMessage => {
             logger.error(`MCP ${m.method} failed: ${err instanceof Error ? err.message : String(err)}`);
             return rpcError(m.id, { code: JSONRPC_INTERNAL_ERROR, message: 'Internal error' });
           })
           .finally(() => {
+            if (watch) clearInterval(watch);
             if (session.inflight.get(key) === ctrl) session.inflight.delete(key);
           });
       }),
@@ -631,7 +640,7 @@ export class McpEndpoint {
     } catch {
       return undefined;
     }
-    if (rec.clientId !== (req as AuthedRequest).clientId) return undefined;
+    if ((rec as { ended?: boolean }).ended || rec.clientId !== (req as AuthedRequest).clientId) return undefined;
     const existing = this.sessions.get(id);
     if (existing) return existing;
     if (this.sessions.size >= this.cfg.maxSessions && !this.evictOne()) return undefined;
@@ -649,6 +658,7 @@ export class McpEndpoint {
       auth: identityOf(req),
       subscriptions: new Set(),
       storeTouchedAt: Date.now(),
+      storeCheckedAt: Date.now(),
       capabilities: isObject(rec.capabilities) ? rec.capabilities : {},
       pendingClient: new Map(),
       clientSeq: 0,
@@ -667,7 +677,9 @@ export class McpEndpoint {
       res.status(400).json(rpcError(null, { code: JSONRPC_INVALID_REQUEST, message: 'Bad Request: Mcp-Session-Id header is required' }));
       return undefined;
     }
-    const session = this.sessions.get(id) ?? (await this.loadSession(id, req));
+    let session = this.sessions.get(id) ?? (await this.loadSession(id, req));
+    // 13.7.0: a session another instance terminated is gone here too (checked at most every SESSION_SYNC_MS).
+    if (session && !(await this.syncSharedSession(session))) session = undefined;
     // A session presented by a different client is treated as unknown.
     if (!session || session.clientId !== (req as AuthedRequest).clientId) {
       res.status(404).json(rpcError(null, { code: -32001, message: 'Session not found' }));
@@ -723,11 +735,49 @@ export class McpEndpoint {
     });
   }
 
+  /**
+   * 13.7.0 multi-instance session consistency. With a shared store, every instance re-reads a session's record at most
+   * every {@link SESSION_SYNC_MS}: an `ended` tombstone (DELETE on another instance) ends the local copy, so the session
+   * is rejected cluster-wide within that bound and a later refresh can no longer resurrect it; a MISSING record (store
+   * data loss: Redis restarted without persistence, failover) is re-published so other instances can adopt the live
+   * session again. A store that cannot answer changes nothing (sessions keep working on the instance that holds them).
+   * Returns false when the session was ended.
+   */
+  private async syncSharedSession(session: DownstreamSession): Promise<boolean> {
+    const store = this.deps.sessionStore;
+    if (!store) return true;
+    const t = Date.now();
+    if (t - (session.storeCheckedAt ?? 0) < SESSION_SYNC_MS) return true;
+    session.storeCheckedAt = t;
+    let raw: string | undefined;
+    try {
+      raw = await store.get(`sess:${session.id}`);
+    } catch {
+      return true;
+    }
+    if (raw === undefined) {
+      logger.debug(`MCP session ${session.id.slice(0, 8)} missing from the shared state store: re-published`);
+      this.storeSession(session);
+      return true;
+    }
+    try {
+      if ((JSON.parse(raw) as { ended?: boolean }).ended) {
+        this.endSession(session);
+        logger.debug(`MCP session ${session.id.slice(0, 8)} was terminated on another instance`);
+        return false;
+      }
+    } catch {
+      /* unreadable record: keep the local session */
+    }
+    return true;
+  }
+
   private async handleDelete(req: Request, res: Response): Promise<void> {
     const session = await this.resolveSession(req, res);
     if (!session) return;
     this.endSession(session);
-    void this.deps.sessionStore?.del(`sess:${session.id}`).catch(() => undefined);
+    // 13.7.0: a tombstone (not a plain DEL) so instances holding a copy end it, and a refresh cannot re-create it.
+    void this.deps.sessionStore?.set(`sess:${session.id}`, JSON.stringify({ ended: true }), this.sessionTtlMs()).catch(() => undefined);
     logger.info(`MCP session ${session.id.slice(0, 8)} closed by client`);
     res.status(204).end();
   }
@@ -739,7 +789,11 @@ export class McpEndpoint {
       const params = isObject(msg.params) ? msg.params : {};
       const rid = params.requestId;
       if (typeof rid === 'string' || typeof rid === 'number') {
-        session.inflight.get(idKey(rid))?.abort();
+        const local = session.inflight.get(idKey(rid));
+        if (local) local.abort();
+        // 13.7.0 connection migration: the request may be in flight on another instance (the client's load balancer
+        // moved it): leave the cancellation in the shared store, the owning instance polls for it.
+        else if (String(rid).length <= 200) void this.deps.sessionStore?.set(cancelKey(session.id, idKey(rid)), '1', 60_000).catch(() => undefined);
       }
     }
     if (msg.method === 'notifications/roots/list_changed' && this.passthroughMethods().includes('roots/list')) {
@@ -748,6 +802,34 @@ export class McpEndpoint {
       );
     }
     // notifications/initialized and others need no action.
+  }
+
+  /**
+   * 13.7.0: with a shared store, poll for a `notifications/cancelled` another instance received for this in-flight
+   * request (every {@link REMOTE_CANCEL_POLL_MS}; only requests still running after the first interval cost a read).
+   */
+  private watchRemoteCancel(session: DownstreamSession, key: string, ctrl: AbortController): NodeJS.Timeout | undefined {
+    const store = this.deps.sessionStore;
+    if (!store) return undefined;
+    let busy = false;
+    const timer = setInterval(() => {
+      if (busy || ctrl.signal.aborted) return;
+      busy = true;
+      store
+        .get(cancelKey(session.id, key))
+        .then((v) => {
+          if (v === undefined || ctrl.signal.aborted) return;
+          logger.debug(`MCP request ${key} of session ${session.id.slice(0, 8)} cancelled via another instance`);
+          ctrl.abort();
+          void store.del(cancelKey(session.id, key)).catch(() => undefined);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          busy = false;
+        });
+    }, REMOTE_CANCEL_POLL_MS);
+    timer.unref();
+    return timer;
   }
 
   /** Relayed methods enabled by `mcp.passthrough` (all by default). */

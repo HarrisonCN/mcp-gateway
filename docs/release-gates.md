@@ -29,6 +29,7 @@ Must exist on the release commit and conclude `success`:
 | `JS client (Node 22)` | CI | idem |
 | `JS client (Node 24)` | CI | idem |
 | `Kotlin client` | CI | Kotlin client build and tests |
+| `MCP compat matrix` | CI | official TypeScript / Python SDK clients x protocol revisions, upstream transports, Motionary E2E ([client compatibility](guides/client-compatibility.md); required since 13.7.0) |
 | `Analyze (javascript-typescript)` | CodeQL | static analysis |
 
 ## Conditional checks
@@ -50,7 +51,8 @@ Any other check run on the release commit that concludes `failure`, `cancelled`,
 and `Deploy` (dashboard demo on GitHub Pages) and the post-release jobs `assets`, `image`, `npm`, `maven-central`
 (they run *because* of the release).
 
-`MCP compat matrix` (CI, 13.6.0) is gated by this rule until it has run green on `main`; then it moves to `required`.
+`Multi-instance reliability (real Redis)` (CI, 13.7.0) is gated by this rule until it has run green on `main`; then it
+moves to `required` (as `MCP compat matrix` did in 13.7.0).
 
 A re-run that succeeds replaces the failed attempt (the most recent run of a check counts). After two failed re-runs
 of the same infrastructure failure (registry rate limits, an arm64 emulation hang) the release is stopped and the

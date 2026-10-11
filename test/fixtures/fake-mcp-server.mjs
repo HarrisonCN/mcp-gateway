@@ -71,6 +71,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       const next = page + 1 < pages ? String(page + 1) : undefined;
       const tools = [{ name: `echo${page || ''}`, description: 'echo' }];
       if (features) for (const name of ['progress', 'log', 'touch', 'crash']) tools.push({ name, description: name });
+      // 13.7.0: EXTRA_TOOLS=slow,... lists more of the built-in behaviours (e.g. `slow`, which waits SLOW_MS)
+      for (const name of (process.env.EXTRA_TOOLS ?? '').split(',').filter(Boolean)) tools.push({ name, description: name });
       return send({ jsonrpc: '2.0', id: msg.id, result: { tools, ...(next ? { nextCursor: next } : {}) } });
     }
     case 'ping':

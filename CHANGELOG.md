@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.7.0] - 2026-10-10
+
+Multi-instance reliability release (roadmap 13.7 "多实例可靠性"). Config schema v11 is unchanged; no breaking changes.
+
+### Added
+
+- **Real-Redis fault-injection suite in CI** (job `Multi-instance reliability (real Redis)`, `test/multi-instance-13-7-0.test.ts`): spawned `redis-server` processes (crash + restart without persistence, `requirepass` + database number) behind a TCP fault proxy (latency beyond the command timeout, resets mid-pipeline, partitions) and up to four gateway instances sharing them. Covers the MGW-2026-012 reply-alignment regression across timeouts and reconnects, the store breaker across a crash, one rate limit across N instances under concurrent bursts, token revocation across instances and through a partition, MCP session recovery / termination / store data loss, and connection migration (cancellation and progress). The guarantees are listed in [docs/deployment.md](docs/deployment.md#multiple-instances-horizontal-scaling).
+- **Cross-instance cancellation**: a `notifications/cancelled` that reaches a replica other than the one running the request is left in the shared store; the owning replica polls for it (every 250 ms while the request runs) and stops the call.
+- `MCP compat matrix` is now a required release-gate check (`scripts/required-checks.json`, [docs/release-gates.md](docs/release-gates.md)).
+
+### Fixed
+
+- **MGW-2026-014 (Low): Redis commands could run before `AUTH` / `SELECT` had completed on a new connection.** The built-in Redis client published a connection as soon as the TCP / TLS handshake finished, so commands issued while `AUTH` and `SELECT <db>` were still in flight ran against database 0 — revocations, rate-limit / lockout counters and session records could be written to or read from the wrong database right after every (re)connect. Connections are now used only once `AUTH` / `SELECT` succeeded; a connection whose peer closed is no longer handed out.
+- **A session terminated on one instance stayed usable on the others.** `DELETE /mcp` removed the shared record, but an instance that had adopted the session kept serving it, and its periodic refresh re-created the record. Termination now writes a tombstone and every instance re-checks a session's record at most once per second, so the session is rejected (404) cluster-wide within 1 s.
+- **Sessions were not re-published after store data loss.** After Redis restarted without persistence (or failed over), sessions kept working only on the instance that held them; others answered 404 until the holder's next refresh (up to a minute). The holder now re-publishes a missing record on its next request.
+
 ## [13.6.0] - 2026-10-10
 
 MCP protocol interoperability release (roadmap 13.6 "MCP 协议互操作"). Config schema v11 is unchanged; no breaking changes.
