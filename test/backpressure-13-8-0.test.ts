@@ -7,7 +7,7 @@
  *    the others (FIFO would serve the flood first);
  *  - bounded queues: total cap, per-tenant cap, queue timeout, metrics;
  *  - end-to-end p99 analysis: per-stage latency (auth, policy, hooks, routing, cache, upstream, queue, total) at
- *    GET /api/v1/perf/stages and as Prometheus summaries;
+ *    GET /api/v1/metrics?view=stages and as Prometheus summaries;
  *  - per-module cost report committed as docs/perf/module-costs.{md,json} for all 46 feature modules.
  */
 import { describe, it, expect, afterEach } from 'vitest';
@@ -284,10 +284,10 @@ describe('13.8.0 gateway: load shedding over HTTP', () => {
 });
 
 describe('13.8.0 gateway: per-stage latency', () => {
-  it('GET /api/v1/perf/stages breaks calls down by pipeline stage; Prometheus exports the summaries', async () => {
+  it('GET /api/v1/metrics?view=stages breaks calls down by pipeline stage; Prometheus exports the summaries', async () => {
     const { call, base } = await gateway({ cache: { rules: [{ tools: ['echo'], ttlSeconds: 60 }] }, policy: { rules: [{ name: 'no-admin', tools: ['admin_*'], effect: 'deny' }] } });
     for (let i = 0; i < 10; i++) expect((await call('echo', { n: i % 3 })).status).toBe(200);
-    const r = await fetch(`${base}/api/v1/perf/stages`, { headers: { authorization: `Bearer ${KEY_OPS}` } });
+    const r = await fetch(`${base}/api/v1/metrics?view=stages`);
     expect(r.status).toBe(200);
     const b: any = await r.json();
     for (const st of ['auth', 'policy', 'hooks', 'routing', 'cache', 'upstream', 'total']) {
@@ -296,8 +296,6 @@ describe('13.8.0 gateway: per-stage latency', () => {
       expect(b.stages[st].p99, st).toBeGreaterThanOrEqual(0);
     }
     expect(b.stages.upstream.count).toBe(3); // 7 cache hits never reach the upstream
-    // authenticated (operators only: same rule as GET /api/v1/load-balancing); unauthenticated → 401
-    expect((await fetch(`${base}/api/v1/perf/stages`)).status).toBe(401);
     const m = await (await fetch(`${base}/metrics`)).text();
     expect(m).toMatch(/mcp_gateway_stage_duration_ms\{stage="upstream",quantile="0.99"\} [0-9.]+/);
   });

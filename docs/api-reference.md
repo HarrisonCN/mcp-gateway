@@ -277,7 +277,7 @@ Viewers get `403` (REST) / `-32003` (`/mcp`) on tool calls.
 
 ### Performance (13.8)
 
-`GET /api/v1/perf/stages` (operator keys) — latency per call-pipeline stage over the last 4096 calls, and the load
+`GET /api/v1/metrics?view=stages` (same access as `GET /metrics`: open unless `auth.protect.metrics`) — latency per call-pipeline stage over the last 4096 calls, and the load
 protection state:
 
 ```json
@@ -289,7 +289,8 @@ protection state:
                 "queueWaitMs": { "p50": 0, "p99": 0.4 } } }
 ```
 
-Stages: `queue`, `auth`, `authz`, `policy`, `hooks`, `routing`, `cache`, `upstream`, `finish`, `total` (see
+`queuedByTenant` names tenant ids only (clients without a tenant are summed as `_none`). Stages: `queue`, `auth`,
+`authz`, `policy`, `hooks`, `routing`, `cache`, `upstream`, `finish`, `total` (see
 [configuration](configuration.md#load-protection-and-fair-scheduling-138)).
 
 ### Developer portal (3.8)

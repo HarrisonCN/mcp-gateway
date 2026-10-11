@@ -134,6 +134,8 @@ export interface ApiRouterOptions {
   stages?: import('./stages.js').StageTimer;
   /** 13.8.0: admission control (load protection) for tool calls, after authentication and rate limit. */
   admit?: RequestHandler;
+  /** 13.8.0: `GET /metrics?view=stages` — per-stage latency and load-protection state. */
+  perf?: () => Record<string, unknown>;
 
   /** Enables POST /servers/:id/reconnect and reconnect info. */
   supervisor?: ServerSupervisor;
@@ -495,6 +497,7 @@ export function createApiRouter(
   });
 
   router.get('/metrics', protectable('metrics'), (req, res) => {
+    if (req.query.view === 'stages' && options.perf) return void res.json(options.perf());
     const samples = serverStateSamples(registry, proxy);
     if (cfg.monitor?.prometheus && wantsPrometheus(req)) {
       res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8').send(metrics.toPrometheusText(samples));

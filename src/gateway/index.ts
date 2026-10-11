@@ -357,6 +357,7 @@ export class Gateway {
     this.router = createApiRouter(this.withPortalKeys(this.config), this.registry, this.proxy, this.metrics, {
       stages: this.stages,
       admit: this.admitFor('rest'),
+      perf: () => this.perfReport(),
       portal: this.portal,
       supervisor: this.supervisor,
       isShuttingDown: () => this.stopping !== undefined,
@@ -478,20 +479,6 @@ export class Gateway {
         portable: () => portableConfig(this.config),
         authenticate: this.router.authenticate,
         isOperator: (req) => this.router!.isOperator(req),
-      }),
-    );
-    // 13.8.0: per-stage latency + load protection state (operators only: it describes all tenants' traffic).
-    // Authenticated and rate limited like the REST API (the client's rate limit), then operators only.
-    this.app.get('/api/v1/perf/stages', (req, res, next) =>
-      this.router!.authenticate(req, res, (err?: unknown) => {
-        if (err) return next(err);
-        void Promise.resolve(this.router!.takeRateLimit(req))
-          .then((rl) => {
-            if (rl && !rl.allowed) return void res.set('Retry-After', String(rl.retryAfter ?? 1)).status(429).json({ error: 'Too Many Requests', retryAfterSeconds: rl.retryAfter ?? 1 });
-            if (!this.router!.isOperator(req)) return void res.status(403).json({ error: 'Forbidden', message: 'operator access required' });
-            res.json({ ...this.stages.report(), overload: this.overload.stats() });
-          })
-          .catch(next);
       }),
     );
     this.app.get('/api/v1/data-plane', this.router.authenticate, (req, res) => {
@@ -750,10 +737,21 @@ export class Gateway {
    */
   /** 13.3.0: reliability telemetry (Prometheus `/metrics` + optional OTLP push). */
   telemetry = new Telemetry();
-  /** 13.8.0: per-stage latency of the call pipeline (GET /api/v1/perf/stages, `mcp_gateway_stage_duration_ms`). */
+  /** 13.8.0: per-stage latency of the call pipeline (GET /api/v1/metrics?view=stages, `mcp_gateway_stage_duration_ms`). */
   readonly stages = new StageTimer();
   /** 13.8.0: load protection (`overload:`): adaptive concurrency limit + bounded per-tenant weighted fair queue. */
   readonly overload = new OverloadController();
+
+  /** 13.8.0: per-stage latency + load protection state (`GET /api/v1/metrics?view=stages`); flows are tenant ids only. */
+  perfReport(): Record<string, unknown> {
+    const o = this.overload.stats();
+    const byTenant: Record<string, number> = {};
+    for (const [k, v] of Object.entries(o.queuedByTenant)) {
+      const label = k.startsWith('client:') || k === 'anonymous' ? '_none' : k;
+      byTenant[label] = (byTenant[label] ?? 0) + v;
+    }
+    return { ...this.stages.report(), overload: { ...o, queuedByTenant: byTenant } };
+  }
 
   /** 13.8.0: admission control middleware (after authentication); a no-op unless `overload.enabled`. */
   private admitFor(kind: 'rest' | 'mcp'): RequestHandler {

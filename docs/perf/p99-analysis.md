@@ -1,7 +1,7 @@
 # End-to-end p99 analysis (13.8)
 
 Where the time of a tool call goes, per pipeline stage, measured with the stage timer added in 13.8
-(`GET /api/v1/perf/stages`, `mcp_gateway_stage_duration_ms`) under `bench/load.mjs` (seed 42, 16 workers, 4000
+(`GET /api/v1/metrics?view=stages`, `mcp_gateway_stage_duration_ms`) under `bench/load.mjs` (seed 42, 16 workers, 4000
 requests, the 13.3.0 operation mix, API-key auth, rate limit, cache, quotas, budgets and policy rules in the hot path).
 
 ## Reference: 13.3.0 baseline on x64 CI

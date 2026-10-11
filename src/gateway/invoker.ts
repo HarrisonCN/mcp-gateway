@@ -151,7 +151,7 @@ export interface InvokerDeps {
   compliance?: ComplianceEngine;
   /** Routes calls on servers with `replicas:` (load balancing + failover). */
   balancer?: LoadBalancer;
-  /** 13.8.0: per-stage latency of the call pipeline (GET /api/v1/perf/stages). */
+  /** 13.8.0: per-stage latency of the call pipeline (GET /api/v1/metrics?view=stages). */
   stages?: StageTimer;
   /** Tool result cache + in-flight de-duplication (`cache:` config). */
   cache?: ToolCache;

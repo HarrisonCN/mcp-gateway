@@ -1133,7 +1133,7 @@ overload:
   `mcp_gateway_overload_shed_total{reason}`, `mcp_gateway_overload_queue_wait_ms{quantile}`.
 - **Hot reload**: changing `overload` applies to the next request; queued requests keep waiting.
 
-Per-stage latency is always recorded (a few array writes per call): `GET /api/v1/perf/stages` (operators) returns
+Per-stage latency is always recorded (a few array writes per call): `GET /api/v1/metrics?view=stages` (same access as `/api/v1/metrics`) returns
 p50 / p95 / p99 / max per stage — `queue`, `auth`, `authz`, `policy`, `hooks`, `routing`, `cache`, `upstream`,
 `finish`, `total` — plus the load-protection state, and Prometheus exports `mcp_gateway_stage_duration_ms{stage,quantile}`.
 See [docs/perf/p99-analysis.md](perf/p99-analysis.md).
