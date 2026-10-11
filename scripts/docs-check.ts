@@ -333,8 +333,8 @@ async function check(root: string, opts: { external?: boolean }) {
             if (!tokens[0].startsWith('-')) {
               command = tokens[0];
               i = 1;
-              // 14.4.0: nested groups (`tasks dlq list`): descend while the next token is a known sub-command
-              if (['tasks'].includes(command)) while (tokens[i] && !tokens[i]!.startsWith('-') && cli.has(tokens[i]!) && i < 3) command = tokens[i++]!;
+              // 14.4.0: nested groups (`tasks dlq list`; 14.6.0: `regions …`, `edge …`): descend while the next token is a known sub-command
+              if (['tasks', 'regions', 'edge'].includes(command)) while (tokens[i] && !tokens[i]!.startsWith('-') && cli.has(tokens[i]!) && i < 3) command = tokens[i++]!;
               if (!cli.has(command)) {
                 if (['config', 'plugin', 'pq', 'policy', 'tenancy'].includes(command) && tokens[1] && cli.has(tokens[1])) {
                   command = tokens[1];
