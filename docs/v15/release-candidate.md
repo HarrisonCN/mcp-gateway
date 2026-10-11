@@ -15,7 +15,8 @@ removed. Upgrade steps: [migrating to v15](../migrating-to-v15.md).
 
 ## What is not done yet (15.0.0 gates)
 
-The candidate is published so the frozen surface can be tried before 15.0.0; it does not claim the v15 gates are met:
+The candidate is published so the frozen surface can be tried before 15.0.0; it does not claim the v15 gates are met
+(how each gate is run and closed: [v15 gates](gates.md)):
 
 - [ ] 72 h soak with fault injection on two instances (`soak.yml`, see [release gates](../release-gates.md#v15-gates)) —
       only 30-minute soaks so far (14.9.0, 14.9.1 / rc.2)

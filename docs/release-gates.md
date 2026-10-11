@@ -74,6 +74,9 @@ from this page.
 15.0.0 ships only when these hold in addition to the required checks (roadmap; status in
 [docs/v15/release-candidate.md](v15/release-candidate.md)):
 
+How to run gates A / B / C, their criteria and what the maintainer has to provide: [docs/v15/gates.md](v15/gates.md)
+(harness `scripts/gate-a.sh`, workflow `Gate A (72 h soak)` on a self-hosted runner).
+
 1. **72 h soak** — workflow `Soak` (`.github/workflows/soak.yml`, `workflow_dispatch`) on a dedicated self-hosted runner
    (labels `self-hosted, linux, soak`; GitHub-hosted jobs stop after 6 h): `gh workflow run soak.yml -f duration=72h
    -f runner=soak -f baseline=13.3.0 -f baseline_duration=6h`. `scripts/soak.mjs` runs two instances sharing a real
