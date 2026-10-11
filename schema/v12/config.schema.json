@@ -147,11 +147,213 @@
           ]
         },
         "edgeAutonomy": {
-          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
-          "type": [
-            "object",
-            "array"
-          ]
+          "type": "object",
+          "description": "Edge autonomy (10.7; GA in 14.6): local decisions while an upstream is unreachable, offline permission boundaries (high-risk calls denied offline by default), sealed queue with expiry, fenced reconcile honouring revocations. See docs/guides/edge-autonomy.md.",
+          "additionalProperties": false,
+          "required": [
+            "rules"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "dir": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Persist the sealed queue, last-good cache and intent log here (0700; files 0600). Relative to the config file."
+            },
+            "rules": {
+              "type": "array",
+              "minItems": 1,
+              "description": "First match on \"server/tool\" decides what a call does while its server is disconnected.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "match",
+                  "action"
+                ],
+                "properties": {
+                  "match": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "action": {
+                    "enum": [
+                      "cache",
+                      "wasm",
+                      "queue",
+                      "deny"
+                    ]
+                  },
+                  "maxAgeSeconds": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 31536000,
+                    "default": 86400
+                  },
+                  "wasmTool": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "policies": {
+              "type": "array",
+              "default": [],
+              "description": "NEW in 14.6: declared offline policy per server / tool (first match on \"server/tool\").",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "match"
+                ],
+                "properties": {
+                  "match": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "offline": {
+                    "enum": [
+                      "allow",
+                      "deny"
+                    ],
+                    "description": "allow: may be answered / queued offline whatever its risk; deny: never; unset: by risk (highRisk)."
+                  },
+                  "risk": {
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high",
+                      "critical"
+                    ],
+                    "description": "Declared risk; replaces the classifier (annotations, tool-name heuristics)."
+                  },
+                  "idempotent": {
+                    "type": "boolean",
+                    "description": "Safe to repeat: an in-doubt replay is resent with the same idempotency key."
+                  },
+                  "conflictKey": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": "Argument names identifying the record written; concurrent offline writes by different clients go to review."
+                  },
+                  "ttlSeconds": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 31536000,
+                    "description": "Queue TTL for matching calls."
+                  }
+                }
+              }
+            },
+            "highRisk": {
+              "enum": [
+                "deny",
+                "allow"
+              ],
+              "default": "deny",
+              "description": "NEW in 14.6 (behaviour change): offline handling of high / critical risk calls (writes, deletes, payments, non-idempotent) that no policy allows."
+            },
+            "cacheEntries": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000,
+              "default": 1000
+            },
+            "outboxLimit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000,
+              "default": 10000,
+              "description": "Maximum queued calls (queue.maxItems wins)."
+            },
+            "queue": {
+              "type": "object",
+              "additionalProperties": false,
+              "default": {},
+              "description": "NEW in 14.6: queue expiry.",
+              "properties": {
+                "ttlSeconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 31536000,
+                  "default": 86400
+                },
+                "maxItems": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100000
+                },
+                "onExpiry": {
+                  "enum": [
+                    "review",
+                    "drop"
+                  ],
+                  "default": "review",
+                  "description": "An expired call is never replayed: parked for review, or dropped."
+                }
+              }
+            },
+            "reconcile": {
+              "type": "object",
+              "additionalProperties": false,
+              "default": {},
+              "properties": {
+                "intervalMs": {
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 3600000,
+                  "default": 5000
+                },
+                "maxAttempts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "default": 5
+                },
+                "idempotencyArg": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Argument carrying the idempotency key (the client's own, else the outbox id)."
+                },
+                "leaseMs": {
+                  "type": "integer",
+                  "minimum": 500,
+                  "maximum": 3600000,
+                  "default": 30000,
+                  "description": "NEW in 14.6: reconcile lease; a crashed reconciler is taken over after this (fencing epoch)."
+                },
+                "requireFreshRevocations": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "NEW in 14.6: replay only after revocation authorities (multi-region) are confirmed fresh since reconnect."
+                }
+              }
+            },
+            "seal": {
+              "type": "object",
+              "additionalProperties": false,
+              "default": {},
+              "description": "NEW in 14.6: AES-256-GCM sealing of the persisted queue / cache.",
+              "properties": {
+                "keyEnv": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Environment variable holding a 32-byte key (base64 or hex); default: a generated <dir>/.seal.key (0600)."
+                }
+              }
+            }
+          }
         },
         "edgeFleet": {
           "$comment": "unchanged from schema v11 (validated by the runtime schema)",

@@ -45,7 +45,7 @@ import { createHash } from 'crypto';
 import { z } from 'zod';
 import { registerFeature, badRequest, objectBody, type FeatureContext } from '../gateway/features.js';
 import { registerCallHook } from '../gateway/hooks.js';
-import { onRevocation } from '../gateway/revocations.js';
+import { onRevocation, registerRevocationAuthority } from '../gateway/revocations.js';
 import { registerMetricSource } from '../monitor/index.js';
 import { instanceLocal } from '../kernel/instance.js';
 import { MemoryStateStore, type StateStore } from '../state/store.js';
@@ -348,6 +348,11 @@ export class RegionMesh {
     }
   }
 
+  /** Whether a shared region store is attached (14.6.0). */
+  hasStore(): boolean {
+    return !!this.store;
+  }
+
   private storeKey(): string {
     return `regions:${this.cfg.self}:revocations`;
   }
@@ -579,6 +584,8 @@ interface RegionState {
   key?: string;
   ctx?: FeatureContext;
   unsubscribe?: () => void;
+  /** 14.6.0: unregisters this module as a revocation authority. */
+  unauthority?: () => void;
 }
 /** 14.5.0: per gateway instance (the call hook finds the mesh of the gateway it runs for). */
 const regionState = instanceLocal('regions', 'state', (): RegionState => ({}));
@@ -664,10 +671,28 @@ registerFeature({
       }
     });
     registerMetricSource('regions', () => meshFor(state)?.prometheus() ?? []);
+    // 14.6.0: replicated revocations are an authority for deferred work (edge outbox replays on reconnect).
+    state.unauthority?.();
+    state.unauthority = registerRevocationAuthority('regions', {
+      isRevoked: (clientId) => meshFor(state)?.isRevoked(clientId) ?? false,
+      confirm: async () => {
+        const m = meshFor(state);
+        if (!m || (!m.settings.peers.length && !m.hasStore())) return { fresh: true };
+        const t0 = m.now();
+        await m.syncOnce(ctx.onlineServers?.() ?? [], fetch, { config: configPrint(ctx) });
+        const behind = m.peerList().filter((p) => p.lastSyncAt === undefined || p.lastSyncAt < t0).map((p) => p.id);
+        const f = m.freshness();
+        if (behind.length) return { fresh: false, detail: `peers not reached since reconnect: ${behind.join(', ')}` };
+        if (f.store === 'stale') return { fresh: false, detail: 'region store unreachable' };
+        return { fresh: true };
+      },
+    });
     ctx.onStop?.(() => {
       state.mesh?.stop();
       state.unsubscribe?.();
       state.unsubscribe = undefined;
+      state.unauthority?.();
+      state.unauthority = undefined;
     });
     // Start syncing as soon as the gateway is up (config may also change later; re-checked on each request).
     setImmediate(() => { try { meshFor(state); } catch { /* invalid config is reported on request */ } });

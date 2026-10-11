@@ -811,9 +811,10 @@ features:
         nodes:
           - { id: a, tool: crm/create, compensate: { tool: crm/delete, args: { id: "{{self.structuredContent.id}}" } } }
           - { id: b, remote: { gateway: eu, skill: kyc }, needs: [a], retry: { attempts: 3, backoffMs: 500 } }
-  edgeAutonomy:                    # EXPERIMENTAL
+  edgeAutonomy:                    # GA in 14.6 (see below)
     dir: .mcp-gateway/edge
     rules: [{ match: "crm/get_*", action: cache }, { match: "crm/update_*", action: queue }]
+    policies: [{ match: "crm/update_*", offline: allow, idempotent: true }]   # 14.6: writes are denied offline unless allowed
 ```
 
 `taskGraphs`: cross-gateway task graphs with checkpoints, resume, retry and compensation — see
@@ -842,8 +843,39 @@ committed step, deduplicates submissions (`Idempotency-Key`, per client) and cal
 in doubt after a crash is never repeated automatically), parks failed runs in a DLQ with a retry policy, pauses runs
 for approval across restarts and leases runs so several gateways sharing Redis execute each call once. Node keys:
 `idempotent`, `idempotencyArg`, `approval`; `compensate.idempotencyArg`; graph key `clients` (`approval` and
-`clients` need `durable`). See [Durable task execution](guides/durable-tasks.md). `edgeAutonomy` (EXPERIMENTAL): local cache / WASM / queue / deny decisions while
-an upstream is unreachable, outbox reconcile on reconnect — see [Edge autonomy](guides/edge-autonomy.md).
+`clients` need `durable`). See [Durable task execution](guides/durable-tasks.md).
+
+#### Edge autonomy (10.7; GA in 14.6)
+
+`edgeAutonomy`: local cache / WASM / queue / deny decisions while an upstream is unreachable, reconcile on reconnect —
+see [Edge autonomy](guides/edge-autonomy.md). 14.6.0 adds:
+
+```yaml
+features:
+  edgeAutonomy:
+    dir: .mcp-gateway/edge           # sealed (AES-256-GCM) queue + cache + intent log; 0700 / 0600
+    rules:
+      - { match: "crm/*",      action: queue }
+      - { match: "payments/*", action: deny }
+    policies:                        # first match on "server/tool"
+      - { match: "crm/update_*", offline: allow, idempotent: true, conflictKey: [id], ttlSeconds: 3600 }
+      - { match: "crm/export", risk: high }
+    highRisk: deny                   # default: high / critical risk calls (writes, deletes, payments) are not served offline
+    queue: { ttlSeconds: 86400, maxItems: 10000, onExpiry: review }   # review | drop
+    reconcile: { intervalMs: 5000, maxAttempts: 5, idempotencyArg: idempotencyKey, leaseMs: 30000, requireFreshRevocations: true }
+    seal: { keyEnv: MCP_GATEWAY_EDGE_SEAL_KEY }   # optional; else a generated <dir>/.seal.key
+```
+
+| Key | Default | |
+|---|---|---|
+| `policies[]` | `[]` | `match`, `offline: allow\|deny`, `risk: low\|medium\|high\|critical`, `idempotent`, `conflictKey`, `ttlSeconds` |
+| `highRisk` | `deny` | **Behaviour change:** high / critical calls no policy allows are refused offline (`-32018`); `allow` = 10.7 behaviour |
+| `queue.ttlSeconds` | `86400` | Expired calls are never replayed |
+| `queue.maxItems` | `outboxLimit` (10000) | Queue bound |
+| `queue.onExpiry` | `review` | `review` parks, `drop` removes |
+| `reconcile.leaseMs` | `30000` | One reconciler at a time; fencing epoch |
+| `reconcile.requireFreshRevocations` | `true` | Wait until revocation authorities (`regions`) are confirmed fresh since reconnect |
+| `seal.keyEnv` | — | Env var with a 32-byte key (base64 / hex) |
 
 ### Privacy computing and post-quantum identity (10.8, EXPERIMENTAL)
 

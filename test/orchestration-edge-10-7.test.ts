@@ -189,12 +189,12 @@ describe('task graphs (10.7)', () => {
   });
 });
 
-describe('edge autonomy (10.7, EXPERIMENTAL)', () => {
+describe('edge autonomy (10.7; GA in 14.6.0)', () => {
   const call = (base: string, tool: string, args: Record<string, unknown>) =>
     fetch(`${base}/api/v1/tools/call`, { method: 'POST', headers: { authorization: 'Bearer op', 'content-type': 'application/json' }, body: JSON.stringify({ server: 'fake', tool, arguments: args }) });
 
-  it('schema: wasm needs wasmTool; labelled EXPERIMENTAL in the security posture', () => {
-    expect(experimentalFeatureWarnings({ edgeAutonomy: { rules: [{ match: '*', action: 'cache' }] } } as never).map((w) => w.id)).toEqual(['experimental-edge-autonomy']);
+  it('schema: wasm needs wasmTool; no longer labelled EXPERIMENTAL (14.6.0)', () => {
+    expect(experimentalFeatureWarnings({ edgeAutonomy: { rules: [{ match: '*', action: 'cache' }] } } as never).map((w) => w.id)).toEqual([]);
     expect(() => EdgeAutonomySchema.parse({ rules: [{ match: '*', action: 'wasm' }] })).toThrow(/wasmTool/);
     expect(EdgeAutonomySchema.parse({ rules: [{ match: '*', action: 'cache' }] }).reconcile).toMatchObject({ intervalMs: 5000, maxAttempts: 5 });
   });
@@ -216,6 +216,8 @@ describe('edge autonomy (10.7, EXPERIMENTAL)', () => {
           { match: 'fake/pay', action: 'deny', message: 'payments need a connection' },
           { match: 'fake/secret', action: 'queue' },
         ],
+        // 14.6.0: writes are high-risk and denied offline unless a policy allows them
+        policies: [{ match: 'fake/update_*', offline: 'allow' }],
         reconcile: { intervalMs: 3_600_000, maxAttempts: 2, idempotencyArg: 'idempotencyKey' },
       },
     } as never);
@@ -239,7 +241,8 @@ describe('edge autonomy (10.7, EXPERIMENTAL)', () => {
     expect(q.status).toBe(200);
     const receipt = ((await q.json()) as { result: { structuredContent: { outboxId: string } } }).result.structuredContent.outboxId;
     expect(receipt).toMatch(/^ob-/);
-    expect(JSON.parse(readFileSync(join(dir, 'outbox.json'), 'utf8'))[0]).toMatchObject({ id: receipt, status: 'queued' });
+    expect((await fx.admin('edge-autonomy/outbox')).body.entries[0]).toMatchObject({ id: receipt, status: 'queued' });
+    expect(readFileSync(join(dir, 'outbox.json'), 'utf8')).not.toContain('Ada'); // 14.6.0: sealed at rest
 
     const p = await call(fx.base, 'pay', {});
     expect(p.status).toBe(502);

@@ -838,6 +838,54 @@ taskOpts(regionsCmd.command('revoke <clientId>').description('Revoke a client id
   regionsCall(o, 'POST', '/revocations', { clientId: id, ...(o.reason ? { reason: o.reason } : {}) }, (d) => `revoked ${String(d.clientId)} (region ${String(d.region)})`),
 );
 
+// ─── 14.6.0: edge autonomy ────────────────────────────────────────────────────
+
+/** Human-readable `edge report`. */
+export function formatEdgeReport(d: Record<string, unknown>): string {
+  const q = (d.queue ?? {}) as Record<string, unknown>;
+  const seal = (d.seal ?? {}) as Record<string, unknown>;
+  const rec = (d.reconcile ?? {}) as Record<string, unknown>;
+  const last = rec.last as { at?: string; result?: Record<string, unknown> } | null | undefined;
+  const den = (d.denied ?? {}) as Record<string, number>;
+  const lines = [
+    `edge autonomy — high-risk offline: ${String(d.highRisk)} · persisted: ${d.persisted ? 'yes' : 'no'} · seal: ${seal.ok === false ? `FAILED (${String(seal.error)})` : String(seal.source ?? 'n/a')}`,
+    `queue: queued ${String(q.queued ?? 0)} · review ${String(q.review ?? 0)} · conflicts ${String(q.conflict ?? 0)} · rejected ${String(q.rejected ?? 0)} · applied ${String(q.applied ?? 0)} (max ${String(q.maxItems)}, ttl ${String(q.ttlSeconds)} s, on expiry ${String(q.onExpiry)}, oldest ${String(q.oldestAgeSeconds ?? 0)} s)`,
+    `denied offline: low ${den.low ?? 0}, medium ${den.medium ?? 0}, high ${den.high ?? 0}, critical ${den.critical ?? 0}`,
+    `reconcile: epoch ${String(rec.epoch ?? 0)} · outcome unknown ${String(rec.outcomeUnknown ?? 0)}${last ? ` · last ${String(last.at)}: ${Object.entries(last.result ?? {}).filter(([, v]) => typeof v === 'number' && v > 0).map(([k, v]) => `${k} ${String(v)}`).join(', ') || 'nothing to do'}` : ''}`,
+    '',
+    'server          connectivity',
+  ];
+  for (const s of (d.servers ?? []) as Array<{ id: string; disconnected: string | null }>) lines.push(`${s.id.padEnd(15)} ${s.disconnected ? `DISCONNECTED (${s.disconnected})` : 'connected'}`);
+  return lines.join('\n');
+}
+async function edgeCall(options: { url?: string; key?: string; json?: boolean }, method: string, path: string, body?: unknown, show?: (d: Record<string, unknown>) => string): Promise<void> {
+  try {
+    const r = await adminCall(options.url ?? process.env.MCP_GATEWAY_URL ?? 'http://localhost:4000', options.key ?? process.env.MCP_GATEWAY_ADMIN_KEY, method, `/admin/edge-autonomy${path}`, body);
+    if (r.status >= 400) throw new Error(`Gateway answered ${r.status}: ${String(r.data.message ?? r.data.error ?? '')}`);
+    console.log(options.json || !show ? JSON.stringify(r.data, null, 2) : show(r.data));
+  } catch (err) {
+    logger.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+const edgeCmd = program.command('edge').description('Edge autonomy (14.6): offline report, queue, reconcile');
+taskOpts(edgeCmd.command('report').description('Offline boundaries, queue (expiry, review), reconcile state, seal, connectivity per server')).action((o) =>
+  edgeCall(o, 'GET', '/report', undefined, formatEdgeReport),
+);
+taskOpts(edgeCmd.command('queue').description('List queued calls').option('--status <status>', 'queued | review | conflict | rejected | applied')).action((o) =>
+  edgeCall(o, 'GET', `/outbox${o.status ? `?status=${encodeURIComponent(o.status)}` : ''}`, undefined, (d) => {
+    const es = (d.entries ?? []) as Array<Record<string, unknown>>;
+    if (!es.length) return '(empty)';
+    return es.map((e) => `${String(e.id)}  ${String(e.status).padEnd(8)} ${String(e.serverId)}/${String(e.tool)}  client ${String(e.clientId ?? '—')}  risk ${String(e.risk ?? '—')}  queued ${String(e.at)}${e.expiresAt ? `  expires ${String(e.expiresAt)}` : ''}${e.reviewReason ? `  (${String(e.reviewReason)})` : ''}`).join('\n');
+  }),
+);
+taskOpts(edgeCmd.command('reconcile').description('Replay queued calls whose server is reachable again (fenced, in order, revocations checked)')).action((o) =>
+  edgeCall(o, 'POST', '/reconcile', {}, (d) => {
+    const n = (k: string) => `${k} ${String(d[k] ?? 0)}`;
+    return `${d.busy ? 'another reconcile holds the lease — ' : ''}${['applied', 'pending', 'held', 'failed', 'conflicts', 'review', 'rejected', 'expired', 'deduplicated'].map(n).join(' · ')}${d.fenced ? ' · FENCED (superseded)' : ''}${d.waiting ? `\nwaiting: ${String(d.waiting)}` : ''}`;
+  }),
+);
+
 program.parse(process.argv);
 
 if (!process.argv.slice(2).length) {
