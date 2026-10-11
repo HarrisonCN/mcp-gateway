@@ -446,7 +446,253 @@
       "$comment": "unchanged from schema v11 (validated by the runtime schema)"
     },
     "plugins": {
-      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+      "type": "array",
+      "description": "Plugins in configuration order. 14.3 adds runtime / failure / permissions and module-plugin limits. See docs/guides/plugin-security.md.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "module": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ES module path (relative to the config file) or package name"
+          },
+          "component": {
+            "type": "string",
+            "minLength": 1,
+            "description": "plugin API v5 WASM component"
+          },
+          "signature": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "options": {
+            "type": "object"
+          },
+          "secrets": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^secret://[A-Za-z0-9_-]+/\\S+$"
+            }
+          },
+          "isolation": {
+            "enum": [
+              "tenant",
+              "client",
+              "shared",
+              "inline",
+              "worker",
+              "process"
+            ],
+            "description": "components: sandbox per tenant | client | shared; module plugins (14.3): alias of runtime"
+          },
+          "runtime": {
+            "enum": [
+              "inline",
+              "worker",
+              "process"
+            ],
+            "default": "inline",
+            "description": "NEW in 14.3 (module plugins): where the plugin runs; worker becomes the default in 15.0"
+          },
+          "failure": {
+            "description": "NEW in 14.3 (module plugins): what a failed hook does",
+            "oneOf": [
+              {
+                "enum": [
+                  "open",
+                  "closed"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "default": {
+                    "enum": [
+                      "open",
+                      "closed"
+                    ]
+                  },
+                  "onToolCall": {
+                    "enum": [
+                      "open",
+                      "closed"
+                    ]
+                  },
+                  "onResponse": {
+                    "enum": [
+                      "open",
+                      "closed"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60000,
+            "description": "inline module plugins: per hook call"
+          },
+          "limits": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "timeoutMs": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 60000
+              },
+              "memoryMb": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4096
+              },
+              "maxInstances": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000,
+                "description": "components only"
+              },
+              "maxFailures": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000,
+                "description": "NEW in 14.3 (module plugins): circuit breaker threshold"
+              },
+              "cooldownMs": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3600000,
+                "description": "NEW in 14.3 (module plugins)"
+              },
+              "maxConcurrent": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000,
+                "description": "NEW in 14.3 (isolated module plugins)"
+              }
+            }
+          },
+          "permissions": {
+            "type": "object",
+            "description": "NEW in 14.3 (module plugins): declared capabilities; network / env / fs need runtime worker or process",
+            "additionalProperties": false,
+            "properties": {
+              "args": {
+                "enum": [
+                  "read",
+                  "write"
+                ],
+                "default": "write"
+              },
+              "response": {
+                "enum": [
+                  "read",
+                  "write"
+                ],
+                "default": "write"
+              },
+              "secrets": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "servers": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "hooks": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "onToolCall",
+                    "onResponse",
+                    "onError",
+                    "onConfigChange"
+                  ]
+                }
+              },
+              "network": {
+                "oneOf": [
+                  {
+                    "const": false
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 255
+                    }
+                  }
+                ]
+              },
+              "env": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                }
+              },
+              "fs": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "read": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "write": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "module"
+            ]
+          },
+          {
+            "required": [
+              "component"
+            ]
+          }
+        ]
+      }
     },
     "policy": {
       "$comment": "unchanged from schema v11 (validated by the runtime schema)"

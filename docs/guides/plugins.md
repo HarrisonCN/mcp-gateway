@@ -1,5 +1,7 @@
 # Plugins
 
+> **14.3:** module plugins can run isolated (`runtime: worker` / `process`) with permissions, resource limits, a failure policy and a circuit breaker — see [Plugin security runtime](plugin-security.md).
+
 Plugins add behaviour to the gateway without forking it. A plugin is an ES module whose default export is a plugin
 object, or a factory that receives a context and returns one.
 

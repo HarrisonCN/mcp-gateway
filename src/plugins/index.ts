@@ -39,7 +39,7 @@
  * @module plugins
  */
 
-import { isAbsolute, resolve } from 'path';
+import { dirname, isAbsolute, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { readFile } from 'fs/promises';
 import { PluginTrustSchema, type PluginTrustConfig } from './trust-schema.js';
@@ -47,6 +47,11 @@ import express, { type NextFunction, type Request, type Response, type Router } 
 import type { PluginConfig, ProxyResponse } from '../utils/types.js';
 import { logger, type Logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
+import { createHash } from 'crypto';
+import { isDeepStrictEqual } from 'util';
+import { IsolatedRuntimeHandle, PluginBusy, PluginCrash, RUNTIME, type HookName, type IsolatedRuntime, type ModulePluginLimits, type PluginPermissions } from './runtime.js';
+
+export { PluginCrash, PluginBusy, PluginTimeout, type PluginPermissions, type ModulePluginLimits } from './runtime.js';
 
 /** Version of the plugin contract implemented by this gateway. */
 export const PLUGIN_API_VERSION = 5;
@@ -331,6 +336,22 @@ async function instantiate(src: unknown, ctx: PluginContext, label: string): Pro
 
 /** 5.4: verify a plugin's `.sig` against `pluginTrust` (throws when it must not load). */
 export async function checkSignature(cfg: PluginConfig, baseDir: string, trust?: PluginTrustConfig): Promise<string | undefined> {
+  return (await verifySignature(cfg, baseDir, trust))?.keyId;
+}
+
+/** What a successful signature check verified: the exact bytes, which are the only bytes that may be loaded. */
+export interface VerifiedArtifact {
+  keyId: string;
+  file: string;
+  bytes: Buffer;
+  sha256: string;
+}
+
+/**
+ * 14.3.0 (MGW-2026-016): verify the signature and return the verified bytes. The loader runs exactly these bytes and
+ * refuses the plugin when the file on disk no longer matches them (changed after verification).
+ */
+export async function verifySignature(cfg: PluginConfig, baseDir: string, trust?: PluginTrustConfig): Promise<VerifiedArtifact | undefined> {
   const t = PluginTrustSchema.parse(trust ?? {});
   const spec = cfg.component ?? cfg.module;
   if (!spec || (!t.keys.length && !t.requireSigned)) return undefined;
@@ -352,10 +373,39 @@ export async function checkSignature(cfg: PluginConfig, baseDir: string, trust?:
   }
   // 13.3.0: loaded only when a signature is actually checked (keeps @noble/* out of the default startup)
   const { verifyArtifact } = await import('./trust.js');
-  const r = verifyArtifact(await readFile(file), sig, t.keys, { requirePostQuantum: t.requirePostQuantum });
+  const bytes = await readFile(file);
+  const r = verifyArtifact(bytes, sig, t.keys, { requirePostQuantum: t.requirePostQuantum });
   if (!r.ok) throw new Error(`Plugin "${label}" failed signature verification: ${r.reason}`);
-  return r.keyId;
+  return { keyId: r.keyId, file, bytes, sha256: createHash('sha256').update(bytes).digest('hex') };
 }
+
+/** 14.3.0 (MGW-2026-016): the file must still hold the verified bytes when it is loaded (they are loaded, not the file). */
+async function assertUnchanged(v: VerifiedArtifact, label: string): Promise<void> {
+  let now: string;
+  try {
+    now = createHash('sha256').update(await readFile(v.file)).digest('hex');
+  } catch (e) {
+    throw new Error(`Plugin "${label}" changed after signature verification (${(e as Error).message}); refusing to load`);
+  }
+  if (now !== v.sha256) throw new Error(`Plugin "${label}" changed after signature verification (sha256 ${now.slice(0, 12)}…, verified ${v.sha256.slice(0, 12)}…); refusing to load`);
+}
+
+const dataUrl = (bytes: Buffer) => `data:text/javascript;base64,${bytes.toString('base64')}`;
+
+/** 14.3.0: which runtime a module plugin entry asks for (`runtime`, or the `isolation: worker|process|inline` alias). */
+export function runtimeOfConfig(cfg: PluginConfig): 'inline' | IsolatedRuntime | undefined {
+  const iso = cfg.isolation as string | undefined;
+  return cfg.runtime ?? (iso === 'inline' || iso === 'worker' || iso === 'process' ? iso : undefined);
+}
+
+/** 14.3.0: where a loaded plugin runs — `inline` (in the gateway process), `worker`, `process` or `wasm`. */
+export function pluginRuntimeOf(p: unknown): 'inline' | IsolatedRuntime | 'wasm' {
+  const rt = (p as Record<symbol, unknown> | null)?.[RUNTIME];
+  if (rt === 'worker' || rt === 'process') return rt;
+  return typeof (p as { stats?: unknown })?.stats === 'function' ? 'wasm' : 'inline';
+}
+
+let inlineNoticeShown = false;
 
 /** Plugin API v5 outcome (`{ action }`) → the internal shape; v4 shapes pass through. */
 export function normalizeToolCallOutcome(out: unknown): ToolCallOutcome {
@@ -388,17 +438,36 @@ export function normalizeResponseOutcome(out: unknown, current: ProxyResponse): 
 
 /** Load one configured plugin (`module` is a path relative to `baseDir`, or a package name). */
 export async function loadPlugin(cfg: PluginConfig, baseDir = process.cwd(), trust?: PluginTrustConfig): Promise<GatewayPlugin> {
-  await checkSignature(cfg, baseDir, trust);
+  const verified = await verifySignature(cfg, baseDir, trust);
+  const label = cfg.name ?? cfg.component ?? cfg.module ?? 'plugin';
   if (cfg.component) {
+    if (verified) await assertUnchanged(verified, label);
     const { loadWasmPlugin } = await import('./wasm.js');
-    return loadWasmPlugin({ wasm: cfg.component, name: cfg.name, isolation: cfg.isolation, limits: cfg.limits, abi: 'component' }, baseDir);
+    const iso = cfg.isolation as 'tenant' | 'client' | 'shared' | undefined;
+    return loadWasmPlugin({ wasm: cfg.component, name: cfg.name, isolation: iso, limits: cfg.limits as never, abi: 'component', bytes: verified?.bytes }, baseDir);
   }
   if ((cfg as { wasm?: unknown }).wasm !== undefined) throw new Error('`plugins[].wasm` was removed in 8.0 — rebuild the plugin as a plugin API v5 component and load it with `component`');
   if (!cfg.module) throw new Error('A plugin needs "module" or "component"');
   const spec = cfg.module;
   const isPath = spec.startsWith('.') || isAbsolute(spec);
-  const target = isPath ? pathToFileURL(resolve(baseDir, spec)).href : spec;
-  const mod = (await import(target)) as Record<string, unknown>;
+  const runtime = runtimeOfConfig(cfg);
+  // 14.3.0 (MGW-2026-016): a signed plugin runs the verified bytes — never a second read of the file
+  if (verified) await assertUnchanged(verified, label);
+  const target = verified ? dataUrl(verified.bytes) : isPath ? pathToFileURL(resolve(baseDir, spec)).href : spec;
+  if (runtime === 'worker' || runtime === 'process') return loadIsolated(cfg, runtime, target, isPath ? dirname(resolve(baseDir, spec)) : undefined);
+  if (!runtime && !inlineNoticeShown) {
+    inlineNoticeShown = true;
+    logger.info(`Plugin ${label} runs in the gateway process (runtime: inline). Set \`runtime: worker\` for isolation, resource limits and permissions — worker becomes the default for module plugins in 15.0 (docs/guides/plugin-security.md).`);
+  }
+  let mod: Record<string, unknown>;
+  try {
+    mod = (await import(target)) as Record<string, unknown>;
+  } catch (e) {
+    if (verified && /resolve|relative|Invalid URL|ERR_UNSUPPORTED_RESOLVE_REQUEST|Cannot find (module|package)|bare specifier/i.test(`${(e as { code?: string }).code ?? ''} ${(e as Error).message}`)) {
+      throw new Error(`Plugin "${label}": signed plugins must be self-contained bundles — the signature covers one file, so a signed plugin may only import node: built-ins (${(e as Error).message})`);
+    }
+    throw e;
+  }
   const exported = mod.default ?? mod.plugin ?? mod;
   const plugin = await instantiate(exported, contextFor(cfg), spec);
   const out = cfg.name ? { ...plugin, name: cfg.name, close: plugin.close?.bind(plugin) } : plugin;
@@ -410,8 +479,128 @@ export async function loadPlugin(cfg: PluginConfig, baseDir = process.cwd(), tru
     throw err;
   }
   if (cfg.timeoutMs) hookTimeouts.set(out, cfg.timeoutMs);
+  setPolicy(out, cfg, 'inline');
   return out;
 }
+
+/** 14.3.0: a module plugin in a worker / child process — the returned object only proxies hook calls. */
+async function loadIsolated(cfg: PluginConfig, runtime: IsolatedRuntime, url: string, dir: string | undefined): Promise<GatewayPlugin> {
+  const limits = { ...((cfg.limits ?? {}) as ModulePluginLimits), ...(cfg.timeoutMs && !(cfg.limits as ModulePluginLimits | undefined)?.timeoutMs ? { timeoutMs: cfg.timeoutMs } : {}) };
+  const permissions = (cfg.permissions ?? {}) as PluginPermissions;
+  const handle = new IsolatedRuntimeHandle({
+    runtime,
+    url,
+    label: cfg.name ?? cfg.module ?? 'plugin',
+    name: cfg.name,
+    options: cfg.options ?? {},
+    limits,
+    permissions,
+    secretNames: Object.keys(cfg.secrets ?? {}),
+    dir,
+    gatewayVersion: VERSION,
+    apiVersion: PLUGIN_API_VERSION,
+    logger,
+  });
+  let meta;
+  try {
+    meta = await handle.start();
+    await instantiate({ name: meta.name, apiVersion: meta.apiVersion }, contextFor(cfg), cfg.module ?? 'plugin');
+    if (meta.hooks.includes('onRequest') || meta.routes) throw new Error(`Plugin "${meta.name}" has onRequest / routes, which run in the gateway process — use runtime: inline for it (HTTP hooks cannot be isolated)`);
+  } catch (err) {
+    await handle.close();
+    throw err;
+  }
+  const name = cfg.name ?? meta.name;
+  const plugin: GatewayPlugin & { [RUNTIME]: IsolatedRuntime; runtimeStats: () => ReturnType<IsolatedRuntimeHandle['stats']> } = {
+    name,
+    apiVersion: meta.apiVersion,
+    [RUNTIME]: runtime,
+    runtimeStats: () => handle.stats(),
+    close: () => handle.close(),
+  };
+  const callPayload = (call: PluginCall) => ({
+    serverId: call.serverId,
+    name: call.name,
+    kind: call.kind,
+    method: call.method,
+    arguments: call.arguments,
+    clientId: call.clientId,
+    tenant: call.tenant,
+    via: call.via,
+    state: cloneableState(call.state),
+  });
+  const syncState = (call: PluginCall, st?: Map<string, unknown>) => {
+    if (!st) return;
+    for (const [k, v] of st) call.state.set(k, v);
+  };
+  const tenantOf = (ctx: PluginHookContext) => (ctx.tenant ? { ...ctx.tenant } : undefined);
+  if (meta.hooks.includes('onToolCall')) {
+    plugin.onToolCall = async (call, ctx) => {
+      const before = call.arguments;
+      const r = await handle.call('onToolCall', { call: callPayload(call), tenant: tenantOf(ctx), secretNames: ctx.secrets?.names() ?? [] }, ctx.secrets);
+      syncState(call, r.state);
+      const out = normalizeToolCallOutcome(r.out);
+      // an in-place change of `call.arguments` inside the runtime is a rewrite
+      if (!out && r.arguments && !isDeepStrictEqual(r.arguments, before)) return { arguments: r.arguments };
+      return out;
+    };
+  }
+  if (meta.hooks.includes('onResponse')) {
+    plugin.onResponse = async (call, result, ctx) => {
+      const r = await handle.call('onResponse', { call: callPayload(call), result, tenant: tenantOf(ctx), secretNames: ctx.secrets?.names() ?? [] }, ctx.secrets);
+      syncState(call, r.state);
+      return r.out as ProxyResponse | void;
+    };
+  }
+  if (meta.hooks.includes('onError')) {
+    plugin.onError = async (call, error, ctx) => {
+      const r = await handle.call('onError', { call: callPayload(call), error, tenant: tenantOf(ctx), secretNames: ctx.secrets?.names() ?? [] }, ctx.secrets);
+      syncState(call, r.state);
+    };
+  }
+  if (meta.hooks.includes('onConfigChange')) {
+    plugin.onConfigChange = async (change, ctx) => {
+      await handle.call('onConfigChange', { change, secretNames: ctx.secrets?.names() ?? [] }, ctx.secrets);
+    };
+  }
+  if (cfg.secrets) grants.set(plugin, { ...cfg.secrets });
+  parsedOptions.set(plugin, meta.options);
+  setPolicy(plugin, cfg, runtime);
+  return plugin;
+}
+
+function cloneableState(st: Map<string, unknown>): Map<string, unknown> {
+  const out = new Map<string, unknown>();
+  for (const [k, v] of st) {
+    try {
+      out.set(k, structuredClone(v));
+    } catch {
+      /* not transferable into the isolated runtime */
+    }
+  }
+  return out;
+}
+
+/** 14.3.0: permissions, failure policy and circuit-breaker settings per plugin instance. */
+interface PluginPolicy {
+  runtime: 'inline' | IsolatedRuntime;
+  permissions?: PluginPermissions;
+  failure: Partial<Record<HookName, 'open' | 'closed'>> & { default: 'open' | 'closed' };
+  /** Circuit breaker (undefined = none: inline plugins without limits.maxFailures). */
+  breaker?: { maxFailures: number; cooldownMs: number };
+}
+const policies = new WeakMap<GatewayPlugin, PluginPolicy>();
+
+function setPolicy(p: GatewayPlugin, cfg: PluginConfig, runtime: 'inline' | IsolatedRuntime): void {
+  const lim = (cfg.limits ?? {}) as ModulePluginLimits;
+  const f = cfg.failure;
+  const failure = typeof f === 'string' || f === undefined ? { default: f ?? 'closed' } : { default: f.default ?? 'closed', ...f };
+  const breaker = runtime !== 'inline' || lim.maxFailures !== undefined ? { maxFailures: lim.maxFailures ?? 5, cooldownMs: lim.cooldownMs ?? 30_000 } : undefined;
+  policies.set(p, { runtime, permissions: cfg.permissions as PluginPermissions | undefined, failure: failure as PluginPolicy['failure'], breaker });
+}
+
+const globRe = (g: string) => new RegExp(`^${g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`);
+const matchesAny = (v: string, globs?: string[]) => !globs || globs.some((g) => globRe(g).test(v));
 
 /** 10.5: options after `configSchema`, per plugin instance. */
 const parsedOptions = new WeakMap<GatewayPlugin, Record<string, unknown>>();
@@ -519,6 +708,9 @@ export class PluginHost {
           get: async (name: string) => {
             const ref = granted[name];
             if (!ref) throw new Error(`Plugin "${p.name}" was not granted secret "${name}"`);
+            // 14.3.0: permissions.secrets narrows the granted names
+            const allowed = policies.get(p)?.permissions?.secrets;
+            if (allowed && !allowed.includes(name)) throw new Error(`Plugin "${p.name}" may not read secret "${name}" (permissions.secrets)`);
             if (!resolve) throw new Error('No secret providers are available');
             return resolve(ref, p.name);
           },
@@ -535,7 +727,7 @@ export class PluginHost {
   /** API v3: tell every plugin a hot reload was applied. */
   async configChanged(change: PluginConfigChange): Promise<void> {
     for (const p of this.plugins) {
-      if (!p.onConfigChange) continue;
+      if (!p.onConfigChange || !this.hookAllowed(p, 'onConfigChange')) continue;
       try {
         await p.onConfigChange(change, this.ctxOf(p));
       } catch (err) {
@@ -617,21 +809,143 @@ export class PluginHost {
     };
   }
 
+  // ─── 14.3.0: permissions, failure policy, circuit breaker ─────────────────
+  private readonly circuits = new WeakMap<GatewayPlugin, { failures: number; state: 'closed' | 'open' | 'half-open'; openedAt?: number; lastError?: string; failOpenPasses: number; refusals: number }>();
+
+  private circuit(p: GatewayPlugin) {
+    let c = this.circuits.get(p);
+    if (!c) this.circuits.set(p, (c = { failures: 0, state: 'closed', failOpenPasses: 0, refusals: 0 }));
+    return c;
+  }
+
+  private hookAllowed(p: GatewayPlugin, hook: HookName): boolean {
+    const hooks = policies.get(p)?.permissions?.hooks;
+    return !hooks || hooks.includes(hook);
+  }
+
+  private inScope(p: GatewayPlugin, call: PluginCall): boolean {
+    const perm = policies.get(p)?.permissions;
+    return !perm || (matchesAny(call.serverId, perm.servers) && matchesAny(call.name, perm.tools));
+  }
+
+  /** Whether the breaker lets this call reach the plugin (`half-open` lets one trial through). */
+  private admit(p: GatewayPlugin): boolean {
+    const b = policies.get(p)?.breaker;
+    if (!b) return true;
+    const c = this.circuit(p);
+    if (c.state === 'closed') return true;
+    if (c.state === 'open' && Date.now() - (c.openedAt ?? 0) >= b.cooldownMs) {
+      c.state = 'half-open';
+      return true;
+    }
+    return false;
+  }
+
+  private succeeded(p: GatewayPlugin): void {
+    const c = this.circuits.get(p);
+    if (c && (c.failures || c.state !== 'closed')) {
+      if (c.state !== 'closed') logger.info(`Plugin "${p.name}" circuit closed`);
+      c.failures = 0;
+      c.state = 'closed';
+    }
+  }
+
+  /**
+   * A hook failed (threw, crashed, timed out, hit its memory limit, was busy). Applies the breaker and the failure
+   * policy: `closed` → the PluginError to throw; `open` → undefined (the call proceeds without this plugin).
+   */
+  private failed(p: GatewayPlugin, hook: HookName, err: unknown): PluginError | undefined {
+    const msg = err instanceof Error ? err.message : String(err);
+    const pol = policies.get(p);
+    const c = this.circuit(p);
+    c.lastError = msg;
+    if (pol?.breaker && !(err instanceof PluginBusy)) {
+      c.failures++;
+      if (c.state === 'half-open' || c.failures >= pol.breaker.maxFailures) {
+        if (c.state !== 'open') logger.warn(`Plugin "${p.name}" circuit opened after ${c.failures} consecutive failure(s); retrying in ${pol.breaker.cooldownMs} ms`);
+        c.state = 'open';
+        c.openedAt = Date.now();
+      }
+    }
+    const verb = err instanceof PluginCrash ? 'crashed' : 'failed';
+    const policy = pol?.failure[hook] ?? pol?.failure.default ?? 'closed';
+    if (policy === 'open') {
+      c.failOpenPasses++;
+      logger.warn(`Plugin "${p.name}" ${verb} in ${hook} (failure: open — the call proceeds without it): ${msg}`);
+      return undefined;
+    }
+    c.refusals++;
+    return new PluginError(`Plugin "${p.name}" ${verb}: ${msg}`, p.name);
+  }
+
+  /** The breaker is open: `closed` policy refuses, `open` skips the plugin. */
+  private circuitOpen(p: GatewayPlugin, hook: HookName): PluginError | undefined {
+    const pol = policies.get(p);
+    const c = this.circuit(p);
+    if ((pol?.failure[hook] ?? pol?.failure.default ?? 'closed') === 'open') {
+      c.failOpenPasses++;
+      return undefined;
+    }
+    c.refusals++;
+    return new PluginError(`Plugin "${p.name}" is unavailable: circuit open after ${c.failures} consecutive failure(s) (last: ${c.lastError ?? 'unknown'})`, p.name);
+  }
+
+  /** 14.3.0: runtime, breaker and permission state of every active plugin (`GET /api/v1/plugins`). */
+  status(): Array<{ name: string; runtime: string; circuit: 'closed' | 'open' | 'half-open'; failures: number; failure: string; lastError?: string; failOpenPasses: number; refusals: number; restarts?: number; alive?: boolean; inFlight?: number; lastCrash?: string; permissions?: PluginPermissions }> {
+    return this.plugins.map((p) => {
+      const pol = policies.get(p);
+      const c = this.circuits.get(p);
+      let circuit = c?.state ?? 'closed';
+      if (circuit === 'open' && pol?.breaker && Date.now() - (c?.openedAt ?? 0) >= pol.breaker.cooldownMs) circuit = 'half-open';
+      const rs = (p as { runtimeStats?: () => { restarts: number; alive: boolean; inFlight: number; lastCrash?: string } }).runtimeStats?.();
+      const f = pol?.failure;
+      return {
+        name: p.name,
+        runtime: pluginRuntimeOf(p),
+        circuit,
+        failures: c?.failures ?? 0,
+        failure: !f ? 'closed' : Object.keys(f).length > 1 ? JSON.stringify(f) : f.default,
+        ...(c?.lastError ? { lastError: c.lastError } : {}),
+        failOpenPasses: c?.failOpenPasses ?? 0,
+        refusals: c?.refusals ?? 0,
+        ...(rs ? { restarts: rs.restarts, alive: rs.alive, inFlight: rs.inFlight, ...(rs.lastCrash ? { lastCrash: rs.lastCrash } : {}) } : {}),
+        ...(pol?.permissions ? { permissions: pol.permissions } : {}),
+      };
+    });
+  }
+
   /** Run `onToolCall` hooks. Returns a refusal / short-circuit or undefined to proceed. */
   async beforeCall(call: PluginCall, plugins: readonly GatewayPlugin[] = this.plugins): Promise<{ deny: string; plugin: string } | { respond: unknown; plugin: string } | undefined> {
     for (const p of plugins) {
-      if (!p.onToolCall) continue;
+      if (!p.onToolCall || !this.hookAllowed(p, 'onToolCall') || !this.inScope(p, call)) continue;
+      if (!this.admit(p)) {
+        const e = this.circuitOpen(p, 'onToolCall');
+        if (e) throw e;
+        continue;
+      }
+      const readOnly = policies.get(p)?.permissions?.args === 'read';
+      const snapshot = readOnly ? structuredCloneSafe(call.arguments) : undefined;
       let out: ToolCallOutcome;
       try {
-        out = await withTimeout(p, 'onToolCall', hookTimeouts.get(p), () => p.onToolCall!(call, this.ctxOf(p, call)));
+        out = normalizeToolCallOutcome(await withTimeout(p, 'onToolCall', hookTimeouts.get(p), () => p.onToolCall!(call, this.ctxOf(p, call))));
+        this.succeeded(p);
       } catch (err) {
-        throw new PluginError(`Plugin "${p.name}" failed: ${err instanceof Error ? err.message : String(err)}`, p.name);
+        if (snapshot) call.arguments = snapshot;
+        const e = this.failed(p, 'onToolCall', err);
+        if (e) throw e;
+        continue;
       }
-      out = normalizeToolCallOutcome(out);
+      if (snapshot && !isDeepStrictEqual(call.arguments, snapshot)) {
+        logger.warn(`Plugin "${p.name}" changed the arguments in place but has permissions.args: read — change dropped`);
+        call.arguments = snapshot;
+      }
       if (!out) continue;
       if ('deny' in out && typeof out.deny === 'string') return { deny: out.deny, plugin: p.name };
       if ('respond' in out && out.respond !== undefined) return { respond: out.respond, plugin: p.name };
-      if ('arguments' in out && out.arguments) call.arguments = out.arguments;
+      if ('arguments' in out && out.arguments) {
+        if (readOnly) logger.warn(`Plugin "${p.name}" tried to rewrite the arguments of ${call.serverId}/${call.name} but has permissions.args: read — rewrite dropped`);
+        else call.arguments = out.arguments;
+      }
     }
     return undefined;
   }
@@ -640,18 +954,31 @@ export class PluginHost {
   async afterCall(call: PluginCall, result: ProxyResponse, plugins: readonly GatewayPlugin[] = this.plugins): Promise<ProxyResponse> {
     let current = result;
     for (const p of plugins) {
-      if (!p.onResponse) continue;
-      try {
-        const next = normalizeResponseOutcome(await withTimeout(p, 'onResponse', hookTimeouts.get(p), () => p.onResponse!(call, current, this.ctxOf(p, call))), current);
-        if (next) current = next;
-      } catch (err) {
-        throw new PluginError(`Plugin "${p.name}" failed: ${err instanceof Error ? err.message : String(err)}`, p.name);
+      if (!p.onResponse || !this.hookAllowed(p, 'onResponse') || !this.inScope(p, call)) continue;
+      if (!this.admit(p)) {
+        const e = this.circuitOpen(p, 'onResponse');
+        if (e) throw e;
+        continue;
       }
+      let next: ProxyResponse | undefined;
+      try {
+        next = normalizeResponseOutcome(await withTimeout(p, 'onResponse', hookTimeouts.get(p), () => p.onResponse!(call, current, this.ctxOf(p, call))), current);
+        this.succeeded(p);
+      } catch (err) {
+        const e = this.failed(p, 'onResponse', err);
+        if (e) throw e;
+        continue;
+      }
+      if (next && policies.get(p)?.permissions?.response === 'read') {
+        logger.warn(`Plugin "${p.name}" tried to replace the result of ${call.serverId}/${call.name} but has permissions.response: read — replacement dropped`);
+        continue;
+      }
+      if (next) current = next;
     }
     if (!current.success) {
       const error = { code: current.error?.code, message: current.error?.message ?? 'Call failed' };
       for (const p of plugins) {
-        if (!p.onError) continue;
+        if (!p.onError || !this.hookAllowed(p, 'onError') || !this.inScope(p, call) || !this.admit(p)) continue;
         try {
           await p.onError(call, error, this.ctxOf(p, call));
         } catch (err) {
@@ -667,6 +994,14 @@ export class PluginHost {
     this.plugins = [];
     this.buildRouters();
     await Promise.all(old.map((p) => closeQuietly(p)));
+  }
+}
+
+function structuredCloneSafe<T>(v: T): T {
+  try {
+    return structuredClone(v);
+  } catch {
+    return JSON.parse(JSON.stringify(v)) as T;
   }
 }
 

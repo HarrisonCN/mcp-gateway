@@ -1095,7 +1095,30 @@ const GatewayConfigSchema = z.object({
           enabled: z.boolean().optional(),
           options: z.record(z.unknown()).optional(),
           secrets: z.record(z.string().regex(/^secret:\/\/[A-Za-z0-9_-]+\/\S+$/, 'must be a secret://provider/path reference')).optional(),
-          isolation: z.enum(['tenant', 'client', 'shared']).optional(),
+          // WASM components: sandbox granularity; 14.3.0 module plugins: alias of `runtime`
+          isolation: z.enum(['tenant', 'client', 'shared', 'inline', 'worker', 'process']).optional(),
+          // 14.3.0 plugin security runtime (module plugins)
+          runtime: z.enum(['inline', 'worker', 'process']).optional(),
+          failure: z
+            .union([
+              z.enum(['open', 'closed']),
+              z.object({ default: z.enum(['open', 'closed']).optional(), onToolCall: z.enum(['open', 'closed']).optional(), onResponse: z.enum(['open', 'closed']).optional() }).strict(),
+            ])
+            .optional(),
+          permissions: z
+            .object({
+              args: z.enum(['read', 'write']).optional(),
+              response: z.enum(['read', 'write']).optional(),
+              secrets: z.array(z.string().min(1)).optional(),
+              servers: z.array(z.string().min(1)).optional(),
+              tools: z.array(z.string().min(1)).optional(),
+              hooks: z.array(z.enum(['onToolCall', 'onResponse', 'onError', 'onConfigChange'])).optional(),
+              network: z.union([z.literal(false), z.array(z.string().min(1).max(255))]).optional(),
+              env: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'must be an environment variable name')).optional(),
+              fs: z.object({ read: z.array(z.string().min(1)).optional(), write: z.array(z.string().min(1)).optional() }).strict().optional(),
+            })
+            .strict()
+            .optional(),
           // 10.5: JS module plugins — time limit per onToolCall / onResponse (fails closed).
           timeoutMs: z.number().int().positive().max(60_000).optional(),
           limits: z
@@ -1103,13 +1126,39 @@ const GatewayConfigSchema = z.object({
               timeoutMs: z.number().int().positive().max(60_000).optional(),
               memoryMb: z.number().int().min(1).max(4096).optional(),
               maxInstances: z.number().int().positive().max(10_000).optional(),
+              // 14.3.0 module plugins
+              maxFailures: z.number().int().positive().max(10_000).optional(),
+              cooldownMs: z.number().int().positive().max(3_600_000).optional(),
+              maxConcurrent: z.number().int().positive().max(10_000).optional(),
             })
             .strict()
             .optional(),
         })
         .strict()
         .refine((p) => (p.module ? 1 : 0) + (p.component ? 1 : 0) === 1, 'a plugin needs exactly one of "module" or "component"')
-        .refine((p) => p.component || (p.isolation === undefined && p.limits === undefined), '"isolation" / "limits" apply to WASM component plugins only')
+        .superRefine((p, ctx) => {
+          const issue = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+          const iso = p.isolation;
+          if (p.component) {
+            if (p.runtime !== undefined) issue('runtime', '"runtime" applies to module plugins — WASM components always run in their own sandbox');
+            if (p.failure !== undefined || p.permissions !== undefined) issue(p.failure !== undefined ? 'failure' : 'permissions', '"failure" / "permissions" apply to module plugins (14.3.0)');
+            if (iso && !['tenant', 'client', 'shared'].includes(iso)) issue('isolation', `isolation "${iso}" applies to module plugins — WASM components use tenant | client | shared`);
+            const l = p.limits ?? {};
+            if (l.maxFailures !== undefined || l.cooldownMs !== undefined || l.maxConcurrent !== undefined) issue('limits', 'limits.maxFailures / cooldownMs / maxConcurrent apply to module plugins');
+            return;
+          }
+          if (iso && !['inline', 'worker', 'process'].includes(iso)) issue('isolation', `isolation "${iso}": "isolation" tenant | client | shared settings apply to WASM component plugins only — module plugins use runtime (or isolation): inline | worker | process`);
+          if (iso && p.runtime && iso !== p.runtime) issue('runtime', `"runtime: ${p.runtime}" and "isolation: ${iso}" disagree`);
+          const rt = p.runtime ?? (iso as 'inline' | 'worker' | 'process' | undefined) ?? 'inline';
+          const l = p.limits ?? {};
+          if (l.maxInstances !== undefined) issue('limits', 'limits.maxInstances applies to WASM component plugins');
+          if (rt === 'inline') {
+            if (l.memoryMb !== undefined || l.maxConcurrent !== undefined) issue('limits', '"limits" apply to WASM component plugins only, or to module plugins with runtime: worker | process — limits.memoryMb / maxConcurrent need an isolated runtime (an inline plugin shares the gateway heap)');
+            if (l.timeoutMs !== undefined) issue('limits', '"limits" apply to WASM component plugins only, or to module plugins with runtime: worker | process — inline module plugins use "timeoutMs"');
+            const pm = p.permissions ?? {};
+            if (pm.network !== undefined || pm.env !== undefined || pm.fs !== undefined) issue('permissions', 'permissions.network / env / fs are enforced only in an isolated runtime — set runtime: worker or process');
+          }
+        })
         .refine((p) => !p.component || p.timeoutMs === undefined, '"timeoutMs" applies to module plugins — use limits.timeoutMs for WASM components'),
     )
     .optional(),
