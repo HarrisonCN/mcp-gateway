@@ -1,0 +1,17 @@
+# staging: one approval, a scratch server, looser rate limit
+controlPlane:
+  configApi: true
+  gitops:
+    environment: staging
+    enforce: true
+    requiredApprovals: 1
+    trustedKeys:
+      - { id: ci, name: release-bot, publicKey: "ed25519:rii8NOw6MSmmi4EyapOhXXt+eald3gXVJiYITjVO2qM=", roles: [author] }
+      - { id: alice, name: alice, publicKey: "ed25519:ZPK3vNfk9BYDkUvbBbWcGZQafPrI8VdwrQ2OQYtNtDE=", roles: [approver] }
+      - { id: bob, name: bob, publicKey: "ed25519:84kFUUvAxhkllhMKEsyc9j+WLpLAR9x3OxPcC0q24EU=", roles: [approver] }
+servers:
+  - id: scratch
+    name: Scratch
+    transport: streamable-http
+    url: https://scratch-mcp.staging.example.com/mcp
+rateLimit: { limit: 2000 }

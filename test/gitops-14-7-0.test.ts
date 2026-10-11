@@ -523,7 +523,7 @@ describe('G7 CLI', () => {
   it('plan, apply and status against a running gateway', async () => {
     process.env.GITOPS_TEST_OP_KEY = 'op';
     process.env.GITOPS_TEST_SCOPED_KEY = 'scoped';
-    const g = await startFeatureGw({ controlPlane: { configApi: true, gitops: gitopsCfg({ requiredApprovals: { prod: 1 } }) } } as unknown as Partial<GatewayConfig>);
+    const g = await startFeatureGw({ controlPlane: { configApi: true, gitops: gitopsCfg({ requiredApprovals: { prod: 1 } }) }, rateLimit: { windowSeconds: 60, limit: 100 } } as unknown as Partial<GatewayConfig>);
     stops.push(g.stop);
     const fakePath = resolve(__dirname, 'fixtures', 'fake-mcp-server.mjs');
     const d = tree({
@@ -569,7 +569,7 @@ describe('G8 examples/gitops', () => {
     for (const e of envs) {
       const b = await renderConfigDir(join(ex, 'config'), e);
       expect(findSecretLiterals(b.config)).toEqual([]);
-      const placeholder = JSON.parse(JSON.stringify(b.config).replace(/\$\{[A-Z0-9_]+\}/g, 'x'.repeat(32)));
+      const placeholder = JSON.parse(JSON.stringify(b.config).replace(/\$\{([A-Z0-9_]+)\}/g, (_m, n: string) => `placeholder-${n.toLowerCase()}-0123456789abcdef`));
       expect(() => validateConfig(placeholder)).not.toThrow();
     }
   });
