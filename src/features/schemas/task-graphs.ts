@@ -57,7 +57,6 @@ export const DurableSchema = z
           })
           .strict()
           .default({}),
-        maxEntries: z.number().int().min(1).max(1_000_000).default(10_000),
       })
       .strict()
       .default({}),

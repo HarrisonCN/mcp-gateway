@@ -774,10 +774,12 @@ taskOpts(tasksCmd.command('runs').description('List task runs').option('--status
 taskOpts(tasksCmd.command('show <runId>').description('Show one run (nodes, audit trail)')).action((id, o) => taskCall(o, 'GET', `/runs/${encodeURIComponent(id)}`));
 taskOpts(tasksCmd.command('resume <runId>').description('Resume a failed / interrupted / cancelled run')).action((id, o) => taskCall(o, 'POST', `/runs/${encodeURIComponent(id)}/resume`, {}));
 taskOpts(tasksCmd.command('cancel <runId>').description('Cancel a run (its compensations run)')).action((id, o) => taskCall(o, 'POST', `/runs/${encodeURIComponent(id)}/cancel`, {}));
-for (const d of ['approve', 'deny'] as const)
-  taskOpts(tasksCmd.command(`${d} <runId>`).description(`${d === 'approve' ? 'Approve' : 'Deny'} an approval-gated node (operator override)`).option('--node <id>', 'Node id (when several wait)').option('--reason <text>', 'Reason (audited)')).action((id, o) =>
-    taskCall(o, 'POST', `/runs/${encodeURIComponent(id)}/${d}`, { node: o.node, reason: o.reason }),
-  );
+taskOpts(tasksCmd.command('approve <runId>').description('Approve an approval-gated node (operator override)').option('--node <id>', 'Node id (when several wait)').option('--reason <text>', 'Reason (audited)')).action((id, o) =>
+  taskCall(o, 'POST', `/runs/${encodeURIComponent(id)}/approve`, { node: o.node, reason: o.reason }),
+);
+taskOpts(tasksCmd.command('deny <runId>').description('Deny an approval-gated node (operator override; the run compensates)').option('--node <id>', 'Node id (when several wait)').option('--reason <text>', 'Reason (audited)')).action((id, o) =>
+  taskCall(o, 'POST', `/runs/${encodeURIComponent(id)}/deny`, { node: o.node, reason: o.reason }),
+);
 const dlqCmd = tasksCmd.command('dlq').description('Failure queue: list, show, replay, discard');
 taskOpts(dlqCmd.command('list').description('List DLQ entries').option('--status <status>', 'pending | replaying | exhausted | replayed | discarded')).action((o) =>
   taskCall(o, 'GET', `/dlq${o.status ? `?status=${encodeURIComponent(o.status)}` : ''}`, undefined, (d) =>

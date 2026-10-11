@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Gateway } from '../src/gateway/index.js';
-import { durableFaults, SimulatedCrash } from '../src/features/task-durable.js';
+import { durableFaults, SimulatedCrash } from '../src/orchestration/durable-tasks.js';
 import type { GatewayConfig } from '../src/utils/types.js';
 import { logger } from '../src/utils/logger.js';
 import { redisServerAvailable, startRealRedis, type RealRedis } from './fixtures/real-redis.js';

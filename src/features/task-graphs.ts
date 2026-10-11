@@ -56,7 +56,7 @@ import { z } from 'zod';
 import { registerFeature, objectBody, badRequest, principalOf, clientIdOf, type FeatureContext } from '../gateway/features.js';
 import { membershipsOf } from '../auth/tenants.js';
 import { registerMetricSource } from '../monitor/index.js';
-import { DurableTasks, DurableMetrics, HttpError, durableKv, globMatch } from './task-durable.js';
+import { DurableTasks, DurableMetrics, HttpError, durableKv, globMatch } from '../orchestration/durable-tasks.js';
 import { clientPrincipal, deniedPrincipal, type Principal } from '../auth/authorizer.js';
 import { parseTarget, readPath, render, stepValue } from '../orchestration/chains.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
@@ -485,9 +485,10 @@ export class TaskRunStore {
     this.trim();
     if (!dir) return;
     try {
-      mkdirSync(dir, { recursive: true });
+      // 14.4.0: runs carry inputs, outputs and the caller's principal — owner-only files (was the umask default)
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
       const tmp = join(dir, `.${run.id}.tmp`);
-      writeFileSync(tmp, JSON.stringify(run));
+      writeFileSync(tmp, JSON.stringify(run), { mode: 0o600 });
       renameSync(tmp, join(dir, `${run.id}.json`));
     } catch (e) {
       logger.warn(`task-graphs: checkpoint write failed: ${(e as Error).message}`);
@@ -555,7 +556,7 @@ const clientView = (r: TaskRun) => {
 registerFeature({
   id: 'task-graphs',
   since: '10.7.0',
-  summary: 'Multi-agent orchestration 2.0: cross-gateway task graphs with checkpoints, resume, retry with backoff and saga compensation; 14.4 durable execution (resume after restart, idempotency keys, DLQ, approval resume)',
+  summary: 'Multi-agent orchestration 2.0: cross-gateway task graphs with checkpoints, resume, retry with backoff and saga compensation',
   mount: (router, ctx) => {
     const dirOf = (c: Parsed) => (c.dir ? resolve(ctx.config().configDir ?? process.cwd(), c.dir) : undefined);
     // 11.1: nodes run as the principal that started the run (re-authorized per call), else the client's current scope.
@@ -592,6 +593,7 @@ registerFeature({
       const t = ctx.timers;
       const m = new DurableTasks(durableKv(c.durable, store, dir), c.durable, {
         exec,
+        engine: { executeRun, finishCompensation },
         setInterval: (fn, ms) => (t ? t.setInterval(fn, ms) : setInterval(fn, ms).unref()),
         clear: (x) => (t ? t.clear(x) : clearInterval(x)),
         ready: (run) => {

@@ -58,8 +58,11 @@ features:
   that succeeded run in **reverse completion order**. The run ends `compensated` (or `cancelled`), or
   `compensation_failed` with each failing compensation in `error` — those need a human.
 
-**Delivery is at-least-once.** A node interrupted mid-call runs again on resume, and a retry after a timeout may
-repeat a call the upstream did complete. Make node tools idempotent (pass `{{run.id}}` as an idempotency key).
+**Delivery is at-least-once** without `durable`. A node interrupted mid-call runs again on resume, and a retry after a
+timeout may repeat a call the upstream did complete. Make node tools idempotent (pass `{{run.id}}` as an idempotency
+key) — or enable **durable execution (14.4)**: automatic resume after restarts, idempotency keys per task and per
+call (a non-idempotent call in doubt is never repeated automatically), a failure queue with a retry policy, approval
+gates that survive restarts and leases that let several gateways share runs. See [Durable task execution](durable-tasks.md).
 
 ## Admin API (operators)
 
@@ -71,9 +74,11 @@ repeat a call the upstream did complete. Make node tools idempotent (pass `{{run
 | `GET` | `/api/v1/admin/task-graphs/runs/:id` | One run: per-node status, attempts, outputs, errors |
 | `POST` | `/api/v1/admin/task-graphs/runs/:id/resume` | `{ wait? }`; `409` for a run in flight or already succeeded |
 | `POST` | `/api/v1/admin/task-graphs/runs/:id/cancel` | Stop scheduling, compensate, answer with the final status |
+| `POST` | `/api/v1/admin/task-graphs/runs/:id/approve` · `/deny` | 14.4 (durable): operator decision on an approval-gated node |
+| `GET` / `POST` | `/api/v1/admin/task-graphs/dlq…` | 14.4 (durable): failure queue — list, show, replay, discard ([guide](durable-tasks.md#failure-queue-dlq)) |
 
 ## Limits
 
-- One gateway process owns a run; there is no distributed lock. Do not point two replicas at the same `dir`.
+- Without `durable`, one gateway process owns a run; there is no distributed lock. Do not point two replicas at the same `dir`. With `durable` (14.4), runs are leased and fenced: several gateways can share a Redis store (or processes on one host a sqlite store / `dir`).
 - Remote nodes use A2A `message/send` and treat a `completed` / `working` / `submitted` task as success; long-running
   remote tasks are not polled to completion.

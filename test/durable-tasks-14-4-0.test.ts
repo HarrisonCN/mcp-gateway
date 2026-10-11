@@ -13,7 +13,7 @@ import { Gateway } from '../src/gateway/index.js';
 import { validateConfig } from '../src/config/loader.js';
 import { buildV12ConfigSchema } from '../src/config/v12.js';
 import { taskRuns } from '../src/features/task-graphs.js';
-import { durableFaults, SimulatedCrash } from '../src/features/task-durable.js';
+import { durableFaults, SimulatedCrash } from '../src/orchestration/durable-tasks.js';
 import type { GatewayConfig } from '../src/utils/types.js';
 
 const LEDGER_FIXTURE = resolve(__dirname, 'fixtures', 'ledger-mcp-server.mjs');

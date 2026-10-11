@@ -25,7 +25,7 @@
  * - **Approval resume** — a node with `approval` pauses the run (`awaiting_approval`, persisted, no lease held); it
  *   survives restarts and resumes on approve, fails and compensates on deny or timeout; every decision is audited.
  *
- * @module features/task-durable
+ * @module orchestration/durable-tasks
  */
 
 import { createHash, randomUUID } from 'node:crypto';
@@ -36,8 +36,9 @@ import type { StateStore } from '../state/store.js';
 import { MemoryStateStore } from '../state/store.js';
 import type { ProxyResponse } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
-import { backoff, executeRun, finishCompensation, type CallGuard, type CallInfo, type TaskExecutor, type TaskRun, type TaskRunStatus } from './task-graphs.js';
-import type { DurableSchema } from './schemas/task-graphs.js';
+// type-only: the engine itself is injected (DurableDeps) — the core never imports a feature module
+import type { CallGuard, CallInfo, RunOptions, TaskExecutor, TaskRun, TaskRunStatus } from '../features/task-graphs.js';
+import type { DurableSchema } from '../features/schemas/task-graphs.js';
 import type { z } from 'zod';
 
 export type DurableCfg = z.output<typeof DurableSchema>;
@@ -329,6 +330,11 @@ interface Active {
 
 export interface DurableDeps {
   exec: (run: TaskRun) => TaskExecutor;
+  /** The task-graph engine (injected by the task-graphs module). */
+  engine: {
+    executeRun: (run: TaskRun, exec: TaskExecutor, opts: RunOptions) => Promise<TaskRun>;
+    finishCompensation: (run: TaskRun, exec: TaskExecutor, opts: RunOptions) => Promise<TaskRun>;
+  };
   setInterval: (fn: () => void, ms: number) => NodeJS.Timeout;
   clear: (t: NodeJS.Timeout | undefined) => void;
   /** Whether the upstream servers the run still needs are connected (resume waits for them after a start). */
@@ -467,7 +473,7 @@ export class DurableTasks {
       onFailure: (r: TaskRun) => this.onFailure(r),
     };
     const exec = this.deps.exec(run);
-    const go = mode === 'compensate' ? finishCompensation(run, exec, opts) : executeRun(run, exec, opts);
+    const go = mode === 'compensate' ? this.deps.engine.finishCompensation(run, exec, opts) : this.deps.engine.executeRun(run, exec, opts);
     a.done = go
       .then(async (r) => {
         await this.finished(r, a);
@@ -608,7 +614,8 @@ export class DurableTasks {
     entry.reason = retryable ? `node ${node?.id ?? '?'} failed: ${entry.error ?? 'failed'}` : `node ${node?.id ?? '?'}: outcome unknown — the call may have run upstream; not repeated automatically`;
     const manual = entry.status === 'replaying' && entry.manual;
     if (retryable && !manual && entry.retries < policy.attempts) {
-      const delay = backoff({ ...policy, attempts: policy.attempts + 1 }, entry.retries + 1);
+      const base = Math.min(policy.maxBackoffMs, policy.backoffMs * policy.factor ** entry.retries);
+      const delay = policy.jitter ? Math.floor(Math.random() * base) : base;
       entry.status = 'pending';
       entry.nextRetryAt = new Date(Date.now() + delay).toISOString();
       entry.history.push({ at: now(), action: 'scheduled', delayMs: delay, error: entry.error });

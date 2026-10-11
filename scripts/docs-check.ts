@@ -86,7 +86,8 @@ export function cliSpec(root: string): Map<string, Set<string>> {
     helpers.set(h[1], [...h[2].matchAll(/\.(?:required)?[oO]ption\('([^']+)'/g)].flatMap((o) => o[1].split(/[ ,]+/).filter((x) => x.startsWith('-'))));
   }
   let cur = '';
-  const re = /(\w+)\(\s*program\s*\.command\('([^' ]+)|\.command\('([^' ]+)[^']*'\)|\.(?:requiredOption|option)\('([^']+)'/g;
+  // 14.4.0: helpers may wrap a sub-command too (`taskOpts(tasksCmd.command('runs'))`)
+  const re = /(\w+)\(\s*\w+\s*\.command\('([^' ]+)|\.command\('([^' ]+)[^']*'\)|\.(?:requiredOption|option)\('([^']+)'/g;
   for (let m; (m = re.exec(src)); ) {
     const name = m[2] ?? m[3];
     if (name) {
@@ -332,6 +333,8 @@ async function check(root: string, opts: { external?: boolean }) {
             if (!tokens[0].startsWith('-')) {
               command = tokens[0];
               i = 1;
+              // 14.4.0: nested groups (`tasks dlq list`): descend while the next token is a known sub-command
+              if (['tasks'].includes(command)) while (tokens[i] && !tokens[i]!.startsWith('-') && cli.has(tokens[i]!) && i < 3) command = tokens[i++]!;
               if (!cli.has(command)) {
                 if (['config', 'plugin', 'pq', 'policy', 'tenancy'].includes(command) && tokens[1] && cli.has(tokens[1])) {
                   command = tokens[1];
