@@ -18,6 +18,7 @@
  * @module gateway/control-plane
  */
 
+import { expandCredential } from '../config/env-ref.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import express, { type Request, type RequestHandler } from 'express';
@@ -32,7 +33,8 @@ export const ControlPlaneSchema = z
     configApi: z.boolean().optional(),
     dashboard: z.boolean().optional(),
     url: z.string().url().optional(),
-    token: z.string().min(1).optional(),
+    // MGW-2026-019: ${VAR} expanded (unset → config error), like auth.apiKeys
+    token: z.string().min(1).transform((t, ctx) => expandCredential(t, ctx)).optional(),
     pullIntervalMs: z.number().int().min(1000).max(3_600_000).default(10_000),
     nodeId: z.string().min(1).max(128).optional(),
   })
