@@ -63,6 +63,10 @@ import { PROTECTED_RESOURCE_METADATA_PATH, protectedResourceMetadata } from '../
 import { createControlPlaneRouter, DataPlaneSync, roleOf } from './control-plane.js';
 import { diffAgainst, portableConfig, prepareConfig } from './admin.js';
 import { validateConfig } from '../config/loader.js';
+import { StageTimer } from './stages.js';
+import { ERR_OVERLOADED, OverloadController } from './overload.js';
+import type { AuthedRequest } from '../auth/middleware.js';
+import type { RequestHandler } from 'express';
 
 function findDashboard(): string | undefined {
   // src/gateway → ../../dashboard (tsx) and dist/gateway → ../../dashboard (built)
@@ -195,6 +199,7 @@ export class Gateway {
     private config: GatewayConfig,
     private readonly options: GatewayOptions = {},
   ) {
+    this.overload.configure(config.overload ?? {});
     this.registry = new ServerRegistry(config.health?.intervalMs ?? 30_000);
     this.proxy = new McpProxy({ stdio: () => ({ envPassthrough: this.config.security?.stdioEnvPassthrough, baseDir: this.config.configDir }) });
     this.metrics = new MetricsCollector(config.monitor);
@@ -307,6 +312,7 @@ export class Gateway {
       recorder: new ReplayRecorder(() => this.cfgNow().replay),
       usage: new UsageMeter(() => this.cfgNow().quotas),
       costs: this.costs,
+      stages: this.stages,
       tenantsOf: (clientId) => {
         const tenants = this.cfgNow().tenants;
         return tenants?.length ? membershipsOf(tenants, clientId).map((m) => m.tenant) : [];
@@ -349,6 +355,8 @@ export class Gateway {
 
     // Builds auth/rate-limit; throws on insecure misconfiguration (fail closed)
     this.router = createApiRouter(this.withPortalKeys(this.config), this.registry, this.proxy, this.metrics, {
+      stages: this.stages,
+      admit: this.admitFor('rest'),
       portal: this.portal,
       supervisor: this.supervisor,
       isShuttingDown: () => this.stopping !== undefined,
@@ -441,6 +449,7 @@ export class Gateway {
         sessionStore: shared?.store,
         invoker: this.invoker,
         chains: this.chains,
+        admit: this.admitFor('mcp'),
       });
       this.app.use(this.mcp.router());
     }
@@ -471,6 +480,11 @@ export class Gateway {
         isOperator: (req) => this.router!.isOperator(req),
       }),
     );
+    // 13.8.0: per-stage latency + load protection state (operators only: it describes all tenants' traffic).
+    this.app.get('/api/v1/perf/stages', this.router.authenticate, (req, res) => {
+      if (!this.router!.isOperator(req)) return void res.status(403).json({ error: 'Forbidden', message: 'operator access required' });
+      res.json({ ...this.stages.report(), overload: this.overload.stats() });
+    });
     this.app.get('/api/v1/data-plane', this.router.authenticate, (req, res) => {
       if (!this.router!.isOperator(req)) return void res.status(403).json({ error: 'Forbidden', message: 'Operator access required' });
       if (!this.dataPlane) return void res.status(404).json({ error: 'Not Found', message: 'Not a data plane (controlPlane.role: data)' });
@@ -700,6 +714,7 @@ export class Gateway {
 
   private async _stop(): Promise<void> {
     logger.info('Shutting down mcp-gateway...');
+    this.overload.close();
     await this.dataPlane?.stop();
     for (const fn of this.featureStops.splice(0)) await Promise.resolve(fn()).catch(() => {});
     await this.featureRouter?.dispose().catch(() => {});
@@ -726,6 +741,40 @@ export class Gateway {
    */
   /** 13.3.0: reliability telemetry (Prometheus `/metrics` + optional OTLP push). */
   telemetry = new Telemetry();
+  /** 13.8.0: per-stage latency of the call pipeline (GET /api/v1/perf/stages, `mcp_gateway_stage_duration_ms`). */
+  readonly stages = new StageTimer();
+  /** 13.8.0: load protection (`overload:`): adaptive concurrency limit + bounded per-tenant weighted fair queue. */
+  readonly overload = new OverloadController();
+
+  /** 13.8.0: admission control middleware (after authentication); a no-op unless `overload.enabled`. */
+  private admitFor(kind: 'rest' | 'mcp'): RequestHandler {
+    return (req, res, next) => {
+      const o = this.overload;
+      if (!o.enabled) return next();
+      const clientId = (req as AuthedRequest).clientId;
+      const tenants = clientId && this.config.tenants?.length ? membershipsOf(this.config.tenants, clientId).map((m) => m.tenant) : [];
+      const flow = tenants[0] ?? (clientId ? `client:${clientId}` : 'anonymous');
+      const ac = new AbortController();
+      const onGone = () => ac.abort();
+      res.once('close', onGone);
+      void o.acquire(flow, { signal: ac.signal }).then((a) => {
+        res.off('close', onGone);
+        if (!a.ok) {
+          if (a.reason === 'aborted' || res.headersSent || res.writableEnded) return;
+          const message = `Gateway overloaded (${a.reason}); retry after ${a.retryAfterSeconds} s`;
+          res.set('Retry-After', String(a.retryAfterSeconds)).status(503);
+          if (kind === 'mcp') res.json({ jsonrpc: '2.0', id: null, error: { code: ERR_OVERLOADED, message, data: { reason: a.reason, retryAfterSeconds: a.retryAfterSeconds } } });
+          else res.json({ error: 'Service Unavailable', message, reason: a.reason, retryAfterSeconds: a.retryAfterSeconds });
+          return;
+        }
+        this.stages.record('queue', a.waitedMs);
+        res.once('finish', a.release);
+        res.once('close', a.release);
+        if (res.destroyed) return a.release();
+        next();
+      });
+    };
+  }
   /** 13.3.0: this gateway's module failure registry (feeds `mcp_gateway_module_failures_total`). */
   private readonly moduleFailures = new ModuleFailures();
 
@@ -759,6 +808,34 @@ export class Gateway {
       const h = this.stateStore?.health?.();
       if (h && this.stateStore) Telemetry.set(t.storeFailures, { backend: this.stateStore.kind }, h.failures);
       Telemetry.set(t.recycles, {}, this.recycles);
+    });
+    registerMetricSource('stages', () => this.stages.prometheus());
+    registerMetricSource('overload', () => {
+      const s = this.overload.stats();
+      if (!s.enabled) return [];
+      const out = [
+        '# HELP mcp_gateway_overload_limit Current concurrency limit of the load protection (13.8)',
+        '# TYPE mcp_gateway_overload_limit gauge',
+        `mcp_gateway_overload_limit ${s.limit}`,
+        '# HELP mcp_gateway_overload_inflight Tool calls admitted and running (13.8)',
+        '# TYPE mcp_gateway_overload_inflight gauge',
+        `mcp_gateway_overload_inflight ${s.inflight}`,
+        '# HELP mcp_gateway_overload_queue_depth Requests waiting for admission, per tenant flow (13.8)',
+        '# TYPE mcp_gateway_overload_queue_depth gauge',
+        `mcp_gateway_overload_queue_depth ${s.queued}`,
+        ...Object.entries(s.queuedByTenant).map(([k, v]) => `mcp_gateway_overload_queue_depth{tenant="${k.replace(/["\\\n]/g, '_')}"} ${v}`),
+        '# HELP mcp_gateway_overload_admitted_total Requests admitted by the load protection (13.8)',
+        '# TYPE mcp_gateway_overload_admitted_total counter',
+        `mcp_gateway_overload_admitted_total ${s.admitted}`,
+        '# HELP mcp_gateway_overload_shed_total Requests shed with 503 + Retry-After, by reason (13.8)',
+        '# TYPE mcp_gateway_overload_shed_total counter',
+        ...Object.entries(s.shed).map(([k, v]) => `mcp_gateway_overload_shed_total{reason="${k}"} ${v}`),
+        '# HELP mcp_gateway_overload_queue_wait_ms Time admitted requests waited in the queue (recent window) (13.8)',
+        '# TYPE mcp_gateway_overload_queue_wait_ms summary',
+        `mcp_gateway_overload_queue_wait_ms{quantile="0.5"} ${s.queueWaitMs.p50}`,
+        `mcp_gateway_overload_queue_wait_ms{quantile="0.99"} ${s.queueWaitMs.p99}`,
+      ];
+      return out;
     });
     registerMetricSource('reliability', () => t.prometheus());
     t.startExport(obs?.metrics?.otlp, { 'service.name': obs?.tracing?.serviceName ?? 'mcp-gateway', 'service.version': VERSION });
@@ -1026,8 +1103,10 @@ export class Gateway {
           // 10.9: schema version and module activation hot reload (newly active modules are mounted below)
           version: next.version,
           kernel: next.kernel,
+          overload: next.overload,
           configDir: next.configDir ?? this.config.configDir,
         };
+        this.overload.configure(next.overload ?? {});
         fault('commit:modules');
         // 13.2.0: one module transaction — init / reconfigure / disable failures throw and are compensated below.
         const activated = (await this.featureRouter?.reconcile(prevConfig, txn)) ?? [];

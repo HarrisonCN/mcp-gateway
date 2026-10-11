@@ -40,6 +40,7 @@ import type { RouteDecision, SmartRouter } from './routing.js';
 import type { SecretManager } from '../secrets/index.js';
 import type { Federation } from './federation.js';
 import type { ToolCache } from './cache.js';
+import { CallClock, type StageTimer } from './stages.js';
 import { ERR_QUOTA_EXCEEDED, type UsageMeter } from './usage.js';
 import { ERR_BUDGET_EXCEEDED, type CostLedger } from '../costs/index.js';
 export { ERR_QUOTA_EXCEEDED };
@@ -150,6 +151,8 @@ export interface InvokerDeps {
   compliance?: ComplianceEngine;
   /** Routes calls on servers with `replicas:` (load balancing + failover). */
   balancer?: LoadBalancer;
+  /** 13.8.0: per-stage latency of the call pipeline (GET /api/v1/perf/stages). */
+  stages?: StageTimer;
   /** Tool result cache + in-flight de-duplication (`cache:` config). */
   cache?: ToolCache;
   /** Quotas + metering (`quotas:` config). */
@@ -459,12 +462,15 @@ export class ToolInvoker {
     // 13.2.0: one config generation per call — pinned here, released when the call (and its plugin / hook `after`
     // steps) is done. A call that is already running in a generation (a nested feature call) keeps it.
     const running = callGeneration.getStore();
+    // 13.8.0: stage timings of top-level calls only (a nested feature call is part of its parent's stages)
+    const clock = new CallClock(running ? undefined : this.deps.stages);
     const pin = running ? undefined : this.deps.generations?.acquire();
-    if (!pin) return this.invokePinned(ctx);
     try {
-      return await callGeneration.run(pin.generation, () => this.invokePinned(ctx));
+      if (!pin) return await this.invokePinned(ctx, clock);
+      return await callGeneration.run(pin.generation, () => this.invokePinned(ctx, clock));
     } finally {
-      pin.release();
+      pin?.release();
+      clock.flush();
     }
   }
 
@@ -475,7 +481,7 @@ export class ToolInvoker {
     return list.length ? list : undefined;
   }
 
-  private async invokePinned(ctx: InvokeContext): Promise<InvokeResult> {
+  private async invokePinned(ctx: InvokeContext, clock: CallClock): Promise<InvokeResult> {
     // 13.1.2: one identity context. The principal is authoritative: `clientId` becomes the call's subject (the original
     // caller of a delegated call); a different label from the call site is kept only as the audit origin.
     const identity = identityOf(ctx.principal, ctx.clientId);
@@ -496,7 +502,9 @@ export class ToolInvoker {
     });
     this.deps.telemetry?.principal(principalType(identity));
     // 11.1: the single, non-bypassable authorization decision point (fail-closed without a principal).
+    clock.mark();
     const denied = authorize(ctx.principal, { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind }, { exposed: this.deps.exposed });
+    clock.lap('authz');
     if (denied) {
       this.authzDenials++;
       return this.refuse(ctx, denied.code, denied.message, { ...denied.data, chain: principalChain(ctx.principal) }, span);
@@ -534,6 +542,7 @@ export class ToolInvoker {
     if (refused) return refused;
     const checked: CheckedState = { policyDigest: ctx.kind === 'tool' ? argsDigest(ctx.params) : undefined, approvalPending: approvalHold.pending, argsChangedBy: [] };
     const residency = this.residencyDenial(ctx);
+    clock.lap('policy');
     if (residency) return this.refuse(ctx, residency.code, residency.message, residency.data, span);
     // 5.6: feature call hooks (before).
     const hookCfg = this.deps.config?.();
@@ -583,6 +592,7 @@ export class ToolInvoker {
         }
       }
     }
+    clock.lap('hooks');
     // 13.1: mandatory final authorization against the final target (re-runs the target checks after a reroute).
     const fin = await this.finalAuthorization(ctx, span, { by: rerouteBy, guardsSeen, plan, checked });
     if ('denial' in fin) return this.refuse(ctx, fin.denial.code, fin.denial.message, fin.denial.data, span);
@@ -611,6 +621,7 @@ export class ToolInvoker {
     if (pre) pre = { route: pre.route, ctx: { ...pre.ctx, snapshot } };
     else ctx = { ...ctx, snapshot };
     span.setAttribute('mcp.final.server', snapshot.serverId);
+    clock.lap('routing');
     const usage = this.deps.usage;
     if (usage && ctx.kind === 'tool') {
       const over = usage.take({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name });
@@ -627,17 +638,33 @@ export class ToolInvoker {
         return this.refuse(ctx, ERR_BUDGET_EXCEEDED, message, { decision: 'budget', budget: over.budget, limit: over.limit, spent: over.spent, resetsAt: over.resetsAt }, span);
       }
     }
+    clock.lap('policy');
     let result: ProxyResponse;
     try {
       const cache = ctx.kind === 'tool' ? this.deps.cache : undefined;
       if (preset) {
         result = preset;
       } else if (cache) {
-        const out = await cache.run({ serverId: ctx.serverId, target: pre?.ctx.serverId, tool: ctx.name, args: pre?.ctx.params ?? ctx.params, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], principal: { kind: ctx.principal.kind, actors: ctx.identity?.actors ?? [], scope: ctx.principal.scope, delegation: ctx.principal.delegation } }, () => this.callUpstream(ctx, span, pre));
+        let upMs = -1;
+        const timedUpstream = async () => {
+          const u0 = performance.now();
+          try {
+            return await this.callUpstream(ctx, span, pre);
+          } finally {
+            upMs = performance.now() - u0;
+          }
+        };
+        const c0 = performance.now();
+        const out = await cache.run({ serverId: ctx.serverId, target: pre?.ctx.serverId, tool: ctx.name, args: pre?.ctx.params ?? ctx.params, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], principal: { kind: ctx.principal.kind, actors: ctx.identity?.actors ?? [], scope: ctx.principal.scope, delegation: ctx.principal.delegation } }, timedUpstream);
+        const spent = performance.now() - c0;
+        if (upMs >= 0) clock.add('upstream', upMs);
+        clock.add('cache', Math.max(0, spent - Math.max(0, upMs)));
+        clock.mark();
         if (out.status !== 'bypass') span.setAttribute('mcp.cache', out.status);
         result = out.status === 'hit' || out.status === 'shared' ? { ...out.result, durationMs: out.status === 'hit' ? 0 : out.result.durationMs } : out.result;
       } else {
         result = await this.callUpstream(ctx, span, pre);
+        clock.lap('upstream');
       }
     } catch (err) {
       span.setError(err instanceof Error ? err.message : String(err));
@@ -679,7 +706,9 @@ export class ToolInvoker {
         }
       }
     }
+    clock.lap('hooks');
     const done = await this.finish(ctx, call, result, span);
+    clock.lap('finish');
     // Non-enumerable: never serialized into API responses.
     Object.defineProperty(done, 'snapshot', { value: snapshot, enumerable: false });
     return done;

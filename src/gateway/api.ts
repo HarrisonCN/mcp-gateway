@@ -130,6 +130,11 @@ export class CapturedResponse implements ToolCallResponse {
 }
 
 export interface ApiRouterOptions {
+  /** 13.8.0: per-stage latency (HTTP authentication is recorded as stage `auth`). */
+  stages?: import('./stages.js').StageTimer;
+  /** 13.8.0: admission control (load protection) for tool calls, after authentication and rate limit. */
+  admit?: RequestHandler;
+
   /** Enables POST /servers/:id/reconnect and reconnect info. */
   supervisor?: ServerSupervisor;
   /** Makes GET /health/ready answer 503 while the gateway is shutting down. */
@@ -315,7 +320,7 @@ export function createApiRouter(
     const scoped = withTenantScope(cfg.tenants, r.clientId, r.scope);
     if (scoped) r.scope = scoped;
   };
-  const auth: RequestHandler = withLockout(
+  const authInner: RequestHandler = withLockout(
     (req, res, next) =>
       authMw(req, res, (err?: unknown) => {
         if (err) return next(err);
@@ -324,6 +329,18 @@ export function createApiRouter(
       }),
     () => lockout,
   );
+  // 13.8.0: HTTP authentication time (stage `auth`), recorded once per request that passes.
+  const stages = options.stages;
+  const auth: RequestHandler = stages
+    ? (req, res, next) => {
+        const t0 = performance.now();
+        authInner(req, res, (err?: unknown) => {
+          if (!err) stages.record('auth', performance.now() - t0);
+          next(err as never);
+        });
+      }
+    : authInner;
+  const admit: RequestHandler = (req, res, next) => (options.admit ? options.admit(req, res, next) : next());
   const rateLimit: RequestHandler = (req, res, next) => limiterFor(req)(req, res, next);
   const protectable =
     (flag: 'health' | 'metrics'): RequestHandler =>
@@ -782,6 +799,7 @@ export function createApiRouter(
     '/tools/call',
     auth,
     rateLimit,
+    admit,
     asyncHandler(async (req, res) => {
       await runToolCall(req, (req.body ?? {}) as Record<string, unknown>, res);
     }),
@@ -792,6 +810,7 @@ export function createApiRouter(
     '/tools/stream',
     auth,
     rateLimit,
+    admit,
     asyncHandler(async (req, res) => {
       const limits = cfg.streaming ?? {};
       res.status(200).set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });

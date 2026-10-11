@@ -26,6 +26,7 @@ import { startHttpUpstream } from '../bench/lib/upstreams.mjs';
 logger.setLevel('error');
 const KEY_A = 'a'.repeat(40);
 const KEY_B = 'b'.repeat(40);
+const KEY_OPS = 'o'.repeat(40);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const cleanups: Array<() => Promise<unknown> | unknown> = [];
 afterEach(async () => {
@@ -214,7 +215,7 @@ async function gateway(extra: Record<string, unknown>) {
     ],
     ...extra,
   } as any);
-  const gw = new Gateway({ ...cfg, port: 0, host: '127.0.0.1', logLevel: 'error', auth: { strategy: 'api-key', apiKeys: [{ name: 'ka', key: KEY_A }, { name: 'kb', key: KEY_B }] } } as any);
+  const gw = new Gateway({ ...cfg, port: 0, host: '127.0.0.1', logLevel: 'error', auth: { strategy: 'api-key', apiKeys: [{ name: 'ka', key: KEY_A }, { name: 'kb', key: KEY_B }, { name: 'ops', key: KEY_OPS }] } } as any);
   await gw.start();
   cleanups.push(() => gw.stop());
   const base = `http://127.0.0.1:${gw.address()!.port}`;
@@ -286,7 +287,7 @@ describe('13.8.0 gateway: per-stage latency', () => {
   it('GET /api/v1/perf/stages breaks calls down by pipeline stage; Prometheus exports the summaries', async () => {
     const { call, base } = await gateway({ cache: { rules: [{ tools: ['echo'], ttlSeconds: 60 }] }, policy: { rules: [{ name: 'no-admin', tools: ['admin_*'], effect: 'deny' }] } });
     for (let i = 0; i < 10; i++) expect((await call('echo', { n: i % 3 })).status).toBe(200);
-    const r = await fetch(`${base}/api/v1/perf/stages`, { headers: { authorization: `Bearer ${KEY_A}` } });
+    const r = await fetch(`${base}/api/v1/perf/stages`, { headers: { authorization: `Bearer ${KEY_OPS}` } });
     expect(r.status).toBe(200);
     const b: any = await r.json();
     for (const st of ['auth', 'policy', 'hooks', 'routing', 'cache', 'upstream', 'total']) {

@@ -555,6 +555,45 @@ const GatewayConfigSchema = z.object({
     .optional(),
   cors: z.object({ origins: z.array(z.string()).optional() }).strict().optional(),
   health: z.object({ intervalMs: z.number().int().min(1000).optional(), restartAfter: z.number().int().min(0).max(100).optional() }).strict().optional(),
+  // 13.8.0: load protection — adaptive concurrency limit, bounded per-tenant weighted fair queue, 503 + Retry-After.
+  overload: z
+    .object({
+      enabled: z.boolean().optional(),
+      concurrency: z
+        .object({
+          initial: z.number().int().min(1).max(100_000).optional(),
+          min: z.number().int().min(1).max(100_000).optional(),
+          max: z.number().int().min(1).max(100_000).optional(),
+          adaptive: z.boolean().optional(),
+          targetLatencyMs: z.number().positive().max(600_000).optional(),
+          tolerance: z.number().min(1.05).max(10).optional(),
+        })
+        .strict()
+        .superRefine((c, ctx) => {
+          if (c.min !== undefined && c.max !== undefined && c.min > c.max) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `overload.concurrency.min (${c.min}) is above max (${c.max})` });
+          if (c.initial !== undefined && c.max !== undefined && c.initial > c.max) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `overload.concurrency.initial (${c.initial}) is above max (${c.max})` });
+          if (c.initial !== undefined && c.min !== undefined && c.initial < c.min) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `overload.concurrency.initial (${c.initial}) is below min (${c.min})` });
+        })
+        .optional(),
+      queue: z
+        .object({
+          maxSize: z.number().int().min(0).max(1_000_000).optional(),
+          perTenant: z.number().int().min(0).max(1_000_000).optional(),
+          timeoutMs: z.number().int().min(1).max(600_000).optional(),
+        })
+        .strict()
+        .optional(),
+      fairness: z
+        .object({
+          weights: z.record(z.number().positive().max(1000)).optional(),
+          defaultWeight: z.number().positive().max(1000).optional(),
+        })
+        .strict()
+        .optional(),
+      retryAfterSeconds: z.number().int().min(1).max(3600).optional(),
+    })
+    .strict()
+    .optional(),
   // 7.0: role (all / control / data), config API, dashboard and data-plane sync.
   controlPlane: ControlPlaneSchema.optional(),
   regions: RegionsSchema.optional(),
