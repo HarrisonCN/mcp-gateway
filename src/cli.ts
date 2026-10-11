@@ -749,6 +749,48 @@ program
     process.exit(report.failed ? 1 : 0);
   });
 
+// ─── 14.4.0: durable task runs and the failure queue (DLQ) ─────────────────────
+
+const taskOpts = (cmd: Command) =>
+  cmd
+    .option('--url <url>', 'Gateway base URL (default env MCP_GATEWAY_URL or http://localhost:4000)')
+    .option('--key <key>', 'Operator API key (default env MCP_GATEWAY_ADMIN_KEY)')
+    .option('--json', 'Print JSON');
+async function taskCall(options: { url?: string; key?: string; json?: boolean }, method: string, path: string, body?: unknown, show?: (d: Record<string, unknown>) => string): Promise<void> {
+  try {
+    const r = await adminCall(options.url ?? process.env.MCP_GATEWAY_URL ?? 'http://localhost:4000', options.key ?? process.env.MCP_GATEWAY_ADMIN_KEY, method, `/admin/task-graphs${path}`, body);
+    if (r.status >= 400) throw new Error(`Gateway answered ${r.status}: ${String(r.data.message ?? r.data.error ?? '')}`);
+    console.log(options.json || !show ? JSON.stringify(r.data, null, 2) : show(r.data));
+  } catch (err) {
+    logger.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+const tasksCmd = program.command('tasks').description('Durable task runs (14.4): list, inspect, resume, cancel, approve / deny, and the failure queue (DLQ)');
+taskOpts(tasksCmd.command('runs').description('List task runs').option('--status <status>', 'Only runs in this status')).action((o) =>
+  taskCall(o, 'GET', `/runs${o.status ? `?status=${encodeURIComponent(o.status)}` : ''}`, undefined, (d) =>
+    ((d.runs as Array<Record<string, unknown>>) ?? []).map((r) => `${r.id}  ${String(r.graph).padEnd(16)} ${String(r.status).padEnd(18)} ${r.error ?? ''}`).join('\n') || '(no runs)'),
+);
+taskOpts(tasksCmd.command('show <runId>').description('Show one run (nodes, audit trail)')).action((id, o) => taskCall(o, 'GET', `/runs/${encodeURIComponent(id)}`));
+taskOpts(tasksCmd.command('resume <runId>').description('Resume a failed / interrupted / cancelled run')).action((id, o) => taskCall(o, 'POST', `/runs/${encodeURIComponent(id)}/resume`, {}));
+taskOpts(tasksCmd.command('cancel <runId>').description('Cancel a run (its compensations run)')).action((id, o) => taskCall(o, 'POST', `/runs/${encodeURIComponent(id)}/cancel`, {}));
+for (const d of ['approve', 'deny'] as const)
+  taskOpts(tasksCmd.command(`${d} <runId>`).description(`${d === 'approve' ? 'Approve' : 'Deny'} an approval-gated node (operator override)`).option('--node <id>', 'Node id (when several wait)').option('--reason <text>', 'Reason (audited)')).action((id, o) =>
+    taskCall(o, 'POST', `/runs/${encodeURIComponent(id)}/${d}`, { node: o.node, reason: o.reason }),
+  );
+const dlqCmd = tasksCmd.command('dlq').description('Failure queue: list, show, replay, discard');
+taskOpts(dlqCmd.command('list').description('List DLQ entries').option('--status <status>', 'pending | replaying | exhausted | replayed | discarded')).action((o) =>
+  taskCall(o, 'GET', `/dlq${o.status ? `?status=${encodeURIComponent(o.status)}` : ''}`, undefined, (d) =>
+    ((d.entries as Array<Record<string, unknown>>) ?? []).map((e) => `${e.id}  run ${e.runId}  ${String(e.status).padEnd(10)} retries ${e.retries}/${e.maxRetries}  ${e.reason}`).join('\n') || '(empty)'),
+);
+taskOpts(dlqCmd.command('show <id>').description('Show one DLQ entry with its run')).action((id, o) => taskCall({ ...o, json: true }, 'GET', `/dlq/${encodeURIComponent(id)}`));
+taskOpts(dlqCmd.command('replay <id>').description('Re-run the parked run').option('--force', 'Also execute nodes whose outcome is unknown (they may have run upstream)')).action((id, o) =>
+  taskCall(o, 'POST', `/dlq/${encodeURIComponent(id)}/replay`, { force: !!o.force }, (d) => `replaying run ${d.runId}`),
+);
+taskOpts(dlqCmd.command('discard <id>').description('Give up on the run (its compensations run unless --no-compensate)').option('--no-compensate', 'Do not run compensations')).action((id, o) =>
+  taskCall(o, 'POST', `/dlq/${encodeURIComponent(id)}/discard`, { compensate: o.compensate !== false, wait: true }, (d) => `discarded ${d.id}${d.run ? ` (run ${(d.run as { status: string }).status})` : ''}`),
+);
+
 program.parse(process.argv);
 
 if (!process.argv.slice(2).length) {

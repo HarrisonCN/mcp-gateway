@@ -6,11 +6,8 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { createServer, type AddressInfo } from 'node:net';
 
-const require = createRequire(import.meta.url);
-const TSX = join(require.resolve('tsx/package.json'), '..', 'dist', 'cli.mjs');
 const CLI = resolve(__dirname, '..', 'src', 'cli.ts');
 const LEDGER_FIXTURE = resolve(__dirname, 'fixtures', 'ledger-mcp-server.mjs');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -37,7 +34,7 @@ function setup(graphs: unknown[]) {
     logLevel: 'warn',
     auth: { strategy: 'api-key', apiKeys: [{ key: 'op', name: 'ops' }, { key: 'k-lead', name: 'lead-1' }, { key: 'k-alice', name: 'alice' }] },
     store: { backend: 'sqlite', sqlite: { path: join(dir, 'state.db') } },
-    servers: [{ id: 'ledger', name: 'ledger', transport: 'stdio', command: process.execPath, args: [LEDGER_FIXTURE], env: { LEDGER: ledger }, timeout: 30000 }],
+    servers: [{ id: 'ledger', name: 'ledger', transport: 'stdio', command: process.execPath, args: [LEDGER_FIXTURE], env: { LEDGER: ledger }, timeoutMs: 30000 }],
     features: { taskGraphs: { durable: { leaseMs: 1000, sweepIntervalMs: 100 }, graphs } },
   };
   writeFileSync(join(dir, 'gw.json'), JSON.stringify(config));
@@ -46,7 +43,8 @@ function setup(graphs: unknown[]) {
 }
 
 async function boot(cfg: string, port: number) {
-  const p = spawn(process.execPath, [TSX, CLI, 'start', '--config', cfg, '--port', String(port)], { env: { ...process.env, MCP_GATEWAY_PORT: '', MCP_GATEWAY_API_KEYS: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  // node --import tsx: one process (the tsx CLI would fork a child that survives a SIGKILL of its parent)
+  const p = spawn(process.execPath, ['--import', 'tsx', CLI, 'start', '--config', cfg, '--port', String(port)], { cwd: resolve(__dirname, '..'), env: { ...process.env, MCP_GATEWAY_PORT: '', MCP_GATEWAY_API_KEYS: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
   children.push(p);
   let log = '';
   p.stdout!.on('data', (c) => (log += c));

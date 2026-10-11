@@ -38,8 +38,8 @@ afterEach(async () => {
 
 const KEYS = [{ key: 'op', name: 'ops' }, { key: 'k-alice', name: 'alice' }, { key: 'k-bob', name: 'bob' }, { key: 'k-lead', name: 'lead-1' }, { key: 'k-carol', name: 'carol' }];
 const TENANTS = [
-  { id: 'acme', servers: ['ledger'], members: [{ client: 'key:alice', role: 'member' }, { client: 'key:lead-1', role: 'member' }, { client: 'key:carol', role: 'member' }] },
-  { id: 'labs', servers: ['ledger', 'labs-*'], members: [{ client: 'key:bob', role: 'member' }, { client: 'key:carol', role: 'member' }] },
+  { id: 'acme', servers: ['ledger'], members: [{ client: 'key:alice', role: 'admin' }, { client: 'key:lead-1', role: 'admin' }, { client: 'key:carol', role: 'admin' }] },
+  { id: 'labs', servers: ['ledger', 'labs-*'], members: [{ client: 'key:bob', role: 'admin' }, { client: 'key:carol', role: 'admin' }] },
 ];
 
 async function start(e: Env, taskGraphs: Record<string, unknown>, extra: Partial<GatewayConfig> = {}) {
@@ -138,7 +138,7 @@ describe('durable task execution (14.4.0)', () => {
     expect(count(e, 'charge')).toBe(2);
     // without durable, an idempotency key is refused rather than ignored
     const e2 = env();
-    const plain = await start(e2, { graphs: tg.graphs });
+    const plain = await start(e2, { graphs: [{ ...tg.graphs[0], clients: false }] });
     expect((await plain.admin('/run', { graph: 'pay', input: {} }, H)).status).toBe(400);
   });
 
@@ -332,7 +332,7 @@ describe('durable task execution (14.4.0)', () => {
   it('metrics, checkpoint file permissions (dir backend) and the tasks CLI', async () => {
     const e = env();
     const tg = { dir: join(e.dir, 'tg'), durable: { ...DURABLE, backend: 'dir', dlq: { retry: { attempts: 1, backoffMs: 10 } } }, graphs: [{ id: 'bad', nodes: [node('f', 'fail')] }, { id: 'good', nodes: [node('a', 'charge')] }] };
-    const g = await start(e, tg, { state: undefined } as never);
+    const g = await start(e, tg, { state: undefined, monitor: { requestLog: false, prometheus: true } } as never);
     await g.admin('/run', { graph: 'good', input: {}, wait: true }, { 'idempotency-key': 'k1' });
     await g.admin('/run', { graph: 'good', input: {}, wait: true }, { 'idempotency-key': 'k1' });
     const bad = (await g.admin('/run', { graph: 'bad', input: {} })).body.runId;
