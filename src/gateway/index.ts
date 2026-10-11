@@ -53,7 +53,7 @@ import { PortalStore } from '../portal/index.js';
 import { ToolCache } from './cache.js';
 import { ReplayRecorder } from './replay.js';
 import { UsageMeter } from './usage.js';
-import { membershipsOf } from '../auth/tenants.js';
+import { actingTenant, membershipsOf } from '../auth/tenants.js';
 import { Catalog, InstalledServers, buildServerConfig, type InstallRequest } from '../catalog/index.js';
 import { ChainService } from '../orchestration/service.js';
 import { MtlsManager, setUpstreamTls } from '../security/mtls.js';
@@ -184,8 +184,11 @@ export class Gateway {
   });
   private readonly plugins = new PluginHost({
     resolveSecret: (ref, plugin) => this.secrets.get(ref, { user: `plugin:${plugin}` }),
-    tenantOf: (clientId) => {
-      const m = this.config.tenants?.length ? membershipsOf(this.config.tenants, clientId)[0] : undefined;
+    tenantOf: (clientId, serverId) => {
+      const ms = this.config.tenants?.length ? membershipsOf(this.config.tenants, clientId) : [];
+      // MGW-2026-015: the acting tenant of the call (not simply the first membership)
+      const t = serverId ? actingTenant(this.config.tenants, clientId, serverId) : ms[0]?.tenant;
+      const m = ms.find((x) => x.tenant === t) ?? ms[0];
       return m ? { id: m.tenant, name: m.name, role: m.role } : undefined;
     },
   });
@@ -316,6 +319,10 @@ export class Gateway {
       tenantsOf: (clientId) => {
         const tenants = this.cfgNow().tenants;
         return tenants?.length ? membershipsOf(tenants, clientId).map((m) => m.tenant) : [];
+      },
+      tenantFor: (clientId, serverId) => {
+        const tenants = this.cfgNow().tenants;
+        return tenants?.length ? actingTenant(tenants, clientId, serverId) : undefined;
       },
       secrets: this.secrets,
       serverConfig: (id) => {
