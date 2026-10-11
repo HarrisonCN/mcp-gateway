@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [12.0.11] - 2026-10-11
+
+**Security backport (12.x).** Backports the MGW-2026-015 fix from 14.2.0 (minimal fix only — the optional
+`tenancy.isolation` block of 14.2.0 is not backported); no other changes. The config schema is unchanged.
+
+### Security
+- **MGW-2026-015 (Medium): a client enrolled in several tenants used its first tenant for every call.** Per-call
+  tenant decisions took the caller's first membership (config order) instead of the tenant that owns the called
+  server, so a `servers[].inject` reference templated with `{tenant}` sent tenant A's secret to tenant B's upstream,
+  and budgets, quotas, caches, policy / Cedar, residency and plugin contexts saw the wrong tenant (costs and quotas
+  were charged to every membership). Each call now acts for the caller's tenant covering the called server
+  (a membership with call rights first); spend and quotas are charged to that tenant only.
+
 ## [12.0.10] - 2026-10-10
 
 **Security backport (12.x).** Backports the MGW-2026-014 fix from 13.7.0; no other changes. The config schema is unchanged.
