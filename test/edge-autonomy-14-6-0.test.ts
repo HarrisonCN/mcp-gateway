@@ -67,7 +67,8 @@ async function start(extra: Record<string, unknown>, s = setup()): Promise<{ gw:
 }
 const edge = (rules: unknown[], more: Record<string, unknown> = {}, s?: ReturnType<typeof setup>) => ({ edgeAutonomy: { ...(s ? { dir: s.state } : {}), rules, reconcile: { intervalMs: 3_600_000, leaseMs: 2000 }, ...more } });
 const offline = (req: Req, disconnected = true) => req('admin/edge-autonomy/connectivity', { disconnected });
-const errOf = (r: { body: any }) => (r.body?.error ?? r.body) as { code?: number; message?: string; data?: any }; // eslint-disable-line @typescript-eslint/no-explicit-any
+const errOf = (r: { body: any }) => ({ message: typeof r.body?.message === 'string' ? r.body.message : r.body?.error?.message }) as { message?: string }; // eslint-disable-line @typescript-eslint/no-explicit-any
+const metricsOf = async (base: string) => (await fetch(`${base}/metrics`, { headers: { authorization: 'Bearer op' } })).text();
 const receipt = (r: { body: any }) => r.body?.result?.structuredContent as { queued: boolean; outboxId: string; duplicate?: boolean; review?: string }; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 describe('14.6.0 offline permission boundaries', () => {
@@ -135,7 +136,7 @@ describe('14.6.0 queue expiry and size', () => {
     const g = await start(edge([{ match: 'ledger/*', action: 'queue' }], { queue: { ttlSeconds: 3600, maxItems: 3 }, policies: [{ match: 'ledger/note', ttlSeconds: 1 }] }));
     await offline(g.req);
     const short = receipt(await g.call('note', { n: 1 })).outboxId;
-    const long = receipt(await g.call('tag', { n: 2 }, 'k-alice')).outboxId;
+    const long = receipt(await g.call('slow', { ms: 1, n: 2 }, 'k-alice')).outboxId;
     expect(receipt(await g.call('lookup', { n: 3 })).queued).toBe(true);
     const full = await g.call('lookup', { n: 4 });
     expect(full.status).toBe(502);
@@ -148,7 +149,7 @@ describe('14.6.0 queue expiry and size', () => {
     expect(r).toMatchObject({ expired: 1, applied: 2 });
     const rev = (await g.req('admin/edge-autonomy/review')).body.entries;
     expect(rev).toEqual([expect.objectContaining({ id: short, status: 'review', reviewReason: 'expired' })]);
-    expect(g.s.ledgerOf().map((l) => l.tool).sort()).toEqual(['lookup', 'tag']);
+    expect(g.s.ledgerOf().map((l) => l.tool).sort()).toEqual(['lookup', 'slow']);
     expect((await g.req('admin/edge-autonomy/outbox')).body.entries.find((e: { id: string }) => e.id === long).status).toBe('applied');
     // onExpiry: drop
     await g.gw.reload({ ...g.config, ...edge([{ match: 'ledger/*', action: 'queue' }], { queue: { ttlSeconds: 1, onExpiry: 'drop' } }) } as never);
@@ -348,13 +349,13 @@ describe('14.6.0 sealed queue at rest', () => {
     expect(readdirSync(s.state).some((f) => f.startsWith('outbox.json.tampered-'))).toBe(true);
     await g2.req('admin/edge-autonomy/reconcile', {});
     expect(s.ledgerOf().filter((l) => l.tool === 'note')).toHaveLength(0);
-    expect((await g2.req('metrics', undefined, 'op')).body).toMatch(/mcp_gateway_edge_seal_failures_total [1-9]/);
+    expect(await metricsOf(g2.base)).toMatch(/mcp_gateway_edge_seal_failures_total [1-9]/);
   });
 
   it('seal.keyEnv supplies the key; a legacy plaintext outbox (≤ 14.5) is migrated sealed once', async () => {
     const s = setup();
     process.env.EDGE_TEST_SEAL_KEY = Buffer.alloc(32, 7).toString('base64');
-    const legacy = [{ id: 'ob-legacy', at: new Date().toISOString(), clientId: 'ops', serverId: 'ledger', tool: 'lookup', args: { q: 'legacy' }, status: 'queued', attempts: 0 }];
+    const legacy = [{ id: 'ob-legacy', at: new Date().toISOString(), clientId: 'key:ops', serverId: 'ledger', tool: 'lookup', args: { q: 'legacy' }, status: 'queued', attempts: 0 }];
     const { mkdirSync } = await import('node:fs');
     mkdirSync(s.state, { recursive: true });
     writeFileSync(join(s.state, 'outbox.json'), JSON.stringify(legacy));
@@ -362,7 +363,7 @@ describe('14.6.0 sealed queue at rest', () => {
     const g = await start(edge([{ match: 'ledger/*', action: 'queue' }], { seal: { keyEnv: 'EDGE_TEST_SEAL_KEY' } }, s), s);
     await offline(g.req);
     const ob = (await g.req('admin/edge-autonomy/outbox')).body.entries;
-    expect(ob).toEqual([expect.objectContaining({ id: 'ob-legacy', status: 'queued' })]);
+    expect(ob).toEqual([expect.objectContaining({ id: 'ob-legacy', seq: 1 })]); // migrated (and replayed by the start-up pass)
     expect(existsSync(join(s.state, '.seal.key'))).toBe(false);
     const raw = readFileSync(join(s.state, 'outbox.json'), 'utf8');
     expect(raw).not.toContain('legacy');
@@ -376,7 +377,7 @@ describe('14.6.0 metrics, report and the edge CLI', () => {
     await offline(g.req);
     receipt(await g.call('note', {}));
     expect((await g.call('charge', {})).status).toBe(502);
-    const m = (await g.req('metrics')).body as string;
+    const m = await metricsOf(g.base);
     expect(m).toMatch(/mcp_gateway_edge_queue_items\{status="queued"\} 1/);
     expect(m).toMatch(/mcp_gateway_edge_offline_denied_total\{risk="critical"\} 1/);
     expect(m).toMatch(/mcp_gateway_edge_queue_oldest_age_seconds \d/);
@@ -401,6 +402,6 @@ describe('14.6.0 metrics, report and the edge CLI', () => {
     const r3 = await cli(['edge', 'reconcile']);
     expect(r3.code, r3.out).toBe(0);
     expect(r3.out).toMatch(/applied 1/);
-    expect((await g.req('metrics')).body).toMatch(/mcp_gateway_edge_reconcile_total\{result="applied"\} 1/);
+    expect(await metricsOf(g.base)).toMatch(/mcp_gateway_edge_reconcile_total\{result="applied"\} 1/);
   }, 60_000);
 });

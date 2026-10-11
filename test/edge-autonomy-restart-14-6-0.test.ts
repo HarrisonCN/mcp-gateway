@@ -61,7 +61,7 @@ function setup(edgeExtra: Record<string, unknown> = {}) {
   const config = {
     host: '127.0.0.1', logLevel: 'warn',
     auth: { strategy: 'api-key', apiKeys: KEYS },
-    servers: [{ id: 'ledger', name: 'ledger', transport: 'stdio', command: process.execPath, args: [FIXTURE], env: { LEDGER: ledger }, timeout: 60_000 }],
+    servers: [{ id: 'ledger', name: 'ledger', transport: 'stdio', command: process.execPath, args: [FIXTURE], env: { LEDGER: ledger }, timeoutMs: 60_000 }],
     features: { edgeAutonomy: edge },
   };
   writeFileSync(join(dir, 'gw.json'), JSON.stringify(config));
@@ -117,9 +117,11 @@ describe('14.6.0 kill -9 mid-reconcile', () => {
 
     const g2 = await boot(s.cfg, port);
     await sleep(1200); // the dead process's reconcile lease (leaseMs 1000) lapses
-    const r = await until(() => g2.req('admin/edge-autonomy/reconcile', {}), (x) => x.status === 200 && !x.body.busy);
-    expect(r.body).toMatchObject({ applied: 1, review: 1 });
-    const ob = (await g2.req('admin/edge-autonomy/outbox')).body.entries;
+    // the start-up pass (or a manual one, once the dead process's lease lapsed) settles the queue
+    const ob = await until(async () => {
+      await g2.req('admin/edge-autonomy/reconcile', {});
+      return (await g2.req('admin/edge-autonomy/outbox')).body.entries as Array<{ id: string; status: string }>;
+    }, (es) => es.every((e) => e.status !== 'queued'));
     expect(ob.find((e: { id: string }) => e.id === ids[0]).status).toBe('applied');
     expect(ob.find((e: { id: string }) => e.id === ids[1])).toMatchObject({ status: 'review', reviewReason: 'outcome-unknown' });
     expect(ob.find((e: { id: string }) => e.id === ids[2]).status).toBe('applied');
@@ -180,6 +182,7 @@ describe('14.6.0 kill -9 mid-reconcile', () => {
     await a.gw.stop();
     edgeState.reset();
     const b = await start();
+    await sleep(1100); // the crashed reconciler's lease (leaseMs 1000) lapses
     const out = (await b.req('admin/edge-autonomy/reconcile', {})).body;
     expect(out).toMatchObject({ applied: 0, deduplicated: 1 });
     expect((await b.req('admin/edge-autonomy/outbox')).body.entries.find((e: { id: string }) => e.id === id).status).toBe('applied');
