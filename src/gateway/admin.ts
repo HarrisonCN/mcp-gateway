@@ -7,6 +7,7 @@
  * - `PUT  /admin/config[?dryRun=true]` — validate, diff and hot-apply a full config (`controlPlane.configApi: true`).
  *   `<redacted>` values keep the running value, so a GET → edit → PUT round trip works.
  * - `POST /admin/reload` — re-read the config file from disk (`controlPlane.configApi: true`; CLI-started gateways).
+ *   14.7.0: both answer 409 while `controlPlane.gitops.enforce` is on — changes go through `POST /admin/gitops/apply`.
  * - `GET  /admin/deprecations` — deprecated config keys and runtime usages (each with its `removedIn`).
  * - `GET  /admin/store` — the shared store backend; for `eventlog` (9.0) keys, events and snapshot stats.
  * - `POST /admin/store/compact` — write a snapshot and truncate the event log (`eventlog` only).
@@ -25,6 +26,7 @@ import { loadPolicyFiles, validateConfig } from '../config/loader.js';
 import { diffConfigs, redactConfig, restoreRedacted } from '../config/diff.js';
 import { runtimeDeprecations } from '../utils/deprecations.js';
 import { VERSION } from '../utils/version.js';
+import { gitopsEnforced, GITOPS_ENFORCED_MESSAGE } from '../config/gitops.js';
 
 export interface AdminDeps {
   config: () => GatewayConfig;
@@ -102,7 +104,7 @@ export function withFeatureSection(p: Record<string, unknown>, key: string, valu
 }
 
 /** The running config with schema defaults applied (embedders may pass unvalidated objects), for diffs. */
-function normalized(cfg: GatewayConfig): Record<string, unknown> {
+export function normalizedConfig(cfg: GatewayConfig): Record<string, unknown> {
   const p = portableConfig(cfg);
   delete p.port;
   delete p.host;
@@ -117,7 +119,7 @@ function normalized(cfg: GatewayConfig): Record<string, unknown> {
   }
 }
 
-export const diffAgainst = (current: GatewayConfig, next: GatewayConfig) => diffConfigs(normalized(current), normalized(next));
+export const diffAgainst = (current: GatewayConfig, next: GatewayConfig) => diffConfigs(normalizedConfig(current), normalizedConfig(next));
 
 /** Validate a full config in schema form for hot-apply on top of `current` (port / host / configDir kept; 7.1). */
 export async function prepareConfig(raw: Record<string, unknown>, current: GatewayConfig): Promise<GatewayConfig> {
@@ -206,6 +208,8 @@ export function createAdminRouter(deps: AdminDeps): express.Router {
       if (!nextCfg) return;
       const changes = diffAgainst(deps.config(), nextCfg);
       const dryRun = req.query.dryRun === 'true' || req.query.dryRun === '1';
+      // 14.7.0: with gitops enforcement only signed, approved releases change the config (POST /admin/gitops/apply)
+      if (!dryRun && gitopsEnforced(deps.config())) return void res.status(409).json({ error: 'Conflict', message: GITOPS_ENFORCED_MESSAGE, changes });
       if (!dryRun && changes.length > 0) await deps.apply(nextCfg);
       res.json({ applied: !dryRun && changes.length > 0, dryRun, changes, deprecations: nextCfg.deprecations ?? [] });
     } catch (err) {
@@ -214,6 +218,7 @@ export function createAdminRouter(deps: AdminDeps): express.Router {
   });
 
   router.post('/admin/reload', ...guard, writable, async (_req, res, next) => {
+    if (gitopsEnforced(deps.config())) return void res.status(409).json({ error: 'Conflict', message: GITOPS_ENFORCED_MESSAGE });
     if (!deps.reloadFromDisk) return void res.status(501).json({ error: 'Not Implemented', message: 'This gateway was not started from a config file' });
     try {
       let nextCfg: GatewayConfig;

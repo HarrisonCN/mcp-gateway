@@ -1,0 +1,16 @@
+# Shared by every environment. Secrets are references only (${ENV_VAR} or secret://…) — `mcp-gateway gitops render`
+# refuses a literal secret.
+version: 12
+include: [servers.yml, policy.yml]
+host: 0.0.0.0
+port: 4000
+monitor:
+  requestLog: true
+  prometheus: true
+auth:
+  strategy: api-key
+  apiKeys:
+    - { name: operator, key: "${MCP_GATEWAY_ADMIN_KEY}" }
+    - { name: agents, key: "${AGENTS_KEY}", scope: { servers: [github, docs] } }
+rateLimit: { windowSeconds: 60, limit: 600 }
+replay: { enabled: true } # recorded calls feed `gitops plan`'s policy simulation

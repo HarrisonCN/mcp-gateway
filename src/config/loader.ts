@@ -62,7 +62,7 @@ import { EdgeAutonomySchema } from '../features/schemas/edge-autonomy.js';
 import { PrivacySchema } from '../features/schemas/privacy.js';
 import { PqIdentitySchema } from '../features/schemas/pq-identity.js';
 import type { GatewayConfig, PolicyRule, TenancyConfig, TenantConfig, ToolPolicyConfig } from '../utils/types.js';
-import { expandEnv } from '../transport/channel.js';
+import { expandCredential } from './env-ref.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
 import { validateChains, type ChainsConfig } from '../orchestration/chains.js';
@@ -251,14 +251,15 @@ const RateLimitSchema = z.object({
 });
 
 const ApiKeySchema = z.union([
-  z.string(),
+  // 14.7.0 (MGW-2026-019): ${VAR} references are expanded in the string form too (unset → config error)
+  z.string().transform((k, ctx) => expandCredential(k, ctx)),
   z
     .object({
       // ${VAR} references are expanded from the gateway's environment.
       key: z
         .string()
         .min(1)
-        .transform((k) => expandEnv(k)),
+        .transform((k, ctx) => expandCredential(k, ctx)),
       name: z
         .string()
         .regex(/^[A-Za-z0-9._-]{1,64}$/, 'letters, digits, ".", "_" or "-" (max 64)')

@@ -1,0 +1,17 @@
+# prod: two approvals (never the author), deny-by-default policy, drift checked every minute
+include: [_prod-policy.yml]
+controlPlane:
+  role: control # data planes pull each applied release as the next config generation (14.1)
+  configApi: true
+  rollout: { strategy: canary, canary: { nodes: 1 }, bakeMs: 120000 }
+  gitops:
+    environment: prod
+    enforce: true
+    requiredApprovals: 2
+    recordFile: .gitops-release.json
+    trustedKeys:
+      - { id: ci, name: release-bot, publicKey: "ed25519:rii8NOw6MSmmi4EyapOhXXt+eald3gXVJiYITjVO2qM=", roles: [author] }
+      - { id: alice, name: alice, publicKey: "ed25519:ZPK3vNfk9BYDkUvbBbWcGZQafPrI8VdwrQ2OQYtNtDE=", roles: [approver] }
+      - { id: bob, name: bob, publicKey: "ed25519:84kFUUvAxhkllhMKEsyc9j+WLpLAR9x3OxPcC0q24EU=", roles: [approver] }
+servers:
+  - { id: github, timeoutMs: 20000 }

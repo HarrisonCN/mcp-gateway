@@ -410,6 +410,9 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `POST` | `/admin/config/diff` | Diff a config body against the running config |
 | `PUT` | `/admin/config?dryRun=` | Hot-apply a config body |
 | `POST` | `/admin/reload` | Re-read the config file |
+| `GET` | `/admin/gitops/status` | GitOps (14.7): environment, enforcement, applied release (git sha, author, approvers), drift, events |
+| `POST` | `/admin/gitops/plan` | `{ bundle, manifest?, calls? }`: diff against the running config, manifest verification, policy simulation (14.7) |
+| `POST` | `/admin/gitops/apply` | `{ bundle, manifest?, dryRun? }`: verify and hot-apply a release; `403` when enforcement refuses it (14.7). With `controlPlane.gitops.enforce`, `PUT /admin/config` and `POST /admin/reload` answer `409` |
 | `GET` | `/admin/deprecations` | Deprecated keys / usages |
 | `GET` | `/admin/edge/snapshot?secrets=` | Edge config snapshot (`ETag` / `If-None-Match`; `secrets=true` needs `controlPlane.configApi`) (4.8) |
 | `POST` | `/admin/edge/sync` | Ingest an edge's usage events `{ edgeId, events, queued }` (4.8) |

@@ -1,0 +1,11 @@
+servers:
+  - id: github
+    name: GitHub
+    transport: streamable-http
+    url: https://api.githubcopilot.com/mcp/
+    headers: { Authorization: "Bearer ${GITHUB_TOKEN}" }
+    timeoutMs: 30000
+  - id: docs
+    name: Docs search
+    transport: streamable-http
+    url: https://docs-mcp.internal.example.com/mcp

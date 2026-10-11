@@ -18,7 +18,9 @@ hot reload is rejected and the running configuration kept.
 | `MCP_GATEWAY_API_KEYS` | comma-separated keys (plain or `sha256:<hex>`) → `auth.strategy: api-key`, `auth.apiKeys` (other `auth` settings from the file are kept) |
 
 `${VAR}` references are expanded from the gateway's environment in `servers[].env`, `servers[].args`,
-`servers[].headers` and object-form `auth.apiKeys[].key`. A `.env` file in the working directory is loaded.
+`servers[].headers`, `auth.apiKeys` (string and object form, 14.7) and `controlPlane.token` (14.7). In API keys and
+`controlPlane.token` a reference to an unset or empty variable is a config error — before 14.7 the string form was used
+literally ([MGW-2026-019](../SECURITY.md#security-advisories)). A `.env` file in the working directory is loaded.
 
 ## Top level
 
@@ -611,7 +613,7 @@ controlPlane:
 | `controlPlane.configApi` | `false` | allow config writes over the admin API |
 | `controlPlane.dashboard` | `true` | serve `/dashboard` |
 | `controlPlane.url` | — | data plane: control plane base URL (required for `role: data`) |
-| `controlPlane.token` | — | data plane: operator API key of the control plane (required for `role: data`) |
+| `controlPlane.token` | — | data plane: operator API key of the control plane (required for `role: data`); `${VAR}` is expanded, an unset variable is an error (14.7) |
 | `controlPlane.pullIntervalMs` | `10000` | data plane: config pull + heartbeat interval (min 1000) |
 | `controlPlane.nodeId` | `<hostname>-<random>` | data plane: id shown on the control plane |
 
@@ -651,6 +653,36 @@ controlPlane:
     strategy: canary
     canary: {percent: 10}
     bakeMs: 60000
+```
+
+### GitOps (14.7)
+
+Control plane or `role: all` (a data plane refuses `gitops`; it receives releases as config generations). Optional —
+without it nothing changes. See the [GitOps guide](guides/gitops.md).
+
+| Key | Default | |
+|---|---|---|
+| `controlPlane.gitops.environment` | — (required) | the environment this gateway runs; bundles and manifests for another environment are refused |
+| `controlPlane.gitops.enforce` | `false` | only signed, approved releases change the config: unsigned / unapproved bundles get `403`, `PUT /admin/config` and `POST /admin/reload` get `409` |
+| `controlPlane.gitops.trustedKeys[]` | `[]` | `{ id, name, publicKey, roles }` — release signing keys (`enforce: true` needs one); `publicKey` is `ed25519:<base64>` (`mcp-gateway gitops keygen`) or an SPKI PEM; `roles` `author` / `approver` (default both) |
+| `controlPlane.gitops.requiredApprovals` | 2 for `prod` / `production`, else 0 | approvals a release needs: a number, or per environment (`{ prod: 2, "*": 1 }`); the author never counts, each `name` once |
+| `controlPlane.gitops.maxManifestAgeSeconds` | `2592000` (30 days) | older manifests are refused |
+| `controlPlane.gitops.driftCheckIntervalMs` | `60000` | how often the running config is compared with the applied release |
+| `controlPlane.gitops.recordFile` | — | keep the applied release across restarts (replay protection, drift baseline); relative to the config file, written `0600` |
+
+```yaml
+version: 12
+controlPlane:
+  configApi: true
+  gitops:
+    environment: prod
+    enforce: true
+    requiredApprovals: {prod: 2, "*": 1}
+    recordFile: .gitops-release.json
+    trustedKeys:
+      - {id: ci, name: release-bot, publicKey: "ed25519:rii8NOw6MSmmi4EyapOhXXt+eald3gXVJiYITjVO2qM=", roles: [author]}
+      - {id: alice, name: alice, publicKey: "ed25519:ZPK3vNfk9BYDkUvbBbWcGZQafPrI8VdwrQ2OQYtNtDE=", roles: [approver]}
+      - {id: bob, name: bob, publicKey: "ed25519:84kFUUvAxhkllhMKEsyc9j+WLpLAR9x3OxPcC0q24EU=", roles: [approver]}
 ```
 
 See [Declarative config](guides/declarative-config.md). 3.0 removed `corsOrigins` and `healthCheckIntervalMs` — use

@@ -886,6 +886,244 @@ taskOpts(edgeCmd.command('reconcile').description('Replay queued calls whose ser
   }),
 );
 
+// ─── gitops (14.7) ────────────────────────────────────────────────────────────
+
+const gitopsCmd = program.command('gitops').description('GitOps (14.7): render config directories, env diffs, signed releases, plan / apply / status');
+const gitopsDir = (cmd: Command) => cmd.requiredOption('-d, --dir <path>', 'Config directory (base.yml + environments/<env>.yml)').requiredOption('-e, --env <name>', 'Environment');
+const gitopsRemoteDir = (cmd: Command) =>
+  cmd
+    .requiredOption('-d, --dir <path>', 'Config directory (base.yml + environments/<env>.yml)')
+    .requiredOption('-e, --env <name>', 'Environment')
+    .option('--url <url>', 'Gateway base URL (default env MCP_GATEWAY_URL or http://localhost:4000)')
+    .option('--key <key>', 'Operator API key (default env MCP_GATEWAY_ADMIN_KEY)')
+    .option('--json', 'Print JSON');
+const gitopsFail = (err: unknown): never => {
+  const e = err as { issues?: string[] };
+  logger.error(err instanceof Error ? err.message : String(err));
+  void e;
+  process.exit(1);
+};
+const gitopsRemote = (o: { url?: string; key?: string }) => ({ url: o.url ?? process.env.MCP_GATEWAY_URL ?? 'http://localhost:4000', key: o.key ?? process.env.MCP_GATEWAY_ADMIN_KEY });
+async function readJsonFile(path: string): Promise<unknown> {
+  return JSON.parse(await readFile(path, 'utf8'));
+}
+async function readCalls(path: string): Promise<unknown[]> {
+  const text = await readFile(path, 'utf8');
+  const t = text.trim();
+  if (t.startsWith('[')) return JSON.parse(t) as unknown[];
+  return t.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
+}
+const verifyLine = (v: Record<string, unknown> | null | undefined): string => {
+  if (!v) return 'manifest: none (unsigned bundle)';
+  const ok = v.ok === true;
+  return `${ok ? '✓' : '✗'} release ${String(v.gitSha)} for ${String(v.env)}: author ${String(v.author ?? '?')}, ${String(v.approvals)}/${String(v.required)} approvals${(v.approvers as string[] | undefined)?.length ? ` (${(v.approvers as string[]).join(', ')})` : ''}${(v.reasons as string[] | undefined)?.length ? `\n  ${(v.reasons as string[]).join('\n  ')}` : ''}`;
+};
+
+gitopsDir(gitopsCmd.command('render').description('Render a config directory for one environment into a release bundle (JSON)'))
+  .option('-o, --out <file>', 'Write the bundle to a file')
+  .option('--json', 'Print the bundle (default when no --out)')
+  .action(async (o) => {
+    try {
+      const { renderConfigDir } = await import('./config/gitops.js');
+      const b = await renderConfigDir(o.dir, o.env);
+      if (o.out) {
+        await writeFile(o.out, JSON.stringify(b, null, 2) + '\n');
+        console.log(o.json ? JSON.stringify(b, null, 2) : `✓ ${o.env}: ${b.configHash} (${b.files.length} files) → ${o.out}`);
+      } else console.log(JSON.stringify(b, null, 2));
+    } catch (err) {
+      gitopsFail(err);
+    }
+  });
+
+gitopsRemoteDir(gitopsCmd.command('diff').description('What differs: <env> → --against-env <other>, or the running gateway → <env> (exit 3 when there are changes)'))
+  .option('--against-env <name>', 'Compare two environments of the directory (no gateway needed)')
+  .action(async (o) => {
+  try {
+    const { renderConfigDir, diffEnvironments } = await import('./config/gitops.js');
+    const b = await renderConfigDir(o.dir, o.env);
+    let changes: ConfigChange[];
+    if (o.againstEnv) changes = diffEnvironments(b, await renderConfigDir(o.dir, o.againstEnv));
+    else {
+      const { url, key } = gitopsRemote(o);
+      const r = await adminCall(url, key, 'POST', '/admin/config/diff', b.config);
+      if (r.status !== 200) throw new Error(`Gateway answered ${r.status}: ${String(r.data.message ?? r.data.error ?? '')}`);
+      changes = r.data.changes as ConfigChange[];
+    }
+    console.log(o.json ? JSON.stringify({ from: o.againstEnv ? o.env : 'live', to: o.againstEnv ?? o.env, changes }, null, 2) : formatDiff(changes));
+    process.exitCode = changes.length ? 3 : 0;
+  } catch (err) {
+    gitopsFail(err);
+  }
+});
+
+gitopsRemoteDir(gitopsCmd.command('plan').description('Review a release against the running gateway: diff, manifest verification, policy simulation (exit 3 when there are changes)'))
+  .option('--manifest <file>', 'Release manifest (mcp-gateway gitops sign)')
+  .option('--calls <file>', 'Calls to simulate (JSON array or JSON lines of { clientId?, serverId, tool, args? }); default: recorded calls')
+  .action(async (o) => {
+  try {
+    const { renderConfigDir } = await import('./config/gitops.js');
+    const b = await renderConfigDir(o.dir, o.env);
+    const body: Record<string, unknown> = { bundle: b };
+    if (o.manifest) body.manifest = await readJsonFile(o.manifest);
+    if (o.calls) body.calls = await readCalls(o.calls);
+    const { url, key } = gitopsRemote(o);
+    const r = await adminCall(url, key, 'POST', '/admin/gitops/plan', body);
+    if (r.status !== 200) throw new Error(`Gateway answered ${r.status}: ${String(r.data.message ?? r.data.error ?? '')}`);
+    const d = r.data;
+    const changes = d.changes as ConfigChange[];
+    if (o.json) console.log(JSON.stringify(d, null, 2));
+    else {
+      const sim = d.simulation as { source: string; calls: number; changed: number; transitions: Record<string, number>; changes: Array<{ call: { clientId?: string; serverId: string; tool: string }; explanation: string }> };
+      const lines = [
+        `Environment ${String(d.environment)}${d.enforce ? ' (enforced)' : ''} — bundle ${String(d.configHash)}`,
+        '',
+        formatDiff(changes),
+        '',
+        verifyLine(d.verification as Record<string, unknown> | null),
+        d.wouldApply ? '→ would be applied' : `→ would be REFUSED: ${String(d.refusal)}`,
+        '',
+        `Policy simulation (${sim.source}, ${sim.calls} calls): ${sim.changed} decision(s) change${Object.keys(sim.transitions).length ? ` — ${Object.entries(sim.transitions).map(([k, v]) => `${k} ${v}`).join(', ')}` : ''}`,
+        ...sim.changes.slice(0, 50).map((c) => `  ${c.call.clientId ?? 'anonymous'} → ${c.call.serverId}/${c.call.tool}: ${c.explanation}`),
+      ];
+      console.log(lines.join('\n'));
+    }
+    process.exitCode = changes.length ? 3 : 0;
+  } catch (err) {
+    gitopsFail(err);
+  }
+});
+
+gitopsRemoteDir(gitopsCmd.command('apply').description('Apply a release to the running gateway (refused when enforcement is on and the release is unsigned or not approved)'))
+  .option('--manifest <file>', 'Release manifest (mcp-gateway gitops sign / approve)')
+  .option('--dry-run', 'Verify and show the diff without applying')
+  .action(async (o) => {
+  try {
+    const { renderConfigDir } = await import('./config/gitops.js');
+    const b = await renderConfigDir(o.dir, o.env);
+    const body: Record<string, unknown> = { bundle: b, ...(o.dryRun ? { dryRun: true } : {}) };
+    if (o.manifest) body.manifest = await readJsonFile(o.manifest);
+    const { url, key } = gitopsRemote(o);
+    const r = await adminCall(url, key, 'POST', '/admin/gitops/apply', body);
+    if (r.status === 403) throw new Error(`Refused: ${String(r.data.reason ?? r.data.message ?? '')}`);
+    if (r.status !== 200) throw new Error(`Gateway answered ${r.status}: ${String(r.data.message ?? r.data.error ?? '')}`);
+    const d = r.data;
+    if (o.json) console.log(JSON.stringify(d, null, 2));
+    else {
+      console.log(formatDiff(d.changes as ConfigChange[]));
+      const rel = d.release as { signed?: boolean; gitSha?: string; author?: string; approvers?: string[] } | undefined;
+      if (d.dryRun) console.log('\n(dry run — nothing applied)');
+      else console.log(rel?.signed ? `\n✓ Applied release ${String(rel.gitSha)} (author ${String(rel.author)}; approved by ${rel.approvers?.join(', ') || 'nobody — none required'})` : '\n✓ Applied unsigned bundle (enforcement is off)');
+    }
+  } catch (err) {
+    gitopsFail(err);
+  }
+});
+
+taskOpts(gitopsCmd.command('status').description('Applied release, enforcement and drift (exit 2 when the running config drifted from the release)')).action(async (o) => {
+  try {
+    const { url, key } = gitopsRemote(o);
+    const r = await adminCall(url, key, 'GET', '/admin/gitops/status');
+    if (r.status !== 200) throw new Error(`Gateway answered ${r.status}: ${String(r.data.message ?? r.data.error ?? '')}`);
+    const d = r.data as { configured: boolean; environment?: string; enforce?: boolean; release?: Record<string, unknown> | null; drift?: { drifted: boolean; changes: ConfigChange[] } };
+    if (o.json) console.log(JSON.stringify(d, null, 2));
+    else if (!d.configured) console.log('GitOps is not configured (controlPlane.gitops)');
+    else {
+      const rel = d.release;
+      console.log(`Environment ${String(d.environment)} — enforcement ${d.enforce ? 'ON' : 'off'}`);
+      console.log(rel ? `Release ${rel.signed ? String(rel.gitSha) : '(unsigned)'}${rel.author ? ` by ${String(rel.author)}` : ''}${(rel.approvers as string[] | undefined)?.length ? `, approved by ${(rel.approvers as string[]).join(', ')}` : ''}, applied ${String(rel.appliedAt)}` : 'No release applied yet');
+      if (rel) console.log(d.drift?.drifted ? `DRIFT — the running config differs from the release:\n${formatDiff(d.drift.changes)}` : '✓ in sync with the release');
+    }
+    process.exitCode = d.drift?.drifted ? 2 : 0;
+  } catch (err) {
+    gitopsFail(err);
+  }
+});
+
+gitopsCmd
+  .command('keygen')
+  .description('Create an ed25519 release signing key: <out>.key (private, 0600) and <out>.pub')
+  .requiredOption('--out <prefix>', 'Path prefix for the key files')
+  .option('--json', 'Print JSON')
+  .action(async (o) => {
+    try {
+      const { generateSigningKey } = await import('./config/gitops.js');
+      const k = generateSigningKey();
+      if (existsSync(`${o.out}.key`)) throw new Error(`${o.out}.key exists — not overwritten`);
+      await writeFile(`${o.out}.key`, k.privateKeyPem, { mode: 0o600 });
+      await writeFile(`${o.out}.pub`, k.publicKey + '\n');
+      const out = { publicKey: k.publicKey, keyId: k.keyId, privateKeyFile: `${o.out}.key`, publicKeyFile: `${o.out}.pub` };
+      console.log(o.json ? JSON.stringify(out, null, 2) : `✓ ${out.privateKeyFile} (keep it secret) / ${out.publicKeyFile}\n  trustedKeys entry: { id: <key id>, name: <who>, publicKey: "${k.publicKey}" }`);
+    } catch (err) {
+      gitopsFail(err);
+    }
+  });
+
+gitopsDir(gitopsCmd.command('sign').description('Create a release manifest for <env>, signed by its author'))
+  .requiredOption('--key <file>', 'Author private key (PEM)')
+  .requiredOption('--key-id <id>', 'Key id as listed in trustedKeys')
+  .requiredOption('--author <name>', 'Author (the trusted name of the key)')
+  .option('--git-sha <sha>', 'Commit (default: $GITHUB_SHA, else git rev-parse HEAD in the directory)')
+  .option('--expires-in <hours>', 'Manifest expiry in hours')
+  .requiredOption('-o, --out <file>', 'Manifest file')
+  .action(async (o) => {
+    try {
+      const { renderConfigDir, createReleaseManifest } = await import('./config/gitops.js');
+      const b = await renderConfigDir(o.dir, o.env);
+      let sha: string | undefined = o.gitSha ?? process.env.GITHUB_SHA;
+      if (!sha) {
+        const { execFileSync } = await import('child_process');
+        try {
+          sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: o.dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        } catch {
+          throw new Error('no --git-sha and the directory is not in a git checkout');
+        }
+      }
+      const hours = o.expiresIn !== undefined ? Number(o.expiresIn) : undefined;
+      if (hours !== undefined && !(hours > 0)) throw new Error('--expires-in must be a positive number of hours');
+      const m = createReleaseManifest({ bundle: b, gitSha: sha, author: o.author, keyId: o.keyId, privateKeyPem: await readFile(o.key, 'utf8'), ...(hours ? { expiresAt: new Date(Date.now() + hours * 3_600_000).toISOString() } : {}) });
+      await writeFile(o.out, JSON.stringify(m, null, 2) + '\n');
+      console.log(`✓ release ${sha} for ${o.env} (${m.configHash}) signed by ${o.author} → ${o.out}`);
+    } catch (err) {
+      gitopsFail(err);
+    }
+  });
+
+gitopsCmd
+  .command('approve <manifest>')
+  .description('Add your approval (ed25519 signature) to a release manifest')
+  .requiredOption('--key <file>', 'Approver private key (PEM)')
+  .requiredOption('--key-id <id>', 'Key id as listed in trustedKeys')
+  .requiredOption('--by <name>', 'Approver (the trusted name of the key)')
+  .option('-o, --out <file>', 'Write here instead of updating the manifest in place')
+  .action(async (file, o) => {
+    try {
+      const { approveRelease } = await import('./config/gitops.js');
+      const m = approveRelease((await readJsonFile(file)) as never, { keyId: o.keyId, privateKeyPem: await readFile(o.key, 'utf8'), by: o.by });
+      await writeFile(o.out ?? file, JSON.stringify(m, null, 2) + '\n');
+      console.log(`✓ approved by ${o.by} (${m.approvals.length} approval(s) on the manifest) → ${o.out ?? file}`);
+    } catch (err) {
+      gitopsFail(err);
+    }
+  });
+
+gitopsDir(gitopsCmd.command('verify <manifest>').description('Verify a release manifest for <env> against a trust config (exit 1 when it would be refused)'))
+  .requiredOption('--trust <file>', 'Gateway config (YAML / JSON) whose controlPlane.gitops lists the trusted keys')
+  .option('--json', 'Print JSON')
+  .action(async (file, o) => {
+    try {
+      const { renderConfigDir, verifyRelease, GitopsSchema } = await import('./config/gitops.js');
+      const text = await readFile(o.trust, 'utf8');
+      const raw = (o.trust.endsWith('.json') ? JSON.parse(text) : (await import('yaml')).parse(text)) as { controlPlane?: { gitops?: unknown } };
+      if (!raw?.controlPlane?.gitops) throw new Error(`${o.trust} has no controlPlane.gitops`);
+      const trust = GitopsSchema.parse(raw.controlPlane.gitops);
+      const v = verifyRelease((await readJsonFile(file)) as never, await renderConfigDir(o.dir, o.env), trust);
+      console.log(o.json ? JSON.stringify(v, null, 2) : verifyLine(v as unknown as Record<string, unknown>));
+      process.exitCode = v.ok ? 0 : 1;
+    } catch (err) {
+      gitopsFail(err);
+    }
+  });
+
 program.parse(process.argv);
 
 if (!process.argv.slice(2).length) {

@@ -1,0 +1,111 @@
+# Example GitHub Actions workflow for MCP Gateway GitOps (14.7). Copy to .github/workflows/mcp-gateway-gitops.yml in
+# the repository that holds config/ (base.yml + environments/<env>.yml) and releases/<env>.json (approved manifests).
+#
+#   pull request  → render every environment, env diff (staging → prod), plan against the live gateway
+#                   (diff + manifest verification + policy simulation) in the job summary
+#   push to main  → the release bot signs a manifest per environment (artifact); approvers add their signatures
+#                   locally (`mcp-gateway gitops approve`) and commit releases/<env>.json in a pull request
+#   releases/**   → verify the approved manifest, apply it, check the gateway is in sync
+#
+# Secrets (per GitHub environment): MCP_GATEWAY_URL, MCP_GATEWAY_ADMIN_KEY (operator key of that gateway),
+# GITOPS_SIGNING_KEY (the release bot's ed25519 private key, PEM; only for the sign job). Approver keys never reach CI.
+name: mcp-gateway gitops
+
+on:
+  pull_request:
+    paths: ["config/**", "releases/**"]
+  push:
+    branches: [main]
+    paths: ["config/**", "releases/**"]
+
+permissions:
+  contents: read
+
+env:
+  MCP_GATEWAY_VERSION: "14.7"
+
+jobs:
+  plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env: [staging, prod]
+    environment: ${{ matrix.env }}-read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm i -g @winstonsayno/mcp-gateway@${MCP_GATEWAY_VERSION}
+      - name: Render (refuses literal secrets)
+        run: mcp-gateway gitops render -d config -e ${{ matrix.env }} -o bundle.json
+      - name: Environment diff (staging → prod)
+        if: matrix.env == 'prod'
+        run: mcp-gateway gitops diff -d config -e staging --against-env prod || [ $? -eq 3 ]
+      - name: Plan against the live gateway
+        env:
+          MCP_GATEWAY_URL: ${{ secrets.MCP_GATEWAY_URL }}
+          MCP_GATEWAY_ADMIN_KEY: ${{ secrets.MCP_GATEWAY_ADMIN_KEY }}
+        run: |
+          set +e
+          M=""; [ -f releases/${{ matrix.env }}.json ] && M="--manifest releases/${{ matrix.env }}.json"
+          mcp-gateway gitops plan -d config -e ${{ matrix.env }} $M > plan.txt
+          code=$?
+          { echo "### ${{ matrix.env }}"; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          [ $code -eq 0 ] || [ $code -eq 3 ]
+
+  sign:
+    if: github.event_name == 'push' && !contains(github.event.head_commit.message, '[release]')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env: [staging, prod]
+    environment: ${{ matrix.env }}-sign
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm i -g @winstonsayno/mcp-gateway@${MCP_GATEWAY_VERSION}
+      - name: Sign the release (author = release bot)
+        env:
+          GITOPS_SIGNING_KEY: ${{ secrets.GITOPS_SIGNING_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$GITOPS_SIGNING_KEY" > "$RUNNER_TEMP/ci.key"
+          mcp-gateway gitops sign -d config -e ${{ matrix.env }} --key "$RUNNER_TEMP/ci.key" --key-id ci \
+            --author release-bot --git-sha "$GITHUB_SHA" --expires-in 168 -o release-${{ matrix.env }}.json
+          rm -f "$RUNNER_TEMP/ci.key"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.env }}
+          path: release-${{ matrix.env }}.json
+      # approvers: download the artifact, run
+      #   mcp-gateway gitops approve release-prod.json --key ~/.mcp-gateway/alice.key --key-id alice --by alice
+      # and commit it as releases/prod.json ("[release] prod <sha>") in a pull request.
+
+  apply:
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, '[release]')
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1 # staging first, then prod
+      matrix:
+        env: [staging, prod]
+    environment: ${{ matrix.env }}
+    concurrency: mcp-gateway-apply-${{ matrix.env }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm i -g @winstonsayno/mcp-gateway@${MCP_GATEWAY_VERSION}
+      - name: Verify the approved manifest against the environment's trusted keys
+        run: mcp-gateway gitops verify releases/${{ matrix.env }}.json -d config -e ${{ matrix.env }} --trust config/environments/${{ matrix.env }}.yml
+      - name: Apply (the gateway verifies again and refuses unsigned / unapproved releases)
+        env:
+          MCP_GATEWAY_URL: ${{ secrets.MCP_GATEWAY_URL }}
+          MCP_GATEWAY_ADMIN_KEY: ${{ secrets.MCP_GATEWAY_ADMIN_KEY }}
+        run: mcp-gateway gitops apply -d config -e ${{ matrix.env }} --manifest releases/${{ matrix.env }}.json
+      - name: In sync?
+        env:
+          MCP_GATEWAY_URL: ${{ secrets.MCP_GATEWAY_URL }}
+          MCP_GATEWAY_ADMIN_KEY: ${{ secrets.MCP_GATEWAY_ADMIN_KEY }}
+        run: mcp-gateway gitops status

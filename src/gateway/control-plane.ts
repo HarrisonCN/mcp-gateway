@@ -26,6 +26,8 @@ import type { GatewayConfig } from '../utils/types.js';
 import { VERSION } from '../utils/version.js';
 import { logger } from '../utils/logger.js';
 import { configEtag } from './config-etag.js';
+import { expandCredential } from '../config/env-ref.js';
+import { GitopsSchema, type GitopsConfig } from '../config/gitops.js';
 import { RolloutCoordinator, RolloutError, RolloutSchema, type RolloutPolicy } from './rollout.js';
 
 export const ControlPlaneSchema = z
@@ -34,10 +36,12 @@ export const ControlPlaneSchema = z
     configApi: z.boolean().optional(),
     dashboard: z.boolean().optional(),
     url: z.string().url().optional(),
-    token: z.string().min(1).optional(),
+    // 14.7.0 (MGW-2026-019): ${VAR} expanded (unset → config error), like auth.apiKeys
+    token: z.string().min(1).transform((t, ctx) => expandCredential(t, ctx)).optional(),
     pullIntervalMs: z.number().int().min(1000).max(3_600_000).default(10_000),
     nodeId: z.string().min(1).max(128).optional(),
     rollout: RolloutSchema.optional(),
+    gitops: GitopsSchema.optional(),
   })
   .strict()
   .superRefine((c, ctx) => {
@@ -45,6 +49,7 @@ export const ControlPlaneSchema = z
       if (!c.url) ctx.addIssue({ code: 'custom', path: ['url'], message: 'a data plane needs `controlPlane.url` (the control plane base URL)' });
       if (!c.token) ctx.addIssue({ code: 'custom', path: ['token'], message: 'a data plane needs `controlPlane.token` (an operator API key of the control plane)' });
       if (c.rollout !== undefined) ctx.addIssue({ code: 'custom', path: ['rollout'], message: '`rollout` is a control-plane setting (role: control)' });
+      if (c.gitops !== undefined) ctx.addIssue({ code: 'custom', path: ['gitops'], message: '`gitops` is a control-plane setting (role: control or all); data planes receive releases from their control plane' });
     } else {
       if (c.url !== undefined) ctx.addIssue({ code: 'custom', path: ['url'], message: '`url` is a data-plane setting (role: data)' });
       if (c.token !== undefined) ctx.addIssue({ code: 'custom', path: ['token'], message: '`token` is a data-plane setting (role: data)' });
@@ -70,6 +75,8 @@ export interface ControlPlaneConfig {
   nodeId?: string;
   /** Control plane (14.1.0): how config generations roll out to data planes. */
   rollout?: Partial<RolloutPolicy>;
+  /** 14.7.0: GitOps — signed release manifests, enforcement, drift detection (see docs/guides/gitops.md). */
+  gitops?: GitopsConfig;
 }
 
 export const roleOf = (cfg: GatewayConfig): 'all' | 'control' | 'data' => cfg.controlPlane?.role ?? 'all';

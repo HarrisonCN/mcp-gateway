@@ -1,0 +1,7 @@
+# a partial (leading "_"): included by prod.yml, never an environment of its own
+policy:
+  default: deny
+  rules:
+    - { name: no-deletes, effect: deny, tools: ["*delete*", "*remove*"], message: "Deletes go through a human" }
+    - { name: reads, effect: allow, tools: ["*get*", "*list*", "*read*", "*search*"] }
+    - { name: issues, effect: allow, servers: [github], tools: ["create_issue", "add_issue_comment"] }

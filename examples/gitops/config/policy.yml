@@ -1,0 +1,4 @@
+policy:
+  default: allow
+  rules:
+    - { name: no-deletes, effect: deny, tools: ["*delete*", "*remove*"], message: "Deletes go through a human" }

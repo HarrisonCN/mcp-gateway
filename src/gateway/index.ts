@@ -20,6 +20,8 @@ import { MetricsCollector, registerMetricSource } from '../monitor/index.js';
 import { createApiRouter, serverStateSamples, type ApiRouter, type ToolCallResponse } from './api.js';
 import { createOpenAIRouter } from '../bridges/openai.js';
 import { createAdminRouter } from './admin.js';
+import { createGitopsRouter } from './gitops.js';
+import { gitopsEnforced, GITOPS_ENFORCED_MESSAGE } from '../config/gitops.js';
 import { createEdgeControlRouter } from './edge-control.js';
 import { loadFailureOf, loadFeature, loadRecord, ModuleFailures } from './kernel-runtime.js';
 import { Telemetry, setCurrentTelemetry } from '../observability/telemetry.js';
@@ -495,6 +497,18 @@ export class Gateway {
         store: () => this.stateStore as unknown as { kind: string; stats?: () => unknown; compact?: () => void } | undefined,
       }),
     );
+    // 14.7.0: GitOps — signed releases, enforcement, drift detection (controlPlane.gitops)
+    const gitops = createGitopsRouter({
+      config: () => this.config,
+      apply: (next) => this.reload(next),
+      authenticate: this.router.authenticate,
+      isOperator: (req) => this.router!.isOperator(req),
+      record: (m) => void this.metrics.record(m),
+      capturedCalls: () => this.invoker?.recorder?.list() ?? [],
+      recent: (limit) => this.metrics.getRecent(limit),
+    });
+    this.featureStops.push(() => gitops.stop());
+    this.app.use('/api/v1', gitops);
     // 7.0: control plane — data-plane list, config distribution (role: control) and heartbeats.
     this.app.use(
       '/api/v1',
@@ -544,6 +558,7 @@ export class Gateway {
           applyConfig: async (raw, dryRun) => {
             const next = await prepareConfig(raw, this.config);
             const changes = diffAgainst(this.config, next);
+            if (!dryRun && gitopsEnforced(this.config)) throw new Error(GITOPS_ENFORCED_MESSAGE);
             if (!dryRun) await this.reload(next);
             return { changes };
           },
