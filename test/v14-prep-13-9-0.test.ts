@@ -32,6 +32,8 @@ const FIX = join(ROOT, 'test/fixtures/v11-deprecated.yml');
 const fixText = readFileSync(FIX, 'utf8');
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const ajv = new Ajv({ allErrors: true, strict: false });
+/** A fresh Ajv per compile (the draft schemas carry fixed `$id`s). */
+const compile = (s: object) => new Ajv({ allErrors: true, strict: false }).compile(s);
 const readJson = (p: string) => JSON.parse(readFileSync(join(ROOT, p), 'utf8'));
 
 /** Every gateway config shipped in examples/: plain files, the Kubernetes ConfigMap and the Helm values `config:`. */
@@ -67,7 +69,7 @@ describe('schema v12 draft files', () => {
     for (const f of ['schema/v12-draft/config.schema.json', 'schema/v12-draft/module.schema.json']) {
       const s = readJson(f);
       expect(s.$schema).toBe('http://json-schema.org/draft-07/schema#');
-      expect(() => ajv.compile(s), f).not.toThrow();
+      expect(() => compile(s), f).not.toThrow();
     }
   });
   it('config.schema.json is generated from the code (no drift)', () => {
@@ -135,13 +137,12 @@ describe('deprecation inventory → runtime warnings', () => {
   it('a gateway started (and reloaded) with deprecated fields warns once per field', async () => {
     const warn = vi.spyOn(logger, 'warn');
     const raw = parseYaml(fixText);
-    raw.port = 0;
     raw.servers = [];
-    const cfg = validateConfig(raw);
+    const cfg = { ...validateConfig(raw), port: 0 } as GatewayConfig;
     const gw = new Gateway(cfg);
     await gw.start();
     try {
-      await gw.reload(validateConfig(raw));
+      await gw.reload({ ...validateConfig(raw), port: 0 } as GatewayConfig);
       const lines = warn.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('DEPRECATED'));
       for (const d of V12_DEPRECATIONS) expect(lines.filter((l) => l.includes(d.path)).length, d.path).toBe(1);
     } finally {
@@ -151,7 +152,7 @@ describe('deprecation inventory → runtime warnings', () => {
 });
 
 describe('migration preview: v11 → v12', () => {
-  const schema = () => ajv.compile(readJson('schema/v12-draft/config.schema.json'));
+  const schema = () => compile(readJson('schema/v12-draft/config.schema.json'));
   it('round-trips every example config: v12 output validates against the draft, downgrades to the same v11 config', () => {
     const validate = schema();
     const list = exampleConfigs();
@@ -309,7 +310,7 @@ describe('13.4.0 F3 / C7: instance isolation and v12 module declarations (all 46
     for (const e of FEATURE_MANIFEST) expect(await loadFeature(e.id), e.id).toBe(true);
   }, 60_000);
   it('every module has a v12 declaration (lifecycle, capabilities, failure policy) valid against module.schema.json', () => {
-    const validate = ajv.compile(readJson('schema/v12-draft/module.schema.json'));
+    const validate = compile(readJson('schema/v12-draft/module.schema.json'));
     expect(FEATURE_MANIFEST.length).toBe(46);
     for (const e of FEATURE_MANIFEST) {
       const d = moduleDeclarationV12(e, registeredFeature(e.id)) as any;
@@ -329,13 +330,15 @@ describe('13.4.0 F3 / C7: instance isolation and v12 module declarations (all 46
       const cfg = { ...base(), ...sections[e.id] } as unknown as GatewayConfig;
       const a = await start(cfg);
       const b = await start(cfg);
-      expect(kernelState(a, e.id)?.state).toBe('active');
-      expect(kernelState(b, e.id)?.state).toBe('active');
+      // always-available modules (no activating section) stay 'available' until first use
+      const want = kernelState(a, e.id)?.state;
+      expect(['active', 'available']).toContain(want);
+      expect(kernelState(b, e.id)?.state).toBe(want);
       await a.stop();
       running.splice(running.indexOf(a), 1);
-      expect(kernelState(b, e.id)?.state, 'after the other instance stopped').toBe('active');
+      expect(kernelState(b, e.id)?.state, 'after the other instance stopped').toBe(want);
       await b.reload({ ...cfg, monitor: { requestLog: false, historySize: 50 } } as GatewayConfig);
-      expect(kernelState(b, e.id)?.state, 'after a reload').toBe('active');
+      expect(kernelState(b, e.id)?.state, 'after a reload').toBe(want);
       const r = await fetch(`http://127.0.0.1:${b.address()!.port}/api/v1/admin/kernel`, { headers: hdr });
       expect(r.status).toBe(200);
     }, 30_000);

@@ -930,6 +930,8 @@ export class Gateway {
    * still require a restart.
    */
   async reload(next: GatewayConfig): Promise<void> {
+    // 13.9.0: deprecated fields introduced by a reload are warned about too (once per field per process)
+    for (const d of next.deprecations ?? []) deprecate(d);
     const insecure = insecureBindError({ ...next, host: this.config.host, security: { ...next.security, insecure: next.security?.insecure ?? this.config.security?.insecure } });
     if (insecure) throw new Error(insecure.replace('Refusing to start', 'Refusing to reload'));
     // Concurrent reloads (admin API, file watcher, control plane, catalog installs) are serialized: each one prepares

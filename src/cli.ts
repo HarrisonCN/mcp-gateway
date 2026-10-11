@@ -467,6 +467,93 @@ program
     }
   });
 
+// ─── config migrate / diff --to v12 (13.9.0 preview) ─────────────────────────────
+
+/** `--to v12` / `12` → 12; anything else is refused (other targets: `mcp-gateway migrate --to <n>`). */
+function v12Target(to: string): number {
+  const n = Number(String(to).replace(/^v/i, ''));
+  if (n !== 12) {
+    logger.error(`config migrate / config diff preview schema v12 only (got --to ${to}); for v4 – v11 use \`mcp-gateway migrate --to <n>\``);
+    process.exit(1);
+  }
+  return n;
+}
+
+async function v12Preview(options: { config?: string; to: string }) {
+  const { readFile } = await import('fs/promises');
+  const { migrateToV12 } = await import('./config/v12.js');
+  v12Target(options.to);
+  const path = resolveConfigPath(options.config);
+  if (!path) {
+    logger.error('No config file found (use -c <path>)');
+    process.exit(1);
+  }
+  const text = await readFile(path, 'utf8');
+  return { path, r: migrateToV12(text, /\.json$/i.test(path) ? 'json' : 'yaml', { from: `${path} (v11)`, to: `${path} (v12 draft)` }) };
+}
+
+function printReport(r: { changes: string[]; report: { errors: string[]; warnings: string[]; manual: string[] } }) {
+  console.log('Compatibility report (schema v11 → v12 draft)');
+  console.log(`  changes: ${r.changes.length}`);
+  for (const c of r.changes) console.log(`    ~ ${c}`);
+  for (const e of r.report.errors) console.log(`  ✗ error: ${e}`);
+  for (const w of r.report.warnings) console.log(`  ! warning: ${w}`);
+  for (const m of r.report.manual) console.log(`  → manual: ${m}`);
+}
+
+const configCmd = program.command('config').description('Config schema tools: preview the migration to schema v12 (DRAFT, 14.0)');
+
+configCmd
+  .command('migrate')
+  .description('Preview the migration of a schema v11 config to the schema v12 DRAFT: v12 config, unified diff and compatibility report (13.x runs v11 only)')
+  .option('-c, --config <path>', 'Config file (default: the usual search paths)')
+  .option('--to <version>', 'Target schema (only v12)', 'v12')
+  .option('--dry-run', 'Print the result without writing anything (the default; 13.x cannot run a v12 file)')
+  .option('-o, --output <path>', 'Also write the v12 config to this file (never over the input)')
+  .option('--json', 'Print { to, config, diff, changes, report } as JSON')
+  .action(async (options) => {
+    try {
+      const { path, r } = await v12Preview(options);
+      if (options.json) console.log(JSON.stringify({ file: path, to: 12, ok: r.ok, config: r.config, text: r.text, diff: r.diff, changes: r.changes, report: r.report }, null, 2));
+      else {
+        printReport(r);
+        if (r.ok && r.changes.length) {
+          console.log('\n--- v12 config (draft) ---\n');
+          process.stdout.write(r.text);
+        } else if (r.ok) console.log(`✓ ${path} is already on schema v12`);
+      }
+      if (!r.ok) process.exit(1);
+      if (options.output && !options.dryRun) {
+        const { resolve } = await import('path');
+        if (resolve(options.output) === resolve(path)) throw new Error('refusing to overwrite the input: 13.x cannot run a v12 file');
+        await writeFile(options.output, r.text);
+        if (!options.json) console.log(`Written to ${options.output}`);
+      }
+    } catch (err) {
+      logger.error(`Migration preview failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+configCmd
+  .command('diff')
+  .description('Unified diff between a schema v11 config and its schema v12 DRAFT migration (exit 3 when it would change)')
+  .option('-c, --config <path>', 'Config file (default: the usual search paths)')
+  .option('--to <version>', 'Target schema (only v12)', 'v12')
+  .option('--json', 'Print { diff, changes, report } as JSON')
+  .action(async (options) => {
+    try {
+      const { r } = await v12Preview(options);
+      if (options.json) console.log(JSON.stringify({ to: 12, ok: r.ok, diff: r.diff, changes: r.changes, report: r.report }, null, 2));
+      else if (!r.ok) printReport(r);
+      else process.stdout.write(r.diff);
+      process.exitCode = !r.ok ? 1 : r.diff ? 3 : 0;
+    } catch (err) {
+      logger.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
 // ─── bench (3.9) ──────────────────────────────────────────────────────────────
 
 program
