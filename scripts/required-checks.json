@@ -10,6 +10,7 @@
     "JS client (Node 24)",
     "Kotlin client",
     "MCP compat matrix",
+    "Multi-instance reliability (real Redis)",
     "Analyze (javascript-typescript)"
   ],
   "conditional": [
