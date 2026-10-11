@@ -57,7 +57,7 @@ export function removedConfigKeys(raw: unknown): string[] {
   const out = Object.entries(REMOVED_IN_3)
     .filter(([k]) => r[k] !== undefined)
     .map(([k, v]) => `${k}: removed in 3.0 — use \`${v}\` (see docs/guides/migrating-to-v3.md)`);
-  if (r.version === 12) out.push('version: config schema v12 is a DRAFT in 13.x (docs/design/schema-v12.md) — 13.x runs `version: 11`; preview the migration with `mcp-gateway config migrate --to v12 --dry-run`');
+  if (r.version === 12) out.push('version: config version 12 is not supported — 11.0 reads `version: 11` (config schema v12 is a DRAFT in 13.x, see docs/design/schema-v12.md; preview the migration with `mcp-gateway config migrate --to v12 --dry-run`)');
   else if (r.version === 3) out.push(`version: config schema v3 was removed in 4.0 — use \`version: 4\`; ${GUIDE4}`);
   else if (r.version === 4) out.push(`version: config schema v4 was removed in 5.0 — use \`version: 11\`; ${GUIDE11}`);
   else if (r.version === 5) out.push(`version: config schema v5 was removed in 6.0 — use \`version: 11\`; ${GUIDE11}`);
