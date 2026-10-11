@@ -333,14 +333,14 @@ async function check(root: string, opts: { external?: boolean }) {
               command = tokens[0];
               i = 1;
               if (!cli.has(command)) {
-                if (['config', 'plugin', 'pq', 'policy'].includes(command) && tokens[1] && cli.has(tokens[1])) {
+                if (['config', 'plugin', 'pq', 'policy', 'tenancy'].includes(command) && tokens[1] && cli.has(tokens[1])) {
                   command = tokens[1];
                   i = 2;
                 } else if (/^[a-z][a-z-]*$/.test(command)) {
                   add(rel, f.start + j + 1, 'cli', `unknown command "mcp-gateway ${command}"`);
                   return;
                 } else return;
-              } else if (['config', 'plugin', 'pq', 'policy'].includes(command) && tokens[1] && cli.has(tokens[1])) {
+              } else if (['config', 'plugin', 'pq', 'policy', 'tenancy'].includes(command) && tokens[1] && cli.has(tokens[1])) {
                 command = tokens[1];
                 i = 2;
               }

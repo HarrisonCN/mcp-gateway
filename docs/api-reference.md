@@ -170,6 +170,7 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
 |---|---|
 | `limit` | 1–500, default 50 |
 | `server`, `tool`, `client` | exact match (`tool` is the tool name, resource URI or prompt name) |
+| `tenant` | acting tenant, exact match (14.2) |
 | `success` | `true` / `false` |
 | `via` | `rest` / `mcp` |
 | `kind` | `tool` / `resource` / `prompt` |
@@ -181,7 +182,9 @@ Newest first. From the persistent audit log when `audit.enabled`, otherwise from
                   "success": true, "clientId": "key:aura", "via": "mcp" } ],
   "nextCursor": "s1234", "source": "audit" }
 ```
-`kind` is present for resources and prompts. Invalid parameters → `400`.
+`kind` is present for resources and prompts. 14.2: `tenant` is the acting tenant of the call (the caller's tenant
+entitled to the server) and `tenantGrant` (`owner->tenant`) marks a call through a `tenancy.isolation` sharing grant;
+refused cross-tenant calls have `decision: "cross-tenant"`. Invalid parameters → `400`.
 
 ### mTLS (4.5)
 
