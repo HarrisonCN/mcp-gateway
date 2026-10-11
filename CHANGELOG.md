@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [14.0.0] - 2026-10-11
+
+Core architecture v2 (roadmap 14.0 "核心架构 v2") — the first major release of the 14.x line. Config schema v12 becomes the runtime schema, feature modules get one lifecycle with capability declarations and per-instance state, and the migration tool writes files. Built with adapters: authentication, the proxy layer and the 46 feature modules are unchanged in behaviour; legacy modules run through a v11-compat adapter. Upgrade guide with rollback steps: [docs/migration/v13-to-v14.md](docs/migration/v13-to-v14.md).
+
+### Breaking changes
+
+- **Config schema v12 is the runtime schema.** A `version: 12` file uses the `modules` block (`activation`, `failurePolicy`, `lifecycle`, `capabilities`) and module-named feature sections (`features.genaiOtel`, `features.policySim`, `features.pqTls`). The five v11 fields `kernel.modules`, `kernel.failurePolicy`, `features.genaiTelemetry`, `features.policyShadow` and `features.postQuantumTls` are **not part of schema v12** — a `version: 12` file that uses them is refused with the v12 name to use.
+- **v11 files still load in 14.x — migrated in memory.** A `version: 11` file (or an unversioned file that uses a v11-only field) is converted in memory to the same runtime config, with one deprecation warning per v11 field and one startup notice. **Support for v11 files ends in 15.0.0.** Unversioned files without v11 fields read as v12 (identical). Mixing the two (`kernel` and `modules`, or `version: 11` with a v12 section name) is refused.
+- **The admin API speaks schema v12.** `GET /api/v1/admin/config` (and the tools built on it: config diffs, config-assistant plans) returns `version: 12`, `modules.*` and the v12 section names. `PUT` / `POST` still accept v11 bodies (migrated in memory). Update clients that read `kernel.*` or the three renamed sections.
+- **Control plane distributes schema v12.** A 14.0 control plane (`controlPlane.role: control`) sends `version: 12` to data planes; 13.x data planes refuse it — upgrade data planes first (14.x data planes read v11 and v12). `mcp-gateway desktop` writes v12 profiles.
+- **Per-instance module state (13.4.0 finding F3).** Module state that was process-wide (approval queue, billing meters, GenAI spans, rollouts, budgets, task runs, SCIM directories, journals, …) now belongs to one `Gateway` instance, and a module's state is dropped when the module is disabled by a reload or the gateway stops — re-enabling it starts fresh. Embedders running several gateways in one process no longer share it; code that called a module helper outside any gateway (tests, scripts) uses a process-wide scope as before.
+- **Capability denials refuse activation.** `modules.capabilities.<id>.deny` naming a capability the module declares refuses that module's activation (its failure policy applies — `closed` for security guards).
+- Message text: an inactive module's 404 now names `modules.activation` and the v12 section (was `kernel.modules` / v11 names). `config migrate --to v12` without `--dry-run` now writes a file (13.9 only previewed).
+
+### Added
+
+- **Unified module lifecycle v2**: `init` → (`reconfigure`)* → `disable` → `dispose`, `health` at any time, with bounds from `modules.lifecycle` (`initTimeoutMs`, `unloadTimeoutMs`; a hanging `init` fails the module instead of stalling start or a reload). Modules opt in with `apiVersion: 2`; every other module runs through the **v11-compat adapter** (`mount` + `onStop`, as in 13.x). `GET /api/v1/admin/kernel` shows `lifecycle: v2 | v11-compat` and the declared `capabilities` per module. genai-otel is the first module on lifecycle v2.
+- **Capability declarations**: every built-in module declares its runtime capabilities in the manifest (`background-timers`, `outbound-network`, `filesystem`, `state-store`, `signing-keys`, `invoke-tools`, plus `call-hook` / `security-guard`); a test checks each declaration covers what the module's source uses. Enforcement: activation is refused for a denied declared capability (all modules); modules on lifecycle v2 can only start timers (`ctx.timers`) and reach the network (`ctx.net.fetch`) through their context, which refuses undeclared or denied use, and the kernel clears their timers on disable / stop. Filesystem, signing keys and the other capabilities are declared and deny-able at activation; they are not intercepted at run time in 14.0.
+- **Migration tool that writes files**: `mcp-gateway config migrate --to v12 -c gw.yml` writes `gw.v12.yml` next to the file (or `-o <path>`; `--force` to overwrite); `--in-place` rewrites the file after copying it to `gw.yml.v11.bak`; `mcp-gateway config rollback -c gw.yml` restores the backup (keeping the v12 file as `gw.yml.v12.bak`). Comments and layout are kept, the output is validated before anything is written, an already-v12 file is left alone. `--dry-run` and `config diff --to v12` keep working.
+- **Version policy**: [docs/versions.md](docs/versions.md) — npm dist-tags, image tags and support windows per line. 13.9.x becomes a maintained line (branch `lts/13.x`, npm dist-tag `v13-lts`, image `:13`).
+- **JSON Schemas move to `schema/v12/`** (`config.schema.json`, `module.schema.json`; titles no longer say DRAFT). Module declarations now say `apiVersion: v12`; the module schema still accepts `v12-draft`. The 13.9 path `schema/v12-draft/` stays as an identical copy (deprecated alias) until 15.0.0 — point editor `$schema` / CI references at `schema/v12/`.
+
+### Unchanged (verified)
+
+- The 13.5.0 security suite, the 13.7.0 multi-instance (real Redis) suite and the 13.6.0 MCP compat matrix pass unchanged. Authentication, authorization, the proxy layer and the failure-policy model (13.1) are untouched.
+
 ## [13.9.0] - 2026-10-11
 
 v14 migration preparation (roadmap 13.9 "v14 迁移准备"). Config schema v11 remains the runtime schema — a v11 file loads exactly as before; no breaking changes.
