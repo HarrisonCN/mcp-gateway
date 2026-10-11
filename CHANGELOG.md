@@ -9,9 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [14.9.1] - 2026-10-11
+
+P0 fix for the memory growth the 14.9.0 soak found (and that 14.9.0 did not fix — see its corrected notes). No API, configuration, schema, metrics or state-format change; the 15.0 freeze is untouched.
+
+### Fixed
+
+- **Gateway memory grew with the number of durable task-graph runs kept** (RSS about +620 MB/h in the 30-minute soak, 2 instances + Redis, against about 30 MB/h for 13.3.0 on the same harness). Root cause: the durable sweep's full pass (every 30th sweep, every 15 s with `sweepIntervalMs: 500`) loaded **every** retained run record — `retentionHours` keeps them 168 h by default — at once, on every instance; the peak heap of that pass, and with it the process RSS (which does not shrink back), rose with each run started. Heap snapshots showed little retained memory; the growth was the sweep's working set. A sweep now reads run records in chunks of 128 (`SWEEP_CHUNK`), so its working set no longer depends on how many runs are kept. Same 30-minute soak: RSS growth **+97 MB/h** (14.9.0: +623 MB/h), V8 heap total flat at 76–107 MB (14.9.0 spiked to 190 MB), p95 15.6 ms, 0 invariant violations.
+- **The durable run index kept every id ever started** — in memory (an array copied on every listing) and in the state store (`task-graphs:runs:<n>` keys). Ids of runs deleted by retention now leave the index on the instance that deleted them, and a peer drops them on its next full sweep when the record is gone.
+
+### Notes
+
+- What still grows after a restart is bounded: the request log fills up to its cap (`maxEntries`, 100 000 entries, as in 13.3), and each finished durable run kept by `retentionHours` costs roughly 0.2 KB per instance until it expires. With a high durable-run rate, a lower `taskGraphs.durable.retentionHours` lowers that ceiling.
+- 13.9.x (LTS) is not affected: it has no durable sweep (durable task graphs came in 14.4.0). 12.0.x and 10.9.x neither.
+
+### Tests
+
+- `test/durable-memory-14-9-1.test.ts` — a full sweep over 3 000 retained runs holds at most `SWEEP_CHUNK` records at once (14.9.0: 3 001); runs deleted by retention leave the index in memory and in the store; a peer forgets runs another instance deleted; repeated create → finish → expire cycles keep the index flat.
+
 ## [14.9.0] - 2026-10-11
 
-v15 release candidate line (roadmap 14.9 "v15 候选版"). 14.9.0 freezes the 15.0 API and config surface, announces the three 15.0 breaking changes as run-time deprecations, and adds the validation the 15.0 gates need: upgrade / rollback tests on real stores, migration validation, a consolidated security regression suite, a cross-tenant matrix, fuzz / property runs and a soak harness. The soak found unbounded growth of durable task-graph state, fixed here. `15.0.0-rc.1` follows on the npm dist-tag `next`; `latest` stays on 14.x.
+v15 release candidate line (roadmap 14.9 "v15 候选版"). 14.9.0 freezes the 15.0 API and config surface, announces the three 15.0 breaking changes as run-time deprecations, and adds the validation the 15.0 gates need: upgrade / rollback tests on real stores, migration validation, a consolidated security regression suite, a cross-tenant matrix, fuzz / property runs and a soak harness. The soak found unbounded growth of durable task-graph state; the fix here removes the latency blow-up and the unexecuted runs, but memory growth remains (see Known issue). `15.0.0-rc.1` follows on the npm dist-tag `next`; `latest` stays on 14.x.
 
 ### Added
 
@@ -24,7 +42,11 @@ v15 release candidate line (roadmap 14.9 "v15 候选版"). 14.9.0 freezes the 15
 
 ### Fixed
 
-- **Durable task graphs: state and sweep cost grew without bound** (found by the 30-minute soak: gateway RSS +712 MB/h). The sweep (every 2 s by default) loaded every run record ever written, and finished runs were never deleted. A sweep now loads only runs not known to be finished (a full pass every 30th sweep re-checks the rest and applies retention), and finished runs expire after `retentionHours`.
+- **Durable task graphs: sweep cost and stored state grew without bound** (found by the 30-minute soak). The sweep (every 2 s by default) loaded every run record ever written, and finished runs were never deleted. A sweep now loads only runs not known to be finished (a full pass every 30th sweep re-checks the rest and applies retention), and finished runs expire after `retentionHours`. In the soak this removed the latency blow-up (p95 343 → 13 ms) and the durable runs that were never executed (8 → 0). *Corrected after release:* it did **not** remove the memory growth — see Known issue.
+
+### Known issue
+
+- **Memory growth under sustained load is not fixed in 14.9.0.** In the 30-minute soak (2 instances + Redis, durable task graphs enabled) gateway RSS still grew about 620 MB/h with this release, against about 30 MB/h for 13.3.0 on the same harness and machine. Cause: the durable sweep's full pass loaded every retained run record at once — fixed in [14.9.1](#1491---2026-10-11).
 
 ### Changed
 
