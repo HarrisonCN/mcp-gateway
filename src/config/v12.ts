@@ -572,9 +572,47 @@ const TENANCY_V12 = {
 
 /** `controlPlane` in the v12 JSON Schema: other keys as in v11; `rollout` (14.1.0, optional) described precisely. */
 const CONTROL_PLANE_V12 = {
-  $comment: 'unchanged from schema v11 (validated by the runtime schema) except the optional `rollout` (14.1)',
+  $comment: 'unchanged from schema v11 (validated by the runtime schema) except the optional `rollout` (14.1) and `gitops` (14.7)',
   type: 'object',
   properties: {
+    token: { type: 'string', minLength: 1, description: 'Data plane: an operator API key of the control plane. ${VAR} references are expanded; an unset variable is a config error (14.7, MGW-2026-019).' },
+    gitops: {
+      type: 'object',
+      description: 'NEW in 14.7 (optional; control plane or role all): GitOps — signed release manifests (ed25519), required approvals per environment, enforcement, drift detection. See docs/guides/gitops.md.',
+      additionalProperties: false,
+      required: ['environment'],
+      properties: {
+        environment: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$', description: 'the environment this gateway runs (bundles and manifests for another environment are refused)' },
+        enforce: { type: 'boolean', default: false, description: 'only signed, sufficiently approved releases may change the config; PUT /admin/config and /admin/reload answer 409' },
+        trustedKeys: {
+          type: 'array',
+          maxItems: 100,
+          default: [],
+          description: 'release signing keys (enforce: true needs at least one)',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id', 'name', 'publicKey'],
+            properties: {
+              id: { type: 'string', minLength: 1, maxLength: 128, description: 'key id named in manifests (--key-id)' },
+              name: { type: 'string', minLength: 1, maxLength: 200, description: 'the person or bot holding the key; approvals count once per name and never for the author' },
+              publicKey: { type: 'string', minLength: 1, description: 'ed25519:<base64 raw key> (mcp-gateway gitops keygen) or an SPKI PEM' },
+              roles: { type: 'array', minItems: 1, items: { enum: ['author', 'approver'] }, default: ['author', 'approver'] },
+            },
+          },
+        },
+        requiredApprovals: {
+          description: 'approvals a release needs: a number, or per environment with "*" as fallback (default: 2 for prod / production, else 0)',
+          oneOf: [
+            { type: 'integer', minimum: 0, maximum: 20 },
+            { type: 'object', additionalProperties: { type: 'integer', minimum: 0, maximum: 20 } },
+          ],
+        },
+        maxManifestAgeSeconds: { type: 'integer', minimum: 60, maximum: 31536000, default: 2592000, description: 'manifests older than this are refused' },
+        driftCheckIntervalMs: { type: 'integer', minimum: 1000, maximum: 86400000, default: 60000 },
+        recordFile: { type: 'string', minLength: 1, description: 'persist the applied release (replay protection and drift baseline across restarts); relative to the config file' },
+      },
+    },
     rollout: {
       type: 'object',
       description: 'NEW in 14.1 (optional; control plane only): how config generations roll out to data planes. See docs/guides/cluster-rollout.md.',

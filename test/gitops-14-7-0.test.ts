@@ -78,9 +78,9 @@ const STAGING = `
 rateLimit: { limit: 1000 }
 `;
 const PROD = `
-include: [prod-policy.yml]
+include: [_prod-policy.yml]
 servers:
-  - { id: github, timeout: 20000 }
+  - { id: github, timeoutMs: 20000 }
   - { id: scratch, $delete: true }
 cache: null
 `;
@@ -92,7 +92,7 @@ policy:
     - { name: reads, effect: allow, tools: ["*read*", "*list*", "*search*"] }
 `;
 const exampleTree = () =>
-  tree({ 'base.yml': BASE + 'cache: { enabled: true }\n', 'servers.yml': SERVERS, 'environments/staging.yml': STAGING, 'environments/prod.yml': PROD, 'environments/prod-policy.yml': PROD_POLICY });
+  tree({ 'base.yml': BASE + 'cache: { enabled: true }\n', 'servers.yml': SERVERS, 'environments/staging.yml': STAGING, 'environments/prod.yml': PROD, 'environments/_prod-policy.yml': PROD_POLICY });
 
 describe('G1 config directory', () => {
   it('renders base + includes + environment overlay with id-merged lists, deletes and a stable hash', async () => {
@@ -101,11 +101,11 @@ describe('G1 config directory', () => {
     const b = await renderConfigDir(d, 'prod');
     expect(b.schema).toBe('mcp-gateway/gitops-bundle@1');
     expect(b.env).toBe('prod');
-    expect(b.files).toEqual(['servers.yml', 'base.yml', 'environments/prod-policy.yml', 'environments/prod.yml']);
+    expect(b.files).toEqual(['servers.yml', 'base.yml', 'environments/_prod-policy.yml', 'environments/prod.yml']);
     const c = b.config as any; // eslint-disable-line @typescript-eslint/no-explicit-any
     expect(c.include).toBeUndefined();
     expect(c.servers.map((s: { id: string }) => s.id)).toEqual(['github', 'files']);
-    expect(c.servers[0]).toMatchObject({ id: 'github', url: 'https://api.example.com/mcp', timeout: 20000, headers: { authorization: 'Bearer ${GITHUB_TOKEN}' } });
+    expect(c.servers[0]).toMatchObject({ id: 'github', url: 'https://api.example.com/mcp', timeoutMs: 20000, headers: { authorization: 'Bearer ${GITHUB_TOKEN}' } });
     expect(c.cache).toBeUndefined();
     expect(c.policy.default).toBe('deny');
     expect(c.rateLimit).toEqual({ windowSeconds: 60, limit: 100 });
@@ -143,7 +143,8 @@ describe('G1 config directory', () => {
     expect(err.message).not.toContain('ghp_literal');
     expect(err.message).not.toContain('plain-operator-key');
     expect(findSecretLiterals({ auth: { apiKeys: ['${K}', 'sha256:' + 'b'.repeat(64), { key: 'secret://vault/kv/op#key' }] }, servers: [{ id: 'x', env: { TOKEN: '${T}' } }] })).toEqual([]);
-    expect(findSecretLiterals({ servers: [{ id: 'x', env: { TOKEN: 'abc', MODE: 'fast' } }] })).toEqual(['servers.x.env.TOKEN', 'servers.x.env.MODE']);
+    // env / headers: secret-looking names must be references; other values (MODE, accept) may be literal
+    expect(findSecretLiterals({ servers: [{ id: 'x', env: { GITHUB_TOKEN: 'abc', MODE: 'fast' }, headers: { accept: 'application/json', 'x-api-key': 'k' } }] })).toEqual(['servers.x.env.GITHUB_TOKEN', 'servers.x.headers.x-api-key']);
   });
 });
 
@@ -152,7 +153,7 @@ describe('G2 env diff', () => {
     const d = exampleTree();
     const changes = diffEnvironments(await renderConfigDir(d, 'staging'), await renderConfigDir(d, 'prod'));
     const paths = changes.map((c) => c.path);
-    expect(paths).toEqual(expect.arrayContaining(['servers.github.timeout', 'servers.scratch', 'policy', 'rateLimit', 'cache']));
+    expect(paths).toEqual(expect.arrayContaining(['servers.github.timeoutMs', 'servers.scratch', 'policy', 'rateLimit', 'cache']));
     expect(changes.find((c) => c.path === 'servers.scratch')!.change).toBe('removed');
     expect(changes.find((c) => c.path === 'cache')!.change).toBe('removed');
     expect(JSON.stringify(changes)).not.toMatch(/GITHUB_TOKEN\}"?\s*$/); // values redacted like the admin diff
@@ -301,10 +302,11 @@ const gitopsCfg = (over: Record<string, unknown> = {}) => ({
 function bundleFor(g: FeatureGw, limit: number, gitops = gitopsCfg()) {
   const cfg = {
     version: 12,
-    servers: [{ id: 'fake', name: 'fake', transport: 'stdio', command: process.execPath, args: [resolve(__dirname, 'fixtures', 'fake-mcp-server.mjs')], timeout: 5000 }],
+    servers: [{ id: 'fake', name: 'fake', transport: 'stdio', command: process.execPath, args: [resolve(__dirname, 'fixtures', 'fake-mcp-server.mjs')], timeoutMs: 5000 }],
     auth: { strategy: 'api-key', apiKeys: ['${GITOPS_TEST_OP_KEY}', { key: '${GITOPS_TEST_SCOPED_KEY}', scope: { servers: ['fake'] } }] },
     controlPlane: { configApi: true, gitops },
     rateLimit: { windowSeconds: 60, limit },
+    monitor: { requestLog: true, prometheus: true },
     policy: { default: 'allow', rules: [{ name: 'no-deletes', effect: 'deny', tools: ['*delete*'] }] },
   };
   void g;
@@ -337,7 +339,7 @@ describe('G5 HTTP: plan, apply, enforcement, drift, audit, metrics', () => {
 
     const b = bundleFor(g, 200);
     const r1 = await g.admin('gitops/apply', { bundle: b });
-    expect(r1.status).toBe(403);
+    expect(r1.status, JSON.stringify(r1.body)).toBe(403);
     expect(r1.body.reason).toMatch(/unsigned/);
     const r2 = await g.admin('gitops/apply', { bundle: b, manifest: sign(b, ['alice']) });
     expect(r2.status).toBe(403);
@@ -458,10 +460,10 @@ describe('G6 config + schema', () => {
   it('schema v12 describes controlPlane.gitops', () => {
     const s = buildV12ConfigSchema() as any; // eslint-disable-line @typescript-eslint/no-explicit-any
     const cp = JSON.stringify(s);
-    expect(cp).toMatch(/NEW in 14\.7/);
-    expect(cp).toContain('requiredApprovals');
+    expect(cp.includes('NEW in 14.7'), 'schema v12 mentions 14.7').toBe(true);
+    expect(cp.includes('requiredApprovals')).toBe(true);
     const committed = JSON.parse(readFileSync(resolve(__dirname, '..', 'schema', 'v12', 'config.schema.json'), 'utf8'));
-    expect(JSON.stringify(committed)).toContain('trustedKeys');
+    expect(JSON.stringify(committed).includes('trustedKeys'), 'committed schema regenerated').toBe(true);
   });
 });
 
@@ -525,7 +527,7 @@ describe('G7 CLI', () => {
     stops.push(g.stop);
     const fakePath = resolve(__dirname, 'fixtures', 'fake-mcp-server.mjs');
     const d = tree({
-      'base.yml': `version: 12\nservers:\n  - { id: fake, name: fake, transport: stdio, command: "${process.execPath}", args: ["${fakePath}"], timeout: 5000 }\nauth:\n  strategy: api-key\n  apiKeys: ["\${GITOPS_TEST_OP_KEY}", { key: "\${GITOPS_TEST_SCOPED_KEY}", scope: { servers: [fake] } }]\nrateLimit: { windowSeconds: 60, limit: 50 }\n`,
+      'base.yml': `version: 12\nservers:\n  - { id: fake, name: fake, transport: stdio, command: "${process.execPath}", args: ["${fakePath}"], timeoutMs: 5000 }\nauth:\n  strategy: api-key\n  apiKeys: ["\${GITOPS_TEST_OP_KEY}", { key: "\${GITOPS_TEST_SCOPED_KEY}", scope: { servers: [fake] } }]\nrateLimit: { windowSeconds: 60, limit: 50 }\n`,
       'environments/prod.yml': `controlPlane:\n  configApi: true\n  gitops:\n    environment: prod\n    enforce: true\n    requiredApprovals: { prod: 1 }\n    driftCheckIntervalMs: 1000\n    trustedKeys:\n${gitopsCfg().trustedKeys.map((k) => `      - { id: ${k.id}, name: ${k.name}, publicKey: "${k.publicKey}", roles: [${k.roles.join(', ')}] }`).join('\n')}\n`,
     });
     const keys = mkdtempSync(join(tmpdir(), 'gitops-k-'));
