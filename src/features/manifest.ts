@@ -56,7 +56,7 @@ export type FailurePolicy = 'open' | 'closed' | 'degrade';
 
 export const FEATURE_MANIFEST: readonly FeatureManifestEntry[] = [
   { id: 'conformance', since: '5.1.0', summary: 'MCP conformance self-test of this gateway\'s /mcp endpoint', capabilities: [], load: () => import('./conformance.js') },
-  { id: 'regions', since: '5.2.0', summary: 'Multi-region active-active: replicated state, peer health, cross-region failover routing', activation: ['regions'], capabilities: ['background-timers', 'outbound-network'], load: () => import('./regions.js') },
+  { id: 'regions', since: '5.2.0', summary: 'Multi-region active-active: replicated state and revocations, bounded staleness (fail closed), peer health, cross-region failover routing', activation: ['regions'], hook: 'regions', failurePolicy: 'closed', capabilities: ['background-timers', 'outbound-network', 'state-store'], load: () => import('./regions.js') },
   { id: 'edge-fleet', since: '5.3.0', summary: 'Managed edge nodes: fleet view with config drift, push config to edges', activation: ['edgeFleet'], capabilities: [], load: () => import('./edge-fleet.js') },
   { id: 'marketplace', since: '5.4.0', summary: 'Signed plugin marketplace: browse indexes, verified install', activation: ['marketplace'], capabilities: ['filesystem'], load: () => import('./marketplace.js') },
   { id: 'sessions', since: '5.5.0', summary: 'Agent session recording, replay and regression evals', activation: ['sessions'], capabilities: ['filesystem', 'invoke-tools'], load: () => import('./sessions.js') },

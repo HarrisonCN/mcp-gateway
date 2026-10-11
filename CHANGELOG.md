@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [14.5.0] - 2026-10-11
+
+Multi-region consistency release (roadmap 14.5 "多区域一致性"). Improves the existing 5.2 Multi-Region module (`features.regions`) in place: the eventual-consistency boundary is now explicit, revocations replicate and fail closed during a partition, replicated config carries version vectors and generation fencing, and clock skew is bounded. Config schema v12 describes `regions` (new `consistency` block).
+
+### Changed
+
+- **Bounded staleness, fail closed (behaviour change).** With peers configured, a region is *fresh* while every peer synced within `regions.consistency.maxStalenessMs` (default `max(30000, 3 × syncIntervalMs)`). While it is not — partition, peer down, or right after start before the first sync — it refuses every tool call with JSON-RPC **-32027**, because it cannot confirm that no other region revoked the caller. `consistency.onStale: allow` restores the 14.4 behaviour; remove a permanently lost region from `peers` (hot reload). The admin API stays available.
+- **Clock-skew bound.** A replicated write stamped more than `consistency.maxClockSkewMs` (default 30 s) ahead of the local clock is rejected and never advances the hybrid clock. 14.4 accepted any timestamp, so a region with a runaway clock won every later conflict (and a timestamp near 2^53 froze the clock mesh-wide).
+- A region renamed by a hot reload (`self` changed) stops syncing under its old identity (14.4 kept the old sync timer running).
+
+### Added
+
+- **Explicit consistency boundaries** ([guide](docs/guides/multi-region.md)): replicated = revocations, `kv`, server availability; region-local = sessions, rate limits, quotas, budgets, policy, config / config generations, API and portal keys, caches, task runs, audit. Reported in `GET /api/v1/admin/regions/report` (`boundaries`); sync exchanges carry only the replicated state plus the sender's clock and a config fingerprint (policy hash + generation).
+- **Replicated revocations**: `POST /api/v1/admin/regions/revocations` `{ clientId, reason? }`, `GET …/revocations`, CLI `mcp-gateway regions revoke`; developer-portal key revocations are recorded automatically as `key:portal-<id>`. A grow-only set (never un-revoked by a merge); a tool call by a revoked client id is refused with JSON-RPC **-32028** in every region within `maxStalenessMs`. Instances of one region share revocations through a shared store (redis / sqlite / eventlog); an instance that cannot read it is not fresh.
+- **Version vectors and generation fencing** for `kv` (replicated config): causally newer writes win regardless of clocks (delayed / replayed versions are rejected), concurrent writes converge with a joined vector and are counted as conflicts (`conflictedKeys`); `PUT …/kv/<key>` `{ value, ifGeneration }` answers **409** with `currentGeneration` when the generation moved. Entries from 14.4 peers (no vector) merge last-writer-wins as before.
+- **Region health and report**: `GET /api/v1/admin/regions/health` (200 fresh / 503 not, for load-balancer health checks); `GET /api/v1/admin/regions/report` and CLI `mcp-gateway regions report [--json]` / `regions health` — freshness and lag per peer, clock skew (`ok` / `exceeded`), policy drift between regions, conflicts, rejected entries, revocations, denied calls.
+- **Metrics**: `mcp_gateway_region_fresh`, `mcp_gateway_region_replication_lag_seconds{peer}`, `mcp_gateway_region_peer_up{peer}`, `mcp_gateway_region_clock_skew_seconds{peer}`, `mcp_gateway_region_denied_total{reason}`, `mcp_gateway_region_rejected_entries_total{reason}`, `mcp_gateway_region_conflicts_total`, `mcp_gateway_region_revocations`.
+- The `regions` module now registers a call hook (failure policy `closed`) and declares the `state-store` capability.
+
+### Tests
+
+- `test/regions-consistency-14-5-0.test.ts` (13): clock-skew bound, version vectors (causality beats wall clock, concurrent convergence), generation fencing, grow-only revocations, freshness; two in-process gateways with injected partitions and clock skew — revocation in A refused in B within the bound, partition → fail closed (-32027, health 503) → heal → revocation enforced, `onStale: allow`, kv 409, skewed peer flagged and its writes rejected while revocations still replicate, report / health / metrics / CLI, portal revocations.
+- `test/regions-partition-redis-14-5-0.test.ts` (1): two regions, each with its own real Redis, peered through TCP fault proxies — region-local rate limits, replicated revocation, hard partition makes both regions fail closed, recovery, a second instance learning revocations through the shared store, store loss → fail closed.
+
 ## [14.4.0] - 2026-10-11
 
 Durable task execution release (roadmap 14.4 "持久化任务执行"). Additive on the 10.7 task-graph engine and opt-in (`taskGraphs.durable`); without it task graphs behave as in 14.3. Config schema v12 gains the `durable` block, node keys `idempotent` / `idempotencyArg` / `approval`, `compensate.idempotencyArg` and the graph key `clients`.

@@ -3,6 +3,7 @@
  * Exposes REST endpoints for tool invocation, server management, and monitoring
  */
 
+import { announceRevocation } from './revocations.js';
 import { DlpSchema, policyFor as dlpPolicyFor } from '../features/schemas/dlp.js';
 import { dlpStats } from '../policy/dlp-stats.js';
 import { SseWriter } from './stream.js';
@@ -1349,7 +1350,9 @@ export function createApiRouter(
   router.delete('/portal/me', auth, (req, res) => {
     const k = myKey(req, res);
     if (!k) return;
-    res.json(publicKey(portal!.revoke(k.id)));
+    const r = portal!.revoke(k.id);
+    announceRevocation(`key:portal-${r.id}`, 'portal: revoked by the key holder'); // 14.5.0: replicated by `regions`
+    res.json(publicKey(r));
   });
 
   // Interactive docs: the tools the caller may use, with example arguments and snippets.
@@ -1375,7 +1378,11 @@ export function createApiRouter(
     const { id, action } = req.params as { id: string; action: string };
     try {
       if (action === 'approve' || action === 'deny') return void res.json(publicKey(portal!.decide(id, action === 'approve')));
-      if (action === 'revoke') return void res.json(publicKey(portal!.revoke(id)));
+      if (action === 'revoke') {
+        const r = portal!.revoke(id);
+        announceRevocation(`key:portal-${r.id}`, 'portal: revoked by an operator'); // 14.5.0: replicated by `regions`
+        return void res.json(publicKey(r));
+      }
       res.status(404).json({ error: 'Not Found', message: 'action must be approve, deny or revoke' });
     } catch (err) {
       portalFail(res, err);
