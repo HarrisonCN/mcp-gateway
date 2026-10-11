@@ -269,7 +269,7 @@ data residency and the security guard modules) and then freezes that target. A r
 
 Fail-closed is **scoped**: a failed module refuses only the calls in its own configured scope (for example
 `dlp.servers`); when that scope cannot be determined it refuses every tool call. Security modules are always `closed`;
-`kernel.failurePolicy` may override only `console`, `realtime-budgets` and `billing`.
+`modules.failurePolicy` may override only `console`, `realtime-budgets` and `billing`.
 `GET /api/v1/admin/kernel` shows each module's state and policy.
 
 **Hot reload is staged: Prepare → Validate → Commit.** New connections, catalog and modules are built aside; servers

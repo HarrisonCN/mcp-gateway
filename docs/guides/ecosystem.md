@@ -5,7 +5,7 @@ The [plugin marketplace](plugins.md) (5.4) distributed signed artifacts and the 
 reviews, and verified publishers.
 
 ```yaml
-version: 11
+version: 12
 features:
   ecosystem:
     file: ./data/ecosystem.json

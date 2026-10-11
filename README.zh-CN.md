@@ -249,7 +249,7 @@ API Key 打包进网页或 App：要么经由你自己的后端转发，要么�
 | `degrade` | 如 `offline`、`self-healing`、`blue-green`、`edge-autonomy` | 跳过钩子，结果中带 `_meta["mcp-gateway/degraded"]` 标记 |
 
 失效关闭是**有范围的**：故障模块只拒绝落在它自身配置范围内的调用（例如 `dlp.servers`）；范围无法确定时，拒绝所有工具调用。
-安全模块始终为 `closed`；`kernel.failurePolicy` 只能覆盖 `console`、`realtime-budgets` 和 `billing` 的策略。
+安全模块始终为 `closed`；`modules.failurePolicy` 只能覆盖 `console`、`realtime-budgets` 和 `billing` 的策略。
 `GET /api/v1/admin/kernel` 可查看每个模块的状态与策略。
 
 **热更新分阶段进行：Prepare → Validate → Commit。** 新连接、目录和模块先在旁路准备好；重载新增的服务器在提交前保持隐藏

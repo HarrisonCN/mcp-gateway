@@ -1367,7 +1367,7 @@ export function generateDefaultConfig(): string {
   return `# mcp-gateway configuration
 # Documentation: https://github.com/HarrisonCN/mcp-gateway/docs
 
-version: 11
+version: 12
 port: 4000
 # Loopback only. To listen on every interface (0.0.0.0) configure auth first: since 10.3 the gateway refuses to
 # start without auth on a non-loopback address unless started with --insecure.

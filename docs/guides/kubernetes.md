@@ -48,7 +48,7 @@ spec:
   autoscaling: { minReplicas: 2, maxReplicas: 8 }
   serviceMonitor: true
   config:
-    version: 11
+    version: 12
     servers:
       - { id: github, name: GitHub, transport: stdio, command: npx, args: ["-y", "@modelcontextprotocol/server-github"] }
 ```

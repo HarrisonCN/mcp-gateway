@@ -1,10 +1,11 @@
-# Config schema v12 — design (DRAFT, 13.9.0)
+# Config schema v12 — design (13.9.0 draft, runtime schema since 14.0.0)
 
-> **Status: draft.** 13.x runs config schema **v11** and refuses `version: 12`. Schema v12 is what MCP Gateway 14.0
-> ("core architecture v2") will run. 13.9.0 ships the draft, the deprecation inventory with runtime warnings and a
-> migration preview so you can see today what 14.0 will change in your file. Nothing here changes how a v11 file loads.
+> **Status: implemented in 14.0.0.** Schema v12 is the runtime schema of MCP Gateway 14.x ("core architecture v2").
+> 14.x still reads v11 files — migrated in memory, with one deprecation warning per v11 field and a startup notice —
+> until 15.0.0. Upgrade guide: [docs/migration/v13-to-v14.md](../migration/v13-to-v14.md). 13.9.0 shipped this design
+> as a draft (13.x refuses `version: 12`).
 
-Machine-readable drafts:
+Machine-readable schemas (the directory keeps its 13.9 name `v12-draft`; the content is the 14.0 runtime schema):
 
 - [`schema/v12-draft/config.schema.json`](../../schema/v12-draft/config.schema.json): config file (JSON Schema draft-07);
 - [`schema/v12-draft/module.schema.json`](../../schema/v12-draft/module.schema.json): feature module declaration.
@@ -101,5 +102,24 @@ modules themselves when they move to the 14.0 lifecycle — the kernel cannot en
 
    The preview prints the v12 config, a unified diff and a compatibility report (errors, warnings, manual steps);
    `--json` for tooling. Keep running the v11 file.
-2. 14.0: reads v12 and ships the full migration tool (writes files). Whether 14.0 still accepts v11 files is decided
-   with 14.0 (the roadmap favours adapters and incremental migration over a hard cut).
+2. 14.0 (decided): reads v12 **and still accepts v11 files**, migrated in memory with one deprecation warning per
+   field and one startup notice (adapters and incremental migration, as the roadmap asks). v11 support is removed in
+   15.0.0. The migration tool writes files: `mcp-gateway config migrate --to v12` (`<name>.v12.<ext>` or `-o`),
+   `--in-place` (backup `<file>.v11.bak`), `mcp-gateway config rollback`.
+
+## 14.0 implementation notes
+
+- **Adapter, not rewrite.** Internally the gateway keeps the v11 names (`kernel.*`, `genaiTelemetry`, `policyShadow`,
+  `postQuantumTls`): `normalizeSchemaVersion` (src/config/v12-deprecations.ts) maps a v12 file onto them, so the 46
+  modules, authentication and the proxy layer are unchanged. The admin API writes the running config back in v12 form.
+- **Lifecycle v2 / v11-compat.** Modules with `apiVersion: 2` implement the lifecycle natively (genai-otel in 14.0);
+  all others run through the v11-compat adapter (`mount` + `onStop`, cleanups owned by the module since 13.4.0).
+  `modules.lifecycle.initTimeoutMs` / `unloadTimeoutMs` bound `init` and `disable` / `dispose` for both.
+- **Capabilities.** Declared per module in the manifest (runtime capabilities) plus `call-hook` / `security-guard`.
+  A denied declared capability refuses activation (all modules). For lifecycle-v2 modules, `ctx.timers` and
+  `ctx.net.fetch` refuse undeclared or denied use at run time and the kernel clears their timers on disable / stop.
+  `filesystem`, `signing-keys`, `state-store`, `invoke-tools` are not intercepted at run time in 14.0.
+- **Per-instance state (F3).** Each `Gateway` has an `InstanceScope` (src/kernel/instance.ts) carried by
+  `AsyncLocalStorage` through its requests, start / reload / stop and the timers they start. Module singletons are
+  `instanceLocal(...)` proxies; the kernel drops a module's state on disable / dispose. Pure memos (parsed Cedar
+  policies, embedding memo) stay process-wide and say so.

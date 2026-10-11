@@ -27,9 +27,11 @@ hot reload is rejected and the running configuration kept.
 | `port` | `4000` | restart | HTTP port |
 | `host` | `0.0.0.0` | restart | bind address |
 | `logLevel` | `info` | ✓ | `debug` \| `info` \| `warn` \| `error` |
-| `version` | — | | config schema version; optional, `11` when set (11.0 refuses `10` — run `mcp-gateway migrate --to 11`) |
-| `kernel.modules` | `lazy` | ✓ | `lazy`: only feature modules whose `features.*` section is configured are mounted (others answer 404); `eager`: every module mounted, as in 10.x — see [Migrating to 11.0](guides/migrating-to-v11.md) |
-| `kernel.failurePolicy` | — | ✓ | 13.1: override the failure policy (`open` / `closed` / `degrade`) of `console`, `realtime-budgets` (default `closed`) or `billing` (default `open`). Security modules are always `closed`: while one is configured but failed, tool calls are refused with -32026 — since 13.1.1 only the calls in the module's own scope (e.g. `dlp.servers`, `sanitize.servers`/`exempt`, `multimodal.servers`, `confidential.servers[].match`, `approvalFlows.flows[].tools`/`clients`, `privacy.protect`, `realtimeBudgets.budgets[].clients`/`tenants`/`tools`, `console.orgs`, `anomaly.exempt`, agent-token calls + `agentIdentity.requireAgentFor`); a module without such a restriction (or whose config cannot be read, or `policyEngine`, plugins) refuses every tool call |
+| `version` | — | | config schema version: `12` (14.0). `11` is still read — migrated in memory with deprecation warnings — until 15.0.0 ([upgrade guide](migration/v13-to-v14.md)); an unversioned file is v12 unless it uses a v11-only field |
+| `modules.lifecycle` | — | ✓ | 14.0: `initTimeoutMs` / `unloadTimeoutMs` bound a module's `init` and `disable` / `dispose` (the module is marked failed when it takes longer); `drainMs` reserved |
+| `modules.capabilities.<module>.deny` | — | ✓ | 14.0: capabilities denied to a module (`background-timers`, `outbound-network`, `filesystem`, `state-store`, `signing-keys`, `invoke-tools`, `call-hook`, `security-guard`, `admin-routes`, `client-routes`); a module declaring a denied capability is not activated (its failure policy applies) |
+| `modules.activation` | `lazy` | ✓ | `lazy`: only feature modules whose `features.*` section is configured are mounted (others answer 404); `eager`: every module mounted, as in 10.x — see [Migrating to 11.0](guides/migrating-to-v11.md) |
+| `modules.failurePolicy` | — | ✓ | 13.1: override the failure policy (`open` / `closed` / `degrade`) of `console`, `realtime-budgets` (default `closed`) or `billing` (default `open`). Security modules are always `closed`: while one is configured but failed, tool calls are refused with -32026 — since 13.1.1 only the calls in the module's own scope (e.g. `dlp.servers`, `sanitize.servers`/`exempt`, `multimodal.servers`, `confidential.servers[].match`, `approvalFlows.flows[].tools`/`clients`, `privacy.protect`, `realtimeBudgets.budgets[].clients`/`tenants`/`tools`, `console.orgs`, `anomaly.exempt`, agent-token calls + `agentIdentity.requireAgentFor`); a module without such a restriction (or whose config cannot be read, or `policyEngine`, plugins) refuses every tool call |
 | `features` | — | ✓ | every feature-module section (`chaos`, `sla`, `dlp`, …) nested here — see [Migrating to 10.0](guides/migrating-to-v10.md) |
 | `cors.origins` | `["*"]` | ✓ | allowed browser origins: exact values, `*`, or `/regex/` |
 | `health.intervalMs` | `30000` | restart | MCP `ping` interval (min 1000) |
@@ -537,7 +539,7 @@ scopes, policy, quotas), then diffs the two results. Captured payloads are redac
 ## Admin API
 
 ```yaml
-version: 11
+version: 12
 controlPlane:
   configApi: true # allow PUT /api/v1/admin/config and POST /api/v1/admin/reload (default false)
   dashboard: true # serve /dashboard (default true)
@@ -560,7 +562,7 @@ controlPlane:
 
 ```yaml
 # data plane
-version: 11
+version: 12
 port: 4000
 controlPlane:
   role: data
@@ -1095,13 +1097,15 @@ servers:
     maxQueue: 50               # load shedding: the 51st waiting call gets 503 + Retry-After (-32014 on /mcp)
 ```
 
-## Schema v12 preview and deprecations (13.9)
+## Schema v12 and v11 files (14.0)
 
-Schema v11 is the runtime schema in 13.x. 13.9 adds a **draft** of schema v12 (what 14.0 will run) and warns once per
-field about the v11 fields it renames (`kernel.modules`, `kernel.failurePolicy`, `features.genaiTelemetry`,
-`features.policyShadow`, `features.postQuantumTls`) — silence with `MCP_GATEWAY_SILENCE_DEPRECATIONS=all`. Preview the
-migration with `mcp-gateway config migrate --to v12 --dry-run` and `mcp-gateway config diff --to v12`. See
-[docs/deprecations.md](deprecations.md) and [docs/design/schema-v12.md](design/schema-v12.md).
+Schema v12 is the runtime schema since 14.0.0. 14.x still reads v11 files, migrated in memory, and warns once per
+v11 field (`kernel.modules`, `kernel.failurePolicy`, `features.genaiTelemetry`, `features.policyShadow`,
+`features.postQuantumTls`) plus one startup notice — silence with `MCP_GATEWAY_SILENCE_DEPRECATIONS=all`. v11 files
+are read until 15.0.0. Rewrite the file with `mcp-gateway config migrate --to v12 --in-place` (backup
+`<file>.v11.bak`, undo with `mcp-gateway config rollback`); preview with `--dry-run` or `mcp-gateway config diff --to v12`.
+See [the upgrade guide](migration/v13-to-v14.md), [docs/deprecations.md](deprecations.md) and
+[docs/design/schema-v12.md](design/schema-v12.md).
 
 ## Load protection and fair scheduling (13.8)
 

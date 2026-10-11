@@ -27,7 +27,7 @@ shadow decision) without calling the upstream.
 
 ```yaml
 features:
-  policyShadow:
+  policySim:
     default: deny
     rules:
       - {name: read-only, effect: allow, tools: ["*read*", "*list*", "*search*"]}

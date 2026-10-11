@@ -3,7 +3,7 @@
 Fields and forms that still work but are scheduled for removal. Each one is reported:
 
 - at run time, as a log warning **once per field** per process (at start and when a reload introduces it):
-  `DEPRECATED (removed in 14.0.0): ...`;
+  `DEPRECATED (removed in 15.0.0): ...`;
 - by `mcp-gateway validate` and `GET /api/v1/admin/deprecations` (always, even when silenced).
 
 Silence the log lines with `MCP_GATEWAY_SILENCE_DEPRECATIONS`: `all` (or `1`, `true`), or a comma-separated list of
@@ -12,24 +12,26 @@ deprecation ids or config paths, for example `MCP_GATEWAY_SILENCE_DEPRECATIONS=v
 Earlier removals (schema v3 – v10, workflows, plugin API v1 – v4) are refused with an error naming the replacement;
 see the migration guides in [docs/guides](guides).
 
-## Schema v12 inventory (13.9.0, removed in 14.0.0)
+## Config schema v11 fields (announced 13.9.0; not in schema v12 since 14.0.0; v11 files read until 15.0.0)
 
-Config schema v12 is a draft in 13.x ([design](design/schema-v12.md)). These v11 fields are removed or renamed by it:
+Config schema v12 is the runtime schema since 14.0.0 ([design](design/schema-v12.md), [upgrade guide](migration/v13-to-v14.md)).
+These v11 fields are not part of it. A `version: 12` file that uses them is refused; a `version: 11` file (or an
+unversioned file using one of them) is migrated in memory with one warning per field and one startup notice — until
+15.0.0, which stops reading v11 files:
 
 | Id | v11 field | v12 field | Since | Removed in |
 |---|---|---|---|---|
-| `v12.kernel.modules` | `kernel.modules` | `modules.activation` | 13.9.0 | 14.0.0 |
-| `v12.kernel.failurePolicy` | `kernel.failurePolicy` | `modules.failurePolicy` | 13.9.0 | 14.0.0 |
-| `v12.features.genaiTelemetry` | `features.genaiTelemetry` | `features.genaiOtel` | 13.9.0 | 14.0.0 |
-| `v12.features.policyShadow` | `features.policyShadow` | `features.policySim` | 13.9.0 | 14.0.0 |
-| `v12.features.postQuantumTls` | `features.postQuantumTls` | `features.pqTls` | 13.9.0 | 14.0.0 |
+| `v12.kernel.modules` | `kernel.modules` | `modules.activation` | 13.9.0 | 15.0.0 (14.0.0: removed from schema v12) |
+| `v12.kernel.failurePolicy` | `kernel.failurePolicy` | `modules.failurePolicy` | 13.9.0 | 15.0.0 (14.0.0: removed from schema v12) |
+| `v12.features.genaiTelemetry` | `features.genaiTelemetry` | `features.genaiOtel` | 13.9.0 | 15.0.0 (14.0.0: removed from schema v12) |
+| `v12.features.policyShadow` | `features.policyShadow` | `features.policySim` | 13.9.0 | 15.0.0 (14.0.0: removed from schema v12) |
+| `v12.features.postQuantumTls` | `features.postQuantumTls` | `features.pqTls` | 13.9.0 | 15.0.0 (14.0.0: removed from schema v12) |
 
-In 13.x the v11 names are the only ones the gateway reads: do **not** rename them in a running config yet. Preview the
-rewrite instead:
+On 13.x the v11 names are the only ones the gateway reads. On 14.x rewrite the file:
 
 ```bash
-mcp-gateway config migrate --to v12 --dry-run --json -c mcp-gateway.yml
-mcp-gateway config diff --to v12 -c mcp-gateway.yml
+mcp-gateway config migrate --to v12 --in-place -c mcp-gateway.yml   # backup: mcp-gateway.yml.v11.bak
+mcp-gateway config diff --to v12 -c mcp-gateway.yml                 # preview only
 ```
 
 Exit codes: `config migrate` 1 when the compatibility report has errors; `config diff` 3 when the file would change,

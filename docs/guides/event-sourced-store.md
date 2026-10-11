@@ -3,7 +3,7 @@
 `store.backend: eventlog` makes a **single-instance** gateway keep its shared state across restarts without Redis.
 
 ```yaml
-version: 11
+version: 12
 store:
   backend: eventlog
   eventlog:

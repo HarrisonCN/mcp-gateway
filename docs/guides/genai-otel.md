@@ -6,7 +6,7 @@ GenAI-aware backend (Grafana, Datadog, Honeycomb, Langfuse, Arize Phoenix …).
 
 ```yaml
 features:
-  genaiTelemetry:
+  genaiOtel:
     systems: {llm: openai, claude: anthropic} # server id → gen_ai.provider.name (calls become `chat` operations)
     modelArg: model # argument that carries the model name
     captureContent: false # true: gen_ai.input.messages / output.messages (JSON, 4 KB max)

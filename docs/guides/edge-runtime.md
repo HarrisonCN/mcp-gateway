@@ -5,7 +5,7 @@ functions (lookups, formatting, validation, scoring) that answer on the gateway 
 [edge fleet](edge.md), next to the agent, with no upstream round trip.
 
 ```yaml
-version: 11
+version: 12
 features:
   edgeRuntime:
     idleSeconds: 300
