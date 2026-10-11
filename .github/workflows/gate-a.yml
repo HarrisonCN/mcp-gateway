@@ -1,0 +1,76 @@
+name: Gate A (72 h soak)
+
+# v15 gate A — 72 h load + fault injection on two gateway instances sharing one Redis (docs/v15/gates.md).
+# Runs scripts/gate-a.sh on a dedicated self-hosted runner (GitHub-hosted jobs stop after 6 h). Register the runner
+# with the labels `self-hosted, linux, soak` on a machine that runs nothing else, then:
+#
+#   gh workflow run gate-a.yml -f version=15.0.0-rc.2            # published candidate, 72 h, 13.3.0 baseline (6 h)
+#   gh workflow run gate-a.yml -f version=checkout -f duration=2h -f baseline=none   # rehearsal (fails A1 on purpose)
+#
+# The job uploads every file the harness writes (artifact gate-a-<run id>) even when it fails or is cancelled. A green
+# job means the automatic criteria A1–A8 held on that machine; closing the gate still needs the maintainer's sign-off
+# in docs/ROADMAP.md with a link to the run.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Gateway under test: a published npm version (e.g. 15.0.0-rc.2) or 'checkout' (this ref, built)"
+        default: checkout
+      duration:
+        description: Soak duration (72h for the gate; shorter = rehearsal)
+        default: 72h
+      baseline:
+        description: Baseline release measured first on the same runner ('none' to skip)
+        default: 13.3.0
+      baseline_duration:
+        description: Baseline duration
+        default: 6h
+      max_plateau_mb_per_hour:
+        description: Ceiling for RSS growth of instance B over the last 24 h (MB/h; default 1.5 × the 13.3.0 harness baseline)
+        default: '45'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: soak
+  cancel-in-progress: false
+
+jobs:
+  gate-a:
+    name: Gate A (${{ inputs.version }}, ${{ inputs.duration }})
+    runs-on: [self-hosted, linux, soak]
+    timeout-minutes: 4980 # 83 h: 6 h baseline + 72 h soak + setup
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: redis-server
+        run: |
+          command -v redis-server || { sudo apt-get update -q && sudo apt-get install -y -q redis-server && { sudo systemctl stop redis-server || true; }; }
+          redis-server --version
+      - run: npm ci --ignore-scripts
+      - name: Gate A harness
+        run: |
+          bash scripts/gate-a.sh --version "${{ inputs.version }}" --duration "${{ inputs.duration }}" \
+            --baseline "${{ inputs.baseline }}" --baseline-duration "${{ inputs.baseline_duration }}" \
+            --max-plateau-mb-per-hour "${{ inputs.max_plateau_mb_per_hour }}" --out-dir gate-a-out
+      - name: Summary
+        if: always()
+        run: |
+          [ -f gate-a-out/gate-a-report.json ] || { echo "no gate-a-report.json (run died early)" >> "$GITHUB_STEP_SUMMARY"; exit 0; }
+          node -e "
+          const r = require('./gate-a-out/gate-a-report.json');
+          const s = ['## Gate A — ' + r.impl + ' — ' + r.verdict, '', '| criterion | result | detail |', '|---|---|---|',
+            ...r.criteria.map((c) => '| ' + c.id + ' | ' + (c.pass ? '✅' : '❌') + ' | ' + c.detail.replace(/\|/g, '/') + ' |'), '',
+            '| RSS window (h) | slope MB/h | first → last MB |', '|---|---|---|',
+            ...r.memory.windows.map((w) => '| ' + w.fromH + '–' + w.toH + ' | ' + w.slopeMbPerHour + ' | ' + w.firstMb + ' → ' + w.lastMb + ' |')];
+          require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, s.join('\n') + '\n');"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: gate-a-${{ github.run_id }}
+          path: gate-a-out/
+          if-no-files-found: warn
+          retention-days: 90
