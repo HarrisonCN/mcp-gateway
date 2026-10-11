@@ -73,7 +73,7 @@ describe('14.0 config: schema v12 is the runtime schema', () => {
     expect(schemaNotice(cfg)).toMatch(/schema v11.*migrated in memory.*15\.0.*config migrate --to v12/s);
     // the same file written as v12 gives the same runtime config
     const v12 = validateConfig({ version: 12, servers: [], modules: { activation: 'eager', failurePolicy: { billing: 'closed' } }, features: { genaiOtel: { otlpEndpoint: 'http://c:4318' }, pqTls: {} } }) as any;
-    const strip = (c: any) => { const { schemaVersion: _s, deprecations: _d, ...rest } = c; return rest; };
+    const strip = (c: any) => { const { schemaVersion: _s, deprecations: _d, version: _v, ...rest } = c; return rest; };
     expect(strip(v12)).toEqual(strip(cfg));
   });
 

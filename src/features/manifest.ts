@@ -100,7 +100,7 @@ export const FEATURE_MANIFEST: readonly FeatureManifestEntry[] = [
   { id: 'edge-autonomy', since: '10.7.0', summary: 'Edge autonomy (EXPERIMENTAL): local cache / WASM / queue / deny decisions while an upstream is unreachable, outbox reconcile on reconnect', activation: ['edgeAutonomy'], dependsOn: ['edge-runtime', 'offline'], hook: 'edge-autonomy', failurePolicy: 'degrade', capabilities: ['background-timers', 'filesystem', 'invoke-tools'], load: () => import('./edge-autonomy.js') },
   { id: 'privacy', since: '10.8.0', summary: 'Privacy computing (EXPERIMENTAL): differentially private aggregates of tool results, federated queries, ε budgets', activation: ['privacy'], hook: 'privacy', failurePolicy: 'closed', guard: true, capabilities: ['outbound-network', 'invoke-tools'], load: () => import('./privacy.js') },
   { id: 'pq-identity', since: '10.8.0', summary: 'Post-quantum identity (EXPERIMENTAL): Ed25519 + ML-DSA hybrid signed identity document, tool manifest and audit-log checkpoints', activation: ['pqIdentity'], hook: 'pq-identity', failurePolicy: 'degrade', capabilities: ['background-timers', 'filesystem', 'signing-keys'], load: () => import('./pq-identity.js') },
-  { id: 'kernel', since: '10.0.0', summary: 'Unified gateway kernel: config schema v11, lazily activated feature modules, call-hook pipeline and support status in one view', capabilities: [], load: () => import('./kernel.js') },
+  { id: 'kernel', since: '10.0.0', summary: 'Unified gateway kernel: config schema v12 (v11 read until 15.0), lazily activated feature modules, call-hook pipeline and support status in one view', capabilities: [], load: () => import('./kernel.js') },
 ];
 
 const byId = new Map(FEATURE_MANIFEST.map((e) => [e.id, e]));
