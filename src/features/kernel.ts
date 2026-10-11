@@ -17,10 +17,10 @@ import { callHooks } from '../gateway/hooks.js';
 import { loadedFeatures } from '../gateway/kernel-runtime.js';
 import { VERSION } from '../utils/version.js';
 
-/** Config schema version read by this release line. */
-export const CONFIG_SCHEMA_VERSION = 11;
+/** Config schema version of this release line (14.0: 12; v11 files are read — migrated in memory — until 15.0). */
+export const CONFIG_SCHEMA_VERSION = 12;
 
-/** Long-term support of the 10.x line (13.x is the current, non-LTS line; 10.x keeps its LTS dates). */
+/** Long-term support of the 10.x line (14.x is the current, non-LTS line; 10.x keeps its LTS dates). */
 export const LTS = {
   line: '10.x',
   codename: 'Kernel',
@@ -31,8 +31,11 @@ export const LTS = {
   maintenanceUntil: '2028-10-31',
 } as const;
 
-/** Current release line (13.0). */
-export const RELEASE_LINE = { line: '13.x', lts: false } as const;
+/** Current release line (14.0). */
+export const RELEASE_LINE = { line: '14.x', lts: false } as const;
+
+/** Maintained previous line (14.0.0; docs/versions.md). */
+export const MAINTAINED_LINES = [{ line: '13.9.x', distTag: 'v13-lts', image: '13', until: '15.0.0 and no earlier than 2027-04-30' }] as const;
 
 /** LTS status of the 10.x line on a date. */
 export function ltsStatus(now = new Date()): 'active' | 'maintenance' | 'end-of-life' {
@@ -45,7 +48,7 @@ export function ltsStatus(now = new Date()): 'active' | 'maintenance' | 'end-of-
 registerFeature({
   id: 'kernel',
   since: '10.0.0',
-  summary: 'Unified gateway kernel: config schema v11, lazily activated feature modules, call-hook pipeline and support status in one view',
+  summary: 'Unified gateway kernel: config schema v12 (v11 read until 15.0), lazily activated feature modules, call-hook pipeline and support status in one view',
   mount(router, ctx) {
     router.get('/', (_req, res) => {
       const cfg = ctx.config() as unknown as Record<string, unknown>;
@@ -53,6 +56,9 @@ registerFeature({
         version: VERSION,
         schema: CONFIG_SCHEMA_VERSION,
         line: RELEASE_LINE,
+        maintained: MAINTAINED_LINES,
+        // 14.0.0: schema the running config file was written in (11 = migrated in memory)
+        configFileSchema: (ctx.config() as { schemaVersion?: number }).schemaVersion ?? CONFIG_SCHEMA_VERSION,
         lts: { ...LTS, status: ltsStatus() },
         moduleMode: moduleMode(ctx.config()),
         // 13.2.0: transactional reload — committed config generation and the ones in-flight calls still pin

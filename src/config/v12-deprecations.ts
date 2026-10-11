@@ -73,7 +73,7 @@ const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 
 const BACK: Readonly<Record<string, string>> = Object.fromEntries(Object.entries(V12_SECTION_RENAMES).map(([a, b]) => [b, a]));
 
 export interface SchemaVersionResult {
-  /** The raw config in the internal form (no `version`; v11 names). */
+  /** The raw config in the internal form (v11 names; `version` kept as written). */
   raw: unknown;
   /** Schema the file was written in (undefined: not an object, left to the schema to report). */
   schemaVersion?: 11 | 12;
@@ -104,7 +104,7 @@ export function normalizeSchemaVersion(raw: unknown): SchemaVersionResult {
       if (features?.[from] !== undefined) errors.push(`features.${from}: \`features.${from}\` is not part of config schema v12 — use \`features.${to}\``);
     }
     if (errors.length) return { raw: r, schemaVersion, errors };
-    const out: Record<string, unknown> = { ...r };
+    const out: Record<string, unknown> = { ...r, ...(version !== undefined ? { version } : {}) };
     if (features) out.features = Object.fromEntries(Object.entries(features).map(([k, v]) => [BACK[k] ?? k, v]));
     if (r.modules !== undefined) {
       if (!isObj(r.modules)) return { raw: out, schemaVersion, errors: ['modules: must be an object'] };
@@ -127,7 +127,7 @@ export function normalizeSchemaVersion(raw: unknown): SchemaVersionResult {
   for (const to of Object.values(V12_SECTION_RENAMES)) {
     if (features?.[to] !== undefined) errors.push(`features.${to}: \`features.${to}\` is the config schema v12 name — set \`version: 12\` (migrate with \`mcp-gateway config migrate --to v12\`) or use \`features.${BACK[to]}\` in a v11 file`);
   }
-  return { raw: r, schemaVersion, errors };
+  return { raw: version !== undefined ? { ...r, version } : r, schemaVersion, errors };
 }
 
 /**

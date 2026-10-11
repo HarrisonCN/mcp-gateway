@@ -81,7 +81,7 @@ export const configEtag = (config: unknown) => `"${createHash('sha256').update(s
 /** The config a control plane distributes: `portable` minus `controlPlane`, `port` and `host` (schema v9). */
 export function distributedConfig(portable: Record<string, unknown>): Record<string, unknown> {
   const { controlPlane: _c, port: _p, host: _h, configDir: _d, deprecations: _x, ...rest } = portable;
-  return { ...rest, version: 11 };
+  return { ...rest, version: 12 }; // 14.0.0: schema v12 (13.x data planes refuse it — upgrade data planes first)
 }
 
 export interface DataPlaneNode {
