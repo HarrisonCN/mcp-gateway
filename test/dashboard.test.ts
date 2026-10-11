@@ -250,7 +250,7 @@ describe('GitHub Pages demo backend: 3.3+ APIs', () => {
 
   it('has the config editor view with i18n (4.6)', () => {
     expect(html).toContain('id="view-config"');
-    expect(html).toContain("const VIEWS = ['overview', 'servers', 'playground', 'history', 'config', 'connect'];");
+    expect(html).toContain("const VIEWS = ['overview', 'servers', 'playground', 'history', 'ops', 'config', 'connect'];"); // 14.8.0: + ops
     for (const id of ['cfValidate', 'cfDiff', 'cfApply', 'cfServers', 'cfJson', 'cfUseJson', 'cfAdd']) expect(html).toContain(`id="${id}"`);
     expect(html).toContain("tabConfig: '配置'");
     expect(html).not.toMatch(/onclick=|onchange=/);

@@ -499,6 +499,38 @@
         return json({ applied: true, changes });
       }
     }
+    // 14.8.0: operations console (cluster, traces, timeline, explain, troubleshooting wizard)
+    if (p === '/admin/ops/cluster') return json({ version: VERSION, role: 'control', generation: { current: 42, committedAt: iso(Date.now() - 600000), alive: 1, committed: 42, rollbacks: 1 },
+      dataPlanes: { total: 3, online: 3, inSync: 2, diverged: [{ nodeId: 'dp-fra-2', status: 'online', configEtag: 'W/"g41"' }] },
+      regions: { self: 'us-east', fresh: true, stale: [], maxLagMs: 840, peers: [{ id: 'eu-west', status: 'up', lagMs: 840 }] },
+      edges: { total: 2, queued: 4, nodes: [] }, plugins: { total: 2, open: ['pii-scan'], list: [] }, dlq: { total: 1, byStatus: { pending: 1 } },
+      servers: { total: SERVERS.length, online: SERVERS.length - 1, offline: [SERVERS[SERVERS.length - 1].id] }, modules: { failed: [] } });
+    if (p === '/admin/ops/traces') return json({ traces: [
+      { requestId: 'demo-t1', at: iso(Date.now() - 4000), serverId: 'github', tool: 'search_issues', kind: 'tool', via: 'rest', clientId: 'key:ci', success: true, outcome: 'ok', totalMs: 182.4 },
+      { requestId: 'demo-t2', at: iso(Date.now() - 9000), serverId: 'github', tool: 'create_issue', kind: 'tool', via: 'mcp', clientId: 'key:agents', success: false, outcome: 'denied', decision: 'deny', totalMs: 1.2 },
+    ], total: 2 });
+    if ((m = p.match(/^\/admin\/ops\/traces\/(.+)$/))) {
+      const denied = m[1] === 'demo-t2';
+      const steps = ['auth', 'tenant', 'policy', 'plugins', 'route', 'upstream', 'cache', 'response'].map((step, i) => ({ step, status: denied ? (i === 2 ? 'denied' : i > 2 && step !== 'response' ? 'skipped' : 'ok') : 'ok', ms: denied && i > 2 && step !== 'response' ? null : +(Math.random() * (step === 'upstream' ? 170 : 2)).toFixed(3) }));
+      return json({ requestId: m[1], at: iso(Date.now() - 4000), serverId: 'github', tool: denied ? 'create_issue' : 'search_issues', clientId: denied ? 'key:agents' : 'key:ci', traceId: '4bf92f3577b34da6a3ce929d0e0e4736', success: !denied, outcome: denied ? 'denied' : 'ok', totalMs: denied ? 1.2 : 182.4, steps,
+        ...(denied ? { explain: { decision: 'deny', layer: 'policy', rule: 'agents-read-only', configPath: 'policy.rules[2]', reason: 'Agents may only read issues', client: 'key:agents' } } : {}) });
+    }
+    if (p === '/admin/ops/timeline') return json({ events: [
+      { at: iso(Date.now() - 60000), kind: 'circuit-open', severity: 'error', subject: 'pii-scan', detail: 'plugin circuit opened after 5 consecutive failure(s) in onToolCall', source: 'plugins' },
+      { at: iso(Date.now() - 600000), kind: 'config-apply', severity: 'info', detail: 'config generation 42 committed', source: 'gateway' },
+      { at: iso(Date.now() - 900000), kind: 'gitops-release', severity: 'info', subject: 'release-bot', detail: 'gitops.apply: applied', source: 'gitops' },
+      { at: iso(Date.now() - 86400000), kind: 'restart', severity: 'info', detail: `mcp-gateway v${VERSION} started`, source: 'gateway' },
+    ].filter((e) => !q.get('kind') || e.kind === q.get('kind')), total: 4 });
+    const opsBody = () => { try { return JSON.parse(init?.body || '{}'); } catch { return {}; } };
+    if (p === '/admin/ops/explain' && method === 'POST') return json({ ...opsBody(), allowed: false, checked: ['server', 'exposure', 'scope', 'tenant', 'delegation', 'policy'], decision: 'deny', layer: 'policy', rule: 'agents-read-only', configPath: 'policy.rules[2]', reason: 'Agents may only read issues' });
+    if (p === '/admin/ops/troubleshoot' && method === 'POST') { await sleep(150); return json({ id: 'demo-report-1', createdAt: iso(Date.now()), verdict: 'fail', redacted: true, input: { ...opsBody(), arguments: {} }, checks: [
+      { id: 'upstream', title: 'Upstream reachability', status: 'pass', detail: 'server is connected and lists the tool' },
+      { id: 'auth', title: 'Authentication / key', status: 'pass', detail: 'client resolves to a configured credential' },
+      { id: 'tenancy', title: 'Tenancy / scope', status: 'pass', detail: 'the client may use this server and tool' },
+      { id: 'policy', title: 'Policy simulation', status: 'fail', detail: 'policy: rule "agents-read-only" denies github/create_issue', configPath: 'policy.rules[2]' },
+      { id: 'rate-limit', title: 'Rate limits / quotas', status: 'pass', detail: '600 requests / 60s (global)' },
+      { id: 'plugins', title: 'Plugin health', status: 'warn', detail: 'circuit open: pii-scan (failure: open)', configPath: 'plugins' },
+    ] }); }
     // 4.8: edge control plane (snapshot + node list) for edge gateways with `sync`.
     if (p === '/admin/edge/snapshot') return json({ version: VERSION, generatedAt: iso(Date.now()), etag: 'demo-edge-1',
       config: { servers: [{ id: 'github', url: 'https://api.githubcopilot.com/mcp/', catalog: [{ name: 'search_issues' }, { name: 'create_issue' }] }], apiKeys: ['sha256:' + '0'.repeat(64)], toolNaming: 'auto' } });
