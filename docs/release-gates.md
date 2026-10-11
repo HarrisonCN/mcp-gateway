@@ -44,6 +44,7 @@ conclude `success` (or `skipped`):
 | `Load + faults (Node 22)` | Performance | gateway sources change |
 | `Compose example boots` | Deployment examples | examples, deployment docs, chart, Dockerfile or sources change |
 | `Kubernetes and Helm examples boot (kind)` | Deployment examples | idem |
+| `Upgrade + security regressions (real Redis)` | CI | every CI run (14.9.0; conditional until it has run green on `main`, then required) |
 
 ## Everything else
 
@@ -67,3 +68,26 @@ gate because they need the release to exist.
 Add a job to `required` only once it has run green on `main`; rename entries together with the job. The test
 `test/release-gate-13-4-0.test.ts` fails when a listed check is no longer a job name in the workflows or is missing
 from this page.
+
+## v15 gates
+
+15.0.0 ships only when these hold in addition to the required checks (roadmap; status in
+[docs/v15/release-candidate.md](v15/release-candidate.md)):
+
+1. **72 h soak** — workflow `Soak` (`.github/workflows/soak.yml`, `workflow_dispatch`) on a dedicated self-hosted runner
+   (labels `self-hosted, linux, soak`; GitHub-hosted jobs stop after 6 h): `gh workflow run soak.yml -f duration=72h
+   -f runner=soak -f baseline=13.3.0 -f baseline_duration=6h`. `scripts/soak.mjs` runs two instances sharing a real
+   Redis (AOF, fsync always), steady load from three tenants plus cross-tenant attempts, and every 5 minutes one fault:
+   kill -9 + restart of instance A, a 20 s partition between instance B and Redis, or a Redis kill + restart. It fails
+   on any cross-tenant call that is allowed or reaches an upstream, any response carrying another tenant's data, and
+   any non-idempotent call executed more than once (plain calls and durable task runs retried with the same
+   Idempotency-Key).
+2. **Baseline comparison** — the same harness, settings and machine with `--impl` pointing at 13.3.0: p95, p99,
+   throughput, RSS growth (linear fit over the run, instance that is never killed) and recovery time per fault
+   (`vsBaseline` in the report).
+3. **External security review** of the release scope, high findings closed.
+4. **Migration and rollback** 13.x / 14.x → 15 — CI job `Upgrade + security regressions (real Redis)` and
+   `test/rc-migration-14-9-0.test.ts`.
+
+A short soak (30–45 min) on a shared machine shows the harness and the invariants work; it is not the gate, and its
+latency numbers are not comparable with a baseline measured at another time on a busy machine.

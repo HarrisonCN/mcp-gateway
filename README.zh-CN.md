@@ -9,6 +9,8 @@
 
 [English](README.md) · **简体中文**
 
+> **15.0 发布候选（即将发布）：** `15.0.0-rc.1` 将在 14.9.0 之后以 npm dist-tag `next` 发布供测试（`npm i @winstonsayno/mcp-gateway@next`；镜像 `:15.0.0-rc.1`）——在 `next` 指向它之前尚未发布。`latest` 仍为 14.x。15.0 的 API / 配置冻结、变更内容与升级方法：[冻结清单](docs/v15/freeze.md) · [迁移到 v15](docs/migrating-to-v15.md) · [发布候选说明](docs/v15/release-candidate.md)。
+
 **在所有 MCP 服务器前面，只放一个带鉴权、可观测的入口。**
 
 mcp-gateway 位于 AI 客户端（Claude Code、Cursor、自研 Agent、大模型应用、网页与移动端）和它们所用的
@@ -16,7 +18,7 @@ mcp-gateway 位于 AI 客户端（Claude Code、Cursor、自研 Agent、大模�
 Streamable HTTP，或 `/api/v1` 下的 REST API——网关负责识别调用方、判断它能做什么、把调用路由到正确的上游，并记录发生了什么。
 密钥、权限范围、限流、策略、日志和指标集中在一处管理，不必在每个客户端里各配一遍。
 
-当前版本：**14.8.0**（npm `latest`）。控制面板在线演示（模拟流量，纯浏览器运行，无需后端）：
+当前版本：**14.9.0**（npm `latest`）。控制面板在线演示（模拟流量，纯浏览器运行，无需后端）：
 <https://harrisoncn.github.io/mcp-gateway/>
 
 ## 目录
@@ -150,7 +152,7 @@ docker run -d -p 4000:4000 \
 每个镜像都用 cosign 做了无密钥签名（GitHub OIDC），并附带 SLSA 来源证明和 SBOM。部署前请先验证，并在生产清单中固定它输出的摘要：
 
 ```bash
-cosign verify ghcr.io/harrisoncn/mcp-gateway:14.8.0 \
+cosign verify ghcr.io/harrisoncn/mcp-gateway:14.9.0 \
   --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -294,7 +296,7 @@ CI 中运行 CodeQL、OpenSSF Scorecard、Trivy、`npm audit` 和属性测试；
 
 | 版本线 | 最新版本 | npm dist-tag | 镜像标签 | 状态 |
 |---|---|---|---|---|
-| 14.x | 14.8.0 | `latest` | `:14`、`:latest` | 当前版本——新功能、缺陷与安全修复 |
+| 14.x | 14.9.0 | `latest` | `:14`、`:latest` | 当前版本——新功能、缺陷与安全修复 |
 | 13.x | 13.9.5 | `v13-lts` | `:13` | 维护中——安全与关键缺陷修复，至少持续到 15.0.0 发布且不早于 2027-04-30；请升级到 14.x |
 | 12.x | 12.0.15 | `v12-0` | `:12` | 已被取代——包含 MGW-2026-001、-005、-007、-008、-009、-010、-011、-012、-013、-014、-015、-016、-017、-018 和 -019 的修复；请升级到 13.x |
 | 11.x | 11.2.0 | — | `:11` | 已被取代——请升级到 13.x |

@@ -957,6 +957,7 @@ See [Privacy computing](guides/privacy.md) and [Post-quantum identity](guides/pq
 ```yaml
 plugins:
   - module: ./plugins/my-plugin.mjs   # path relative to this file, or a package name
+    runtime: worker                   # inline (14.x default) | worker (15.0 default) | process — set it explicitly
     name: my-plugin                   # optional override
     enabled: true
     options: { any: value }           # passed to a factory export as ctx.options

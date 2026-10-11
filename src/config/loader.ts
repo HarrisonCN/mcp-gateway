@@ -67,6 +67,7 @@ import { ControlPlaneSchema } from '../gateway/control-plane.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
 import { validateChains, type ChainsConfig } from '../orchestration/chains.js';
 import { normalizeSchemaVersion, MODULE_CAPABILITIES } from './v12-deprecations.js';
+import { v15DeprecationsIn } from './v15-deprecations.js';
 import { configDeprecations, normalizeApiKeyScopes, normalizeFeaturesV10, normalizeSchemaV5, normalizeStoreV9, removedConfigKeys } from '../utils/deprecations.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
@@ -1330,7 +1331,8 @@ export function validateConfig(raw: unknown): GatewayConfig {
   }
   const config = result.data as GatewayConfig;
   if (sv.schemaVersion) config.schemaVersion = sv.schemaVersion;
-  const deprecations = sv.schemaVersion === 11 ? configDeprecations(raw) : [];
+  // 14.9.0: the 15.0.0 deprecations (plugin runtime default, unknown top-level keys) are listed for every schema
+  const deprecations = [...(sv.schemaVersion === 11 ? configDeprecations(raw) : []), ...v15DeprecationsIn(raw)];
   if (deprecations.length > 0) config.deprecations = deprecations;
   return config;
 }

@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [14.9.0] - 2026-10-11
+
+v15 release candidate line (roadmap 14.9 "v15 候选版"). 14.9.0 freezes the 15.0 API and config surface, announces the three 15.0 breaking changes as run-time deprecations, and adds the validation the 15.0 gates need: upgrade / rollback tests on real stores, migration validation, a consolidated security regression suite, a cross-tenant matrix, fuzz / property runs and a soak harness. The soak found unbounded growth of durable task-graph state, fixed here. `15.0.0-rc.1` follows on the npm dist-tag `next`; `latest` stays on 14.x.
+
+### Added
+
+- **15.0 API / config freeze** — [docs/v15/freeze.md](docs/v15/freeze.md): config schema v12 and its top-level keys, module declaration, environment, REST / admin API, MCP endpoint, CLI, plugin API v5, state formats, release artefacts, metrics and library exports are frozen until 15.0.0.
+- **15.0 deprecations reported at run time** (log warning once per id, `mcp-gateway validate`, `GET /api/v1/admin/deprecations`): `v15.plugins.<i>.runtime` (module plugins without `runtime` will run in a `worker` in 15.0), `v15.config.unknown-key.<key>` (unknown top-level keys will be refused), alongside the existing `schema.v11`. Docs: [deprecations](docs/deprecations.md#removed-in-1500-announced-1490), [migrating to v15](docs/migrating-to-v15.md), [release candidate notice](docs/v15/release-candidate.md).
+- `taskGraphs.durable.retentionHours` (default `168`, `0` = keep forever): finished durable runs (succeeded, failed, cancelled, compensated) are deleted this long after they ended; `compensation_failed`, `interrupted` and dead-lettered runs are kept until an operator acts on them.
+- `downgradeLoss()` (config v12 → v11) reports what a downgrade would drop (`modules.lifecycle`, `modules.capabilities`) instead of dropping it silently.
+- **Soak harness** — `scripts/soak.mjs`: two gateway instances on a shared Redis under steady load with fault injection (kill -9, Redis partition, Redis restart), checking durable exactly-once execution, cross-tenant isolation and response leaks, and reporting throughput, latency, recovery times and memory growth; `.github/workflows/soak.yml` (manual, self-hosted `soak` runner) for the 72-hour v15 gate.
+- `scripts/upgrade-test.sh`, `npm run test:security`; CI job "Upgrade + security regressions (real Redis)"; [release gates](docs/release-gates.md) for v15.
+
+### Fixed
+
+- **Durable task graphs: state and sweep cost grew without bound** (found by the 30-minute soak: gateway RSS +712 MB/h). The sweep (every 2 s by default) loaded every run record ever written, and finished runs were never deleted. A sweep now loads only runs not known to be finished (a full pass every 30th sweep re-checks the rest and applies retention), and finished runs expire after `retentionHours`.
+
+### Changed
+
+- Plugin examples in the docs set `runtime` explicitly.
+- README / docs: 15.0 release candidate notice (rc.1 is published after 14.9.0 under `next`).
+
+### Tests
+
+- `test/upgrade-14-9-0.test.ts` — 13.9.x / 14.8.0 state → current and rollback on real SQLite and Redis (rate limits, durable runs, regions, edge outbox, GitOps release record).
+- `test/rc-migration-14-9-0.test.ts` — every example and docs config snippet migrates and validates; CLI migrate / rollback.
+- `test/security-regressions-14-9-0.test.ts` — MGW-2026-001…019 registry mapped to tests, compact repros 012–019.
+- `test/cross-tenant-matrix-14-9-0.test.ts` — REST, MCP, history, durable runs and ops traces across tenants.
+- `test/fuzz-14-9-0.test.ts` — property runs for v12 parsing, migration, `${VAR}` expansion, loader ⇔ schema agreement, GitOps hashing, routing splits.
+- `test/v15-deprecations-14-9-0.test.ts`, `test/durable-sweep-14-9-0.test.ts`.
+
 ## [14.8.0] - 2026-10-11
 
 Operations console release (roadmap 14.8 "运维控制台升级"). Upgrades the existing dashboard and admin API — no rewrite: one cluster status view, per-call traces through the whole pipeline with step timings, policy denial explanations that name the rule, tenant or permission and the config path, an incident timeline, and a troubleshooting wizard that produces a redacted, shareable report. Operators see everything; `controlPlane.console.viewers` get read-only views.

@@ -71,7 +71,8 @@ describe('mcp-gateway migrate', () => {
     process.env.CI_KEY = 'ci-key-value';
     // 5.x reads v5 only: finish the migration (v4 → v5).
     const cfg = validateConfig(JSON.parse(JSON.stringify(await_yaml(migrateConfigText(r.text).text))));
-    expect(cfg.deprecations).toBeUndefined(); // migrated straight to v8
+    // migrated straight to v8; only the 15.0 notice for the inline plugin is listed (14.9.0)
+    expect((cfg.deprecations ?? []).filter((d) => !d.id.startsWith('v15.'))).toEqual([]);
     expect(cfg.auth!.apiKeys![0]).toMatchObject({ servers: ['github'], rateLimit: { limit: 10, windowSeconds: 60 } });
     expect(cfg.servers[0]!.loadBalancing).toMatchObject({ strategy: 'smart', score: { latency: 1, errorRate: 0, cost: 0 } });
     // Idempotent.

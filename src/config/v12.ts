@@ -139,6 +139,17 @@ export function migrateToV12(text: string, format?: 'yaml' | 'json', names: { fr
 }
 
 /** A v12 (draft) config object → the v11 form 13.x runs (drops v12-only keys: `modules.lifecycle`, `modules.capabilities`). */
+/**
+ * 14.9.0: the v12 settings {@link downgradeFromV12} cannot express in schema v11 (and therefore leaves out), as
+ * `modules.<key>` paths — everything under `modules` except `activation` / `failurePolicy`. Empty: the downgrade is
+ * lossless. `config rollback` restores the saved v11 file instead, so this matters for hand-written v12 files.
+ */
+export function downgradeLoss(cfg: Record<string, unknown>): string[] {
+  const m = cfg.modules;
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return [];
+  return Object.keys(m).filter((k) => k !== 'activation' && k !== 'failurePolicy').map((k) => `modules.${k}`);
+}
+
 export function downgradeFromV12(cfg: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(cfg)) {
@@ -425,6 +436,7 @@ const TASK_GRAPHS_V12 = {
         leaseMs: { type: 'integer', minimum: 1000, maximum: 600000, default: 15000, description: 'heartbeat lease of an executing gateway' },
         sweepIntervalMs: { type: 'integer', minimum: 50, maximum: 600000, default: 2000 },
         idempotencyTtlSeconds: { type: 'integer', minimum: 60, maximum: 7776000, default: 86400, description: 'how long a submission idempotency key is remembered' },
+        retentionHours: { type: 'integer', minimum: 0, maximum: 876000, default: 168, description: 'NEW in 14.9: delete finished runs (succeeded, failed, cancelled, compensated) this long after they ended; 0 = keep forever' },
         dlq: {
           type: 'object',
           additionalProperties: false,

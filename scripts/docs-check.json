@@ -9,6 +9,10 @@
     "v12-0",
     "v10-lts"
   ],
+  "prerelease": {
+    "tag": "next",
+    "version": "15.0.0-rc.1"
+  },
   "historical": [
     "docs/ROADMAP.md",
     "docs/guides/migrating-to-v2.md",
