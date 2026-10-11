@@ -385,10 +385,22 @@ export interface PluginConfig {
   module?: string;
   /** Path of a plugin API v5 WASM plugin (7.9): the core module of a `mcp-gateway:plugin@5.0.0` component (canonical ABI). */
   component?: string;
-  /** WASM / component only: one sandbox per tenant (default), per client, or one shared. */
-  isolation?: 'tenant' | 'client' | 'shared';
-  /** WASM component only: per-sandbox limits. */
-  limits?: WasmPluginLimits;
+  /**
+   * WASM / component: one sandbox per tenant (default), per client, or one shared. 14.3.0 module plugins:
+   * `inline` | `worker` | `process` — an alias of `runtime`.
+   */
+  isolation?: 'tenant' | 'client' | 'shared' | 'inline' | 'worker' | 'process';
+  /** WASM component: per-sandbox limits. 14.3.0 module plugins: runtime limits and circuit breaker. */
+  limits?: WasmPluginLimits | ModulePluginLimitsConfig;
+  /**
+   * 14.3.0 module plugins: where the plugin runs — `inline` (default, in the gateway process; deprecated as the
+   * default, `worker` becomes the default in 15.0), `worker` (worker thread) or `process` (child process).
+   */
+  runtime?: 'inline' | 'worker' | 'process';
+  /** 14.3.0: what a failing hook (throw, crash, timeout, OOM, open circuit) does — refuse the call (`closed`, default) or let it proceed (`open`); per hook with an object. */
+  failure?: 'open' | 'closed' | { default?: 'open' | 'closed'; onToolCall?: 'open' | 'closed'; onResponse?: 'open' | 'closed' };
+  /** 14.3.0: declared capabilities (enforced in isolated runtimes; scope / args / response / secrets for every module plugin). */
+  permissions?: PluginPermissionsConfig;
   /** Override the plugin's own name. */
   name?: string;
   enabled?: boolean;
@@ -400,6 +412,28 @@ export interface PluginConfig {
   secrets?: Record<string, string>;
   /** 10.5: JS module plugins — time limit per `onToolCall` / `onResponse` call; a timeout fails the call closed. */
   timeoutMs?: number;
+}
+
+/** 14.3.0: `plugins[].limits` of a module plugin. */
+export interface ModulePluginLimitsConfig {
+  timeoutMs?: number;
+  memoryMb?: number;
+  maxFailures?: number;
+  cooldownMs?: number;
+  maxConcurrent?: number;
+}
+
+/** 14.3.0: `plugins[].permissions`. */
+export interface PluginPermissionsConfig {
+  args?: 'read' | 'write';
+  response?: 'read' | 'write';
+  secrets?: string[];
+  servers?: string[];
+  tools?: string[];
+  hooks?: Array<'onToolCall' | 'onResponse' | 'onError' | 'onConfigChange'>;
+  network?: false | string[];
+  env?: string[];
+  fs?: { read?: string[]; write?: string[] };
 }
 
 /** Limits of one WASM plugin sandbox (3.3). */

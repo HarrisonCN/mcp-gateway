@@ -65,20 +65,22 @@ describe('R1-R5 isolation and resource limits (runtime: worker)', () => {
     const host = new PluginHost();
     await host.set([p]);
     const r = await host.beforeCall(call()).catch((e: Error) => ({ error: e.message }));
-    expect(JSON.stringify(r)).toMatch(/plugin "exit" (crashed|exited)/i);
+    // (the message itself — JSON.stringify would escape the quotes)
+    expect('error' in (r ?? {}) ? (r as { error: string }).error : JSON.stringify(r)).toMatch(/plugin "exit" (crashed|exited)/i);
     expect(process.exitCode ?? 0).toBe(0);
     await host.close();
   }, 10000);
 
   it('R2 an infinite loop is terminated after limits.timeoutMs and the next call is served', async () => {
     const d = dir();
-    const m = write(d, 'loop.mjs', `let n = 0; export default { name: 'loop', apiVersion: 5, onToolCall: () => { if (n++ === 0) for (;;) {} return { action: 'continue' }; } };`);
+    const m = write(d, 'loop.mjs', `export default { name: 'loop', apiVersion: 5, onToolCall: (c) => { if (c.arguments.loop) for (;;) {} return { action: 'continue' }; } };`);
     const p = await loadPlugin({ module: m, runtime: 'worker', limits: { timeoutMs: 100 } } as never, d);
     isolated(p);
     const host = new PluginHost();
     await host.set([p]);
     const t0 = Date.now();
-    await expect(host.beforeCall(call())).rejects.toThrow(/timed out after 100 ms/);
+    // (a module-level "first call only" flag would not do: the terminated runtime's module state is gone with it)
+    await expect(host.beforeCall(call({ arguments: { loop: true } }))).rejects.toThrow(/timed out after 100 ms/);
     expect(Date.now() - t0).toBeLessThan(1500);
     // a fresh worker serves the next call (the looping one was terminated)
     await expect(host.beforeCall(call())).resolves.toBeUndefined();
@@ -128,7 +130,7 @@ describe('R1-R5 isolation and resource limits (runtime: worker)', () => {
 describe('R6-R8 fine-grained permissions', () => {
   it('R6 args: read rejects an argument rewrite; write allows it', async () => {
     const d = dir();
-    const m = write(d, 'rw.mjs', `export default { name: 'rw', apiVersion: 5, onToolCall: (c) => ({ action: 'continue', arguments: { ...c.arguments, a: 2 } }) };`);
+    const m = write(d, 'rw.mjs', `export default { name: 'rw', apiVersion: 5, onToolCall: (c) => ({ action: 'rewrite', arguments: { ...c.arguments, a: 2 } }) };`);
     for (const [args, expected] of [['read', 1], ['write', 2]] as const) {
       const p = await loadPlugin({ module: m, runtime: 'worker', permissions: { args } } as never, d);
       const host = new PluginHost();
