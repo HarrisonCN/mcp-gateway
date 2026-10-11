@@ -213,7 +213,7 @@ export function buildTrace(i: TraceInput, cfg: GatewayConfig): CallTrace {
   const cacheNote = i.notes.get('cache');
   const steps = TRACE_STEPS.map((step, idx) => {
     const stage = STEP_STAGE[step];
-    const ms = step === 'auth' ? (i.authMs ?? null) : i.stages.has(stage) ? r3(i.stages.get(stage)!) : null;
+    const ms = step === 'auth' ? (i.authMs === undefined ? null : r3(i.authMs)) : i.stages.has(stage) ? r3(i.stages.get(stage)!) : null;
     let status: 'ok' | 'denied' | 'error' | 'skipped' = 'ok';
     if (failIdx >= 0 && idx === failIdx) status = refused ? 'denied' : 'error';
     else if (failIdx >= 0 && idx > failIdx && step !== 'response') status = 'skipped';

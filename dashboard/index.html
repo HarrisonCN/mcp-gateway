@@ -389,8 +389,8 @@ tbody tr:hover { background: var(--surface-2); }
   .hero-art div > span { grid-column: 2; }
   .pill { padding: 4px 8px; }
   .chart { height: 160px; }
-  .bottom-nav { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; z-index: 25; left: 0; right: 0; bottom: 0; padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid var(--border); }
-  .bottom-nav button { border: 0; background: none; display: grid; justify-items: center; gap: 2px; padding: 6px 2px; font-size: 10.5px; color: var(--muted); border-radius: 10px; cursor: pointer; transition: color .2s, transform .15s var(--ease); min-height: 48px; }
+  .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); position: fixed; z-index: 25; left: 0; right: 0; bottom: 0; padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid var(--border); }
+  .bottom-nav button { border: 0; background: none; display: grid; justify-items: center; gap: 2px; padding: 6px 2px; font-size: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); border-radius: 10px; cursor: pointer; transition: color .2s, transform .15s var(--ease); min-height: 48px; }
   .bottom-nav button svg { width: 21px; height: 21px; }
   .bottom-nav button[aria-selected="true"] { color: var(--accent); }
   .bottom-nav button:active { transform: scale(.92); }
@@ -960,7 +960,7 @@ function go(view, push = true) {
   if (view === 'servers') loadServers();
   if (view === 'playground') renderPlayground($('#pgMain'), 'main');
   if (view === 'history') loadHistory();
-  if (view === 'ops') loadOps();
+  if (view === 'ops') loadOpsConsole();
   if (view === 'config') loadConfigEditor();
   if (view === 'connect') { renderSnippets($('#connectCard'), 'main'); loadSecurity(); }
   if (view === 'overview') requestAnimationFrame(renderCharts);
@@ -979,13 +979,13 @@ function opsTab(tab, focus = false) {
     p.hidden = !on;
   }
   if (focus) $(`#ops-tab-${tab}`).focus();
-  loadOps();
+  loadOpsConsole();
 }
 function opsError(e) {
   opsStatus(e && e.status === 403 ? t('opForbidden') : (e && e.message) || String(e));
 }
 const kv = (rows) => `<dl class="ops-kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
-async function loadOps() {
+async function loadOpsConsole() {
   opsStatus(t('opLoading'));
   try {
     if (opsState.tab === 'cluster') {
@@ -1072,9 +1072,9 @@ function initOps() {
     const next = k === 'first' ? 0 : k === 'last' ? OPS_TABS.length - 1 : (i + k + OPS_TABS.length) % OPS_TABS.length;
     opsTab(OPS_TABS[next], true);
   });
-  $('#opsRefresh').addEventListener('click', () => loadOps());
-  $('#opsTraceForm').addEventListener('submit', (e) => { e.preventDefault(); loadOps(); });
-  $('#opsTimelineForm').addEventListener('submit', (e) => { e.preventDefault(); loadOps(); });
+  $('#opsRefresh').addEventListener('click', () => loadOpsConsole());
+  $('#opsTraceForm').addEventListener('submit', (e) => { e.preventDefault(); loadOpsConsole(); });
+  $('#opsTimelineForm').addEventListener('submit', (e) => { e.preventDefault(); loadOpsConsole(); });
   $('#opsTsForm').addEventListener('submit', (e) => { e.preventDefault(); runTroubleshoot(false); });
   $('#opsExplain').addEventListener('click', () => { if ($('#opsTsForm').reportValidity()) runTroubleshoot(true); });
 }
