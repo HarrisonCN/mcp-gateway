@@ -18,56 +18,13 @@
  */
 
 import { parseDocument, isMap, isScalar, type Document, type YAMLMap, type Pair, type Scalar } from 'yaml';
-import type { Deprecation } from '../utils/deprecations.js';
+import { validateConfig, CONFIG_FILE_KEYS } from './loader.js';
 import type { FeatureManifestEntry, FailurePolicy } from '../features/manifest.js';
 import { FEATURE_MANIFEST, failurePolicyOf } from '../features/manifest.js';
 import { FEATURE_CONFIG_KEYS, type FeatureModule } from '../gateway/features.js';
 
-export interface V12Deprecation extends Deprecation {
-  /** Path in a v11 config file (dot separated). */
-  path: string;
-  /** Path in a v12 config file. */
-  replacement: string;
-  since: string;
-}
-
-/** Feature sections renamed in v12 so that every section is the camelCase of its module id. */
-export const V12_SECTION_RENAMES: Readonly<Record<string, string>> = {
-  genaiTelemetry: 'genaiOtel',
-  policyShadow: 'policySim',
-  postQuantumTls: 'pqTls',
-};
-
-const dep = (id: string, path: string, replacement: string, why: string): V12Deprecation => ({
-  id: `v12.${id}`,
-  path,
-  replacement,
-  since: '13.9.0',
-  removedIn: '14.0.0',
-  message: `\`${path}\` is renamed to \`${replacement}\` in config schema v12 (${why}); run \`mcp-gateway config migrate --to v12 --dry-run\` to preview (docs/deprecations.md)`,
-});
-
-/** Every v11 field that schema v12 removes or renames (13.9.0 inventory). */
-export const V12_DEPRECATIONS: readonly V12Deprecation[] = [
-  dep('kernel.modules', 'kernel.modules', 'modules.activation', 'module lifecycle settings move to the `modules` block'),
-  dep('kernel.failurePolicy', 'kernel.failurePolicy', 'modules.failurePolicy', 'module lifecycle settings move to the `modules` block'),
-  ...Object.entries(V12_SECTION_RENAMES).map(([from, to]) => dep(`features.${from}`, `features.${from}`, `features.${to}`, 'feature sections are named after their module id')),
-];
-
-/** Deprecated v11 fields used in a raw (file-form) config. */
-export function v12DeprecationsIn(raw: unknown): V12Deprecation[] {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
-  const r = raw as Record<string, unknown>;
-  const has = (path: string) => {
-    let v: unknown = r;
-    for (const k of path.split('.')) {
-      if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
-      v = (v as Record<string, unknown>)[k];
-    }
-    return v !== undefined;
-  };
-  return V12_DEPRECATIONS.filter((d) => has(d.path));
-}
+export { V12_SECTION_RENAMES, V12_DEPRECATIONS, v12DeprecationsIn, type V12Deprecation } from './v12-deprecations.js';
+import { V12_SECTION_RENAMES } from './v12-deprecations.js';
 
 // ─── migration preview ────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -94,12 +51,6 @@ export interface V12Migration {
 const DRAFT_WARNING =
   'Schema v12 is a DRAFT (13.9.0): 13.x refuses `version: 12` — keep running the v11 file and apply this migration when you upgrade to 14.0.';
 
-type Validate = (raw: unknown) => unknown;
-let validateV11: Validate | undefined;
-/** The loader registers its v11 validator here (avoids an import cycle loader ↔ v12). */
-export function setV11Validator(fn: Validate): void {
-  validateV11 = fn;
-}
 
 const keyOf = (p: Pair): unknown => (isScalar(p.key) ? (p.key as Scalar).value : p.key);
 function renameKey(map: YAMLMap, from: string, to: string): boolean {
@@ -133,7 +84,7 @@ export function migrateToV12(text: string, format?: 'yaml' | 'json', names: { fr
     // already v12: check it by downgrading to the v11 form the runtime validates
     const obj = doc.toJS() as Record<string, unknown>;
     try {
-      validateV11?.(downgradeFromV12(obj));
+      validateConfig(downgradeFromV12(obj));
     } catch (e) {
       report.errors.push(`the v12 file does not map to a valid v11 config: ${(e as Error).message}`);
     }
@@ -143,7 +94,7 @@ export function migrateToV12(text: string, format?: 'yaml' | 'json', names: { fr
   if (version !== undefined && version !== 11) return fail(`unsupported config version ${JSON.stringify(version)} (expected 11)`);
   if (version === undefined) report.warnings.push('no `version:` in the file — read as schema v11');
   try {
-    validateV11?.(doc.toJS());
+    validateConfig(doc.toJS());
   } catch (e) {
     report.errors.push(`the file is not a valid v11 config — fix it first:\n${(e as Error).message.replace(/^Invalid configuration:\n?/, '')}`);
   }
@@ -271,7 +222,7 @@ export const v12Section = (k: string): string => V12_SECTION_RENAMES[k] ?? k;
  * sections); section bodies are unchanged from v11 and are validated by the v11 runtime schema after
  * {@link downgradeFromV12}. `topLevelKeys` = the file-form top-level keys of schema v11 (`CONFIG_FILE_KEYS`).
  */
-export function buildV12ConfigSchema(topLevelKeys: readonly string[] = v11TopLevelKeys()): Record<string, unknown> {
+export function buildV12ConfigSchema(topLevelKeys: readonly string[] = CONFIG_FILE_KEYS): Record<string, unknown> {
   const unchanged = { $comment: 'unchanged from schema v11 (validated by the runtime schema)' };
   const featureKeys = (FEATURE_CONFIG_KEYS as readonly string[]).map(v12Section).sort();
   const skip = new Set(['version', 'features', 'kernel', 'state', 'configDir', 'deprecations', ...(FEATURE_CONFIG_KEYS as readonly string[])]);
@@ -396,11 +347,3 @@ export function moduleDeclarationV12(e: FeatureManifestEntry, mod?: FeatureModul
   };
 }
 
-let topKeys: readonly string[] = [];
-/** The loader registers the v11 file-form top-level keys here (avoids an import cycle). */
-export function setV11TopLevelKeys(keys: readonly string[]): void {
-  topKeys = keys;
-}
-function v11TopLevelKeys(): readonly string[] {
-  return topKeys;
-}

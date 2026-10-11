@@ -65,7 +65,6 @@ import { expandEnv } from '../transport/channel.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
 import { validateChains, type ChainsConfig } from '../orchestration/chains.js';
-import { setV11Validator, setV11TopLevelKeys } from './v12.js';
 import { configDeprecations, normalizeApiKeyScopes, normalizeFeaturesV10, normalizeSchemaV5, normalizeStoreV9, removedConfigKeys } from '../utils/deprecations.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
@@ -1207,8 +1206,6 @@ function authSilentlyOff(raw: unknown): string | undefined {
   return `no auth.strategy is set, so authentication would be OFF (strategy "none") although the block has ${[...creds, ...unknown.map((k) => `unknown key "${k}"`)].join(', ')} — set auth.strategy (api-key, jwt, oauth2) or "none" explicitly`;
 }
 
-setV11TopLevelKeys(CONFIG_FILE_KEYS);
-
 export function validateConfig(raw: unknown): GatewayConfig {
   const removed = removedConfigKeys(raw);
   const v4 = normalizeApiKeyScopes(normalizeSchemaV5(removed.length ? raw : normalizeStoreV9(normalizeFeaturesV10(raw))));
@@ -1227,8 +1224,6 @@ export function validateConfig(raw: unknown): GatewayConfig {
   if (deprecations.length > 0) config.deprecations = deprecations;
   return config;
 }
-
-setV11Validator(validateConfig);
 
 export async function loadConfig(configPath?: string): Promise<GatewayConfig> {
   const filePath = resolveConfigPath(configPath);

@@ -16,7 +16,7 @@
 
 import { logger } from './logger.js';
 import { FEATURE_CONFIG_KEYS } from '../gateway/features.js';
-import { v12DeprecationsIn } from '../config/v12.js';
+import { v12DeprecationsIn } from '../config/v12-deprecations.js';
 
 export interface Deprecation {
   id: string;
