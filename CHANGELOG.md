@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [14.4.0] - 2026-10-11
+
+Durable task execution release (roadmap 14.4 "持久化任务执行"). Additive on the 10.7 task-graph engine and opt-in (`taskGraphs.durable`); without it task graphs behave as in 14.3. Config schema v12 gains the `durable` block, node keys `idempotent` / `idempotencyArg` / `approval`, `compensate.idempotencyArg` and the graph key `clients`.
+
+### Security
+
+- **MGW-2026-017 (Low) — task-graph runs kept acting with a removed or re-scoped key; checkpoints were world-readable.** Every node call of a run was authorized with the principal (and scope) captured when the run started, so a key removed or narrowed while its run was in flight — or before an operator resumed the run — still had the run's remaining calls executed with its old rights. Run checkpoints (`taskGraphs.dir`), which carry run inputs, node outputs and the caller's principal, were written with the process umask (typically `0644`). Fixed: each call re-resolves the submitting client's current scope (a removed key is denied; a stored delegation chain still narrows), and checkpoints are written `0600` in a `0700` directory. Affected: task graphs with `dir` / with keys revoked during a run since 10.7.0 (principal since 11.1.0) through 14.3.0, 13.9.2, 12.0.12 and 10.9.13 (reproduced on 13.9.2). Workaround: cancel a revoked key's runs (`POST /api/v1/admin/task-graphs/runs/:id/cancel`) and restrict the checkpoint directory to the gateway user.
+
+### Added
+
+- **Durable task execution** ([guide](docs/guides/durable-tasks.md)): `taskGraphs.durable` persists every step in the gateway store (redis / sqlite / eventlog) or `dir`, and a run left in flight by a restart, crash or `kill -9` continues from its **last committed step** (`resumeOnStart`); committed nodes are never executed again.
+- **Leases and fencing**: the executing gateway holds a heartbeat lease (`leaseMs`) and a per-run fencing epoch; when it dies exactly one peer sharing the store takes over, and a stale executor is fenced out at its next write — several gateways can share runs over Redis.
+- **Idempotency keys**: per task (`Idempotency-Key` header or `idempotencyKey`, scoped per client, `idempotencyTtlSeconds`; same key + same input → same run, different input → `409`) and per tool call (intent log: `<runId>:<nodeId>`; a committed result is reused; a non-idempotent call left in doubt by a crash or timeout is **never repeated automatically** — `outcome_unknown` → DLQ). `idempotencyArg` passes the call key to deduplicating upstreams; `idempotent: true` marks repeat-safe calls.
+- **Failure queue (DLQ)** with retry policy (`dlq.retry`: attempts, exponential backoff, cap, jitter): list / show / replay (`force` for unknown outcomes) / discard (runs the compensations) under `/api/v1/admin/task-graphs/dlq`.
+- **Approval resume**: nodes with `approval` (`approvers` globs, `required`, `timeoutSeconds`) pause the run as `awaiting_approval`, survive restarts, resume on approve and compensate on deny / timeout; the requester cannot approve its own run; every decision is audited.
+- **Idempotent compensations**: finished compensations are not repeated after a crash; an in-flight one is re-run with its key (`compensate.idempotencyArg`) or marked for an operator.
+- **Client routes** `/api/v1/features/task-graphs` for graphs with `clients: true`: a client starts, lists, waits on, cancels and approves within its own runs only; runs record their owner (client + every tenant membership); operators filter by `?tenant=` / `?client=`.
+- **CLI** `mcp-gateway tasks runs|show|resume|cancel|approve|deny` and `mcp-gateway tasks dlq list|show|replay|discard`.
+- **Metrics**: `mcp_gateway_task_runs_total`, `_idempotent_hits_total`, `_resumes_total`, `_takeovers_total`, `_lease_lost_total`, `_outcome_unknown_total`, `_dlq_entries`, `_dlq_retries_total`, `_compensations_total`, `_awaiting_approval`.
+
+### Tests
+
+- `test/durable-tasks-14-4-0.test.ts` (11): resume from the last committed step, intent log crash points, DLQ retry / replay / discard, approval resume / timeout / re-resolved principal, idempotent compensations, tenant isolation, metrics, file permissions and the CLI.
+- `test/durable-tasks-restart-14-4-0.test.ts` (3): a real gateway process killed with `kill -9` mid-call — a non-idempotent call is never executed twice, an idempotent step resumes automatically, an approval-paused run survives.
+- `test/durable-tasks-multi-14-4-0.test.ts` (3): two to three gateways sharing a real Redis — one run per idempotency key, no stealing while the lease holds, exactly one survivor takes over a dead owner's run.
+- `test/task-graphs-mgw-2026-017.test.ts`: MGW-2026-017 regression (also on the LTS lines).
+
 ## [14.3.0] - 2026-10-11
 
 Plugin security runtime release (roadmap 14.3 "插件安全运行时"). Config schema v12 gains optional plugin keys (`runtime`, `failure`, `permissions`, module-plugin `limits`); existing in-process plugins keep working unchanged (one-time deprecation note: `runtime: worker` becomes the default for module plugins in 15.0). v11 files are still migrated automatically.

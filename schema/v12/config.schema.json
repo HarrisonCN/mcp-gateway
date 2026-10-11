@@ -301,11 +301,198 @@
           ]
         },
         "taskGraphs": {
-          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
-          "type": [
-            "object",
-            "array"
-          ]
+          "type": "object",
+          "description": "Task graphs (10.7). 14.4 adds durable execution: resume after restart, idempotency keys, DLQ, approval resume. See docs/guides/durable-tasks.md.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "dir": {
+              "type": "string",
+              "minLength": 1,
+              "description": "checkpoint directory (relative to the config file)"
+            },
+            "maxRuns": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000,
+              "default": 500
+            },
+            "durable": {
+              "type": "object",
+              "description": "NEW in 14.4: durable execution (absent = 10.7 checkpoints)",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "backend": {
+                  "enum": [
+                    "auto",
+                    "store",
+                    "dir",
+                    "memory"
+                  ],
+                  "default": "auto",
+                  "description": "auto: the gateway store when it is not memory, else dir, else memory"
+                },
+                "resumeOnStart": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "continue runs left in flight (lease lapsed) from their last committed step"
+                },
+                "leaseMs": {
+                  "type": "integer",
+                  "minimum": 1000,
+                  "maximum": 600000,
+                  "default": 15000,
+                  "description": "heartbeat lease of an executing gateway"
+                },
+                "sweepIntervalMs": {
+                  "type": "integer",
+                  "minimum": 50,
+                  "maximum": 600000,
+                  "default": 2000
+                },
+                "idempotencyTtlSeconds": {
+                  "type": "integer",
+                  "minimum": 60,
+                  "maximum": 7776000,
+                  "default": 86400,
+                  "description": "how long a submission idempotency key is remembered"
+                },
+                "dlq": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "retry": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "attempts": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 100,
+                          "default": 3
+                        },
+                        "backoffMs": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 86400000,
+                          "default": 30000
+                        },
+                        "factor": {
+                          "type": "number",
+                          "minimum": 1,
+                          "maximum": 10,
+                          "default": 2
+                        },
+                        "maxBackoffMs": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 604800000,
+                          "default": 3600000
+                        },
+                        "jitter": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "graphs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "clients": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "NEW in 14.4 (durable): any authenticated client may start it under /api/v1/features/task-graphs"
+                  },
+                  "nodes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "idempotent": {
+                          "type": "boolean",
+                          "default": false,
+                          "description": "NEW in 14.4: safe to execute again after a crash between call and commit"
+                        },
+                        "idempotencyArg": {
+                          "type": "string",
+                          "description": "NEW in 14.4: argument that receives the stable per-call key <runId>:<node> (implies repeat-safe)"
+                        },
+                        "approval": {
+                          "type": "object",
+                          "description": "NEW in 14.4 (durable): wait for human approval before the node runs",
+                          "additionalProperties": false,
+                          "required": [
+                            "approvers"
+                          ],
+                          "properties": {
+                            "approvers": {
+                              "type": "array",
+                              "minItems": 1,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "description": "client id globs"
+                            },
+                            "required": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 20,
+                              "default": 1
+                            },
+                            "timeoutSeconds": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 2592000,
+                              "default": 86400
+                            },
+                            "reason": {
+                              "type": "string",
+                              "maxLength": 500
+                            }
+                          }
+                        },
+                        "compensate": {
+                          "type": "object",
+                          "properties": {
+                            "tool": {
+                              "type": "string"
+                            },
+                            "args": {
+                              "type": "object"
+                            },
+                            "idempotencyArg": {
+                              "type": "string",
+                              "description": "NEW in 14.4"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         },
         "timeTravel": {
           "$comment": "unchanged from schema v11 (validated by the runtime schema)",

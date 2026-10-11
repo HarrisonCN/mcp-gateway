@@ -787,7 +787,32 @@ features:
 ```
 
 `taskGraphs`: cross-gateway task graphs with checkpoints, resume, retry and compensation — see
-[Task graphs](guides/task-graphs.md). `edgeAutonomy` (EXPERIMENTAL): local cache / WASM / queue / deny decisions while
+[Task graphs](guides/task-graphs.md).
+
+#### Durable task execution (14.4)
+
+```yaml
+features:
+  taskGraphs:
+    durable:
+      backend: auto                  # auto | store | dir | memory
+      resumeOnStart: true
+      leaseMs: 15000
+      idempotencyTtlSeconds: 86400
+      dlq: { enabled: true, retry: { attempts: 3, backoffMs: 30000, factor: 2, maxBackoffMs: 3600000 } }
+    graphs:
+      - id: payout
+        clients: true                # startable on /api/v1/features/task-graphs (own runs only)
+        nodes:
+          - { id: pay, tool: bank/transfer, idempotencyArg: requestId, approval: { approvers: ["key:fin-*"], required: 1 } }
+```
+
+`durable` persists every run step in the gateway store (or `dir`), resumes runs left in flight from their last
+committed step, deduplicates submissions (`Idempotency-Key`, per client) and calls (intent log: a non-idempotent call
+in doubt after a crash is never repeated automatically), parks failed runs in a DLQ with a retry policy, pauses runs
+for approval across restarts and leases runs so several gateways sharing Redis execute each call once. Node keys:
+`idempotent`, `idempotencyArg`, `approval`; `compensate.idempotencyArg`; graph key `clients` (`approval` and
+`clients` need `durable`). See [Durable task execution](guides/durable-tasks.md). `edgeAutonomy` (EXPERIMENTAL): local cache / WASM / queue / deny decisions while
 an upstream is unreachable, outbox reconcile on reconnect — see [Edge autonomy](guides/edge-autonomy.md).
 
 ### Privacy computing and post-quantum identity (10.8, EXPERIMENTAL)

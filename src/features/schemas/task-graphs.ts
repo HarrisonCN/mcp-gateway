@@ -21,6 +21,48 @@ export const Retry = z
   })
   .strict();
 
+/** 14.4.0: name of the argument that carries the gateway's stable per-call idempotency key. */
+export const ArgName = z.string().regex(/^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/, 'must be an argument name');
+
+/** 14.4.0: a node that waits for human approval before it runs (durable: survives restarts). */
+export const Approval = z
+  .object({
+    approvers: z.array(z.string().min(1)).min(1),
+    required: z.number().int().min(1).max(20).default(1),
+    timeoutSeconds: z.number().int().min(1).max(30 * 86_400).default(86_400),
+    reason: z.string().max(500).optional(),
+  })
+  .strict();
+
+/** 14.4.0: `taskGraphs.durable` — durable execution (persisted state, leases, idempotency, DLQ). */
+export const DurableSchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    /** Where run state lives: the gateway store (`store.backend`), the checkpoint `dir`, or memory; `auto` picks store → dir → memory. */
+    backend: z.enum(['auto', 'store', 'dir', 'memory']).default('auto'),
+    resumeOnStart: z.boolean().default(true),
+    leaseMs: z.number().int().min(1000).max(600_000).default(15_000),
+    sweepIntervalMs: z.number().int().min(50).max(600_000).default(2_000),
+    idempotencyTtlSeconds: z.number().int().min(60).max(90 * 86_400).default(86_400),
+    dlq: z
+      .object({
+        enabled: z.boolean().default(true),
+        retry: z
+          .object({
+            attempts: z.number().int().min(0).max(100).default(3),
+            backoffMs: z.number().int().min(0).max(86_400_000).default(30_000),
+            factor: z.number().min(1).max(10).default(2),
+            maxBackoffMs: z.number().int().min(0).max(7 * 86_400_000).default(3_600_000),
+            jitter: z.boolean().default(false),
+          })
+          .strict()
+          .default({}),
+      })
+      .strict()
+      .default({}),
+  })
+  .strict();
+
 export const NodeSchema = z
   .object({
     id: Id,
@@ -32,13 +74,17 @@ export const NodeSchema = z
     retry: Retry.default({}),
     timeoutMs: z.number().int().min(1).max(3_600_000).optional(),
     onError: z.enum(['fail', 'continue']).default('fail'),
-    compensate: z.object({ tool: Target, args: z.record(z.unknown()).default({}) }).strict().optional(),
+    compensate: z.object({ tool: Target, args: z.record(z.unknown()).default({}), idempotencyArg: ArgName.optional() }).strict().optional(),
+    // 14.4.0 (durable execution): repeat-safety of the call and a human approval gate.
+    idempotent: z.boolean().default(false),
+    idempotencyArg: ArgName.optional(),
+    approval: Approval.optional(),
   })
   .strict()
   .refine((n) => (n.tool === undefined) !== (n.remote === undefined), { message: 'a node needs exactly one of "tool" or "remote"' });
 
 export const GraphSchema = z
-  .object({ id: Id, description: z.string().optional(), concurrency: z.number().int().min(1).max(64).default(8), nodes: z.array(NodeSchema).min(1), output: z.unknown().optional() })
+  .object({ id: Id, description: z.string().optional(), clients: z.boolean().default(false), concurrency: z.number().int().min(1).max(64).default(8), nodes: z.array(NodeSchema).min(1), output: z.unknown().optional() })
   .strict()
   .superRefine((g, ctx) => {
     const ids = new Set<string>();
@@ -55,10 +101,19 @@ export const TaskGraphsSchema = z
     enabled: z.boolean().default(true),
     dir: z.string().min(1).optional(),
     maxRuns: z.number().int().min(1).max(100_000).default(500),
+    durable: DurableSchema.optional(),
     graphs: z.array(GraphSchema).min(1),
   })
   .strict()
   .superRefine((c, ctx) => {
+    // 14.4.0: approval gates and client-startable graphs keep their state in the durable layer
+    if (!c.durable || !c.durable.enabled)
+      c.graphs.forEach((g, i) => {
+        if (g.clients) ctx.addIssue({ code: 'custom', path: ['graphs', i, 'clients'], message: `task graph "${g.id}": clients: true needs features.taskGraphs.durable` });
+        g.nodes.forEach((n, j) => {
+          if (n.approval) ctx.addIssue({ code: 'custom', path: ['graphs', i, 'nodes', j, 'approval'], message: `task graph "${g.id}" node "${n.id}": approval needs features.taskGraphs.durable` });
+        });
+      });
     const seen = new Set<string>();
     c.graphs.forEach((g, i) => {
       if (seen.has(g.id)) ctx.addIssue({ code: 'custom', path: ['graphs', i, 'id'], message: `duplicate task graph "${g.id}"` });
