@@ -347,3 +347,7 @@ export function moduleDeclarationV12(e: FeatureManifestEntry, mod?: FeatureModul
   };
 }
 
+
+/** 14.0.0 placeholder (tests-first). */
+export const MODULE_CAPABILITIES = V12_CAPABILITIES;
+export const schemaNotice = (_cfg: unknown): string | undefined => undefined;
