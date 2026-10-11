@@ -252,11 +252,86 @@
           ]
         },
         "regions": {
-          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
-          "type": [
-            "object",
-            "array"
-          ]
+          "type": "object",
+          "description": "Multi-region active-active (5.2). 14.5 adds explicit consistency boundaries: replicated revocations, bounded staleness (fail closed), version vectors, clock-skew bounds. See docs/guides/multi-region.md.",
+          "additionalProperties": false,
+          "required": [
+            "self"
+          ],
+          "properties": {
+            "self": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]*$",
+              "description": "this region id"
+            },
+            "syncIntervalMs": {
+              "type": "integer",
+              "minimum": 250,
+              "default": 5000
+            },
+            "downAfter": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 3,
+              "description": "consecutive failed syncs before a peer is down"
+            },
+            "peers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "url"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "apiKey": {
+                    "type": "string",
+                    "description": "operator (unscoped) key on the peer"
+                  },
+                  "priority": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 100
+                  }
+                }
+              }
+            },
+            "consistency": {
+              "type": "object",
+              "description": "NEW in 14.5: bounded staleness and clock-skew bounds",
+              "additionalProperties": false,
+              "properties": {
+                "maxStalenessMs": {
+                  "type": "integer",
+                  "minimum": 500,
+                  "description": "a region is fresh while every peer synced within this window (default max(30000, 3 × syncIntervalMs); at least 2 × syncIntervalMs)"
+                },
+                "maxClockSkewMs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "default": 30000,
+                  "description": "replicated writes stamped further ahead are rejected"
+                },
+                "onStale": {
+                  "enum": [
+                    "deny",
+                    "allow"
+                  ],
+                  "default": "deny",
+                  "description": "deny = refuse tool calls while not fresh (fail closed, -32027)"
+                }
+              }
+            }
+          }
         },
         "rollouts": {
           "$comment": "unchanged from schema v11 (validated by the runtime schema)",

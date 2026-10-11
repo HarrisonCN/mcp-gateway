@@ -436,6 +436,36 @@ federation:
 - **Remote servers:** `POST /api/v1/tools/call` with `server: "<id>@<peer>"` calls a server that only a peer has
   (client scopes apply to the full `<id>@<peer>` id).
 
+### Multi-region and consistency (5.2; 14.5)
+
+Active-active regions (`features.regions`; v11 files: top-level `regions`) replicate revocations, a small key-value
+state and server availability between full gateways. 14.5 makes the consistency boundary explicit:
+
+```yaml
+features:
+  regions:
+    self: eu-west
+    syncIntervalMs: 5000          # default 5000, min 250
+    downAfter: 3                  # failed syncs before a peer is "down"
+    consistency:                  # 14.5.0
+      maxStalenessMs: 30000       # default max(30000, 3 × syncIntervalMs); ≥ 2 × syncIntervalMs
+      maxClockSkewMs: 30000       # replicated writes stamped further ahead are rejected
+      onStale: deny               # deny (fail closed, default) | allow (14.4 behaviour)
+    peers:
+      - { id: us-east, url: https://us.gw.example.com, apiKey: "${US_ADMIN_KEY}", priority: 1 }
+```
+
+- **Replicated:** revocations (`POST /api/v1/admin/regions/revocations`, `mcp-gateway regions revoke`, and portal key
+  revocations), `kv` entries (version vectors; `PUT … { value, ifGeneration }` → 409 on a stale generation), server
+  availability. **Region-local:** sessions, rate limits, quotas, budgets, policy, config and its generations, API and
+  portal keys, caches, task runs, audit.
+- A region is **fresh** while every peer synced within `maxStalenessMs` (and its shared store, if any, was readable).
+  While it is not, every tool call is refused with JSON-RPC **-32027** (`onStale: deny`); a call by a revoked client id
+  is refused with **-32028** in every region. `GET /api/v1/admin/regions/health` answers 200 / 503 accordingly.
+- **Behaviour change in 14.5.0:** with peers configured, a region that cannot reach a peer for longer than
+  `maxStalenessMs` stops serving tool calls. Remove a permanently lost region from `peers` (hot reload) or set
+  `onStale: allow` to keep the 14.4 behaviour. See [Multi-region](guides/multi-region.md).
+
 ## Secrets (3.5)
 
 ```yaml
