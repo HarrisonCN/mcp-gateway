@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance
+- `bench/baseline.json`: the linux-x64 kernel cold-start baseline is re-recorded from CI on the v14.0.0 merge (`all` start 144.5 ms, was a stale 74.7 ms from 13.0.0); method and previous values are kept in the file. See docs/benchmarks.md.
+
 ### CI
 - Docker image workflow: the QEMU (binfmt) and BuildKit image pulls fall back from the ECR Public mirror to Docker Hub, then retry ECR Public after a pause, so one throttled registry (`toomanyrequests`) no longer fails a release image build (v13.8.0, v13.9.0 and v14.0.0 each needed manual reruns).
 
