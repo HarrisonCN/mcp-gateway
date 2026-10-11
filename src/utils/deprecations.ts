@@ -16,6 +16,7 @@
 
 import { logger } from './logger.js';
 import { FEATURE_CONFIG_KEYS } from '../gateway/features.js';
+import { v12DeprecationsIn } from '../config/v12-deprecations.js';
 
 export interface Deprecation {
   id: string;
@@ -26,7 +27,7 @@ export interface Deprecation {
   replacement?: string;
 }
 
-/** Active deprecations (11.0: none — schema v10 and workflows were removed). */
+/** Active deprecations by id (11.0: none — schema v10 and workflows were removed; 13.9.0: the schema v12 inventory, see {@link configDeprecations}). */
 export const DEPRECATIONS: Record<string, Deprecation> = {};
 
 /** Feature sections (config keys owned by feature modules) present at the top level of a raw config. */
@@ -56,7 +57,8 @@ export function removedConfigKeys(raw: unknown): string[] {
   const out = Object.entries(REMOVED_IN_3)
     .filter(([k]) => r[k] !== undefined)
     .map(([k, v]) => `${k}: removed in 3.0 — use \`${v}\` (see docs/guides/migrating-to-v3.md)`);
-  if (r.version === 3) out.push(`version: config schema v3 was removed in 4.0 — use \`version: 4\`; ${GUIDE4}`);
+  if (r.version === 12) out.push('version: config version 12 is not supported — 11.0 reads `version: 11` (config schema v12 is a DRAFT in 13.x, see docs/design/schema-v12.md; preview the migration with `mcp-gateway config migrate --to v12 --dry-run`)');
+  else if (r.version === 3) out.push(`version: config schema v3 was removed in 4.0 — use \`version: 4\`; ${GUIDE4}`);
   else if (r.version === 4) out.push(`version: config schema v4 was removed in 5.0 — use \`version: 11\`; ${GUIDE11}`);
   else if (r.version === 5) out.push(`version: config schema v5 was removed in 6.0 — use \`version: 11\`; ${GUIDE11}`);
   else if (r.version === 6) out.push(`version: config schema v6 was removed in 7.0 — use \`version: 11\`; ${GUIDE11}`);
@@ -104,10 +106,13 @@ export function removedConfigKeys(raw: unknown): string[] {
   return out;
 }
 
-/** Deprecated keys used in a raw config object (11.0: none). */
+/**
+ * Deprecated keys used in a raw config object. 13.9.0: the schema v12 inventory (src/config/v12.ts, docs/deprecations.md) —
+ * v11 fields 14.0 removes or renames; the file still loads unchanged.
+ */
 export function configDeprecations(raw: unknown): Array<Deprecation & { detail?: string }> {
   if (typeof raw !== 'object' || raw === null) return [];
-  return [];
+  return v12DeprecationsIn(raw);
 }
 
 /** Schema v10: `features: { chaos, sla, … }` → the internal top-level sections. */
@@ -168,11 +173,26 @@ export function normalizeApiKeyScopes(raw: unknown): { raw: unknown; errors: str
 
 const seen = new Map<string, Deprecation & { detail?: string }>();
 
-/** Record (and log once) a runtime deprecation. */
+/**
+ * Whether the log line of a deprecation is silenced (13.9.0): `MCP_GATEWAY_SILENCE_DEPRECATIONS` = `all` (or `1`,
+ * `true`, `*`), or a comma-separated list of deprecation ids / config paths. Silenced deprecations are still listed by
+ * `GET /api/v1/admin/deprecations` and `mcp-gateway validate`.
+ */
+export function deprecationSilenced(d: Deprecation): boolean {
+  const env = process.env.MCP_GATEWAY_SILENCE_DEPRECATIONS?.trim();
+  if (!env) return false;
+  if (/^(all|1|true|\*)$/i.test(env)) return true;
+  const list = env.split(',').map((x) => x.trim()).filter(Boolean);
+  const path = (d as { path?: string }).path;
+  return list.includes(d.id) || (path !== undefined && list.includes(path));
+}
+
+/** Record (and log once, unless silenced) a runtime deprecation. */
 export function deprecate(d: Deprecation, detail?: string): void {
   const key = `${d.id}\u0000${detail ?? ''}`;
   if (seen.has(key)) return;
   seen.set(key, { ...d, detail });
+  if (deprecationSilenced(d)) return;
   logger.warn(`DEPRECATED (removed in ${d.removedIn}): ${d.message}${detail ? ` — ${detail}` : ''}`);
 }
 

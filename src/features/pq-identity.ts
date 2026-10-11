@@ -292,9 +292,13 @@ registerFeature({
   summary: 'Post-quantum identity (EXPERIMENTAL): Ed25519 + ML-DSA hybrid signed identity document, tool manifest and audit-log checkpoints',
   mount: (router, ctx) => {
     let timer: NodeJS.Timeout | undefined;
+    // 13.9.0 (13.4.0 finding F5): the runtime last seen while the section was configured — the final checkpoint on
+    // disable must not depend on the live config, whose `pqIdentity` section is already gone at that point.
+    let last: Runtime | undefined;
     const tick = () => {
       try {
         const r = pqIdentityOf(ctx.config());
+        if (r) last = r;
         if (r?.c.auditLog.enabled && r.chain.due(r.c.auditLog.checkpointSeconds)) r.chain.checkpoint();
       } catch {
         /* reported by the routes */
@@ -306,7 +310,8 @@ registerFeature({
       if (timer) clearInterval(timer);
       timer = undefined;
       try {
-        pqIdentityOf(ctx.config())?.chain.checkpoint();
+        const r = pqIdentityOf(ctx.config()) ?? last ?? rt;
+        if (r?.c.auditLog.enabled) r.chain.checkpoint();
       } catch {
         /* ignore */
       }

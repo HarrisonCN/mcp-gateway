@@ -222,6 +222,9 @@ registerCallHook({
   },
 });
 
+/** Export timer of each mounted instance (keyed by its module context). */
+const exportTimers = new WeakMap<object, { timer?: NodeJS.Timeout; iv: number; schedule: (iv: number) => void }>();
+
 registerFeature({
   id: 'genai-otel',
   since: '6.3.0',
@@ -239,11 +242,19 @@ registerFeature({
       if (fresh.length) await post('/v1/traces', genaiRecorder.otlpSpans(fresh, c.serviceName));
       await post('/v1/metrics', genaiRecorder.otlpMetrics(c.serviceName));
     };
-    const iv = settings(ctx.config())?.exportIntervalMs ?? 10_000;
-    const timer = setInterval(() => void push(), iv);
-    timer.unref();
+    // 13.9.0 (13.4.0 finding F4): the export timer follows `exportIntervalMs` on reload (see `reconfigure`).
+    const schedule = (iv: number) => {
+      const st = exportTimers.get(ctx);
+      if (st?.timer) clearInterval(st.timer);
+      const timer = setInterval(() => void push(), iv);
+      timer.unref();
+      exportTimers.set(ctx, { timer, iv, schedule });
+    };
+    schedule(settings(ctx.config())?.exportIntervalMs ?? 10_000);
     ctx.onStop?.(async () => {
-      clearInterval(timer);
+      const st = exportTimers.get(ctx);
+      if (st?.timer) clearInterval(st.timer);
+      exportTimers.delete(ctx);
       await push();
     });
     router.get('/', (_req, res) => {
@@ -257,5 +268,10 @@ registerFeature({
     router.get('/otlp', (_req, res) => {
       res.json(genaiRecorder.otlpMetrics(settings(ctx.config())?.serviceName ?? 'mcp-gateway'));
     });
+  },
+  reconfigure: (next, _prev, ctx) => {
+    const st = exportTimers.get(ctx);
+    const iv = settings(next)?.exportIntervalMs ?? 10_000;
+    if (st && st.iv !== iv) st.schedule(iv);
   },
 });

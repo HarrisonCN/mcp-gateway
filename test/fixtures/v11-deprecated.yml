@@ -1,0 +1,27 @@
+# Schema v11 config that uses every field slated for removal / rename in schema v12 (13.9.0 deprecation inventory).
+version: 11
+port: 4000
+host: 127.0.0.1
+auth:
+  strategy: api-key
+  apiKeys:
+    - test-key-0123456789abcdef0123456789
+# module activation (v12: modules.activation)
+kernel:
+  modules: lazy
+  failurePolicy:
+    billing: closed
+servers:
+  - id: fs
+    name: Filesystem
+    transport: stdio
+    command: node
+    args: [server.js]
+features:
+  # OpenTelemetry GenAI export (v12: features.genaiOtel)
+  genaiTelemetry:
+    exportIntervalMs: 15000
+  policyShadow: {}
+  postQuantumTls: {}
+  billing: {}
+  dlp: {}

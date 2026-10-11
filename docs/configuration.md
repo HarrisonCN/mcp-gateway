@@ -1095,6 +1095,14 @@ servers:
     maxQueue: 50               # load shedding: the 51st waiting call gets 503 + Retry-After (-32014 on /mcp)
 ```
 
+## Schema v12 preview and deprecations (13.9)
+
+Schema v11 is the runtime schema in 13.x. 13.9 adds a **draft** of schema v12 (what 14.0 will run) and warns once per
+field about the v11 fields it renames (`kernel.modules`, `kernel.failurePolicy`, `features.genaiTelemetry`,
+`features.policyShadow`, `features.postQuantumTls`) — silence with `MCP_GATEWAY_SILENCE_DEPRECATIONS=all`. Preview the
+migration with `mcp-gateway config migrate --to v12 --dry-run` and `mcp-gateway config diff --to v12`. See
+[docs/deprecations.md](deprecations.md) and [docs/design/schema-v12.md](design/schema-v12.md).
+
 ## Load protection and fair scheduling (13.8)
 
 `overload:` puts admission control in front of every tool call — `POST /api/v1/tools/call`, `/tools/stream` and the
