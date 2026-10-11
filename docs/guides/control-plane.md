@@ -21,7 +21,7 @@ controlPlane:
 auth:
   strategy: api-key
   apiKeys:
-    - ${OPERATOR_KEY} # unscoped = operator; data planes authenticate with it
+    - ${OPERATOR_KEY} # unscoped = operator; data planes authenticate with it (expanded since the MGW-2026-019 fix)
 servers:
   - {id: github, name: GitHub, transport: streamable-http, url: https://api.githubcopilot.com/mcp/}
 ```

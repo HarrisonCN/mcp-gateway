@@ -18,7 +18,7 @@ hot reload is rejected and the running configuration kept.
 | `MCP_GATEWAY_API_KEYS` | comma-separated keys (plain or `sha256:<hex>`) → `auth.strategy: api-key`, `auth.apiKeys` (other `auth` settings from the file are kept) |
 
 `${VAR}` references are expanded from the gateway's environment in `servers[].env`, `servers[].args`,
-`servers[].headers` and object-form `auth.apiKeys[].key`. A `.env` file in the working directory is loaded.
+`servers[].headers`, `auth.apiKeys` (string and object form) and `controlPlane.token` — an unset or empty variable there is a config error (MGW-2026-019). A `.env` file in the working directory is loaded.
 
 ## Top level
 
