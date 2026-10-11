@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [14.7.0] - 2026-10-11
+
+GitOps and governance release (roadmap 14.7 "GitOps 与治理"). Builds on declarative config (`diff` / `apply`, 7.1), config generations and cluster rollout (14.1) and schema v12 (14.0): the config lives in a git directory with environment overlays and secrets by reference only, every change is reviewed as an environment diff and a plan against the live gateway with a policy simulation, and a gateway can be set to accept only ed25519-signed releases approved by N people, with drift detection, audit entries and metrics.
+
+### Security
+
+- **MGW-2026-019 (High): `${VAR}` in string-form API keys and in `controlPlane.token` was used literally.** `auth.apiKeys: ["${OPERATOR_KEY}"]` — the form the control-plane and cluster-rollout guides showed since 7.0 — made the text `${OPERATOR_KEY}` a valid operator key, and a data plane with `token: ${OPERATOR_KEY}` sent the same literal, so a cluster set up from the docs worked while anyone who could reach it was an operator (`Authorization: Bearer ${OPERATOR_KEY}`). Only the object form `{ key: "${VAR}" }` was expanded (an unset variable there became an empty key). Fixed: references are expanded in every API key form and in `controlPlane.token`; a reference to an unset or empty variable is a config error. **Rotate any key that was written as a string reference.** Regression test `test/apikeys-env-mgw-2026-019.test.ts` (fails on 14.6.0). LTS backports: 13.9.5, 12.0.15, 10.9.16.
+
+### Added
+
+- **Config directories** (`mcp-gateway gitops render -d <dir> -e <env>`): `base.yml` + `environments/<env>.yml` overlays, `include:` (relative, inside the directory, no cycles), partials `_*.yml`; deep merge, id-keyed lists (`servers`, …) merged by id with `$delete: true`, `null` removes a key; `policy.files` inlined. **Secrets by reference only** — a literal secret (API keys, tokens, passwords, `authorization`, secret-named `env` / `headers` entries, URLs with credentials) is refused with its path; `${ENV}`, `secret://…` and `sha256:` key hashes are accepted. The bundle carries a canonical `sha256:` config hash.
+- **`mcp-gateway gitops plan|diff|apply|status`** (text and `--json`): `diff -e staging --against-env prod` (no gateway) or against the running gateway (exit 3 on changes); `plan` = diff against live + manifest verification + would-apply / refusal + policy simulation; `apply [--dry-run]`; `status` (exit 2 on drift). Routes `GET /api/v1/admin/gitops/status`, `POST …/gitops/plan`, `POST …/gitops/apply` (operators).
+- **Policy simulation for releases**: recorded calls (replay recorder), recent metrics or `--calls <file>` replayed against the running config and the candidate, layer by layer — server removed, API key removed / scope narrowed, tool policy (rule or default) — with every changed decision explained, `transitions`, `byClient`, `byTool`.
+- **Signed releases** (`mcp-gateway/release-manifest@1`): `gitops keygen` (ed25519, private key `0600`), `gitops sign` (env, config hash, git sha, author; `--expires-in`), `gitops approve` (one ed25519 signature per approver), `gitops verify --trust <config>`. Verification: trusted author key with role `author`, valid signatures, environment and config hash match, age (`maxManifestAgeSeconds`), expiry, replay (must be newer than the applied release), `requiredApprovals` distinct approver names — the author never counts.
+- **`controlPlane.gitops`**: `environment`, `enforce`, `trustedKeys[]` (`id`, `name`, `publicKey`, `roles`), `requiredApprovals` (number or per environment, default 2 for `prod` / `production`), `maxManifestAgeSeconds`, `driftCheckIntervalMs`, `recordFile` (applied release kept across restarts). Control plane or `role: all` only. Config schema v12 describes it.
+- **Enforcement** (`enforce: true`): unsigned or unapproved bundles `403`; `PUT /admin/config` (non-dry-run), `POST /admin/reload` and feature `applyConfig` (config assistant) answer `409`. On a control plane an applied release is the next config generation and rolls out as `controlPlane.rollout` says.
+- **Drift detection**: the running config is compared with the applied release (every `driftCheckIntervalMs`, on status and on metrics scrapes); changed paths are reported.
+- **Audit and metrics**: audit entries on server `_gitops` (`gitops.apply` applied / refused with the reason, `gitops.drift` drift / in-sync); `mcp_gateway_gitops_applies_total{result}`, `mcp_gateway_gitops_drift`, `mcp_gateway_gitops_enforced`, `mcp_gateway_gitops_release_info{env,git_sha}`, `mcp_gateway_gitops_last_apply_timestamp_seconds`.
+- `examples/gitops`: config directory for `staging` / `prod` and a GitHub Actions workflow (plan on pull requests, sign on main, approvers sign locally, verify + apply + status on release merges).
+- Docs: [GitOps guide](docs/guides/gitops.md), configuration `controlPlane.gitops`, API reference.
+
+### Changed
+
+- `${VAR}` in `auth.apiKeys` (both forms) and `controlPlane.token`: an unset or empty variable is now a config error (was: literal text, or an empty key) — see MGW-2026-019.
+- `scripts/docs-check.ts` validates gitops config directories rendered per environment and gives each `${VAR}` its own stand-in value.
+
+### Tests
+
+- `test/gitops-14-7-0.test.ts` (20): config directory rendering (includes, overlays, id merge, `$delete`, `null`, hash), include escapes / cycles / unknown environment, secrets by reference, env diff, keys / sign / approve / verify (author not counted, one approval per name, untrusted / forged approvals, tamper, wrong environment, approver-only author, age, expiry, replay), policy simulation with explanations, HTTP enforcement (unsigned / under-approved refused and audited, `PUT /admin/config` + `/admin/reload` 409, plan, apply, replay refused, drift + audit + metrics, environment / literal secret / `<redacted>` / hash checks, enforcement off), config + schema v12, CLI render / diff / keygen / sign / approve / verify / plan / apply / status, `examples/gitops` renders and validates, workflow.
+- `test/apikeys-env-mgw-2026-019.test.ts` (2): MGW-2026-019 regression.
+
 ## [14.6.0] - 2026-10-11
 
 Edge Autonomy release (roadmap 14.6 "Edge Autonomy 正式化"). Improves the existing 10.7 edge-autonomy module (`features.edgeAutonomy`) in place and makes it generally available: offline execution has explicit permission boundaries, the queue expires, conflicts go to a review queue, reconnect reconciliation is ordered, fenced and crash-safe (the 14.4 durable intent log), it honours revocations learned on reconnect (the 14.5 replicated revocations), and the queue is sealed at rest. Config schema v12 describes `edgeAutonomy`.
