@@ -4,7 +4,7 @@
 # Pin a release in production: MGW_IMAGE=ghcr.io/harrisoncn/mcp-gateway:14.0.0 (or @sha256:<digest>).
 services:
   mcp-gateway:
-    image: ${MGW_IMAGE:-ghcr.io/harrisoncn/mcp-gateway:13}
+    image: ${MGW_IMAGE:-ghcr.io/harrisoncn/mcp-gateway:14}
     ports:
       - "4000:4000"
     environment:

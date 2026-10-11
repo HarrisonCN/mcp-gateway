@@ -139,7 +139,7 @@ docker run -d -p 4000:4000 \
   -v mcp-gateway-data:/app/data \
   -e MCP_GATEWAY_HOST=0.0.0.0 \
   -e MCP_GATEWAY_API_KEYS=sha256:<gen-key 输出的摘要> \
-  ghcr.io/harrisoncn/mcp-gateway:13
+  ghcr.io/harrisoncn/mcp-gateway:14
 ```
 
 `MCP_GATEWAY_API_KEYS`（逗号分隔，明文或 `sha256:<hex>`）无需改配置文件即可开启 API Key 鉴权；`MCP_GATEWAY_HOST`

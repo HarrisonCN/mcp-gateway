@@ -54,6 +54,11 @@ jobs:
           for image in "" mcp-gateway:ci; do
             echo "::group::compose up (${image:-default image})"
             export MGW_IMAGE="$image"
+            if [ -z "$image" ] && ! docker compose pull -q mcp-gateway; then
+              # a new major's PR names its image tag (e.g. :14) before that tag is first published
+              echo "::notice::the published image the example names is not available yet (new major before its release) — booting this commit's image only"
+              echo "::endgroup::"; continue
+            fi
             docker compose up -d --wait --wait-timeout 120 || fail
             check || fail
             docker compose down -v
@@ -80,7 +85,7 @@ jobs:
         run: |
           set -euo pipefail
           kubectl create namespace plain
-          sed 's#ghcr.io/harrisoncn/mcp-gateway:13#mcp-gateway:ci#' examples/deploy/kubernetes/mcp-gateway.yaml \
+          sed -E 's#ghcr.io/harrisoncn/mcp-gateway:[0-9][0-9.]*#mcp-gateway:ci#' examples/deploy/kubernetes/mcp-gateway.yaml \
             | sed "s#change-me-to-a-long-random-key#$KEY#" | kubectl -n plain apply -f -
           kubectl -n plain rollout status deployment/mcp-gateway --timeout=180s || { kubectl -n plain describe pods; kubectl -n plain logs deploy/mcp-gateway; exit 1; }
           kubectl -n plain port-forward svc/mcp-gateway 18080:80 >/dev/null 2>&1 &

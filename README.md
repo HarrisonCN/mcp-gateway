@@ -150,7 +150,7 @@ docker run -d -p 4000:4000 \
   -v mcp-gateway-data:/app/data \
   -e MCP_GATEWAY_HOST=0.0.0.0 \
   -e MCP_GATEWAY_API_KEYS=sha256:<digest from gen-key> \
-  ghcr.io/harrisoncn/mcp-gateway:13
+  ghcr.io/harrisoncn/mcp-gateway:14
 ```
 
 `MCP_GATEWAY_API_KEYS` (comma-separated, plain or `sha256:<hex>`) turns on API-key auth without editing the file, and

@@ -73,7 +73,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: mcp-gateway
-          image: ghcr.io/harrisoncn/mcp-gateway:13
+          image: ghcr.io/harrisoncn/mcp-gateway:14
           imagePullPolicy: IfNotPresent
           args: ["start", "-c", "/config/mcp-gateway.yml", "--no-watch"]
           ports:

@@ -109,6 +109,6 @@ describe('docs-check', () => {
   });
 
   it('the package version is the one the docs are checked against', () => {
-    expect(version).toMatch(/^13\./);
+    expect(version).toMatch(/^14\./);
   });
 });
