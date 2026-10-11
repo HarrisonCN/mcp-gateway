@@ -481,10 +481,19 @@ export class Gateway {
       }),
     );
     // 13.8.0: per-stage latency + load protection state (operators only: it describes all tenants' traffic).
-    this.app.get('/api/v1/perf/stages', this.router.authenticate, (req, res) => {
-      if (!this.router!.isOperator(req)) return void res.status(403).json({ error: 'Forbidden', message: 'operator access required' });
-      res.json({ ...this.stages.report(), overload: this.overload.stats() });
-    });
+    // Authenticated and rate limited like the REST API (the client's rate limit), then operators only.
+    this.app.get('/api/v1/perf/stages', (req, res, next) =>
+      this.router!.authenticate(req, res, (err?: unknown) => {
+        if (err) return next(err);
+        void Promise.resolve(this.router!.takeRateLimit(req))
+          .then((rl) => {
+            if (rl && !rl.allowed) return void res.set('Retry-After', String(rl.retryAfter ?? 1)).status(429).json({ error: 'Too Many Requests', retryAfterSeconds: rl.retryAfter ?? 1 });
+            if (!this.router!.isOperator(req)) return void res.status(403).json({ error: 'Forbidden', message: 'operator access required' });
+            res.json({ ...this.stages.report(), overload: this.overload.stats() });
+          })
+          .catch(next);
+      }),
+    );
     this.app.get('/api/v1/data-plane', this.router.authenticate, (req, res) => {
       if (!this.router!.isOperator(req)) return void res.status(403).json({ error: 'Forbidden', message: 'Operator access required' });
       if (!this.dataPlane) return void res.status(404).json({ error: 'Not Found', message: 'Not a data plane (controlPlane.role: data)' });
