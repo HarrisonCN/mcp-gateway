@@ -17,13 +17,16 @@
  *  R6 permissions.args 'read': an argument rewrite is rejected (upstream gets the original args); 'write' allows it
  *  R7 permissions.secrets: ctx.secrets.get of a name outside the allow-list throws
  *  R8 permissions.servers / tools: the hook only runs for matching calls
- *  R9 signature is checked against the bytes loaded into the worker (a file swapped after verification is refused)
+ *  R9 TOCTOU: the runtime loads exactly the verified bytes — a file changed after verification is refused, its code
+ *     never runs, and a signed entry cannot import unsigned files
  *  R10 config validation: runtime / limits / permissions / failure (modules only; unknown keys refused)
  */
-import { describe, it, expect } from 'vitest';
-import { writeFileSync, mkdtempSync, readFileSync } from 'fs';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { writeFileSync, mkdtempSync, readFileSync, existsSync } from 'fs';
+import * as fsp from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import * as pluginsMod from '../src/plugins/index.js';
 import { PluginHost, loadPlugin } from '../src/plugins/index.js';
 import { generateSigningKey, signArtifact } from '../src/plugins/trust.js';
 import { validateConfig } from '../src/config/loader.js';
@@ -34,23 +37,44 @@ const dir = () => mkdtempSync(join(tmpdir(), 'mgw-143-'));
 const call = (over: Record<string, unknown> = {}) => ({ serverId: 's', name: 't', kind: 'tool' as const, method: 'tools/call', arguments: { a: 1 }, via: 'rest' as const, state: new Map(), ...over });
 const write = (d: string, f: string, src: string) => (writeFileSync(join(d, f), src), `./${f}`);
 
+// R9: a pass-through spy on fs/promises.readFile — lets a test change a file right after the gateway read it.
+vi.mock('fs/promises', async (orig) => {
+  const m = await orig<typeof import('fs/promises')>();
+  const readFile = vi.fn(m.readFile);
+  return { ...m, readFile, default: { ...m, readFile } };
+});
+afterEach(() => vi.mocked(fsp.readFile).mockRestore?.());
+
+/**
+ * R1-R4 run hostile payloads (process.exit, endless loop, heap blow-up, async throw). Executed in-process they kill /
+ * hang / OOM the test runner itself — the defect under test. The guard refuses to run the payload unless the loaded
+ * plugin is reported as isolated (worker / process runtime), so "failing before" is a clean assertion failure.
+ */
+const isolated = (p: unknown): string => {
+  const rt = (pluginsMod as { pluginRuntimeOf?: (p: unknown) => string }).pluginRuntimeOf?.(p) ?? 'inline';
+  expect(rt, 'hostile plugin payload would run in-process (inline): refusing to execute it').toMatch(/^(worker|process)$/);
+  return rt;
+};
+
 describe('R1-R5 isolation and resource limits (runtime: worker)', () => {
   it('R1 process.exit() inside a worker plugin does not exit the gateway process', async () => {
     const d = dir();
     const m = write(d, 'exit.mjs', `export default { name: 'exit', apiVersion: 5, onToolCall: () => { process.exit(3); } };`);
     const p = await loadPlugin({ module: m, runtime: 'worker', failure: 'closed' } as never, d);
+    isolated(p);
     const host = new PluginHost();
     await host.set([p]);
     const r = await host.beforeCall(call()).catch((e: Error) => ({ error: e.message }));
     expect(JSON.stringify(r)).toMatch(/plugin "exit" (crashed|exited)/i);
     expect(process.exitCode ?? 0).toBe(0);
     await host.close();
-  });
+  }, 10000);
 
   it('R2 an infinite loop is terminated after limits.timeoutMs and the next call is served', async () => {
     const d = dir();
     const m = write(d, 'loop.mjs', `let n = 0; export default { name: 'loop', apiVersion: 5, onToolCall: () => { if (n++ === 0) for (;;) {} return { action: 'continue' }; } };`);
     const p = await loadPlugin({ module: m, runtime: 'worker', limits: { timeoutMs: 100 } } as never, d);
+    isolated(p);
     const host = new PluginHost();
     await host.set([p]);
     const t0 = Date.now();
@@ -59,12 +83,13 @@ describe('R1-R5 isolation and resource limits (runtime: worker)', () => {
     // a fresh worker serves the next call (the looping one was terminated)
     await expect(host.beforeCall(call())).resolves.toBeUndefined();
     await host.close();
-  });
+  }, 10000);
 
   it('R3 limits.memoryMb kills a plugin that exceeds its heap', async () => {
     const d = dir();
     const m = write(d, 'mem.mjs', `const keep = []; export default { name: 'mem', apiVersion: 5, onToolCall: () => { for (;;) keep.push(new Array(1e6).fill(Math.random())); } };`);
     const p = await loadPlugin({ module: m, runtime: 'worker', limits: { memoryMb: 32, timeoutMs: 5000 } } as never, d);
+    isolated(p);
     const host = new PluginHost();
     await host.set([p]);
     await expect(host.beforeCall(call())).rejects.toThrow(/memory/i);
@@ -75,6 +100,7 @@ describe('R1-R5 isolation and resource limits (runtime: worker)', () => {
     const d = dir();
     const m = write(d, 'boom.mjs', `export default { name: 'boom', apiVersion: 5, onToolCall: () => { setTimeout(() => { throw new Error('async boom'); }); return new Promise(() => {}); } };`);
     const open = await loadPlugin({ module: m, name: 'boom-open', runtime: 'worker', failure: 'open', limits: { timeoutMs: 500 } } as never, d);
+    isolated(open);
     const host = new PluginHost();
     await host.set([open]);
     await expect(host.beforeCall(call())).resolves.toBeUndefined();
@@ -84,7 +110,7 @@ describe('R1-R5 isolation and resource limits (runtime: worker)', () => {
     await h2.set([closed]);
     await expect(h2.beforeCall(call())).rejects.toThrow(/boom-closed/);
     await h2.close();
-  });
+  }, 10000);
 
   it('R5 circuit breaker opens after maxFailures and reports it', async () => {
     const d = dir();
@@ -96,7 +122,7 @@ describe('R1-R5 isolation and resource limits (runtime: worker)', () => {
     const st = (host as unknown as { status(): Array<{ name: string; circuit: string; failures: number }> }).status();
     expect(st.find((s) => s.name === 'flaky')).toMatchObject({ circuit: 'open', failures: 2 });
     await host.close();
-  });
+  }, 10000);
 });
 
 describe('R6-R8 fine-grained permissions', () => {
@@ -143,18 +169,60 @@ describe('R6-R8 fine-grained permissions', () => {
 });
 
 describe('R9-R10 supply chain and config', () => {
-  it('R9 the signature covers the bytes the worker actually loads', async () => {
+  it('R9 TOCTOU: a file changed after its signature was verified is refused; the swapped code never runs', async () => {
     const d = dir();
-    const m = write(d, 'signed.mjs', `export default { name: 'signed', apiVersion: 5 };`);
+    const marker = join(d, 'evil-ran');
+    const good = `export default { name: 'signed', apiVersion: 5, onToolCall: () => ({ action: 'deny', reason: 'signed-code' }) };`;
+    const evil = `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'x'); export default { name: 'signed', apiVersion: 5, onToolCall: () => ({ action: 'continue' }) };`;
+    const m = write(d, 'signed.mjs', good);
+    const file = join(d, 'signed.mjs');
     const key = generateSigningKey();
-    writeFileSync(join(d, 'signed.mjs.sig'), JSON.stringify(signArtifact(readFileSync(join(d, 'signed.mjs')), key.privateKey, 'k1')));
+    writeFileSync(join(d, 'signed.mjs.sig'), JSON.stringify(signArtifact(readFileSync(file), key.privateKey, 'k1')));
     const trust = { requireSigned: true, keys: [{ id: 'k1', publicKey: key.publicKey }] };
-    const p = await loadPlugin({ module: m, runtime: 'worker' } as never, d, trust as never);
-    expect(p.name).toBe('signed');
-    // swap the file after signing: refused
-    writeFileSync(join(d, 'signed.mjs'), `export default { name: 'signed', apiVersion: 5, onToolCall: () => ({ action: 'continue' }) };`);
-    await expect(loadPlugin({ module: m, runtime: 'worker' } as never, d, trust as never)).rejects.toThrow(/signature/i);
-  });
+
+    // untouched: loads, and the worker runs exactly the signed code
+    const ok = await loadPlugin({ module: m, runtime: 'worker' } as never, d, trust as never);
+    const host = new PluginHost();
+    await host.set([ok]);
+    expect(JSON.stringify(await host.beforeCall(call()))).toMatch(/signed-code/);
+    await host.close();
+
+    // the attacker swaps the file right after the gateway read (and verified) it — a fresh file per runtime, so no
+    // module cache can hide what would be loaded from disk
+    for (const runtime of ['worker', 'inline'] as const) {
+      const f = join(d, `swap-${runtime}.mjs`);
+      writeFileSync(f, good);
+      writeFileSync(`${f}.sig`, JSON.stringify(signArtifact(good, key.privateKey, 'k1')));
+      const real = (await vi.importActual<typeof import('fs/promises')>('fs/promises')).readFile;
+      let reads = 0;
+      vi.mocked(fsp.readFile).mockImplementation((async (p: Parameters<typeof real>[0], o?: Parameters<typeof real>[1]) => {
+        const out = await real(p, o as never);
+        if (String(p) === f && reads++ === 0) writeFileSync(f, evil);
+        return out;
+      }) as never);
+      const loaded = await loadPlugin({ module: `./swap-${runtime}.mjs`, name: `signed-${runtime}`, runtime } as never, d, trust as never).then(
+        async (p) => {
+          const h = new PluginHost();
+          await h.set([p]);
+          const r = await h.beforeCall(call()).catch((e: Error) => ({ error: e.message }));
+          await h.close();
+          return { loaded: true, r };
+        },
+        (e: Error) => ({ loaded: false, error: e.message }),
+      );
+      vi.mocked(fsp.readFile).mockImplementation(real as never);
+      expect(reads, `${runtime}: the gateway read the plugin file`).toBeGreaterThan(0);
+      expect(existsSync(marker), `${runtime}: the swapped (unsigned) code ran`).toBe(false);
+      expect(loaded, runtime).toMatchObject({ loaded: false, error: expect.stringMatching(/changed after (its )?signature verification/i) });
+    }
+
+    // a signed entry may not pull unsigned code from disk (the signature covers one file)
+    writeFileSync(join(d, 'helper.mjs'), `export const x = 1;`);
+    const dep = `import { x } from './helper.mjs'; export default { name: 'dep', apiVersion: 5, x };`;
+    write(d, 'dep.mjs', dep);
+    writeFileSync(join(d, 'dep.mjs.sig'), JSON.stringify(signArtifact(dep, key.privateKey, 'k1')));
+    await expect(loadPlugin({ module: './dep.mjs', runtime: 'worker' } as never, d, trust as never)).rejects.toThrow(/self-contained|bundle/i);
+  }, 20000);
 
   it('R10 config validation of the runtime block', () => {
     const base = { version: 12, servers: [] } as Record<string, unknown>;
