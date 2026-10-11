@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.9.3] - 2026-10-11
+
+**Security backport (13.x).** Backports the MGW-2026-017 fix from 14.4.0 (the fix only — 14.4 durable task
+execution is not backported); no other changes. The config schema is unchanged.
+
+### Security
+- **MGW-2026-017 (Low): task-graph runs kept acting with a removed or re-scoped key; checkpoints were
+  world-readable.** Every node call of a run was authorized with the principal captured when the run started, so a key
+  removed or narrowed while its run was in flight (or before an operator resumed it) still had the run's remaining
+  calls executed with its old rights; checkpoints in `taskGraphs.dir` were written with the process umask (typically
+  `0644`). Each call now re-resolves the submitting client's current scope (a removed key is denied; a stored
+  delegation chain still narrows), and checkpoints are written `0600` in a `0700` directory.
+
 ## [13.9.2] - 2026-10-11
 
 **Security backport (13.x).** Backports the MGW-2026-016 fix from 14.3.0 (the fix only — the 14.3 plugin security
