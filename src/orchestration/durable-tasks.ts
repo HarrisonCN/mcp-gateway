@@ -85,13 +85,18 @@ export interface DurableKv {
   /** Append `id` to the index `list`; {@link list} returns ids in insertion order. */
   add(list: 'runs' | 'dlq', id: string): Promise<void>;
   list(list: 'runs' | 'dlq'): Promise<string[]>;
+  /** 14.9.1: drop a deleted id from the index `list` (and from any in-memory copy of it). Optional. */
+  forget?(list: 'runs' | 'dlq', id: string): Promise<void>;
 }
 
 const LONG = 400 * 86_400_000;
 
 /** Over the gateway's StateStore (memory / redis / sqlite / eventlog). Keys are prefixed `task-graphs:`. */
 export class StoreKv implements DurableKv {
-  private readonly cache = { runs: [] as string[], dlq: [] as string[] };
+  // 14.9.1: id → index slot of every id still listed, plus how many slots were read. 14.9.0 kept every id ever added in
+  // an array (expired runs included) and copied it on every listing — process memory grew with the number of runs.
+  private readonly cache = { runs: new Map<string, number>(), dlq: new Map<string, number>() };
+  private readonly scanned = { runs: 0, dlq: 0 };
   constructor(private readonly store: StateStore, private readonly prefix = 'task-graphs:') {}
   get kind() {
     return this.store.kind;
@@ -118,17 +123,27 @@ export class StoreKv implements DurableKv {
   async list(list: 'runs' | 'dlq') {
     const seq = Number((await this.store.get(`${this.prefix}${list}:seq`)) ?? 0);
     const known = this.cache[list];
-    for (let i = known.length + 1; i <= seq; i++) {
+    for (let i = this.scanned[list] + 1; i <= seq; i++) {
       const id = await this.store.get(`${this.prefix}${list}:${i}`);
       if (id === undefined) {
-        // written by another instance a moment ago: retry on the next listing
+        // written by another instance a moment ago: retry on the next listing (older empty slots: deleted, skipped)
         if (i > seq - 5) break;
-        known.push('');
+        this.scanned[list] = i;
         continue;
       }
-      known.push(id);
+      if (!known.has(id)) known.set(id, i);
+      this.scanned[list] = i;
     }
-    return known.filter(Boolean);
+    return [...known.keys()];
+  }
+  async forget(list: 'runs' | 'dlq', id: string) {
+    const slot = this.cache[list].get(id);
+    this.cache[list].delete(id);
+    if (slot !== undefined) await this.store.del(`${this.prefix}${list}:${slot}`);
+  }
+  /** Ids held in memory per index (tests: bounded by retention, not by the number of runs ever started). */
+  get cachedIds(): number {
+    return this.cache.runs.size + this.cache.dlq.size;
   }
 }
 
@@ -313,6 +328,12 @@ const sha = (s: string) => createHash('sha256').update(s).digest('hex').slice(0,
 const now = () => new Date().toISOString();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const TERMINAL: TaskRunStatus[] = ['succeeded', 'failed', 'cancelled', 'compensated', 'compensation_failed', 'interrupted'];
+/**
+ * 14.9.1: run records a sweep holds at once. The 14.9.0 full sweep (every 30th pass) loaded every retained run record
+ * concurrently, so its peak heap — and with it the process RSS, which does not shrink back — grew with the number of runs
+ * kept (default 168 h): ~620 MB/h in the 30-minute soak. Records are now read and handled in chunks of this size.
+ */
+export const SWEEP_CHUNK = 128;
 /** Finished runs an operator still has to look at: never deleted by retention (14.9.0). */
 const RETAINED_UNTIL_ACTED_ON: TaskRunStatus[] = ['compensation_failed', 'interrupted', 'dead_letter'];
 
@@ -643,25 +664,35 @@ export class DurableTasks {
       // 14.9.0: load only what this pass needs — runs executing here and runs known to be finished are skipped before
       // their records are read (the 14.4 sweep read every record ever written on every pass)
       const ids = (await this.kv.list('runs')).filter((id) => !this.active.has(id) && (full || !this.terminal.has(id)));
-      const runs = (await Promise.all(ids.map((id) => this.load(id)))).filter((r): r is TaskRun => !!r);
       let awaiting = 0;
-      for (const r of runs) {
-        if (this.stopping) return;
-        if (TERMINAL.includes(r.status)) {
-          this.terminal.add(r.id);
-          if (full) await this.expire(r);
-          continue;
-        }
-        if (r.status === 'running' || r.status === 'compensating') await this.maybeTakeOver(r);
-        else if (r.status === 'awaiting_approval') {
-          awaiting++;
-          await this.expireApprovals(r);
+      // 14.9.1: bounded working set — at most SWEEP_CHUNK records are loaded and alive at a time
+      for (let i = 0; i < ids.length; i += SWEEP_CHUNK) {
+        const chunk = ids.slice(i, i + SWEEP_CHUNK);
+        const loaded = await Promise.all(chunk.map((id) => this.load(id)));
+        for (let j = 0; j < chunk.length; j++) {
+          if (this.stopping) return;
+          const r = loaded[j];
+          if (!r) {
+            // deleted (retention, possibly by a peer): stop listing it
+            if (full && (await this.kv.get(`run:${chunk[j]}`)) === undefined) await this.drop(chunk[j]!);
+            continue;
+          }
+          if (TERMINAL.includes(r.status)) {
+            this.terminal.add(r.id);
+            if (full) await this.expire(r);
+            continue;
+          }
+          if (r.status === 'running' || r.status === 'compensating') await this.maybeTakeOver(r);
+          else if (r.status === 'awaiting_approval') {
+            awaiting++;
+            await this.expireApprovals(r);
+          }
         }
       }
       this.metrics.awaiting = awaiting;
       const due = (await this.dlqList()).filter((e) => e.status === 'pending' && e.nextRetryAt && Date.parse(e.nextRetryAt) <= Date.now());
       for (const e of due) {
-        const run = runs.find((x) => x.id === e.runId);
+        const run = await this.load(e.runId);
         if (run && !this.ready(run)) continue;
         await this.retry(e);
       }
@@ -680,7 +711,13 @@ export class DurableTasks {
     if (!(await this.kv.claim(`gc:${r.id}`, 60_000))) return;
     await this.kv.del(`run:${r.id}`);
     await this.kv.del(`epoch:${r.id}`);
-    this.terminal.delete(r.id);
+    await this.drop(r.id);
+  }
+
+  /** 14.9.1: forget a deleted run everywhere this instance tracks it (index slot, listing cache, finished set). */
+  private async drop(id: string): Promise<void> {
+    this.terminal.delete(id);
+    await this.kv.forget?.('runs', id);
   }
 
   private async maybeTakeOver(r: TaskRun): Promise<void> {
