@@ -48,8 +48,6 @@ export interface V12Migration {
   ok: boolean;
 }
 
-const DRAFT_WARNING =
-  'Schema v12 is a DRAFT (13.9.0): 13.x refuses `version: 12` — keep running the v11 file and apply this migration when you upgrade to 14.0.';
 
 
 const keyOf = (p: Pair): unknown => (isScalar(p.key) ? (p.key as Scalar).value : p.key);
@@ -64,7 +62,7 @@ function renameKey(map: YAMLMap, from: string, to: string): boolean {
 /** Migrate a v11 config file's text to the v12 draft. `format` is guessed from the content when omitted. */
 export function migrateToV12(text: string, format?: 'yaml' | 'json', names: { from?: string; to?: string } = {}): V12Migration {
   const fmt = format ?? (/^\s*[{[]/.test(text) ? 'json' : 'yaml');
-  const report: CompatibilityReport = { errors: [], warnings: [DRAFT_WARNING], manual: [] };
+  const report: CompatibilityReport = { errors: [], warnings: [], manual: [] };
   const changes: string[] = [];
   const fail = (msg: string): V12Migration => {
     report.errors.push(msg);
@@ -81,18 +79,18 @@ export function migrateToV12(text: string, format?: 'yaml' | 'json', names: { fr
   if (!isMap(root)) return fail('the config must be a mapping at the top level');
   const version = doc.get('version');
   if (version === 12) {
-    // already v12: check it by downgrading to the v11 form the runtime validates
+    // already v12 (14.0.0: the runtime schema): validate it as it is
     const obj = doc.toJS() as Record<string, unknown>;
     try {
-      validateConfig(downgradeFromV12(obj));
+      validateConfig(obj);
     } catch (e) {
-      report.errors.push(`the v12 file does not map to a valid v11 config: ${(e as Error).message}`);
+      report.errors.push(`the v12 file is not valid: ${(e as Error).message}`);
     }
     return { text, config: obj, changes, report, diff: '', ok: report.errors.length === 0 };
   }
   if (typeof version === 'number' && version < 11) return fail(`the config is on schema v${version}: run \`mcp-gateway migrate --to 11\` first (docs/guides/migrating-to-v11.md), then migrate to v12`);
   if (version !== undefined && version !== 11) return fail(`unsupported config version ${JSON.stringify(version)} (expected 11)`);
-  if (version === undefined) report.warnings.push('no `version:` in the file — read as schema v11');
+  if (version === undefined) report.warnings.push('no `version:` in the file — read as schema v11 (it uses v11 fields) or v12; `version: 12` is added');
   try {
     validateConfig(doc.toJS());
   } catch (e) {
