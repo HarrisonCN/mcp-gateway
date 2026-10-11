@@ -12,8 +12,8 @@
       "rssMb": 38.2,
       "heapMb": 17.5,
       "featureModules": 0,
-      "modules": 267,
-      "moduleKb": 1774.1,
+      "modules": 283,
+      "moduleKb": 1931.0,
       "lazyDeps": 0
     },
     "all": {
@@ -23,8 +23,8 @@
       "rssMb": 50.8,
       "heapMb": 21,
       "featureModules": 31,
-      "modules": 393,
-      "moduleKb": 2473.8,
+      "modules": 409,
+      "moduleKb": 2630.7,
       "lazyDeps": 2
     }
   },
@@ -40,8 +40,8 @@
           "rssMb": 38.2,
           "heapMb": 17.5,
           "featureModules": 0,
-          "modules": 267,
-          "moduleKb": 1774.1,
+          "modules": 283,
+          "moduleKb": 1931.0,
           "lazyDeps": 0
         },
         "all": {
@@ -51,8 +51,8 @@
           "rssMb": 50.8,
           "heapMb": 21,
           "featureModules": 31,
-          "modules": 393,
-          "moduleKb": 2473.8,
+          "modules": 409,
+          "moduleKb": 2630.7,
           "lazyDeps": 2
         }
       },
@@ -70,8 +70,8 @@
           "rssMb": 89.0,
           "heapMb": 18.1,
           "featureModules": 0,
-          "modules": 271,
-          "moduleKb": 1838.3,
+          "modules": 287,
+          "moduleKb": 1995.2,
           "lazyDeps": 0
         },
         "all": {
@@ -81,15 +81,15 @@
           "rssMb": 105.8,
           "heapMb": 21.9,
           "featureModules": 31,
-          "modules": 397,
-          "moduleKb": 2540.9,
+          "modules": 413,
+          "moduleKb": 2697.8,
           "lazyDeps": 2
         }
       },
       "recordedAt": "2026-10-11",
       "previous": {
         "recordedAt": "2026-10-09",
-        "method": "median of the three CI job medians (5 samples each): Node 22 ×2, Node 24 ×1, 13.0.0 PR #137 run 37989480264",
+        "method": "median of the three CI job medians (5 samples each): Node 22 \u00d72, Node 24 \u00d71, 13.0.0 PR #137 run 37989480264",
         "profiles": {
           "minimal": {
             "importMs": 231.5,
@@ -243,7 +243,7 @@
               "afterRecoveryErrors": 0
             }
           ],
-          "method": "median of 2 runs; 13.2.0 shows the same fault behaviour (recovery 0.25 ms / 1022 ms / 10 ms, 9 × 504 during the stdio stall)",
+          "method": "median of 2 runs; 13.2.0 shows the same fault behaviour (recovery 0.25 ms / 1022 ms / 10 ms, 9 \u00d7 504 during the stdio stall)",
           "recordedAt": "2026-10-10"
         }
       },
@@ -326,5 +326,6 @@
         }
       }
     }
-  }
+  },
+  "note14_8": "14.8.0: modules +16 / moduleKb +156.9 in every profile for express-rate-limit (+ ip-address, debug, ms), a deliberate runtime dependency (troubleshooting wizard rate limit, CodeQL js/missing-rate-limiting); measured by importing express-rate-limit alone under the same load hook. Timings unchanged."
 }

@@ -27,7 +27,7 @@
 
 import { randomUUID } from 'node:crypto';
 import express, { type Request, type RequestHandler, type Response } from 'express';
-import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
+import { ipKeyGenerator, rateLimit, type Store } from 'express-rate-limit';
 import { z } from 'zod';
 import type { GatewayConfig, RequestMetric } from '../utils/types.js';
 import type { Principal } from '../auth/authorizer.js';
@@ -369,6 +369,49 @@ const MAX_REPORTS = 200;
 /** Troubleshooting runs per minute per client (express-rate-limit, in memory per instance). */
 export const TROUBLESHOOT_PER_MINUTE = 30;
 
+/**
+ * Fixed-window counters for express-rate-limit without the MemoryStore's cleanup interval (a gateway must leave no timers
+ * behind after stop): expired windows are dropped lazily, and the table is capped.
+ */
+class WindowStore implements Store {
+  localKeys = true;
+  private windowMs = 60_000;
+  private hits = new Map<string, { totalHits: number; resetTime: Date }>();
+  init(options: { windowMs: number }): void {
+    this.windowMs = options.windowMs;
+  }
+  private live(key: string, now = Date.now()) {
+    const e = this.hits.get(key);
+    if (e && e.resetTime.getTime() > now) return e;
+    if (e) this.hits.delete(key);
+    return undefined;
+  }
+  get(key: string) {
+    return this.live(key);
+  }
+  increment(key: string) {
+    const now = Date.now();
+    let e = this.live(key, now);
+    if (!e) {
+      if (this.hits.size >= 10_000) for (const [k, v] of this.hits) if (v.resetTime.getTime() <= now || this.hits.size >= 10_000) this.hits.delete(k);
+      e = { totalHits: 0, resetTime: new Date(now + this.windowMs) };
+      this.hits.set(key, e);
+    }
+    e.totalHits++;
+    return { totalHits: e.totalHits, resetTime: e.resetTime };
+  }
+  decrement(key: string): void {
+    const e = this.live(key);
+    if (e && e.totalHits > 0) e.totalHits--;
+  }
+  resetKey(key: string): void {
+    this.hits.delete(key);
+  }
+  resetAll(): void {
+    this.hits.clear();
+  }
+}
+
 /** Clients that may read the console: operators, and `controlPlane.console.viewers`. */
 export function consoleRole(req: Request, cfg: GatewayConfig, isOperator: (req: Request) => boolean): 'operator' | 'viewer' | undefined {
   if (isOperator(req)) return 'operator';
@@ -409,6 +452,7 @@ export function createOpsConsoleRouter(deps: OpsDeps): express.Router {
       const id = (req as Request & { clientId?: string }).clientId;
       return id ? `client:${id}` : `ip:${ipKeyGenerator(req.ip ?? '')}`;
     },
+    store: new WindowStore(),
     validate: { xForwardedForHeader: false, trustProxy: false },
     handler: (_req, res) => void res.status(429).json({ error: 'Too Many Requests', message: `The troubleshooting wizard allows ${TROUBLESHOOT_PER_MINUTE} runs per minute per client; try again shortly` }),
   });
