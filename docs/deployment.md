@@ -177,6 +177,11 @@ reliability (real Redis)*, `test/multi-instance-13-7-0.test.ts`):
 Not shared: the `Last-Event-ID` replay buffer of a `GET /mcp` stream (per replica). Run Redis with persistence
 (`appendonly yes`) if revocations must survive a Redis restart: without it a restart forgets them.
 
+To edit the config in one place and have every replica follow it, run one control plane and the replicas as data
+planes ([control plane guide](guides/control-plane.md)). From 14.1 config changes roll out as numbered generations —
+all at once or canary first — with automatic rollback when data planes fail a generation and divergence reporting:
+[cluster rollout](guides/cluster-rollout.md).
+
 ## Behind a reverse proxy
 
 ```nginx

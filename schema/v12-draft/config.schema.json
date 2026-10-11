@@ -345,7 +345,69 @@
       "$comment": "unchanged from schema v11 (validated by the runtime schema)"
     },
     "controlPlane": {
-      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+      "$comment": "unchanged from schema v11 (validated by the runtime schema) except the optional `rollout` (14.1)",
+      "type": "object",
+      "properties": {
+        "rollout": {
+          "type": "object",
+          "description": "NEW in 14.1 (optional; control plane only): how config generations roll out to data planes. See docs/guides/cluster-rollout.md.",
+          "additionalProperties": false,
+          "properties": {
+            "strategy": {
+              "enum": [
+                "all-at-once",
+                "canary"
+              ],
+              "default": "all-at-once"
+            },
+            "canary": {
+              "type": "object",
+              "description": "canary size: a data-plane count or a percentage of the known data planes (strategy canary needs one)",
+              "additionalProperties": false,
+              "properties": {
+                "nodes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                },
+                "percent": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              }
+            },
+            "bakeMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 86400000,
+              "default": 30000
+            },
+            "failureThreshold": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 1
+            },
+            "autoRollback": {
+              "type": "boolean",
+              "default": true
+            },
+            "maxDivergenceMs": {
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 86400000,
+              "default": 60000
+            },
+            "history": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 100,
+              "default": 10
+            }
+          }
+        }
+      }
     },
     "cors": {
       "$comment": "unchanged from schema v11 (validated by the runtime schema)"

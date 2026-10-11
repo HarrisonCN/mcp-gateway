@@ -455,8 +455,11 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/k8s/crd` | The `McpGateway` CustomResourceDefinition (6.8) |
 | `GET` | `/admin/data-planes` | Control plane: data planes (last seen, config ETag, in sync, online / stale) and summary (7.0) |
 | `GET` | `/admin/data-planes/config` | Config for data planes (`ETag` / `If-None-Match` → 304; secrets included; `role: control` only) (7.0) |
-| `POST` | `/admin/data-planes/heartbeat` | Data-plane heartbeat `{ nodeId, configEtag?, version?, pullIntervalMs?, servers? }` (`role: control` only) (7.0) |
+| `POST` | `/admin/data-planes/heartbeat` | Data-plane heartbeat `{ nodeId, configEtag?, generation?, failedGeneration?, version?, pullIntervalMs?, servers?, lastError? }` (`role: control` only) (7.0; generations 14.1) |
 | `DELETE` | `/admin/data-planes/:nodeId` | Forget a data plane (7.0) |
+| `GET` | `/admin/cluster/rollout` | Control plane: config generations, per-node targets, canary / promotion state, divergence, failures, rollback history (`role: control` only) (14.1) |
+| `POST` | `/admin/cluster/rollback` | Roll the cluster back `{ to?: <generation>, reason? }` as a new generation; `409` for an unknown generation (`role: control` only) (14.1) |
+| `POST` | `/admin/cluster/rollout` | `{ force: true }`: re-publish the running config, even content of a generation that failed and was rolled back (`role: control` only) (14.1) |
 | `GET` | `/admin/terraform` | Terraform: kinds, paths, provider block, writable (7.1) |
 | `GET` / `POST` | `/admin/terraform/:kind[?dryRun=]` | List / create `servers`, `tenants`, `apiKeys` (restapi provider; writes need `controlPlane.configApi`) (7.1) |
 | `GET` / `PUT` / `DELETE` | `/admin/terraform/:kind/:id[?dryRun=]` | Read (`ETag`) / replace (`If-Match` → 412) / delete one object (7.1) |

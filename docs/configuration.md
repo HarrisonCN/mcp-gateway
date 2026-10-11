@@ -572,6 +572,32 @@ controlPlane:
 
 See the [control plane guide](guides/control-plane.md).
 
+### Cluster rollout (14.1)
+
+Control plane only (`role: control`; a data plane refuses `rollout`). Optional — without it every data plane gets
+every generation at once. See the [cluster rollout guide](guides/cluster-rollout.md).
+
+| Key | Default | |
+|---|---|---|
+| `controlPlane.rollout.strategy` | `all-at-once` | `all-at-once` or `canary` |
+| `controlPlane.rollout.canary.nodes` | — | canary size as a data-plane count (`canary` needs `nodes` or `percent`) |
+| `controlPlane.rollout.canary.percent` | — | canary size as a percentage of the known data planes (rounded up, at least 1) |
+| `controlPlane.rollout.bakeMs` | `30000` | how long every canary node must run a generation without failures before it is promoted |
+| `controlPlane.rollout.failureThreshold` | `1` | data planes that must report a failed apply / health check before the generation is rolled back |
+| `controlPlane.rollout.autoRollback` | `true` | roll back automatically (`false`: mark the rollout `failed` only) |
+| `controlPlane.rollout.maxDivergenceMs` | `60000` | a data plane off its target generation longer than this is reported as diverged (min 1000) |
+| `controlPlane.rollout.history` | `10` | generations kept for rollback (2–100) |
+
+```yaml
+version: 12
+controlPlane:
+  role: control
+  rollout:
+    strategy: canary
+    canary: {percent: 10}
+    bakeMs: 60000
+```
+
 See [Declarative config](guides/declarative-config.md). 3.0 removed `corsOrigins` and `healthCheckIntervalMs` — use
 `cors.origins` and `health.intervalMs` ([migration guide](guides/migrating-to-v3.md)).
 
@@ -834,6 +860,9 @@ observability:
   `mcp_gateway_upstream_failovers_total{server}`, `mcp_gateway_upstream_resends_total`,
   `mcp_gateway_upstream_recycles_total`, `mcp_gateway_state_store_up{backend}`,
   `mcp_gateway_state_store_failures_total{backend}`. Label values are bounded: no principal id ever becomes a label.
+  Cluster rollout (14.1): `mcp_gateway_cluster_config_generation{role}`, `mcp_gateway_cluster_rollout_state{state}`,
+  `mcp_gateway_cluster_diverged_nodes`, `mcp_gateway_cluster_rollbacks_total{role,trigger}` — see
+  [cluster rollout](guides/cluster-rollout.md#metrics).
   Spans carry the effective principal as `mcp.principal.subject` / `mcp.principal.actor` / `mcp.principal.chain`
   (hashed by default, see `observability.principal`) and `mcp.principal.type`, the final route as
   `mcp.route.final.server` / `mcp.route.final.upstream`, refusals as `mcp.policy.deny_reason`, a session-expiry resend

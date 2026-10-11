@@ -24,6 +24,8 @@ import { validateConfig } from '../src/config/loader.js';
 import { Gateway } from '../src/gateway/index.js';
 import type { GatewayConfig } from '../src/utils/types.js';
 import { startFeatureGw, op } from './helpers/feature-gw.js';
+import Ajv from 'ajv';
+import { readFileSync } from 'fs';
 
 const cfgA = { servers: [], rateLimit: { windowSeconds: 60, limit: 100 } };
 const cfgB = { servers: [], rateLimit: { windowSeconds: 60, limit: 200 } };
@@ -355,5 +357,14 @@ describe('R9 config', () => {
     expect(() => validateConfig({ ...base, version: 12, controlPlane: { role: 'control', rollout: { strategy: 'canary' } } })).toThrow(/canary/);
     expect(() => validateConfig({ ...base, version: 12, controlPlane: { role: 'control', rollout: { history: 0 } } })).toThrow();
     expect(() => validateConfig({ ...base, version: 12, controlPlane: { role: 'control', rollout: { canary: { percent: 150 } } } })).toThrow();
+  });
+  it('schema/v12 JSON Schema: rollout is optional and described; v12 files without it stay valid (backward compatible)', () => {
+    const schema = JSON.parse(readFileSync(new URL('../schema/v12/config.schema.json', import.meta.url), 'utf8'));
+    const validate = new Ajv({ allErrors: true, strict: false }).compile(schema);
+    expect(validate({ version: 12, controlPlane: { role: 'control' } })).toBe(true);
+    expect(validate({ version: 12, controlPlane: { role: 'data', url: 'http://cp', token: 't' } })).toBe(true);
+    expect(validate({ version: 12, controlPlane: { role: 'control', rollout: { strategy: 'canary', canary: { nodes: 2 }, bakeMs: 0 } } })).toBe(true);
+    expect(validate({ version: 12, controlPlane: { role: 'control', rollout: { strategy: 'blue-green' } } })).toBe(false);
+    expect(validate({ version: 12, controlPlane: { role: 'control', rollout: { bogus: 1 } } })).toBe(false);
   });
 });
