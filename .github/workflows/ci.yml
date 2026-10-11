@@ -171,7 +171,8 @@ jobs:
     timeout-minutes: 15
     env:
       MCP_PY_VERSION: '2.3.0'
-      MOTIONARY_VERSION: '13.0.2'
+      MOTIONARY_VERSION: '13.7.0'
+      MOTIONARY_EXPECT_TOOLS: 'get_example,scaffold_snippet,suggest_motion,validate_snippet,check_compat,check_compatibility,suggest_fix'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
