@@ -313,6 +313,8 @@ const sha = (s: string) => createHash('sha256').update(s).digest('hex').slice(0,
 const now = () => new Date().toISOString();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const TERMINAL: TaskRunStatus[] = ['succeeded', 'failed', 'cancelled', 'compensated', 'compensation_failed', 'interrupted'];
+/** Finished runs an operator still has to look at: never deleted by retention (14.9.0). */
+const RETAINED_UNTIL_ACTED_ON: TaskRunStatus[] = ['compensation_failed', 'interrupted', 'dead_letter'];
 
 export class HttpError extends Error {
   constructor(readonly status: number, message: string) {
@@ -637,14 +639,17 @@ export class DurableTasks {
     this.sweeping = true;
     const first = this.sweeps++ === 0;
     try {
-      const runs = await this.list();
-      let awaiting = 0;
       const full = first || this.sweeps % 30 === 0;
+      // 14.9.0: load only what this pass needs — runs executing here and runs known to be finished are skipped before
+      // their records are read (the 14.4 sweep read every record ever written on every pass)
+      const ids = (await this.kv.list('runs')).filter((id) => !this.active.has(id) && (full || !this.terminal.has(id)));
+      const runs = (await Promise.all(ids.map((id) => this.load(id)))).filter((r): r is TaskRun => !!r);
+      let awaiting = 0;
       for (const r of runs) {
         if (this.stopping) return;
-        if (this.active.has(r.id) || (!full && this.terminal.has(r.id))) continue;
         if (TERMINAL.includes(r.status)) {
           this.terminal.add(r.id);
+          if (full) await this.expire(r);
           continue;
         }
         if (r.status === 'running' || r.status === 'compensating') await this.maybeTakeOver(r);
@@ -665,6 +670,17 @@ export class DurableTasks {
     } finally {
       this.sweeping = false;
     }
+  }
+
+  /** 14.9.0: delete a finished run once `retentionHours` have passed (dead-lettered and compensation_failed runs stay). */
+  private async expire(r: TaskRun): Promise<void> {
+    const hours = (this.cfg as { retentionHours?: number }).retentionHours ?? 168;
+    if (!hours || !RETAINED_UNTIL_ACTED_ON.every((s) => s !== r.status) || !r.finishedAt) return;
+    if (Date.now() - Date.parse(r.finishedAt) < hours * 3_600_000) return;
+    if (!(await this.kv.claim(`gc:${r.id}`, 60_000))) return;
+    await this.kv.del(`run:${r.id}`);
+    await this.kv.del(`epoch:${r.id}`);
+    this.terminal.delete(r.id);
   }
 
   private async maybeTakeOver(r: TaskRun): Promise<void> {

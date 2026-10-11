@@ -44,6 +44,8 @@ export const DurableSchema = z
     leaseMs: z.number().int().min(1000).max(600_000).default(15_000),
     sweepIntervalMs: z.number().int().min(50).max(600_000).default(2_000),
     idempotencyTtlSeconds: z.number().int().min(60).max(90 * 86_400).default(86_400),
+    /** 14.9.0: finished runs (succeeded / failed / cancelled / compensated) are deleted this long after they ended; 0 = keep. */
+    retentionHours: z.number().int().min(0).max(100 * 8760).default(168),
     dlq: z
       .object({
         enabled: z.boolean().default(true),

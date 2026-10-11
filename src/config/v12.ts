@@ -436,6 +436,7 @@ const TASK_GRAPHS_V12 = {
         leaseMs: { type: 'integer', minimum: 1000, maximum: 600000, default: 15000, description: 'heartbeat lease of an executing gateway' },
         sweepIntervalMs: { type: 'integer', minimum: 50, maximum: 600000, default: 2000 },
         idempotencyTtlSeconds: { type: 'integer', minimum: 60, maximum: 7776000, default: 86400, description: 'how long a submission idempotency key is remembered' },
+        retentionHours: { type: 'integer', minimum: 0, maximum: 876000, default: 168, description: 'NEW in 14.9: delete finished runs (succeeded, failed, cancelled, compensated) this long after they ended; 0 = keep forever' },
         dlq: {
           type: 'object',
           additionalProperties: false,
