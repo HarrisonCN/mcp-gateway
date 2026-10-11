@@ -1,6 +1,6 @@
 # mcp-gateway in front of the Motionary MCP server (13.6.0 interop example)
 # Motionary is NOT a dependency of mcp-gateway: install it next to this file
-#   npm i --no-save motionary@13.0.2      (pinned; newer Motionary releases are expected to work too)
+#   npm i --no-save motionary@13.7.0      (pinned; newer Motionary releases are expected to work too)
 # then start the gateway from this directory:
 #   MCP_GATEWAY_API_KEYS=$(openssl rand -hex 24) npx mcp-gateway start -c mcp-gateway.yml
 

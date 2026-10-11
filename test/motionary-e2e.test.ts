@@ -16,7 +16,9 @@ import { logger } from '../src/utils/logger.js';
 logger.setLevel('error');
 const BIN = process.env.MGW_MOTIONARY_BIN;
 const CORE = ['list_components', 'search_components', 'get_component'];
-const EXTRA = (process.env.MOTIONARY_EXPECT_TOOLS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+// Default expectation = Motionary 13.7.0 (the CI-pinned version); set MOTIONARY_EXPECT_TOOLS='' to require the core set only.
+const DEFAULT_EXPECT = 'get_example,scaffold_snippet,suggest_motion,validate_snippet,check_compat,check_compatibility,suggest_fix';
+const EXTRA = (process.env.MOTIONARY_EXPECT_TOOLS ?? DEFAULT_EXPECT).split(',').map((s) => s.trim()).filter(Boolean);
 
 describe.skipIf(!BIN || !existsSync(BIN))('gateway → Motionary MCP server (E2E)', () => {
   let gw: Gateway;
