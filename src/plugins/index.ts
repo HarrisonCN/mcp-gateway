@@ -42,6 +42,7 @@
 import { isAbsolute, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { readFile } from 'fs/promises';
+import { createHash } from 'crypto';
 import { PluginTrustSchema, verifyArtifact, type PluginTrustConfig } from './trust.js';
 import express, { type NextFunction, type Request, type Response, type Router } from 'express';
 import type { PluginConfig, ProxyResponse } from '../utils/types.js';
@@ -331,6 +332,19 @@ async function instantiate(src: unknown, ctx: PluginContext, label: string): Pro
 
 /** 5.4: verify a plugin's `.sig` against `pluginTrust` (throws when it must not load). */
 export async function checkSignature(cfg: PluginConfig, baseDir: string, trust?: PluginTrustConfig): Promise<string | undefined> {
+  return (await verifySignature(cfg, baseDir, trust))?.keyId;
+}
+
+/** MGW-2026-016: what a successful signature check verified — the only bytes that may be loaded. */
+export interface VerifiedArtifact {
+  keyId: string;
+  file: string;
+  bytes: Buffer;
+  sha256: string;
+}
+
+/** MGW-2026-016: verify the signature and return the verified bytes (the loader runs exactly these). */
+export async function verifySignature(cfg: PluginConfig, baseDir: string, trust?: PluginTrustConfig): Promise<VerifiedArtifact | undefined> {
   const t = PluginTrustSchema.parse(trust ?? {});
   const spec = cfg.component ?? cfg.module;
   if (!spec || (!t.keys.length && !t.requireSigned)) return undefined;
@@ -350,9 +364,21 @@ export async function checkSignature(cfg: PluginConfig, baseDir: string, trust?:
     if (t.requireSigned) throw new Error(`Plugin "${label}" is not signed (no ${sigFile}) and pluginTrust.requireSigned is on`);
     return undefined;
   }
-  const r = verifyArtifact(await readFile(file), sig, t.keys, { requirePostQuantum: t.requirePostQuantum });
+  const bytes = await readFile(file);
+  const r = verifyArtifact(bytes, sig, t.keys, { requirePostQuantum: t.requirePostQuantum });
   if (!r.ok) throw new Error(`Plugin "${label}" failed signature verification: ${r.reason}`);
-  return r.keyId;
+  return { keyId: r.keyId, file, bytes, sha256: createHash('sha256').update(bytes).digest('hex') };
+}
+
+/** MGW-2026-016: the file must still hold the verified bytes when the plugin is loaded (the bytes are loaded, not the file). */
+async function assertUnchanged(v: VerifiedArtifact, label: string): Promise<void> {
+  let now: string;
+  try {
+    now = createHash('sha256').update(await readFile(v.file)).digest('hex');
+  } catch (e) {
+    throw new Error(`Plugin "${label}" changed after signature verification (${(e as Error).message}); refusing to load`);
+  }
+  if (now !== v.sha256) throw new Error(`Plugin "${label}" changed after signature verification (sha256 ${now.slice(0, 12)}…, verified ${v.sha256.slice(0, 12)}…); refusing to load`);
 }
 
 /** Plugin API v5 outcome (`{ action }`) → the internal shape; v4 shapes pass through. */
@@ -386,17 +412,28 @@ export function normalizeResponseOutcome(out: unknown, current: ProxyResponse): 
 
 /** Load one configured plugin (`module` is a path relative to `baseDir`, or a package name). */
 export async function loadPlugin(cfg: PluginConfig, baseDir = process.cwd(), trust?: PluginTrustConfig): Promise<GatewayPlugin> {
-  await checkSignature(cfg, baseDir, trust);
+  // MGW-2026-016: a signed plugin runs exactly the verified bytes — never a second read of the file
+  const verified = await verifySignature(cfg, baseDir, trust);
+  const label = cfg.name ?? cfg.component ?? cfg.module ?? 'plugin';
+  if (verified) await assertUnchanged(verified, label);
   if (cfg.component) {
     const { loadWasmPlugin } = await import('./wasm.js');
-    return loadWasmPlugin({ wasm: cfg.component, name: cfg.name, isolation: cfg.isolation, limits: cfg.limits, abi: 'component' }, baseDir);
+    return loadWasmPlugin({ wasm: cfg.component, name: cfg.name, isolation: cfg.isolation, limits: cfg.limits, abi: 'component', bytes: verified?.bytes }, baseDir);
   }
   if ((cfg as { wasm?: unknown }).wasm !== undefined) throw new Error('`plugins[].wasm` was removed in 8.0 — rebuild the plugin as a plugin API v5 component and load it with `component`');
   if (!cfg.module) throw new Error('A plugin needs "module" or "component"');
   const spec = cfg.module;
   const isPath = spec.startsWith('.') || isAbsolute(spec);
-  const target = isPath ? pathToFileURL(resolve(baseDir, spec)).href : spec;
-  const mod = (await import(target)) as Record<string, unknown>;
+  const target = verified ? `data:text/javascript;base64,${verified.bytes.toString('base64')}` : isPath ? pathToFileURL(resolve(baseDir, spec)).href : spec;
+  let mod: Record<string, unknown>;
+  try {
+    mod = (await import(target)) as Record<string, unknown>;
+  } catch (e) {
+    if (verified && /resolve|relative|Invalid URL|ERR_UNSUPPORTED_RESOLVE_REQUEST|Cannot find (module|package)|bare specifier/i.test(`${(e as { code?: string }).code ?? ''} ${(e as Error).message}`)) {
+      throw new Error(`Plugin "${label}": signed plugins must be self-contained bundles — the signature covers one file, so a signed plugin may only import node: built-ins (${(e as Error).message})`);
+    }
+    throw e;
+  }
   const exported = mod.default ?? mod.plugin ?? mod;
   const plugin = await instantiate(exported, contextFor(cfg), spec);
   const out = cfg.name ? { ...plugin, name: cfg.name, close: plugin.close?.bind(plugin) } : plugin;
