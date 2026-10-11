@@ -1,6 +1,7 @@
 # 15.0.0 release candidate
 
-> **15.0.0-rc.1 is a pre-release.** It is published under the npm dist-tag `next` (not `latest`) and as the image tag
+> **15.0.0-rc.1 is a pre-release, published after 14.9.0.** Check `npm view @winstonsayno/mcp-gateway dist-tags` — until
+> `next` shows `15.0.0-rc.1` it is not out yet. When published it is under the npm dist-tag `next` (not `latest`) and as the image tag
 > `ghcr.io/harrisoncn/mcp-gateway:15.0.0-rc.1` only (not `latest`, not `15`). Production deployments stay on 14.x
 > (`latest`, currently 14.9.0) until 15.0.0 ships.
 

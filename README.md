@@ -9,7 +9,7 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-> **15.0 release candidate:** `15.0.0-rc.1` is available for testing under the npm dist-tag `next` (`npm i @winstonsayno/mcp-gateway@next`; image `:15.0.0-rc.1`). `latest` stays on 14.x. The 15.0 API / config freeze, what changes and how to upgrade: [freeze list](docs/v15/freeze.md) · [migrating to v15](docs/migrating-to-v15.md) · [release candidate notice](docs/v15/release-candidate.md).
+> **15.0 release candidate (coming next):** `15.0.0-rc.1` will be published for testing under the npm dist-tag `next` (`npm i @winstonsayno/mcp-gateway@next`; image `:15.0.0-rc.1`) — until it appears there, `next` does not point at it. `latest` stays on 14.x. The 15.0 API / config freeze, what changes and how to upgrade: [freeze list](docs/v15/freeze.md) · [migrating to v15](docs/migrating-to-v15.md) · [release candidate notice](docs/v15/release-candidate.md).
 
 **One authenticated, observable endpoint in front of all your MCP servers.**
 
@@ -19,7 +19,7 @@ Streamable HTTP at `/mcp` or a REST API under `/api/v1` — and the gateway auth
 do, routes the call to the right upstream and records what happened. Keys, scopes, rate limits, policy, logs and
 metrics live in one place instead of in every client.
 
-Current release: **14.8.0** (npm `latest`). Live dashboard demo with simulated traffic, no backend:
+Current release: **14.9.0** (npm `latest`). Live dashboard demo with simulated traffic, no backend:
 <https://harrisoncn.github.io/mcp-gateway/>
 
 ## Contents
@@ -170,7 +170,7 @@ Every image is signed with cosign (keyless, GitHub OIDC) and carries SLSA proven
 before you deploy, and pin the digest it prints:
 
 ```bash
-cosign verify ghcr.io/harrisoncn/mcp-gateway:14.8.0 \
+cosign verify ghcr.io/harrisoncn/mcp-gateway:14.9.0 \
   --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -325,7 +325,7 @@ See [Observability](docs/configuration.md#observability) and [Audit log](docs/co
 
 | Line | Latest | npm dist-tag | Image tag | Status |
 |---|---|---|---|---|
-| 14.x | 14.8.0 | `latest` | `:14`, `:latest` | Current — new features, bug and security fixes |
+| 14.x | 14.9.0 | `latest` | `:14`, `:latest` | Current — new features, bug and security fixes |
 | 13.x | 13.9.5 | `v13-lts` | `:13` | Maintained — security and critical bug fixes, at least until 15.0.0 ships and no earlier than 2027-04-30; upgrade to 14.x |
 | 12.x | 12.0.15 | `v12-0` | `:12` | Superseded — carries the MGW-2026-001, -005, -007, -008, -009, -010, -011, -012, -013, -014, -015, -016, -017, -018 and -019 fixes; upgrade to 13.x |
 | 11.x | 11.2.0 | — | `:11` | Superseded — upgrade to 13.x |
