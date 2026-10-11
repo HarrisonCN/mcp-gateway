@@ -165,7 +165,8 @@ export interface PluginConfigChange {
 /** What the host needs from the gateway for API v3 contexts. */
 export interface PluginEnv {
   resolveSecret?: (ref: string, plugin: string) => Promise<string>;
-  tenantOf?: (clientId: string | undefined) => PluginTenant | undefined;
+  /** MGW-2026-015: `serverId` selects the acting tenant (the caller's tenant entitled to the called server). */
+  tenantOf?: (clientId: string | undefined, serverId?: string) => PluginTenant | undefined;
 }
 
 export interface PluginCallError {
@@ -527,7 +528,7 @@ export class PluginHost {
       this.hookCtx.set(p, c);
     }
     if (!call || (p.apiVersion ?? 1) < 3) return c;
-    const tenant = this.env.tenantOf?.(call.clientId) ?? (call.tenant ? { id: call.tenant } : undefined);
+    const tenant = this.env.tenantOf?.(call.clientId, (call as { serverId?: string }).serverId) ?? (call.tenant ? { id: call.tenant } : undefined);
     return tenant ? { ...c, tenant } : c;
   }
 
