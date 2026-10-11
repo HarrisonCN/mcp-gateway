@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [14.6.0] - 2026-10-11
+
+Edge Autonomy release (roadmap 14.6 "Edge Autonomy 正式化"). Improves the existing 10.7 edge-autonomy module (`features.edgeAutonomy`) in place and makes it generally available: offline execution has explicit permission boundaries, the queue expires, conflicts go to a review queue, reconnect reconciliation is ordered, fenced and crash-safe (the 14.4 durable intent log), it honours revocations learned on reconnect (the 14.5 replicated revocations), and the queue is sealed at rest. Config schema v12 describes `edgeAutonomy`.
+
+### Security
+
+- **MGW-2026-018 (Low): edge-autonomy queued calls were replayed with a removed or revoked key, and the edge state files were world-readable.** On reconnect each queued call was replayed with the principal (and scope) captured when it was queued, so a key removed or narrowed while the edge was offline still had its queued calls executed upstream with its old rights, and a portal / operator revocation announced meanwhile was not consulted; `outbox.json` / `cache.json` (queued arguments, cached results, the caller's principal) were written with the process umask (typically `0644`). Fixed: every replay re-resolves the caller's current scope (a removed key's calls are `rejected`, never executed) and is refused for client ids revoked locally or by a revocation authority; the state files are written `0600` in a `0700` directory. Affected since 10.7.0 (stored principal since 11.1.0). LTS backports: 13.9.4, 12.0.14, 10.9.15. Regression test `test/edge-mgw-2026-018.test.ts`.
+
+### Changed
+
+- **High-risk calls are denied offline by default (behaviour change).** Before any local answer (`cache`, `wasm`, `queue`) the call's offline risk is classified — a declared `policies[].risk`, else the tool's MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`), else the tool name (payments → critical; deletes and writes → high; reads → low; else medium). High and critical calls are refused with `-32018` unless a policy allows them (`policies: [{ match: "crm/update_*", offline: allow }]`); `highRisk: allow` restores the 10.7 behaviour. A 10.7-style config that queues `crm/update_*` without a policy now refuses those calls offline.
+- **Queued calls expire.** Every queued call gets a TTL (`policies[].ttlSeconds`, else `queue.ttlSeconds`, default 24 h) and is never replayed after it (`queue.onExpiry`: `review` (default) or `drop`). `queue.maxItems` bounds the queue (default `outboxLimit`).
+- **Replays run as the caller's current credential** and wait, after a reconnect, until revocation authorities are confirmed fresh (`reconcile.requireFreshRevocations`, default `true`; with `regions`: one sync round with every peer since reconnect).
+- **The persisted queue and cache are sealed** (AES-256-GCM; key from `seal.keyEnv` or a generated `<dir>/.seal.key`, `0600`). A plaintext outbox from ≤ 14.5 is migrated on first load; a file that fails authentication is quarantined (`*.tampered-<ts>`) and not replayed.
+- `features.edgeAutonomy` is no longer labelled EXPERIMENTAL (security posture, `GET /admin/edge-autonomy` → `experimental: false`).
+
+### Added
+
+- **Declared offline policies** `edgeAutonomy.policies[]`: `match`, `offline: allow|deny`, `risk: low|medium|high|critical`, `idempotent`, `conflictKey`, `ttlSeconds`; `edgeAutonomy.highRisk`.
+- **Conflict handling and the review queue**: idempotency keys reuse the 14.4 durable intent log — the client's own key (`reconcile.idempotencyArg`) with the same payload returns the first receipt (`duplicate: true`), with another payload the call is parked for review (`idempotency-conflict`); replays the upstream rejects as a conflict / stale version go to review at once (`upstream-conflict`); concurrent offline writes to the same record by different clients (`policies[].conflictKey`) go to review (`conflict-key`). `GET /api/v1/admin/edge-autonomy/review`; `POST …/outbox/:id/retry` re-queues as an operator decision.
+- **Crash-safe, fenced reconcile**: replays in queue order (a client's later calls to a server wait for its earlier ones), one reconciler at a time (`reconcile.leaseMs`) with a fencing epoch, and an intent / commit log under `<dir>/.reconcile` — after a `kill -9` a committed replay is never resent, an in-doubt idempotent one is resent with the same key, an in-doubt non-idempotent one goes to review (`outcome-unknown`).
+- **Revocation authorities** (core, `gateway/revocations`): `regions` registers its replicated revocations; deferred work asks the authorities before acting. Local revocation notices (developer portal / operator) are remembered with the edge queue.
+- **Report, CLI, metrics**: `GET /api/v1/admin/edge-autonomy/report`; `mcp-gateway edge report|queue|reconcile [--json]`; `mcp_gateway_edge_queue_items{status}`, `mcp_gateway_edge_queue_oldest_age_seconds`, `mcp_gateway_edge_decisions_total{action}`, `mcp_gateway_edge_offline_denied_total{risk}`, `mcp_gateway_edge_reconcile_total{result}`, `mcp_gateway_edge_outcome_unknown_total`, `mcp_gateway_edge_seal_failures_total`.
+- Config schema v12 describes `features.edgeAutonomy`.
+
+### Tests
+
+- `test/edge-autonomy-14-6-0.test.ts` (15): schema defaults, risk classifier, high-risk denied offline for queue / cache rules, policy allow / deny / `highRisk: allow`, TTL expiry (review / drop) and full queue, idempotency keys, conflict keys, upstream conflicts and in-order holding, fencing, removed / revoked keys rejected, **simulated outage with two regions: a client revoked in region A while edge region B was offline (partitioned) is rejected on reconnect** (reconcile runs before the next periodic sync), revocations not confirmed fresh → pending, sealed files + tamper quarantine, `seal.keyEnv` + legacy migration, metrics / report / `edge` CLI.
+- `test/edge-autonomy-restart-14-6-0.test.ts` (3): **`kill -9` of a gateway process mid-reconcile** (committed replay not resent, in-doubt non-idempotent replay → review, the rest replay once and in order), in-doubt idempotent replay resent with the same key, crash between upstream answer and queue write deduplicated by the intent log.
+- `test/edge-mgw-2026-018.test.ts` (1): MGW-2026-018 regression (fails on 14.5.0).
+
 ## [14.5.0] - 2026-10-11
 
 Multi-region consistency release (roadmap 14.5 "多区域一致性"). Improves the existing 5.2 Multi-Region module (`features.regions`) in place: the eventual-consistency boundary is now explicit, revocations replicate and fail closed during a partition, replicated config carries version vectors and generation fencing, and clock skew is bounded. Config schema v12 describes `regions` (new `consistency` block).
