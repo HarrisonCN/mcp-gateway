@@ -26,7 +26,7 @@ import type { GatewayConfig } from '../utils/types.js';
 import { VERSION } from '../utils/version.js';
 import { logger } from '../utils/logger.js';
 import { configEtag } from './config-etag.js';
-import { RolloutSchema, type RolloutPolicy } from './rollout.js';
+import { RolloutCoordinator, RolloutError, RolloutSchema, type RolloutPolicy } from './rollout.js';
 
 export const ControlPlaneSchema = z
   .object({
@@ -109,8 +109,10 @@ export interface ControlPlaneDeps {
 }
 
 /** Control-plane routes under `/api/v1/admin/data-planes` (operators only). */
-export function createControlPlaneRouter(deps: ControlPlaneDeps): express.Router & { nodes: Map<string, Omit<DataPlaneNode, 'inSync' | 'status'>> } {
-  const router = express.Router() as express.Router & { nodes: Map<string, Omit<DataPlaneNode, 'inSync' | 'status'>> };
+export function createControlPlaneRouter(
+  deps: ControlPlaneDeps,
+): express.Router & { nodes: Map<string, Omit<DataPlaneNode, 'inSync' | 'status'>>; rollout: RolloutCoordinator } {
+  const router = express.Router() as express.Router & { nodes: Map<string, Omit<DataPlaneNode, 'inSync' | 'status'>>; rollout: RolloutCoordinator };
   const nodes = new Map<string, Omit<DataPlaneNode, 'inSync' | 'status'>>();
   router.nodes = nodes;
   const now = deps.now ?? Date.now;
@@ -121,13 +123,36 @@ export function createControlPlaneRouter(deps: ControlPlaneDeps): express.Router
       ? next()
       : void res.status(409).json({ error: 'Conflict', message: 'Not a control plane: set `controlPlane.role: control` to serve data planes' });
   const guard = [deps.authenticate, operator];
+  // 14.1.0: every distributed config is a generation; the coordinator decides which one each data plane runs
+  const rollout = new RolloutCoordinator((deps.config().controlPlane?.rollout ?? {}) as Partial<RolloutPolicy>, { now });
+  router.rollout = rollout;
+  let publishedFrom: string | undefined;
   const current = () => {
     const config = distributedConfig(deps.portable());
-    return { config, etag: configEtag(config) };
+    const etag = configEtag(config);
+    // publish only when the control plane's running config changed: after a rollback the cluster keeps the restored
+    // generation until an operator changes the config again (a bad generation is refused without force)
+    if (etag !== publishedFrom) {
+      publishedFrom = etag;
+      try {
+        rollout.publish(config);
+      } catch (err) {
+        logger.warn(`Config rollout: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    rollout.tick();
+    const g = rollout.current()!;
+    return { config: g.config, etag: g.etag, generation: g.generation };
+  };
+  const targetOf = (nodeId: string | undefined) => {
+    const cur = current();
+    const g = nodeId ? rollout.targetFor(nodeId) : undefined;
+    return g ? { config: g.config, etag: g.etag, generation: g.generation } : cur;
   };
   const view = (n: Omit<DataPlaneNode, 'inSync' | 'status'>, etag: string | undefined): DataPlaneNode => {
     const ttl = 3 * (n.pullIntervalMs ?? 10_000);
-    return { ...n, inSync: !!etag && n.configEtag === etag, status: now() - Date.parse(n.lastSeen) <= ttl ? 'online' : 'stale' };
+    const target = etag ? rollout.targetFor(n.nodeId)?.etag ?? etag : undefined;
+    return { ...n, inSync: !!target && n.configEtag === target, status: now() - Date.parse(n.lastSeen) <= ttl ? 'online' : 'stale' };
   };
 
   router.get('/admin/data-planes', ...guard, (_req, res) => {
@@ -143,11 +168,33 @@ export function createControlPlaneRouter(deps: ControlPlaneDeps): express.Router
   });
 
   router.get('/admin/data-planes/config', ...guard, controlOnly, (req, res) => {
-    const { config, etag } = current();
-    res.set('ETag', etag).set('Cache-Control', 'no-store');
+    const nodeId = req.get('x-node-id')?.slice(0, 128) || undefined;
+    const { config, etag, generation } = targetOf(nodeId);
+    res.set('ETag', etag).set('X-Config-Generation', String(generation)).set('Cache-Control', 'no-store');
     const inm = req.get('if-none-match');
     if (inm && inm.split(',').map((s) => s.trim()).includes(etag)) return void res.status(304).end();
-    res.json({ version: VERSION, etag, config });
+    res.json({ version: VERSION, etag, generation, config });
+  });
+
+  router.get('/admin/cluster/rollout', ...guard, controlOnly, (_req, res) => {
+    current();
+    res.set('Cache-Control', 'no-store').json(rollout.status());
+  });
+
+  router.post('/admin/cluster/rollback', ...guard, controlOnly, (req, res) => {
+    const b = (req.body ?? {}) as { to?: unknown; reason?: unknown };
+    if ((b.to !== undefined && (typeof b.to !== 'number' || !Number.isInteger(b.to))) || (b.reason !== undefined && typeof b.reason !== 'string')) {
+      return void res.status(400).json({ error: 'Bad Request', message: 'Body must be { "to"?: <generation>, "reason"?: "<text>" }' });
+    }
+    current();
+    try {
+      const g = rollout.rollback(b.to as number | undefined, (b.reason as string | undefined)?.slice(0, 500) ?? 'manual rollback');
+      logger.warn(`Config rollout: rolled back to generation ${g.generation} (restores ${g.etag}) by an operator`);
+      res.json({ generation: g.generation, etag: g.etag, rollbackOf: g.rollbackOf, status: rollout.status() });
+    } catch (err) {
+      if (err instanceof RolloutError) return void res.status(409).json({ error: 'Conflict', message: err.message });
+      throw err;
+    }
   });
 
   router.post('/admin/data-planes/heartbeat', ...guard, controlOnly, (req, res) => {
@@ -171,13 +218,21 @@ export function createControlPlaneRouter(deps: ControlPlaneDeps): express.Router
       ...(typeof b.lastError === 'string' ? { lastError: b.lastError.slice(0, 500) } : {}),
       ...(req.ip ? { address: req.ip } : {}),
     });
-    const etag = current().etag;
-    res.json({ ok: true, configEtag: etag, inSync: b.configEtag === etag });
+    current();
+    rollout.report(id, {
+      ...(typeof b.configEtag === 'string' ? { etag: b.configEtag } : {}),
+      ...(typeof b.generation === 'number' ? { generation: b.generation } : {}),
+      ...(typeof b.failedGeneration === 'number' ? { failedGeneration: b.failedGeneration } : {}),
+      ...(typeof b.lastError === 'string' ? { error: b.lastError.slice(0, 500) } : {}),
+    });
+    const target = targetOf(id);
+    res.json({ ok: true, configEtag: target.etag, generation: target.generation, inSync: b.configEtag === target.etag });
   });
 
   router.delete('/admin/data-planes/:nodeId', ...guard, (req, res) => {
     const nodeId = String(req.params.nodeId);
     if (!nodes.delete(nodeId)) return void res.status(404).json({ error: 'Not Found', message: `Unknown data plane "${nodeId}"` });
+    rollout.forget(nodeId);
     res.json({ removed: nodeId });
   });
 
