@@ -78,6 +78,16 @@ bytes are exact):
 Since 13.3 the kernel check also fails when `modules` / `moduleKb` grow more than 10 % or a profile loads an
 on-demand dependency it does not use (`lazyDeps`; minimal must stay at 0).
 
+CI baseline (linux-x64, `bench/baseline.json` `platforms["linux-x64"]`), re-recorded on 2026-10-11 from main at the
+v14.0.0 merge (cce5918) as the median of the three CI kernel-benchmark jobs (Node 22, Node 24, Performance / Node 22;
+5 samples each). The previous `all` start time (74.7 ms, from the 13.0.0 CI run) had gone stale — 13.9.0 already
+measured 144.3 ms in the same job — and is kept under `previous` in the file:
+
+| profile | import ms | start ms | total ms | RSS MiB | heap MiB | modules | module KB | on-demand deps |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| minimal | 235.4 | 21.0 | 256.5 | 89.0 | 18.1 | 271 | 1838 | 0 |
+| all | 233.2 | 144.5 | 381.0 | 105.8 | 21.9 | 397 | 2541 | 2 |
+
 ## Load and fault benchmark (13.3)
 
 `node bench/load.mjs` (built gateway, `npm run build` first) runs one in-process gateway in front of controllable
