@@ -564,6 +564,14 @@ function decide(cfg: AnyCfg, other: AnyCfg, c: SimulatedCall): SimDecision {
  */
 export function simulateRelease(current: AnyCfg, candidate: AnyCfg, calls: readonly SimulatedCall[], opts: { source?: string; maxChanges?: number } = {}): ReleaseSimulation {
   const r: ReleaseSimulation = { source: opts.source ?? 'calls', calls: calls.length, withArguments: 0, unchanged: 0, changed: 0, transitions: {}, byClient: {}, byTool: {}, changes: [] };
+  // client ids and tool names come from requests/recorded calls: count in Maps (no prototype keys), convert at the end
+  type Tally = { changed: number; newlyDenied: number };
+  const byClient = new Map<string, Tally>();
+  const byTool = new Map<string, Tally>();
+  const bump = (m: Map<string, Tally>, k: string, denied: number) => {
+    const cur = m.get(k) ?? { changed: 0, newlyDenied: 0 };
+    m.set(k, { changed: cur.changed + 1, newlyDenied: cur.newlyDenied + denied });
+  };
   for (const c of calls) {
     if (c.args && Object.keys(c.args).length) r.withArguments++;
     const before = decide(current, candidate, c);
@@ -578,9 +586,11 @@ export function simulateRelease(current: AnyCfg, candidate: AnyCfg, calls: reado
     const denied = after.effect === 'deny' ? 1 : 0;
     const client = c.clientId ?? 'anonymous';
     const tool = `${c.serverId}/${c.tool}`;
-    r.byClient[client] = { changed: (r.byClient[client]?.changed ?? 0) + 1, newlyDenied: (r.byClient[client]?.newlyDenied ?? 0) + denied };
-    r.byTool[tool] = { changed: (r.byTool[tool]?.changed ?? 0) + 1, newlyDenied: (r.byTool[tool]?.newlyDenied ?? 0) + denied };
+    bump(byClient, client, denied);
+    bump(byTool, tool, denied);
     if (r.changes.length < (opts.maxChanges ?? 200)) r.changes.push({ call: c, before, after, explanation: `${t}: ${after.reason} (was: ${before.reason})` });
   }
+  r.byClient = Object.fromEntries(byClient);
+  r.byTool = Object.fromEntries(byTool);
   return r;
 }

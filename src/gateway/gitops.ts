@@ -230,6 +230,17 @@ export function createGitopsRouter(deps: GitopsDeps): express.Router & { stop: (
     return undefined;
   };
 
+  /**
+   * Verify the release manifest (always run, so no request field decides whether verification happens) and
+   * derive the refusal. A missing manifest verifies as "not a release manifest" and is reported as unsigned.
+   */
+  const assess = (t: NonNullable<ReturnType<typeof trust>>, manifest: unknown, bundle: Pick<GitopsBundle, 'env' | 'config'>): { v: VerifyResult | null; refusal: string | undefined } => {
+    const checked = verifyRelease(manifest as ReleaseManifest, bundle, t, { now: now(), lastApplied: lastApplied() });
+    const unsigned = manifest === undefined || manifest === null;
+    const v = unsigned ? null : checked;
+    return { v, refusal: refusalOf(t, manifest, v) };
+  };
+
   const callsFor = (b: Record<string, unknown>): { calls: SimulatedCall[]; source: string } => {
     if (Array.isArray(b.calls)) {
       if (!b.calls.every((c) => c && typeof c === 'object' && typeof (c as SimulatedCall).serverId === 'string' && typeof (c as SimulatedCall).tool === 'string')) throw new BadRequest('each call needs serverId and tool');
@@ -279,8 +290,7 @@ export function createGitopsRouter(deps: GitopsDeps): express.Router & { stop: (
       const { bundle, next: cfg } = await readBundle(b, t);
       const current = deps.config();
       const changes = diffAgainst(current, cfg);
-      const v = b.manifest !== undefined && b.manifest !== null ? verifyRelease(b.manifest as ReleaseManifest, bundle, t, { now: now(), lastApplied: lastApplied() }) : null;
-      const refusal = refusalOf(t, b.manifest, v);
+      const { v, refusal } = assess(t, b.manifest, bundle);
       const { calls, source } = callsFor(b);
       const simulation = simulateRelease(portableConfig(current), portableConfig(cfg), calls, { source });
       res.json({
@@ -312,8 +322,7 @@ export function createGitopsRouter(deps: GitopsDeps): express.Router & { stop: (
     const run = queue.then(async () => {
       try {
         const { bundle, next: cfg } = await readBundle(b, t);
-        const v = b.manifest !== undefined && b.manifest !== null ? verifyRelease(b.manifest as ReleaseManifest, bundle, t, { now: now(), lastApplied: lastApplied() }) : null;
-        const refusal = refusalOf(t, b.manifest, v);
+        const { v, refusal } = assess(t, b.manifest, bundle);
         const m = b.manifest as ReleaseManifest | undefined;
         if (refusal) {
           counters.refused++;
