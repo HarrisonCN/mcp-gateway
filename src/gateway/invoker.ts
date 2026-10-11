@@ -246,7 +246,7 @@ export class ToolInvoker {
 
   /** MGW-2026-015: acting tenant of the call (see deps.tenantFor); legacy first membership when not wired. */
   private tenantOf(ctx: { clientId?: string; serverId: string }): string | undefined {
-    return this.deps.tenantFor ? this.deps.tenantFor(ctx.clientId, ctx.serverId) : this.tenantOf(ctx);
+    return this.deps.tenantFor ? this.deps.tenantFor(ctx.clientId, ctx.serverId) : this.deps.tenantsOf?.(ctx.clientId)?.[0];
   }
 
   /** MGW-2026-015: tenants a call is charged to / limited by — the acting tenant only (no cross-tenant spend). */
