@@ -277,9 +277,69 @@ export function buildV12ConfigSchema(topLevelKeys: readonly string[] = CONFIG_FI
       ...(others.includes('controlPlane') ? { controlPlane: CONTROL_PLANE_V12 } : {}),
       // 14.2.0: optional centralized tenant isolation rules
       ...(others.includes('tenancy') ? { tenancy: TENANCY_V12 } : {}),
+      // 14.3.0: plugin security runtime (runtime / failure / limits / permissions)
+      ...(others.includes('plugins') ? { plugins: PLUGINS_V12 } : {}),
     },
   };
 }
+
+const ONOFF = { enum: ['open', 'closed'] };
+const GLOBS = { type: 'array', items: { type: 'string', minLength: 1 } };
+
+/** `plugins` in the v12 JSON Schema (14.3.0: plugin security runtime keys described). */
+const PLUGINS_V12 = {
+  type: 'array',
+  description: 'Plugins in configuration order. 14.3 adds runtime / failure / permissions and module-plugin limits. See docs/guides/plugin-security.md.',
+  items: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      module: { type: 'string', minLength: 1, description: 'ES module path (relative to the config file) or package name' },
+      component: { type: 'string', minLength: 1, description: 'plugin API v5 WASM component' },
+      signature: { type: 'string', minLength: 1 },
+      name: { type: 'string', minLength: 1 },
+      enabled: { type: 'boolean' },
+      options: { type: 'object' },
+      secrets: { type: 'object', additionalProperties: { type: 'string', pattern: '^secret://[A-Za-z0-9_-]+/\\S+$' } },
+      isolation: { enum: ['tenant', 'client', 'shared', 'inline', 'worker', 'process'], description: 'components: sandbox per tenant | client | shared; module plugins (14.3): alias of runtime' },
+      runtime: { enum: ['inline', 'worker', 'process'], default: 'inline', description: 'NEW in 14.3 (module plugins): where the plugin runs; worker becomes the default in 15.0' },
+      failure: {
+        description: 'NEW in 14.3 (module plugins): what a failed hook does',
+        oneOf: [ONOFF, { type: 'object', additionalProperties: false, properties: { default: ONOFF, onToolCall: ONOFF, onResponse: ONOFF } }],
+      },
+      timeoutMs: { type: 'integer', minimum: 1, maximum: 60000, description: 'inline module plugins: per hook call' },
+      limits: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          timeoutMs: { type: 'integer', minimum: 1, maximum: 60000 },
+          memoryMb: { type: 'integer', minimum: 1, maximum: 4096 },
+          maxInstances: { type: 'integer', minimum: 1, maximum: 10000, description: 'components only' },
+          maxFailures: { type: 'integer', minimum: 1, maximum: 10000, description: 'NEW in 14.3 (module plugins): circuit breaker threshold' },
+          cooldownMs: { type: 'integer', minimum: 1, maximum: 3600000, description: 'NEW in 14.3 (module plugins)' },
+          maxConcurrent: { type: 'integer', minimum: 1, maximum: 10000, description: 'NEW in 14.3 (isolated module plugins)' },
+        },
+      },
+      permissions: {
+        type: 'object',
+        description: 'NEW in 14.3 (module plugins): declared capabilities; network / env / fs need runtime worker or process',
+        additionalProperties: false,
+        properties: {
+          args: { enum: ['read', 'write'], default: 'write' },
+          response: { enum: ['read', 'write'], default: 'write' },
+          secrets: GLOBS,
+          servers: GLOBS,
+          tools: GLOBS,
+          hooks: { type: 'array', items: { enum: ['onToolCall', 'onResponse', 'onError', 'onConfigChange'] } },
+          network: { oneOf: [{ const: false }, { type: 'array', items: { type: 'string', minLength: 1, maxLength: 255 } }] },
+          env: { type: 'array', items: { type: 'string', pattern: '^[A-Za-z_][A-Za-z0-9_]*$' } },
+          fs: { type: 'object', additionalProperties: false, properties: { read: GLOBS, write: GLOBS } },
+        },
+      },
+    },
+    oneOf: [{ required: ['module'] }, { required: ['component'] }],
+  },
+};
 
 /** `tenancy` in the v12 JSON Schema (14.2.0, optional). */
 const TENANCY_V12 = {

@@ -17,6 +17,8 @@ import { writeFileSync, mkdtempSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createServer } from 'net';
+import Ajv from 'ajv';
+import { buildV12ConfigSchema } from '../src/config/v12.js';
 import { PluginHost, loadPlugin, pluginRuntimeOf } from '../src/plugins/index.js';
 import { validateConfig } from '../src/config/loader.js';
 import { logger } from '../src/utils/logger.js';
@@ -164,9 +166,15 @@ describe('X5 compatibility and config', () => {
     expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', isolation: 'worker', limits: { memoryMb: 64 } }] })).not.toThrow();
     expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', isolation: 'tenant' }] })).toThrow(/isolation/);
     expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', permissions: { network: false } }] })).toThrow(/isolated runtime/);
-    expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', limits: { memoryMb: 64 } }] })).toThrow(/worker or process/);
+    expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', limits: { memoryMb: 64 } }] })).toThrow(/runtime: worker \| process/);
     expect(() => validateConfig({ ...base, plugins: [{ component: './p.wasm', limits: { memoryMb: 16, timeoutMs: 50 } }] })).not.toThrow();
     expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', runtime: 'worker', isolation: 'process' }] })).toThrow(/disagree/);
+    // the v12 JSON Schema describes the same block
+    const v = new Ajv({ allErrors: true, strict: false }).compile(buildV12ConfigSchema());
+    const good = { version: 12, plugins: [{ module: './p.mjs', runtime: 'worker', failure: { onToolCall: 'closed', onResponse: 'open' }, limits: { timeoutMs: 100, memoryMb: 64, maxConcurrent: 4, maxFailures: 3, cooldownMs: 1000 }, permissions: { args: 'read', network: false, env: ['A'], fs: { read: ['/x'] }, hooks: ['onToolCall'] } }] };
+    expect(v(good), JSON.stringify(v.errors)).toBe(true);
+    expect(v({ version: 12, plugins: [{ module: './p.mjs', runtime: 'vm' }] })).toBe(false);
+    expect(v({ version: 12, plugins: [{ module: './p.mjs', permissions: { bogus: 1 } }] })).toBe(false);
     mkdirSync(join(d, 'sub'));
   }, 30000);
 });

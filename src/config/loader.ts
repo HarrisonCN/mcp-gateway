@@ -1147,14 +1147,14 @@ const GatewayConfigSchema = z.object({
             if (l.maxFailures !== undefined || l.cooldownMs !== undefined || l.maxConcurrent !== undefined) issue('limits', 'limits.maxFailures / cooldownMs / maxConcurrent apply to module plugins');
             return;
           }
-          if (iso && !['inline', 'worker', 'process'].includes(iso)) issue('isolation', `isolation "${iso}" applies to WASM component plugins — module plugins use runtime: inline | worker | process`);
+          if (iso && !['inline', 'worker', 'process'].includes(iso)) issue('isolation', `isolation "${iso}": "isolation" tenant | client | shared settings apply to WASM component plugins only — module plugins use runtime (or isolation): inline | worker | process`);
           if (iso && p.runtime && iso !== p.runtime) issue('runtime', `"runtime: ${p.runtime}" and "isolation: ${iso}" disagree`);
           const rt = p.runtime ?? (iso as 'inline' | 'worker' | 'process' | undefined) ?? 'inline';
           const l = p.limits ?? {};
           if (l.maxInstances !== undefined) issue('limits', 'limits.maxInstances applies to WASM component plugins');
           if (rt === 'inline') {
-            if (l.memoryMb !== undefined || l.maxConcurrent !== undefined) issue('limits', 'limits.memoryMb / maxConcurrent need runtime: worker or process (an inline plugin shares the gateway heap)');
-            if (l.timeoutMs !== undefined) issue('limits', 'inline module plugins use "timeoutMs" — limits.timeoutMs needs runtime: worker or process');
+            if (l.memoryMb !== undefined || l.maxConcurrent !== undefined) issue('limits', '"limits" apply to WASM component plugins only, or to module plugins with runtime: worker | process — limits.memoryMb / maxConcurrent need an isolated runtime (an inline plugin shares the gateway heap)');
+            if (l.timeoutMs !== undefined) issue('limits', '"limits" apply to WASM component plugins only, or to module plugins with runtime: worker | process — inline module plugins use "timeoutMs"');
             const pm = p.permissions ?? {};
             if (pm.network !== undefined || pm.env !== undefined || pm.fs !== undefined) issue('permissions', 'permissions.network / env / fs are enforced only in an isolated runtime — set runtime: worker or process');
           }

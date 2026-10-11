@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [14.3.0] - 2026-10-11
+
+Plugin security runtime release (roadmap 14.3 "插件安全运行时"). Config schema v12 gains optional plugin keys (`runtime`, `failure`, `permissions`, module-plugin `limits`); existing in-process plugins keep working unchanged (one-time deprecation note: `runtime: worker` becomes the default for module plugins in 15.0). v11 files are still migrated automatically.
+
+### Security
+
+- **MGW-2026-016 (Medium) — plugin signature verified different bytes than the gateway loaded.** With `pluginTrust`, the gateway verified a plugin file and then imported it again from disk (following its relative imports, which no signature covered; WASM components were read a second time too). Someone able to write to the plugin directory could swap the file between verification and load — or change an imported helper at any time — and run unsigned code despite `requireSigned`. The gateway now loads exactly the verified bytes (module plugins as a `data:` module, components from the verified buffer) and refuses a plugin whose file changed after verification; signed module plugins must be self-contained bundles. Affected: signed plugins since 5.4.0 through 14.2.0 / 13.9.1 / 12.0.11 / 10.9.12.
+
+### Added
+
+- **Isolated plugin runtimes** ([plugin security guide](docs/guides/plugin-security.md)): `plugins[].runtime: worker` (worker thread, `resourceLimits` heap cap) or `process` (child Node.js process, `--max-old-space-size`, Node permission model) — alias `isolation: worker | process`. A crash, `process.exit()`, uncaught async error, endless loop (per-call `limits.timeoutMs` → runtime recycled) or heap exhaustion (`limits.memoryMb`) ends only that plugin's runtime; the next call gets a fresh one (exponential backoff on repeated crashes). Hooks cross the boundary as structured-clone messages; `ctx.secrets` is proxied through the gateway; `ctx.logger` is forwarded. Child processes, nested workers, `process.binding` and addons are refused inside isolated runtimes.
+- **Fine-grained permissions** `plugins[].permissions`: `args` / `response` (`read` drops rewrites / replacements), `secrets` (allow-list of granted names), `servers` / `tools` (globs scoping which calls the hooks see), `hooks`, and — in isolated runtimes — `network` (`false` or a host allow-list, checked before every TCP connection incl. `fetch`), `env` (only declared variables; default none) and `fs` (`process`: Node permission model; `worker`: best-effort guard).
+- **Failure policy and circuit breaker**: `plugins[].failure: closed | open` or per hook (`{ onToolCall, onResponse }`); `limits.maxFailures` / `cooldownMs` open the circuit after consecutive failures (closed → refuse, open → skip) with a half-open trial; `limits.maxConcurrent` sheds excess calls as "busy".
+- `GET /api/v1/plugins` reports `runtime`, `circuit`, `failures`, `lastError`, `restarts`, `alive`, `inFlight` and the declared `permissions`; `PluginHost.status()`.
+- `schema/v12/config.schema.json` describes the `plugins` block (14.3 keys included).
+
+### Deprecated
+
+- Running module plugins in the gateway process by default: set `runtime: worker` (or `runtime: inline` explicitly to keep a plugin in process — required for `onRequest` / `routes`). 15.0 makes `worker` the default.
+
+### Tests
+
+- `test/plugin-runtime-14-3-0.test.ts` (R1–R10): exit / endless loop / heap blow-up / async throw in a worker never affect the test process (guarded: a hostile payload is never run in-process), failure open / closed, circuit breaker, args / secrets / scope permissions, a real TOCTOU test (file swapped right after verification → refused, swapped code never runs; signed entry cannot import unsigned files), config validation.
+- `test/plugin-runtime-extra-14-3-0.test.ts` (X1–X6): `process` runtime (exit, OOM, Node permission model for `fs`), `network` / `env`, `hooks` / `response` / escape hatches, busy + half-open recovery, `isolation` alias + inline compatibility + v12 JSON Schema, and a running gateway that keeps serving `/health` and calls while a worker plugin exits, loops, runs out of memory and throws asynchronously.
+
 ## [14.2.0] - 2026-10-11
 
 Tenant isolation release (roadmap 14.2 "租户隔离强化"). Config schema v12 gains one optional key (`tenancy`); configs without it keep their behaviour apart from the security fix below. v11 files are still migrated automatically. No breaking changes.

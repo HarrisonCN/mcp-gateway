@@ -829,6 +829,40 @@ plugins may declare `configSchema` (validates `options` at load) and `routes` (a
 `/api/v1/admin/plugins/<name>`, client routes under `/api/v1/features/plugins/<name>`) — see
 [Kernel plugin SDK](guides/plugin-sdk.md).
 
+### Plugin security runtime (14.3)
+
+```yaml
+plugins:
+  - module: ./plugins/guard.mjs
+    runtime: worker                 # inline (default) | worker | process — `isolation: worker` is an alias
+    failure: closed                 # closed (default) | open | { default, onToolCall, onResponse }
+    limits: { timeoutMs: 500, memoryMb: 64, maxConcurrent: 16, maxFailures: 5, cooldownMs: 30000 }
+    permissions:
+      args: read                    # read | write (default) — rewrites dropped when read
+      response: write               # read | write (default)
+      secrets: [TOKEN]              # subset of the names in `secrets:`
+      servers: ['prod-*']           # server id globs the hooks see
+      tools: ['write_*']            # tool / prompt / resource globs
+      hooks: [onToolCall]           # onToolCall | onResponse | onError | onConfigChange
+      network: ['api.example.com:443']   # false | host list ('*' = all) — isolated runtimes only
+      env: [NODE_ENV]               # variables visible in the runtime (default none) — isolated runtimes only
+      fs: { read: [/srv/rules], write: [] }   # process: Node permission model; worker: best-effort guard
+```
+
+| Key | Default | Notes |
+|---|---|---|
+| `runtime` | `inline` | `worker`: worker thread with a heap cap; `process`: child process (Node permission model for `fs`). 15.0 makes `worker` the default for module plugins. Isolated plugins cannot have `onRequest` / `routes`. |
+| `failure` | `closed` | What a failed hook (throw, crash, exit, timeout, out of memory, busy, open circuit) does: `closed` refuses the call (`-32006`), `open` lets it proceed without the plugin. Per hook with an object. |
+| `limits.timeoutMs` | 5000 | Isolated runtimes; a timed-out call recycles the runtime. Inline plugins keep `timeoutMs`. |
+| `limits.memoryMb` | 128 | Isolated runtimes: heap cap. |
+| `limits.maxConcurrent` | 16 | Isolated runtimes: hook calls in flight; beyond → "busy" (failure policy, not counted by the breaker). |
+| `limits.maxFailures` / `cooldownMs` | 5 / 30000 | Circuit breaker (isolated runtimes always; inline only when `maxFailures` is set). |
+| `permissions.*` | unrestricted | `args`, `response`, `secrets`, `servers`, `tools`, `hooks` apply to every module plugin; `network`, `env`, `fs` need `runtime: worker` or `process`. |
+
+Signed plugins (`pluginTrust`) are loaded from the verified bytes; a file changed after verification is refused, and
+signed module plugins must be self-contained bundles (14.3, MGW-2026-016). `GET /api/v1/plugins` reports `runtime`,
+`circuit`, `failures`, `restarts` and the declared `permissions`. See [Plugin security runtime](guides/plugin-security.md).
+
 ### WASM plugins (3.3; 8.0: plugin API v5 components)
 
 ```yaml
