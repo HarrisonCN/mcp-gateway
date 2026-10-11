@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### CI
+- Docker image workflow: the QEMU (binfmt) and BuildKit image pulls fall back from the ECR Public mirror to Docker Hub, then retry ECR Public after a pause, so one throttled registry (`toomanyrequests`) no longer fails a release image build (v13.8.0, v13.9.0 and v14.0.0 each needed manual reruns).
+
 ## [14.0.0] - 2026-10-11
 
 Core architecture v2 (roadmap 14.0 "核心架构 v2") — the first major release of the 14.x line. Config schema v12 becomes the runtime schema, feature modules get one lifecycle with capability declarations and per-instance state, and the migration tool writes files. Built with adapters: authentication, the proxy layer and the 46 feature modules are unchanged in behaviour; legacy modules run through a v11-compat adapter. Upgrade guide with rollback steps: [docs/migration/v13-to-v14.md](docs/migration/v13-to-v14.md).
