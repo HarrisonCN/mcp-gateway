@@ -109,6 +109,16 @@ describe('docs-check', () => {
   });
 
   it('the package version is the one the docs are checked against', () => {
-    expect(version).toMatch(/^14\./);
+    expect(version).toMatch(/^15\.0\.0-rc\.\d+$/);
+  });
+
+  it('15.0.0-rc.1: a prerelease package checks docs against prerelease.stable (npm latest)', async () => {
+    const d = repo(fence('bash', 'docker run ghcr.io/harrisoncn/mcp-gateway:13.4.0\nnpm i @winstonsayno/mcp-gateway@next\ndocker run ghcr.io/harrisoncn/mcp-gateway:14.0.0-rc.1') + '\nCurrent release: **13.4.0** (npm `latest`).\n');
+    writeFileSync(join(d, 'package.json'), JSON.stringify({ name: '@winstonsayno/mcp-gateway', version: '14.0.0-rc.1' }));
+    writeFileSync(join(d, 'package-lock.json'), JSON.stringify({ version: '14.0.0-rc.1' }));
+    writeFileSync(join(d, 'scripts/docs-check.json'), JSON.stringify({ lts: {}, distTags: [], historical: [], prerelease: { tag: 'next', version: '14.0.0-rc.1', stable: '13.4.0' } }));
+    expect((await runDocsCheck(d)).findings).toEqual([]);
+    writeFileSync(join(d, 'README.md'), 'Current release: **14.0.0** (npm `latest`).\n');
+    expect((await runDocsCheck(d)).findings.map((f) => f.rule)).toEqual(['version']);
   });
 });

@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [15.0.0-rc.1] - 2026-10-11
+
+**Prerelease** (npm dist-tag `next`, image `:15.0.0-rc.1` only — `latest`, `:latest` and `:14` stay on 14.9.0). The first 15.0 release candidate: exactly the four changes announced in 14.9.0 ([freeze list](docs/v15/freeze.md), [migrating to v15](docs/migrating-to-v15.md)); the rest of the frozen surface — REST / admin API, `/mcp`, CLI, plugin API v5, metrics, state formats — is unchanged. 15.0.0 itself waits for the v15 gates ([release candidate notice](docs/v15/release-candidate.md), [roadmap](docs/ROADMAP.md)).
+
+### Removed / changed (breaking, announced in 14.9.0)
+
+- **`schema.v11` — schema v11 files are refused.** A file with `version: 11`, or without `version` but using a v11-only field (`kernel`, `features.genaiTelemetry` / `policyShadow` / `postQuantumTls`), fails to load with the command that fixes it: `mcp-gateway config migrate --to v12 --in-place -c <file>`. `config migrate`, `config diff` and `config rollback` still read v11 files.
+- **`v15.plugins.<i>.runtime` — module plugins run in a `worker` by default.** A module plugin entry without `runtime` / `isolation` loads in a worker thread (own heap, `limits`, `permissions`, crash isolation); `runtime: inline` (or `isolation: inline`) keeps the 14.x behaviour. Component (WASM) plugins are unchanged. `limits` / `permissions` on a plugin without `runtime` are now valid; on `runtime: inline` they are refused as before.
+- **`v15.config.unknown-key.<key>` — unknown top-level keys of a `version: 12` file are refused** (14.x ignored them). `$schema` is allowed.
+- **`schema/v12-draft/` removed** (the 13.9 alias copy of the v12 JSON schemas) — use `schema/v12/config.schema.json`.
+
+### Changed
+
+- The 14.9 run-time notices for these ids are gone (the changes are in force); `GET /api/v1/admin/deprecations` keeps its shape.
+- Release workflows: a GitHub prerelease publishes the image tag `<version>` only (no `<major>`, `<major>.<minor>`, `latest`) and does not publish the clients.
+- `scripts/upgrade-test.sh` upgrades from 13.9.5, 14.8.0 and 14.9.0.
+- [Roadmap](docs/ROADMAP.md) is now a version / status / acceptance tracker; 14.10 – 14.13 are dropped (follow-ups become 15.1 / 15.2 after GA); v15 gates A (72 h soak), B (fixed-hardware v13.3 comparison) and C (external security review) are open.
+
+### Known issue
+
+- Memory grows under sustained load in the 30-minute soak (about 600 MB/h on the test box vs about 30 MB/h for 13.3.0, same harness); under investigation, blocks gate A.
+
+### Tests
+
+- `test/v15-changes-15-0-0.test.ts` (C1–C5; replaces `test/v15-deprecations-14-9-0.test.ts`); tests that used schema v11 input now use v12 (or the migration path where v11 is the subject); plugin tests that rely on in-process state say `runtime: inline`.
+- Upgrade / rollback on real SQLite and Redis from 13.9.5, 14.8.0 and 14.9.0 to the candidate (`test/upgrade-14-9-0.test.ts` via `scripts/upgrade-test.sh`).
+
 ## [14.9.0] - 2026-10-11
 
 v15 release candidate line (roadmap 14.9 "v15 候选版"). 14.9.0 freezes the 15.0 API and config surface, announces the three 15.0 breaking changes as run-time deprecations, and adds the validation the 15.0 gates need: upgrade / rollback tests on real stores, migration validation, a consolidated security regression suite, a cross-tenant matrix, fuzz / property runs and a soak harness. The soak found unbounded growth of durable task-graph state, fixed here. `15.0.0-rc.1` follows on the npm dist-tag `next`; `latest` stays on 14.x.

@@ -1,0 +1,1 @@
+- 16:58 EDT worktree mgw-15rc removed (node_modules symlink rm'd, git worktree remove); mcp-gateway checked out release/v15.0.0-rc.1 @7ce1945 clean. ship.sh 15.0.0-rc.1 running detached → mgw/ship-15rc1.txt (pr.sh pushes branch).
