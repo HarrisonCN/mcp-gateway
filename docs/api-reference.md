@@ -418,7 +418,7 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/ops/traces/:requestId` | One call: steps auth → tenant → policy → plugins → route → upstream → cache → response with times and status, `traceId`, and `explain` for a refusal (14.8) |
 | `POST` | `/admin/ops/explain` | `{ client, server, tool, arguments? }`: allowed, or the refusing layer / rule / tenant / permission and its `configPath` (14.8) |
 | `GET` | `/admin/ops/timeline` | Incident timeline (`kind`, `since`, `until`, `subject`, `limit`): restarts, config applies, GitOps releases, revocations, circuit opens, region staleness, refusals (14.8) |
-| `POST` | `/admin/ops/troubleshoot` | Operators: `{ client, server, tool, arguments? }` → redacted report of guided checks (upstream, auth, tenancy, policy simulation, rate limits, plugins) (14.8) |
+| `POST` | `/admin/ops/troubleshoot` | Operators: `{ client, server, tool, arguments? }` → redacted report of guided checks (upstream, auth, tenancy, policy simulation, rate limits, plugins); 30 runs / minute per client, then `429` (14.8) |
 | `GET` | `/admin/ops/reports/:id` | A troubleshooting report, for sharing (14.8) |
 | `GET` | `/admin/deprecations` | Deprecated keys / usages |
 | `GET` | `/admin/edge/snapshot?secrets=` | Edge config snapshot (`ETag` / `If-None-Match`; `secrets=true` needs `controlPlane.configApi`) (4.8) |

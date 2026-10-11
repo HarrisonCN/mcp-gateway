@@ -27,6 +27,7 @@
 
 import { randomUUID } from 'node:crypto';
 import express, { type Request, type RequestHandler, type Response } from 'express';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import type { GatewayConfig, RequestMetric } from '../utils/types.js';
 import type { Principal } from '../auth/authorizer.js';
@@ -365,6 +366,8 @@ export interface OpsDeps {
 }
 
 const MAX_REPORTS = 200;
+/** Troubleshooting runs per minute per client (express-rate-limit, in memory per instance). */
+export const TROUBLESHOOT_PER_MINUTE = 30;
 
 /** Clients that may read the console: operators, and `controlPlane.console.viewers`. */
 export function consoleRole(req: Request, cfg: GatewayConfig, isOperator: (req: Request) => boolean): 'operator' | 'viewer' | undefined {
@@ -395,6 +398,20 @@ export function createOpsConsoleRouter(deps: OpsDeps): express.Router {
   const operator: RequestHandler = (req, res, next) =>
     deps.isOperator(req) ? next() : void res.status(403).json({ error: 'Forbidden', message: 'The troubleshooting wizard is for operators (unscoped keys)' });
   const noStore: RequestHandler = (_req, res, next) => (res.set('Cache-Control', 'no-store'), next());
+  // The troubleshooting wizard runs the central authorizer, the policy simulation and a scan of recent calls per request,
+  // and keeps a report: cap it per caller (operator key, else client IP) at TROUBLESHOOT_PER_MINUTE runs a minute.
+  const troubleshootLimit = rateLimit({
+    windowMs: 60_000,
+    limit: TROUBLESHOOT_PER_MINUTE,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+      const id = (req as Request & { clientId?: string }).clientId;
+      return id ? `client:${id}` : `ip:${ipKeyGenerator(req.ip ?? '')}`;
+    },
+    validate: { xForwardedForHeader: false, trustProxy: false },
+    handler: (_req, res) => void res.status(429).json({ error: 'Too Many Requests', message: `The troubleshooting wizard allows ${TROUBLESHOOT_PER_MINUTE} runs per minute per client; try again shortly` }),
+  });
   const ops = express.Router();
   router.use('/admin/ops', enabled, deps.authenticate, reader, noStore, ops);
 
@@ -505,7 +522,7 @@ export function createOpsConsoleRouter(deps: OpsDeps): express.Router {
     res.json({ events: all, total: all.length, kinds: TIMELINE_KINDS });
   });
 
-  ops.post('/troubleshoot', operator, (req, res) => {
+  ops.post('/troubleshoot', troubleshootLimit, operator, (req, res) => {
     const c = parseCall(req, res);
     if (!c) return;
     const conf = cfg();

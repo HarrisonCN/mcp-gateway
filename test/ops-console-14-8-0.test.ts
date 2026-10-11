@@ -196,6 +196,19 @@ describe('operations console (14.8.0)', () => {
     expect((await post('troubleshoot', { client: 'key:ci', server: 'fake', tool: 'echo' }, CI)).status).toBe(403);
   });
 
+  it('O9 troubleshooting wizard is rate limited per client (429 with RateLimit headers)', async () => {
+    await start();
+    const body = { client: 'key:ops', server: 'fake', tool: 'echo' };
+    for (let i = 0; i < 30; i++) expect((await post('troubleshoot', body)).status).toBe(200);
+    const r = await fetch(`${h!.base}/api/v1/admin/ops/troubleshoot`, { method: 'POST', headers: hdr(OP), body: JSON.stringify(body) });
+    expect(r.status).toBe(429);
+    expect(r.headers.get('ratelimit-policy')).toContain('30');
+    expect(((await r.json()) as { error: string }).error).toBe('Too Many Requests');
+    // another client has its own budget; reads are not limited by the wizard's budget
+    expect((await post('troubleshoot', body, VIEW)).status).toBe(403);
+    expect((await get('cluster')).status).toBe(200);
+  });
+
   it('O7 console disabled: ops routes answer 404; viewers do not gain other admin access', async () => {
     await start({}, { enabled: false });
     expect((await get('cluster')).status).toBe(404);

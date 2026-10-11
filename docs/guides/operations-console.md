@@ -143,7 +143,8 @@ with the persistent [audit log](../configuration.md#audit-log) (`audit.enabled`)
 ## Troubleshooting wizard
 
 `POST /api/v1/admin/ops/troubleshoot` (operators; dashboard: **Operations → Troubleshoot**) takes the call that is not
-working — `{ "client": "key:ci", "server": "github", "tool": "create_issue", "arguments": {…} }` — and runs:
+working — `{ "client": "key:ci", "server": "github", "tool": "create_issue", "arguments": {…} }` — and runs
+(at most 30 runs per minute per client on each instance; more answer `429 Too Many Requests` with `RateLimit` headers):
 
 1. **Upstream reachability** — the server is configured, connected and lists the tool;
 2. **Authentication / key** — the client id resolves to a configured key (or carries its scope in a token);
