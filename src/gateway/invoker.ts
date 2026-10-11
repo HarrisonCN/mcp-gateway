@@ -162,6 +162,8 @@ export interface InvokerDeps {
   usage?: UsageMeter;
   /** Tenant ids of a client (for per-tenant quotas and metering). */
   tenantsOf?: (clientId: string | undefined) => string[];
+  /** MGW-2026-015: acting tenant of a call to `serverId` (credentials, budgets, quotas, caches, hooks, residency). */
+  tenantFor?: (clientId: string | undefined, serverId: string) => string | undefined;
   /** 11.1: server tool filter, enforced by the central authorizer for every caller. */
   exposed?: (serverId: string, tool: string) => boolean;
 }
@@ -221,6 +223,17 @@ export class ToolInvoker {
     return this.filter.filter;
   }
 
+  /** MGW-2026-015: acting tenant of the call (see deps.tenantFor); legacy first membership when not wired. */
+  private tenantOf(ctx: { clientId?: string; serverId: string }): string | undefined {
+    return this.deps.tenantFor ? this.deps.tenantFor(ctx.clientId, ctx.serverId) : this.deps.tenantsOf?.(ctx.clientId)?.[0];
+  }
+
+  /** MGW-2026-015: tenants a call is charged to / limited by — the acting tenant only (no cross-tenant spend). */
+  private tenantList(ctx: { clientId?: string; serverId: string }): string[] {
+    const t = this.tenantOf(ctx);
+    return t ? [t] : [];
+  }
+
   /** Delegation / origin fields of the audit record (MGW-2026-007): absent for plain direct calls. */
   private auditOf(ctx: InvokeContext): { actor?: string; chain?: string[] } {
     const id = ctx.identity;
@@ -243,7 +256,7 @@ export class ToolInvoker {
     if (this.deps.requestLog?.() !== false) logger.info(`${ctx.name} → ${ctx.serverId} refused: ${message}`);
     const hookCfg = ctx.kind === 'tool' ? this.deps.config?.() : undefined;
     if (hookCfg) {
-      const call: HookCall = { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params };
+      const call: HookCall = { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.tenantOf(ctx), args: ctx.params };
       for (const h of activeCallHooks(hookCfg)) {
         try {
           h.refused?.(call, { code, message, data }, hookCfg);
@@ -305,7 +318,7 @@ export class ToolInvoker {
   private residencyDenial(ctx: InvokeContext): FinalDenial | undefined {
     const comp = this.deps.compliance;
     if (!comp || ctx.kind !== 'tool' || ctx.fromPeer) return undefined;
-    const tenant = this.deps.tenantsOf?.(ctx.clientId)?.[0];
+    const tenant = this.tenantOf(ctx);
     const region = this.deps.serverConfig?.(ctx.serverId)?.region;
     if (comp.residencyAllows(tenant, region)) return undefined;
     comp.noteResidencyBlock();
@@ -377,7 +390,7 @@ export class ToolInvoker {
         } else if (round === 0 && checked?.approvalPending) approval.pending = true;
         let rewritten = false;
         if (cfgNow && plan) {
-          const call: HookCall = { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params, principal: ctx.principal };
+          const call: HookCall = { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.tenantOf(ctx), args: ctx.params, principal: ctx.principal };
           for (const h of plan.hooks) {
             if (!h.before || !isGuardHook(h.id)) continue;
             const s = seen.get(h.id);
@@ -450,7 +463,7 @@ export class ToolInvoker {
     ctx = { ...ctx, authorizedTarget: Object.freeze({ serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, principal: ctx.principal.id }) };
     const plugins = this.deps.plugins && this.deps.plugins.size > 0 ? this.deps.plugins : undefined;
     const call: PluginCall | undefined = plugins
-      ? { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, method: ctx.method, arguments: ctx.params, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], via: ctx.via, state: new Map() }
+      ? { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, method: ctx.method, arguments: ctx.params, clientId: ctx.clientId, tenant: this.tenantOf(ctx), via: ctx.via, state: new Map() }
       : undefined;
     if (plugins && call) {
       try {
@@ -484,7 +497,7 @@ export class ToolInvoker {
       if (!routes.has(serverId)) routes.set(serverId, router.route(serverId, ctx.name, ctx.clientId) ?? null);
       return routes.get(serverId) ?? undefined;
     };
-    const hookCall = (): HookCall => ({ serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params, principal: ctx.principal, routedTo: () => routeOf(ctx.serverId)?.server ?? ctx.serverId });
+    const hookCall = (): HookCall => ({ serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.tenantOf(ctx), args: ctx.params, principal: ctx.principal, routedTo: () => routeOf(ctx.serverId)?.server ?? ctx.serverId });
     let preset: ProxyResponse | undefined;
     const plan = hookCfg && ctx.kind === 'tool' ? { hooks: activeCallHooks(hookCfg) } : undefined;
     const rerouteBy: string[] = [];
@@ -542,7 +555,7 @@ export class ToolInvoker {
     span.setAttribute('mcp.final.server', snapshot.serverId);
     const usage = this.deps.usage;
     if (usage && ctx.kind === 'tool') {
-      const over = usage.take({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name });
+      const over = usage.take({ clientId: ctx.clientId, tenants: this.tenantList(ctx), serverId: ctx.serverId, tool: ctx.name });
       if (over) {
         const message = `Quota "${over.rule}" exceeded for ${over.subject} (${over.limit} per period)`;
         return this.refuse(ctx, ERR_QUOTA_EXCEEDED, message, { decision: 'quota', quota: over.rule, limit: over.limit, resetsAt: new Date(over.resetsAt).toISOString() }, span);
@@ -550,7 +563,7 @@ export class ToolInvoker {
     }
     const costs = this.deps.costs;
     if (costs && ctx.kind === 'tool') {
-      const over = costs.blocked(ctx.clientId, this.deps.tenantsOf?.(ctx.clientId));
+      const over = costs.blocked(ctx.clientId, this.tenantList(ctx));
       if (over) {
         const message = `Budget "${over.budget}" exhausted for ${over.subject} (${over.spent} of ${over.limit}); resets ${over.resetsAt}`;
         return this.refuse(ctx, ERR_BUDGET_EXCEEDED, message, { decision: 'budget', budget: over.budget, limit: over.limit, spent: over.spent, resetsAt: over.resetsAt }, span);
@@ -679,7 +692,7 @@ export class ToolInvoker {
     const secrets = this.deps.secrets;
     const server = this.deps.serverConfig?.(ctx.serverId);
     if (!secrets || !server?.inject?.length) return ctx;
-    const values = await secrets.injections(server, { tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], clientId: ctx.clientId });
+    const values = await secrets.injections(server, { tenant: this.tenantOf(ctx), clientId: ctx.clientId });
     let params = ctx.params;
     let meta = ctx.meta;
     const names: string[] = [];
@@ -698,11 +711,11 @@ export class ToolInvoker {
     const canFailover = ctx.kind === 'tool' && !ctx.fromPeer && !!fed?.failsOver(ctx.serverId);
     const local = await this.callLocal(ctx, span, pre);
     if (!canFailover || classifyFailure(local) !== 'not-connected') return local;
-    const tenant = this.deps.tenantsOf?.(ctx.clientId)?.[0];
+    const tenant = this.tenantOf(ctx);
     const peers = fed!.candidates(ctx.serverId, ctx.name).filter((p) => this.deps.compliance?.residencyAllows(tenant, p.region) ?? true);
     for (const peer of peers) {
       logger.warn(`${ctx.serverId}/${ctx.name}: local server unavailable; failing over to peer gateway "${peer.id}"`);
-      const r = await fed!.forward(peer, { server: ctx.serverId, tool: ctx.name, arguments: ctx.params, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0] }, ctx.timeoutMs);
+      const r = await fed!.forward(peer, { server: ctx.serverId, tool: ctx.name, arguments: ctx.params, clientId: ctx.clientId, tenant: this.tenantOf(ctx) }, ctx.timeoutMs);
       span.setAttribute('mcp.federation.peer', peer.id);
       if (r.success || classifyFailure(r) !== 'not-connected') {
         const { peer: _p, ...rest } = r;
@@ -796,9 +809,9 @@ export class ToolInvoker {
       }
     }
     if (ctx.kind === 'tool') {
-      this.deps.usage?.record({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name, success: result.success, durationMs: result.durationMs });
+      this.deps.usage?.record({ clientId: ctx.clientId, tenants: this.tenantList(ctx), serverId: ctx.serverId, tool: ctx.name, success: result.success, durationMs: result.durationMs });
       if (result.success && this.deps.costs?.enabled) {
-        const c = this.deps.costs.record({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name, result: result.result });
+        const c = this.deps.costs.record({ clientId: ctx.clientId, tenants: this.tenantList(ctx), serverId: ctx.serverId, tool: ctx.name, result: result.result });
         if (c.cost) span.setAttribute('mcp.cost', c.cost);
         if (c.usage) span.setAttribute('gen_ai.usage.input_tokens', c.usage.inputTokens), span.setAttribute('gen_ai.usage.output_tokens', c.usage.outputTokens);
       }
