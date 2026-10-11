@@ -37,6 +37,7 @@ reopen it any time from the **?** button.
 | **Servers** | One card per upstream server: status, transport, last ping, tools (click to try one), last error and next retry, **Reconnect** |
 | **Playground** | The same schema-driven tool runner as the guide, with search and *copy as curl* |
 | **History** | `GET /api/v1/requests` with server / tool / client / result / via / kind filters and cursor paging (audit log when enabled) |
+| **Operations** | 14.8: cluster status (generations, data planes, regions, edges, plugin circuits, DLQ), call traces step by step with denial explanations, incident timeline with filters, troubleshooting wizard with a redacted shareable report. Operators and console viewers (`controlPlane.console.viewers`); see [operations console](../docs/guides/operations-console.md) |
 | **Connect** | The client snippets from the guide |
 
 ## Live data

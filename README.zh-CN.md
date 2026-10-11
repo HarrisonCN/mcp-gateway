@@ -90,6 +90,7 @@ flowchart LR
 **运维**
 - Prometheus 指标、OpenTelemetry 链路追踪、可选 SQLite 审计日志，日志、历史和 API 输出中的密钥自动脱敏。
 - `/dashboard` 控制面板：引导式接入、实时流量、延迟与错误、服务器健康、工具调试台、请求历史。
+- 运维控制台（14.8）：集群状态、带分步耗时的调用链、附配置路径的策略拒绝解释、故障时间线和排障向导，区分运维与只读查看者角色（[运维控制台](docs/guides/operations-console.md)）。
 - 存活 / 就绪探针、已签名的容器镜像、Helm Chart、Kubernetes Operator。
 - 命令行：`init`、`validate`、`diff` / `apply`、`gen-key` / `hash-key`、`migrate`、`bench`、`conformance`、`desktop`、
   `policy test`、`plugin`、`pq`、`operator`。

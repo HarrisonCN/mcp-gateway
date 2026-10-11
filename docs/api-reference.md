@@ -413,6 +413,13 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/gitops/status` | GitOps (14.7): environment, enforcement, applied release (git sha, author, approvers), drift, events |
 | `POST` | `/admin/gitops/plan` | `{ bundle, manifest?, calls? }`: diff against the running config, manifest verification, policy simulation (14.7) |
 | `POST` | `/admin/gitops/apply` | `{ bundle, manifest?, dryRun? }`: verify and hot-apply a release; `403` when enforcement refuses it (14.7). With `controlPlane.gitops.enforce`, `PUT /admin/config` and `POST /admin/reload` answer `409` |
+| `GET` | `/admin/ops/cluster` | Operations console (14.8): role, config generation, data planes (diverged), regions (freshness, lag), edges (queued calls), plugin circuits, DLQ, servers, failed modules. Operators and `controlPlane.console.viewers` |
+| `GET` | `/admin/ops/traces` | Recent call traces (`client`, `server`, `tool`, `outcome=ok\|denied\|error`, `limit`), newest first (14.8) |
+| `GET` | `/admin/ops/traces/:requestId` | One call: steps auth → tenant → policy → plugins → route → upstream → cache → response with times and status, `traceId`, and `explain` for a refusal (14.8) |
+| `POST` | `/admin/ops/explain` | `{ client, server, tool, arguments? }`: allowed, or the refusing layer / rule / tenant / permission and its `configPath` (14.8) |
+| `GET` | `/admin/ops/timeline` | Incident timeline (`kind`, `since`, `until`, `subject`, `limit`): restarts, config applies, GitOps releases, revocations, circuit opens, region staleness, refusals (14.8) |
+| `POST` | `/admin/ops/troubleshoot` | Operators: `{ client, server, tool, arguments? }` → redacted report of guided checks (upstream, auth, tenancy, policy simulation, rate limits, plugins) (14.8) |
+| `GET` | `/admin/ops/reports/:id` | A troubleshooting report, for sharing (14.8) |
 | `GET` | `/admin/deprecations` | Deprecated keys / usages |
 | `GET` | `/admin/edge/snapshot?secrets=` | Edge config snapshot (`ETag` / `If-None-Match`; `secrets=true` needs `controlPlane.configApi`) (4.8) |
 | `POST` | `/admin/edge/sync` | Ingest an edge's usage events `{ edgeId, events, queued }` (4.8) |

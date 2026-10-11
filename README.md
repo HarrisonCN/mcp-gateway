@@ -101,6 +101,9 @@ section is present in the config.
 - GitOps (14.7): config directories with environment overlays and secrets by reference, env diffs, release
   plans with policy simulation, ed25519-signed releases with required approvers, enforcement and drift detection
   ([GitOps guide](docs/guides/gitops.md)).
+- Operations console (14.8): cluster status, per-call traces with step timings, policy denial explanations with the
+  config path, incident timeline and a troubleshooting wizard, with operator / viewer roles
+  ([operations console](docs/guides/operations-console.md)).
 - CLI: `init`, `validate`, `diff` / `apply`, `gen-key` / `hash-key`, `migrate`, `bench`, `conformance`, `desktop`,
   `policy test`, `plugin`, `pq`, `operator`.
 - Embeddable as a library: `import { Gateway, loadConfig } from '@winstonsayno/mcp-gateway'`.
