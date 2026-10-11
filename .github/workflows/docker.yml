@@ -1,7 +1,7 @@
 name: Docker image
 
 # Builds and pushes ghcr.io/<owner>/mcp-gateway when a GitHub release is published.
-# Tags: <version>, <major>.<minor>, <major>, latest (latest only for non-prereleases).
+# Tags: <version>, <major>.<minor>, <major>, latest (15.0.0-rc.1: a prerelease gets <version> only).
 on:
   release:
     types: [published]
@@ -86,8 +86,8 @@ jobs:
             latest=${{ github.event.release.prerelease != true }}
           tags: |
             type=semver,pattern={{version}},value=${{ github.event.release.tag_name || inputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ github.event.release.tag_name || inputs.tag }}
-            type=semver,pattern={{major}},value=${{ github.event.release.tag_name || inputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ github.event.release.tag_name || inputs.tag }},enable=${{ github.event.release.prerelease != true }}
+            type=semver,pattern={{major}},value=${{ github.event.release.tag_name || inputs.tag }},enable=${{ github.event.release.prerelease != true }}
 
       - id: build
         uses: docker/build-push-action@v7

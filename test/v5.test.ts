@@ -1,7 +1,8 @@
 /** 5.0 → 6.0: schema v6 only, removals, `migrate`, plugin API v4 (v2 and v3 refused since 6.0). */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { parse as parseYaml } from 'yaml';
-import { validateConfig } from '../src/config/loader.js';
+// 15.0.0: these tests cover the pre-v12 migration chain, whose output (schema v11) only the migration tooling reads
+import { validateV11ForMigration as validateConfig } from '../src/config/loader.js';
 import { migrateConfigText } from '../src/config/migrate.js';
 import { configDeprecations, removedConfigKeys, runtimeDeprecations, resetDeprecations, DEPRECATIONS } from '../src/utils/deprecations.js';
 import { PluginHost, createPluginState, PLUGIN_API_VERSION, type PluginHookContext } from '../src/plugins/index.js';

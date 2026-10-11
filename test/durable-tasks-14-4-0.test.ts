@@ -85,7 +85,7 @@ const node = (id: string, tool: string, more: Record<string, unknown> = {}) => (
 
 describe('durable task execution (14.4.0)', () => {
   it('config: the durable block, node idempotency / approval, client graphs validate; bad values are refused; schema v12 describes them', () => {
-    const cfg = validateConfig({ version: 11, servers: [], features: { taskGraphs: { durable: { backend: 'store', leaseMs: 2000, dlq: { retry: { attempts: 2 } } }, graphs: [{ id: 'g', clients: true, nodes: [{ id: 'a', tool: 's/t', idempotencyArg: 'idempotencyKey', approval: { approvers: ['key:lead-*'], required: 1, timeoutSeconds: 60 }, compensate: { tool: 's/u', idempotencyArg: 'key' } }] }] } } });
+    const cfg = validateConfig({ version: 12, servers: [], features: { taskGraphs: { durable: { backend: 'store', leaseMs: 2000, dlq: { retry: { attempts: 2 } } }, graphs: [{ id: 'g', clients: true, nodes: [{ id: 'a', tool: 's/t', idempotencyArg: 'idempotencyKey', approval: { approvers: ['key:lead-*'], required: 1, timeoutSeconds: 60 }, compensate: { tool: 's/u', idempotencyArg: 'key' } }] }] } } });
     expect(cfg.taskGraphs).toBeDefined();
     expect(() => validateConfig({ servers: [], features: { taskGraphs: { durable: { leaseMs: 10 }, graphs: [{ id: 'g', nodes: [{ id: 'a', tool: 's/t' }] }] } } })).toThrow();
     expect(() => validateConfig({ servers: [], features: { taskGraphs: { durable: { backend: 'nope' }, graphs: [{ id: 'g', nodes: [{ id: 'a', tool: 's/t' }] }] } } })).toThrow();

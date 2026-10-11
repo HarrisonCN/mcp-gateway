@@ -13,7 +13,7 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { parse as parseYaml, parseAllDocuments } from 'yaml';
 import Ajv from 'ajv';
-import { validateConfig } from '../src/config/loader.js';
+import { validateConfig, validateV11ForMigration } from '../src/config/loader.js';
 import { V12_DEPRECATIONS, migrateToV12, downgradeFromV12, unifiedDiff, buildV12ConfigSchema, buildV12ModuleSchema, moduleDeclarationV12 } from '../src/config/v12.js';
 import { deprecate, runtimeDeprecations, resetDeprecations } from '../src/utils/deprecations.js';
 import { logger } from '../src/utils/logger.js';
@@ -76,8 +76,8 @@ describe('schema v12 draft files', () => {
     expect(readJson('schema/v12/config.schema.json')).toEqual(buildV12ConfigSchema());
     expect(readJson('schema/v12/module.schema.json')).toEqual(buildV12ModuleSchema());
   });
-  it('schema/v12-draft (13.9 path) is kept as an identical alias copy until 15.0.0', () => {
-    for (const f of ['config.schema.json', 'module.schema.json']) expect(readJson(`schema/v12-draft/${f}`)).toEqual(readJson(`schema/v12/${f}`));
+  it('schema/v12-draft (13.9 alias path) is removed in 15.0.0', () => {
+    expect(existsSync(join(ROOT, 'schema/v12-draft'))).toBe(false);
   });
   it('the design doc and the deprecation inventory doc exist and name every deprecation', () => {
     const design = readFileSync(join(ROOT, 'docs/design/schema-v12.md'), 'utf8');
@@ -92,7 +92,8 @@ describe('schema v12 draft files', () => {
   });
   it('14.0: schema v12 is the runtime schema; a v11 file without v11-only fields has nothing deprecated', () => {
     expect(validateConfig({ version: 12 }).schemaVersion).toBe(12);
-    expect(validateConfig({ version: 11 }).deprecations).toBeUndefined();
+    expect(() => validateConfig({ version: 11 })).toThrow(/schema v11 is no longer read by 15\.0\.0/); // 15.0.0
+    expect(validateV11ForMigration({ version: 11 }).deprecations).toBeUndefined();
   });
 });
 
@@ -109,8 +110,9 @@ describe('deprecation inventory → runtime warnings', () => {
       expect(d.id).toMatch(/^v12\./);
     }
   });
-  it('a v11 config using deprecated fields still loads, and lists each one', () => {
-    const cfg = validateConfig(parseYaml(fixText));
+  it('a v11 config using deprecated fields is read by the migration tooling, which lists each one (the gateway refuses it, 15.0.0)', () => {
+    expect(() => validateConfig(parseYaml(fixText))).toThrow(/schema v11 is no longer read/);
+    const cfg = validateV11ForMigration(parseYaml(fixText));
     const ids = (cfg.deprecations ?? []).map((d) => d.id).sort();
     expect(ids).toEqual(V12_DEPRECATIONS.map((d) => d.id).sort());
     expect(cfg.kernel?.modules).toBe('lazy');
@@ -142,11 +144,11 @@ describe('deprecation inventory → runtime warnings', () => {
     const warn = vi.spyOn(logger, 'warn');
     const raw = parseYaml(fixText);
     raw.servers = [];
-    const cfg = { ...validateConfig(raw), port: 0 } as GatewayConfig;
+    const cfg = { ...validateV11ForMigration(raw), port: 0 } as GatewayConfig;
     const gw = new Gateway(cfg);
     await gw.start();
     try {
-      await gw.reload({ ...validateConfig(raw), port: 0 } as GatewayConfig);
+      await gw.reload({ ...validateV11ForMigration(raw), port: 0 } as GatewayConfig);
       const lines = warn.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('DEPRECATED'));
       for (const d of V12_DEPRECATIONS) expect(lines.filter((l) => l.includes(d.path)).length, d.path).toBe(1);
     } finally {
@@ -163,7 +165,7 @@ describe('migration preview: v11 → v12', () => {
     expect(list.length).toBeGreaterThanOrEqual(8);
     for (const { name, text } of list) {
       const before = parseYaml(text);
-      expect(() => validateConfig(before), name).not.toThrow();
+      expect(() => validateV11ForMigration(before), name).not.toThrow();
       const r = migrateToV12(text);
       if (before.version === 12) {
         // 14.0.0: the examples ship in schema v12 — nothing to migrate, valid against the schema

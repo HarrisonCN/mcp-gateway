@@ -44,7 +44,7 @@ afterEach(async () => {
 });
 
 async function gateway(extra: Record<string, unknown>, servers: unknown[]) {
-  const cfg = validateConfig({ version: 11, servers, monitor: { requestLog: false }, ...extra } as any);
+  const cfg = validateConfig({ version: 12, servers, monitor: { requestLog: false }, ...extra } as any);
   const gw = new Gateway({ ...cfg, port: 0, host: '127.0.0.1', logLevel: 'error', auth: { strategy: 'api-key', apiKeys: [{ name: 'k1', key: KEY }, { name: 'k2', key: 'z'.repeat(40) }] } } as any);
   await gw.start();
   cleanups.push(() => gw.stop());
@@ -197,7 +197,7 @@ describe('13.3.0 failure matrix — SQLite state store', () => {
   });
 
   it('busyTimeoutMs is configurable (schema-compatible addition)', () => {
-    expect(() => validateConfig({ version: 11, servers: [], store: { backend: 'sqlite', sqlite: { path: ':memory:', busyTimeoutMs: 250 } } } as any)).not.toThrow();
+    expect(() => validateConfig({ version: 12, servers: [], store: { backend: 'sqlite', sqlite: { path: ':memory:', busyTimeoutMs: 250 } } } as any)).not.toThrow();
   });
 });
 

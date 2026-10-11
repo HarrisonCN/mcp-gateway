@@ -6,8 +6,8 @@ else breaks. Every change below is reported by **14.9.0** at run time, so the sa
 1. Upgrade to **14.9.0** (`npm i @winstonsayno/mcp-gateway@14.9.0`, image `:14.9.0`).
 2. Run `mcp-gateway validate -c mcp-gateway.yml` and check `GET /api/v1/admin/deprecations` on every instance.
 3. Fix each reported id (table below) until both are empty.
-4. Try the release candidate in staging once it is published after 14.9.0 (`npm view @winstonsayno/mcp-gateway dist-tags` shows `next: 15.0.0-rc.1`): `npm i @winstonsayno/mcp-gateway@next` (`15.0.0-rc.1`), image
-   `ghcr.io/harrisoncn/mcp-gateway:15.0.0-rc.1`.
+4. Try the release candidate in staging: `npm i @winstonsayno/mcp-gateway@next` (`15.0.0-rc.1`), image
+   `ghcr.io/harrisoncn/mcp-gateway:15.0.0-rc.1` (prerelease — `latest`, `:14` and `:latest` stay on 14.9).
 5. Upgrade production to 15.0.0 when it ships.
 
 ## Changes
@@ -22,6 +22,18 @@ else breaks. Every change below is reported by **14.9.0** at run time, so the sa
 What does **not** change: REST and admin API, `/mcp`, CLI, plugin API v5, metrics, and every state format (durable
 tasks, idempotency claims, DLQ, edge outbox, region revocations, gitops release record, Redis / SQLite keys) — see
 the [freeze list](v15/freeze.md). 15.0 reads the state 14.x wrote without a migration step.
+
+### What the errors look like in 15.0
+
+- A v11 file: `version: config schema v11 is no longer read by 15.0.0 … — rewrite the file with mcp-gateway config migrate --to v12 --in-place -c <file>`.
+  The file counts as v11 when it says `version: 11`, or has no `version` and uses a v11-only field (`kernel`,
+  `features.genaiTelemetry`, `features.policyShadow`, `features.postQuantumTls`). `config migrate`, `config diff` and
+  `config rollback` still read v11 files.
+- An unknown top-level key of a `version: 12` file: `<key>: \`<key>\` is not a top-level key of config schema v12 …`
+  (`$schema` is allowed).
+- Module plugins: no error. A plugin without `runtime` now loads in a worker thread; `limits` and `permissions` apply
+  to it without further settings. A plugin that must share the gateway process (module-level state, native handles,
+  `onRequest`) needs `runtime: inline`.
 
 ## Upgrading a cluster
 

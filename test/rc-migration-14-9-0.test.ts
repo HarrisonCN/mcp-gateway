@@ -19,7 +19,7 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { parse as parseYaml, parseAllDocuments, stringify } from 'yaml';
 import Ajv from 'ajv';
-import { validateConfig } from '../src/config/loader.js';
+import { validateConfig, validateV11ForMigration } from '../src/config/loader.js';
 import { migrateToV12, downgradeFromV12, downgradeLoss } from '../src/config/v12.js';
 import { logger } from '../src/utils/logger.js';
 
@@ -85,7 +85,7 @@ function roundTrip(name: string, v12: any) {
   expect(() => validateConfig(JSON.parse(JSON.stringify(v12))), name).not.toThrow();
   const v11 = downgradeFromV12(v12) as any;
   expect(v11.version, name).toBe(11);
-  expect(() => validateConfig(JSON.parse(JSON.stringify(v11))), `${name} (as v11)`).not.toThrow();
+  expect(() => validateV11ForMigration(JSON.parse(JSON.stringify(v11))), `${name} (as v11)`).not.toThrow();
   const r = migrateToV12(stringify(v11));
   expect(r.report.errors, name).toEqual([]);
   // v12-only settings (modules.lifecycle / capabilities) have no v11 form: the downgrade names them instead of

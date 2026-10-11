@@ -1,7 +1,8 @@
 /** 3.9: v4 deprecations, `mcp-gateway migrate`, benchmarks. */
 import { describe, it, expect } from 'vitest';
 import { migrateConfigText, migrateConfigObject } from '../src/config/migrate.js';
-import { validateConfig } from '../src/config/loader.js';
+// 15.0.0: these tests cover the pre-v12 migration chain, whose output (schema v11) only the migration tooling reads
+import { validateV11ForMigration as validateConfig } from '../src/config/loader.js';
 import { configDeprecations, removedConfigKeys } from '../src/utils/deprecations.js';
 import { runBenchmark, summarize, percentile, benchMarkdown } from '../src/bench/index.js';
 import { logger } from '../src/utils/logger.js';

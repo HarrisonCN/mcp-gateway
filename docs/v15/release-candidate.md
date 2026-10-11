@@ -1,7 +1,6 @@
 # 15.0.0 release candidate
 
-> **15.0.0-rc.1 is a pre-release, published after 14.9.0.** Check `npm view @winstonsayno/mcp-gateway dist-tags` — until
-> `next` shows `15.0.0-rc.1` it is not out yet. When published it is under the npm dist-tag `next` (not `latest`) and as the image tag
+> **15.0.0-rc.1 is a pre-release.** It is published under the npm dist-tag `next` (not `latest`) and as the image tag
 > `ghcr.io/harrisoncn/mcp-gateway:15.0.0-rc.1` only (not `latest`, not `15`). Production deployments stay on 14.x
 > (`latest`, currently 14.9.0) until 15.0.0 ships.
 
@@ -23,6 +22,13 @@ The candidate is published so the frozen surface can be tried before 15.0.0; it 
 - [ ] comparison with the v13.3 baseline on fixed, dedicated hardware
 - [ ] independent security audit or external expert review
 - [x] migration and rollback from 13.x / 14.x verified (tests above)
+
+## Known issue
+
+The 30-minute soak (`scripts/soak.mjs`, 2 instances + Redis) shows gateway memory growing under steady load on 14.9 and
+this candidate (about 600 MB/h on the test box, against about 30 MB/h for 13.3.0 under the same harness). 14.9.0 fixed
+the durable task-graph part of it (sweep cost, retention); the remaining growth is under investigation and blocks
+gate A. Watch memory if you run the candidate under sustained load.
 
 Report problems with the candidate as GitHub issues labelled `15.0-rc`; security issues through private
 vulnerability reporting ([SECURITY.md](../../SECURITY.md)).

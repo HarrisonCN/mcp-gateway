@@ -5,7 +5,8 @@ import { mkdtempSync, writeFileSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { parse } from 'yaml';
-import { validateConfig, loadConfig } from '../src/config/loader.js';
+// 15.0.0: these tests cover the pre-v12 migration chain, whose output (schema v11) only the migration tooling reads
+import { validateV11ForMigration as validateConfig, loadConfig } from '../src/config/loader.js';
 import { migrateConfigText } from '../src/config/migrate.js';
 import { configDeprecations, removedConfigKeys, runtimeDeprecations, resetDeprecations, DEPRECATIONS } from '../src/utils/deprecations.js';
 import { WasmPlugin } from '../src/plugins/wasm.js';
@@ -34,7 +35,7 @@ describe('8.0: schema v8, plugin API v5', () => {
     expect(() => validateConfig({ servers: [], plugins: [{ wasm: './p.wasm' }] })).toThrow(/plugins.0.wasm: removed in 8.0 — rebuild against wit\/mcp-gateway-plugin.wit \(plugin API v5\) and use `component`/);
     expect(removedConfigKeys({ version: 7, plugins: [{ wasm: 'a' }, { module: 'b' }] })).toHaveLength(2);
     expect(() => validateConfig({ servers: [], plugins: [{ module: './a.mjs', component: './b.wasm' }] })).toThrow(/exactly one of "module" or "component"/);
-    expect(() => validateConfig({ servers: [], plugins: [{ module: './a.mjs', limits: { timeoutMs: 5 } }] })).toThrow(/apply to WASM component plugins only/);
+    expect(() => validateConfig({ servers: [], plugins: [{ module: './a.mjs', runtime: 'inline', limits: { timeoutMs: 5 } }] })).toThrow(/apply to WASM component plugins only/); // 15.0: inline must be explicit
     expect(() => validateConfig({ version: 13, servers: [] })).toThrow(/14.0 reads `version: 12`/);
     expect(removedConfigKeys({ version: 11 })).toEqual([]);
     expect(PLUGIN_API_VERSION).toBe(5);
@@ -91,7 +92,7 @@ describe('8.0: schema v8, plugin API v5', () => {
   it('gateway: a component plugin from the config file (schema v8) runs end to end', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'mcpgw-v8-'));
     writeFileSync(join(dir, 'policy.wasm'), W.componentModule('on_tool_call', '{"action":"respond","result":{"content":[{"type":"text","text":"from component"}]}}'));
-    writeFileSync(join(dir, 'mcp-gateway.yml'), `version: 11\nservers:\n  - { id: fake, name: fake, transport: stdio, command: ${JSON.stringify(process.execPath)}, args: [${JSON.stringify(fixture)}] }\nplugins:\n  - { component: policy.wasm, isolation: shared }\n`);
+    writeFileSync(join(dir, 'mcp-gateway.yml'), `version: 12\nservers:\n  - { id: fake, name: fake, transport: stdio, command: ${JSON.stringify(process.execPath)}, args: [${JSON.stringify(fixture)}] }\nplugins:\n  - { component: policy.wasm, isolation: shared }\n`);
     const cfg = await loadConfig(join(dir, 'mcp-gateway.yml'));
     const gw = new Gateway({ ...cfg, port: 0, host: '127.0.0.1', logLevel: 'error', monitor: { requestLog: false } } as GatewayConfig);
     await gw.start();

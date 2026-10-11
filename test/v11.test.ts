@@ -1,7 +1,8 @@
 // 11.0: schema v11 only, lazy modular kernel by default, workflows removed; `migrate --to 11` from v10 configs.
 import { describe, it, expect, afterEach } from 'vitest';
 import { parse } from 'yaml';
-import { validateConfig, generateDefaultConfig } from '../src/config/loader.js';
+// 15.0.0: these tests cover the pre-v12 migration chain, whose output (schema v11) only the migration tooling reads
+import { validateV11ForMigration as validateConfig, generateDefaultConfig } from '../src/config/loader.js';
 import { configDeprecations, removedConfigKeys, DEPRECATIONS } from '../src/utils/deprecations.js';
 import { migrateConfigText, workflowToTaskGraph } from '../src/config/migrate.js';
 import { isFeatureActive, moduleMode, FEATURE_ACTIVATION, FEATURE_CONFIG_KEYS } from '../src/gateway/features.js';

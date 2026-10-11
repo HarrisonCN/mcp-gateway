@@ -42,18 +42,20 @@ const v11Config = fc.record(
 );
 
 describe('F1 v11 → v12 migration', () => {
-  it('never throws; accepted v11 files migrate without errors to valid, loadable v12 that migrates again to nothing', () => {
+  it('v11 files are refused by the loader (15.0); their migration is valid, loadable v12 that migrates again to nothing', () => {
     fc.assert(
       fc.property(v11Config, servers, (extra, srv) => {
         const v11: any = { version: 11, servers: srv, ...extra };
+        // 15.0.0: a v11 file is refused by the loader — `config migrate --to v12` is the only way in
+        expect(() => validateConfig(JSON.parse(JSON.stringify(v11)))).toThrow(/schema v11 is no longer read by 15\.0\.0.*config migrate --to v12/s);
+        const r = migrateToV12(stringify(v11));
         try {
-          validateConfig(JSON.parse(JSON.stringify(v11)));
+          validateConfig(JSON.parse(JSON.stringify(r.config)));
         } catch (err) {
           invalid(err);
           return;
         }
         accepted.f1++;
-        const r = migrateToV12(stringify(v11));
         expect(r.report.errors).toEqual([]);
         expect((r.config as any).version).toBe(12);
         expect(validateSchema(r.config), JSON.stringify(validateSchema.errors?.slice(0, 2))).toBe(true);

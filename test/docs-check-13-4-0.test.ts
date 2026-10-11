@@ -66,7 +66,7 @@ describe('docs-check', () => {
   });
 
   it('checks the gateway config embedded in a Kubernetes ConfigMap and Helm values', async () => {
-    const cm = 'apiVersion: v1\nkind: ConfigMap\nmetadata: { name: gw }\ndata:\n  mcp-gateway.yml: |\n    version: 11\n    servers:\n      - { id: a, command: node }\n';
+    const cm = 'apiVersion: v1\nkind: ConfigMap\nmetadata: { name: gw }\ndata:\n  mcp-gateway.yml: |\n    version: 12\n    servers:\n      - { id: a, command: node }\n';
     const values = 'image: { repository: x }\nconfig:\n  version: 9\n  servers: []\n';
     expect(await rules(fence('yaml', cm) + fence('yaml', values))).toEqual(expect.arrayContaining([expect.stringMatching(/^config: servers\.0\.name: Required/), expect.stringMatching(/^config: config "version: 9"/)]));
   });

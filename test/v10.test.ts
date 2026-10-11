@@ -1,7 +1,8 @@
 /** 10.0: schema v10 only (`features` block), unified kernel, LTS. */
 import { describe, it, expect, afterEach } from 'vitest';
 import { parse } from 'yaml';
-import { validateConfig, generateDefaultConfig } from '../src/config/loader.js';
+// 15.0.0: these tests cover the pre-v12 migration chain, whose output (schema v11) only the migration tooling reads
+import { validateV11ForMigration as validateConfig, generateDefaultConfig } from '../src/config/loader.js';
 import { migrateConfigText } from '../src/config/migrate.js';
 import { configDeprecations, removedConfigKeys, DEPRECATIONS } from '../src/utils/deprecations.js';
 import { portableConfig, featureSection, withFeatureSection } from '../src/gateway/admin.js';

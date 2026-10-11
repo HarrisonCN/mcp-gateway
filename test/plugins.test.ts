@@ -121,11 +121,11 @@ describe('PluginHost', () => {
       join(dir, 'tagger.mjs'),
       'export default (ctx) => ({ name: "tagger", apiVersion: 5, onResponse: (_c, r) => ({ ...r, result: { tag: ctx.options.tag, v: ctx.apiVersion, r: r.result } }) });',
     );
-    const p = await loadPlugin({ module: './tagger.mjs', options: { tag: 'x' } }, dir);
+    const p = await loadPlugin({ module: './tagger.mjs', runtime: 'inline', options: { tag: 'x' } }, dir); // 15.0: inline is opt-in
     expect(p.name).toBe('tagger');
     const out = await p.onResponse!({} as never, { success: true, durationMs: 0, result: 5 });
     expect(out).toMatchObject({ result: { tag: 'x', v: PLUGIN_API_VERSION, r: 5 } });
-    const renamed = await loadPlugin({ module: join(dir, 'tagger.mjs'), name: 'renamed' }, '/');
+    const renamed = await loadPlugin({ module: join(dir, 'tagger.mjs'), runtime: 'inline', name: 'renamed' }, '/');
     expect(renamed.name).toBe('renamed');
   });
 
