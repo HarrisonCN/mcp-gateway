@@ -53,8 +53,8 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
-import { registerFeature, objectBody, badRequest, principalOf } from '../gateway/features.js';
-import { deniedPrincipal, type Principal } from '../auth/authorizer.js';
+import { registerFeature, objectBody, badRequest, principalOf, type FeatureContext } from '../gateway/features.js';
+import { clientPrincipal, deniedPrincipal, type Principal } from '../auth/authorizer.js';
 import { parseTarget, readPath, render, stepValue } from '../orchestration/chains.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
@@ -306,9 +306,10 @@ export class TaskRunStore {
     this.trim();
     if (!dir) return;
     try {
-      mkdirSync(dir, { recursive: true });
+      // MGW-2026-017: runs carry inputs, outputs and the caller's principal — owner-only files
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
       const tmp = join(dir, `.${run.id}.tmp`);
-      writeFileSync(tmp, JSON.stringify(run));
+      writeFileSync(tmp, JSON.stringify(run), { mode: 0o600 });
       renameSync(tmp, join(dir, `${run.id}.json`));
     } catch (e) {
       logger.warn(`task-graphs: checkpoint write failed: ${(e as Error).message}`);
@@ -341,6 +342,18 @@ export function taskGraphsOf(cfg: GatewayConfig): Parsed | undefined {
 
 const RESUMABLE: TaskRunStatus[] = ['failed', 'interrupted', 'cancelled', 'compensated', 'compensation_failed'];
 
+/** MGW-2026-017: principal for a run's next call — re-resolved, so a removed / re-scoped key cannot act through a stored run. */
+function runPrincipal(ctx: FeatureContext, run: TaskRun, client: string | undefined): Principal {
+  const p = run.principal;
+  if (!p) return (ctx.principalFor ?? deniedPrincipal)(client);
+  if (p.kind !== 'client' || !ctx.resolveScope) return p;
+  const r = ctx.resolveScope(p.id);
+  if (r === undefined) return p; // the scope travels with the credential (JWT / OAuth): the stored one applies
+  if (!r.known) return deniedPrincipal(p.id); // key removed since the run was submitted
+  // current scope; a delegation chain only ever narrows, so it is kept
+  return { ...clientPrincipal(p.id, r.scope), ...(p.delegation?.length ? { delegation: p.delegation } : {}) };
+}
+
 registerFeature({
   id: 'task-graphs',
   since: '10.7.0',
@@ -349,7 +362,7 @@ registerFeature({
     const dirOf = (c: Parsed) => (c.dir ? resolve(ctx.config().configDir ?? process.cwd(), c.dir) : undefined);
     // 11.1: nodes run as the principal that started the run (re-authorized per call), else the client's current scope.
     const exec = (run: TaskRun): TaskExecutor => ({
-      tool: (s, t, a, client) => ctx.invoke(s, t, a, run.principal ?? (ctx.principalFor ?? deniedPrincipal)(client), client ?? 'task-graph'),
+      tool: (s, t, a, client) => ctx.invoke(s, t, a, runPrincipal(ctx, run, client), client ?? 'task-graph'),
       remote: async (gw, skill, args, client) => {
         const raw = ctx.config().a2aFederation;
         if (!raw) return { success: false, durationMs: 0, error: { code: -32603, message: 'features.a2aFederation is not configured (needed for remote nodes)' } };
