@@ -18,13 +18,15 @@
  * @module gateway/control-plane
  */
 
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import express, { type Request, type RequestHandler } from 'express';
 import { z } from 'zod';
 import type { GatewayConfig } from '../utils/types.js';
 import { VERSION } from '../utils/version.js';
 import { logger } from '../utils/logger.js';
+import { configEtag } from './config-etag.js';
+import { RolloutCoordinator, RolloutError, RolloutSchema, type RolloutPolicy } from './rollout.js';
 
 export const ControlPlaneSchema = z
   .object({
@@ -35,12 +37,14 @@ export const ControlPlaneSchema = z
     token: z.string().min(1).optional(),
     pullIntervalMs: z.number().int().min(1000).max(3_600_000).default(10_000),
     nodeId: z.string().min(1).max(128).optional(),
+    rollout: RolloutSchema.optional(),
   })
   .strict()
   .superRefine((c, ctx) => {
     if (c.role === 'data') {
       if (!c.url) ctx.addIssue({ code: 'custom', path: ['url'], message: 'a data plane needs `controlPlane.url` (the control plane base URL)' });
       if (!c.token) ctx.addIssue({ code: 'custom', path: ['token'], message: 'a data plane needs `controlPlane.token` (an operator API key of the control plane)' });
+      if (c.rollout !== undefined) ctx.addIssue({ code: 'custom', path: ['rollout'], message: '`rollout` is a control-plane setting (role: control)' });
     } else {
       if (c.url !== undefined) ctx.addIssue({ code: 'custom', path: ['url'], message: '`url` is a data-plane setting (role: data)' });
       if (c.token !== undefined) ctx.addIssue({ code: 'custom', path: ['token'], message: '`token` is a data-plane setting (role: data)' });
@@ -64,19 +68,13 @@ export interface ControlPlaneConfig {
   pullIntervalMs?: number;
   /** Data plane: id reported in heartbeats (default `<hostname>-<random>`). */
   nodeId?: string;
+  /** Control plane (14.1.0): how config generations roll out to data planes. */
+  rollout?: Partial<RolloutPolicy>;
 }
 
 export const roleOf = (cfg: GatewayConfig): 'all' | 'control' | 'data' => cfg.controlPlane?.role ?? 'all';
 
-const stable = (v: unknown): string =>
-  Array.isArray(v)
-    ? `[${v.map(stable).join(',')}]`
-    : v && typeof v === 'object'
-      ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable((v as Record<string, unknown>)[k])}`).join(',')}}`
-      : JSON.stringify(v) ?? 'null';
-
-/** Strong ETag of a config object (order independent). */
-export const configEtag = (config: unknown) => `"${createHash('sha256').update(stable(config)).digest('hex').slice(0, 32)}"`;
+export { configEtag } from './config-etag.js';
 
 /** The config a control plane distributes: `portable` minus `controlPlane`, `port` and `host` (schema v9). */
 export function distributedConfig(portable: Record<string, unknown>): Record<string, unknown> {
@@ -111,8 +109,10 @@ export interface ControlPlaneDeps {
 }
 
 /** Control-plane routes under `/api/v1/admin/data-planes` (operators only). */
-export function createControlPlaneRouter(deps: ControlPlaneDeps): express.Router & { nodes: Map<string, Omit<DataPlaneNode, 'inSync' | 'status'>> } {
-  const router = express.Router() as express.Router & { nodes: Map<string, Omit<DataPlaneNode, 'inSync' | 'status'>> };
+export function createControlPlaneRouter(
+  deps: ControlPlaneDeps,
+): express.Router & { nodes: Map<string, Omit<DataPlaneNode, 'inSync' | 'status'>>; rollout: RolloutCoordinator } {
+  const router = express.Router() as express.Router & { nodes: Map<string, Omit<DataPlaneNode, 'inSync' | 'status'>>; rollout: RolloutCoordinator };
   const nodes = new Map<string, Omit<DataPlaneNode, 'inSync' | 'status'>>();
   router.nodes = nodes;
   const now = deps.now ?? Date.now;
@@ -123,13 +123,36 @@ export function createControlPlaneRouter(deps: ControlPlaneDeps): express.Router
       ? next()
       : void res.status(409).json({ error: 'Conflict', message: 'Not a control plane: set `controlPlane.role: control` to serve data planes' });
   const guard = [deps.authenticate, operator];
+  // 14.1.0: every distributed config is a generation; the coordinator decides which one each data plane runs
+  const rollout = new RolloutCoordinator((deps.config().controlPlane?.rollout ?? {}) as Partial<RolloutPolicy>, { now });
+  router.rollout = rollout;
+  let publishedFrom: string | undefined;
   const current = () => {
     const config = distributedConfig(deps.portable());
-    return { config, etag: configEtag(config) };
+    const etag = configEtag(config);
+    // publish only when the control plane's running config changed: after a rollback the cluster keeps the restored
+    // generation until an operator changes the config again (a bad generation is refused without force)
+    if (etag !== publishedFrom) {
+      publishedFrom = etag;
+      try {
+        rollout.publish(config);
+      } catch (err) {
+        logger.warn(`Config rollout: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    rollout.tick();
+    const g = rollout.current()!;
+    return { config: g.config, etag: g.etag, generation: g.generation };
+  };
+  const targetOf = (nodeId: string | undefined) => {
+    const cur = current();
+    const g = nodeId ? rollout.targetFor(nodeId) : undefined;
+    return g ? { config: g.config, etag: g.etag, generation: g.generation } : cur;
   };
   const view = (n: Omit<DataPlaneNode, 'inSync' | 'status'>, etag: string | undefined): DataPlaneNode => {
     const ttl = 3 * (n.pullIntervalMs ?? 10_000);
-    return { ...n, inSync: !!etag && n.configEtag === etag, status: now() - Date.parse(n.lastSeen) <= ttl ? 'online' : 'stale' };
+    const target = etag ? rollout.targetFor(n.nodeId)?.etag ?? etag : undefined;
+    return { ...n, inSync: !!target && n.configEtag === target, status: now() - Date.parse(n.lastSeen) <= ttl ? 'online' : 'stale' };
   };
 
   router.get('/admin/data-planes', ...guard, (_req, res) => {
@@ -145,12 +168,49 @@ export function createControlPlaneRouter(deps: ControlPlaneDeps): express.Router
   });
 
   router.get('/admin/data-planes/config', ...guard, controlOnly, (req, res) => {
-    const { config, etag } = current();
-    res.set('ETag', etag).set('Cache-Control', 'no-store');
+    const nodeId = req.get('x-node-id')?.slice(0, 128) || undefined;
+    const { config, etag, generation } = targetOf(nodeId);
+    res.set('ETag', etag).set('X-Config-Generation', String(generation)).set('Cache-Control', 'no-store');
     const inm = req.get('if-none-match');
     if (inm && inm.split(',').map((s) => s.trim()).includes(etag)) return void res.status(304).end();
-    res.json({ version: VERSION, etag, config });
+    res.json({ version: VERSION, etag, generation, config });
   });
+
+  // 14.1.0: rollout status and actions live on a sub-router mounted behind the same guard (the feature-router pattern)
+  const cluster = express.Router();
+  cluster.get('/rollout', (_req, res) => {
+    current();
+    res.set('Cache-Control', 'no-store').json(rollout.status());
+  });
+
+  // force-publish the control plane's running config: the only way to retry a generation that failed and was rolled back
+  cluster.post('/rollout', (req, res) => {
+    const b = (req.body ?? {}) as { force?: unknown };
+    if (b.force !== true) return void res.status(400).json({ error: 'Bad Request', message: 'Body must be { "force": true } (re-publishes the running config, even a generation that was rolled back)' });
+    current();
+    const config = distributedConfig(deps.portable());
+    const g = rollout.publish(config, { force: true });
+    publishedFrom = configEtag(config);
+    logger.warn(`Config rollout: generation ${g.generation} (${g.etag}) force-published by an operator`);
+    res.json({ generation: g.generation, etag: g.etag, status: rollout.status() });
+  });
+
+  cluster.post('/rollback', (req, res) => {
+    const b = (req.body ?? {}) as { to?: unknown; reason?: unknown };
+    if ((b.to !== undefined && (typeof b.to !== 'number' || !Number.isInteger(b.to))) || (b.reason !== undefined && typeof b.reason !== 'string')) {
+      return void res.status(400).json({ error: 'Bad Request', message: 'Body must be { "to"?: <generation>, "reason"?: "<text>" }' });
+    }
+    current();
+    try {
+      const g = rollout.rollback(b.to as number | undefined, (b.reason as string | undefined)?.slice(0, 500) ?? 'manual rollback');
+      logger.warn(`Config rollout: rolled back to generation ${g.generation} (restores ${g.etag}) by an operator`);
+      res.json({ generation: g.generation, etag: g.etag, rollbackOf: g.rollbackOf, status: rollout.status() });
+    } catch (err) {
+      if (err instanceof RolloutError) return void res.status(409).json({ error: 'Conflict', message: err.message });
+      throw err;
+    }
+  });
+  router.use('/admin/cluster', ...guard, controlOnly, cluster);
 
   router.post('/admin/data-planes/heartbeat', ...guard, controlOnly, (req, res) => {
     const b = req.body as Record<string, unknown> | undefined;
@@ -173,13 +233,21 @@ export function createControlPlaneRouter(deps: ControlPlaneDeps): express.Router
       ...(typeof b.lastError === 'string' ? { lastError: b.lastError.slice(0, 500) } : {}),
       ...(req.ip ? { address: req.ip } : {}),
     });
-    const etag = current().etag;
-    res.json({ ok: true, configEtag: etag, inSync: b.configEtag === etag });
+    current();
+    rollout.report(id, {
+      ...(typeof b.configEtag === 'string' ? { etag: b.configEtag } : {}),
+      ...(typeof b.generation === 'number' ? { generation: b.generation } : {}),
+      ...(typeof b.failedGeneration === 'number' ? { failedGeneration: b.failedGeneration } : {}),
+      ...(typeof b.lastError === 'string' ? { error: b.lastError.slice(0, 500) } : {}),
+    });
+    const target = targetOf(id);
+    res.json({ ok: true, configEtag: target.etag, generation: target.generation, inSync: b.configEtag === target.etag });
   });
 
   router.delete('/admin/data-planes/:nodeId', ...guard, (req, res) => {
     const nodeId = String(req.params.nodeId);
     if (!nodes.delete(nodeId)) return void res.status(404).json({ error: 'Not Found', message: `Unknown data plane "${nodeId}"` });
+    rollout.forget(nodeId);
     res.json({ removed: nodeId });
   });
 
@@ -192,6 +260,12 @@ export interface DataPlaneStatus {
   controlPlane: string;
   ready: boolean;
   configEtag?: string;
+  /** Generation number of the running config (14.1.0; from the control plane's X-Config-Generation). */
+  generation?: number;
+  /** Generation that failed to apply or failed its post-apply health check (cleared by the next good one). */
+  failedGeneration?: number;
+  /** Local rollbacks after a failed post-apply health check. */
+  rollbacks: number;
   lastPullAt?: string;
   lastAppliedAt?: string;
   lastHeartbeatAt?: string;
@@ -206,6 +280,8 @@ export interface DataPlaneSyncOptions {
   /** Validate + hot-apply a pulled config (throws when invalid; the running config is kept). */
   apply: (config: Record<string, unknown>) => Promise<void>;
   servers?: () => { online: number; total: number };
+  /** 14.1.0: checked after every apply; false → the previous config is re-applied and the generation reported failed. */
+  healthCheck?: () => boolean | Promise<boolean>;
   fetch?: typeof fetch;
 }
 
@@ -213,10 +289,13 @@ export interface DataPlaneSyncOptions {
 export class DataPlaneSync {
   readonly nodeId: string;
   private etag?: string;
+  private generation?: number;
+  private failedEtag?: string;
+  private lastConfig?: Record<string, unknown>;
   private timer?: NodeJS.Timeout;
   private running?: Promise<void>;
   private stopped = false;
-  private state: Omit<DataPlaneStatus, 'role' | 'nodeId' | 'controlPlane' | 'ready' | 'configEtag'> = { pulls: 0, applied: 0, failures: 0 };
+  private state: Omit<DataPlaneStatus, 'role' | 'nodeId' | 'controlPlane' | 'ready' | 'configEtag' | 'generation'> = { pulls: 0, applied: 0, failures: 0, rollbacks: 0 };
 
   constructor(private readonly opts: DataPlaneSyncOptions) {
     this.nodeId = opts.config.nodeId ?? `${hostname()}-${randomUUID().slice(0, 8)}`;
@@ -231,7 +310,15 @@ export class DataPlaneSync {
   }
 
   status(): DataPlaneStatus {
-    return { role: 'data', nodeId: this.nodeId, controlPlane: this.base, ready: this.ready, ...(this.etag ? { configEtag: this.etag } : {}), ...this.state };
+    return {
+      role: 'data',
+      nodeId: this.nodeId,
+      controlPlane: this.base,
+      ready: this.ready,
+      ...(this.etag ? { configEtag: this.etag } : {}),
+      ...(this.generation !== undefined ? { generation: this.generation } : {}),
+      ...this.state,
+    };
   }
 
   start(): void {
@@ -264,20 +351,50 @@ export class DataPlaneSync {
     const headers = { authorization: `Bearer ${this.opts.config.token}`, 'content-type': 'application/json' };
     try {
       this.state.pulls++;
-      const res = await f(`${this.base}/api/v1/admin/data-planes/config`, { headers: { ...headers, ...(this.etag ? { 'if-none-match': this.etag } : {}) }, signal: AbortSignal.timeout(10_000) });
+      const res = await f(`${this.base}/api/v1/admin/data-planes/config`, {
+        headers: { ...headers, 'x-node-id': this.nodeId, ...(this.etag ? { 'if-none-match': this.etag } : {}) },
+        signal: AbortSignal.timeout(10_000),
+      });
       this.state.lastPullAt = new Date().toISOString();
+      let healthError: string | undefined;
       if (res.status === 200) {
-        const body = (await res.json()) as { etag?: string; config?: Record<string, unknown> };
+        const body = (await res.json()) as { etag?: string; generation?: number; config?: Record<string, unknown> };
         if (!body.config || typeof body.config !== 'object') throw new Error('control plane sent no config');
-        await this.opts.apply(body.config);
-        this.etag = body.etag ?? res.headers.get('etag') ?? undefined;
-        this.state.applied++;
-        this.state.lastAppliedAt = new Date().toISOString();
-        logger.info(`Data plane ${this.nodeId}: applied config ${this.etag} from ${this.base}`);
+        const etag = body.etag ?? res.headers.get('etag') ?? undefined;
+        const hdr = Number(res.headers.get('x-config-generation'));
+        const gen = typeof body.generation === 'number' ? body.generation : Number.isInteger(hdr) && hdr > 0 ? hdr : undefined;
+        // 14.1.0: a generation that already failed here is not re-applied until the control plane serves another one
+        if (etag === undefined || etag !== this.failedEtag) {
+          try {
+            await this.opts.apply(body.config);
+          } catch (err) {
+            this.state.failedGeneration = gen;
+            this.failedEtag = etag;
+            throw err;
+          }
+          const healthy = this.opts.healthCheck ? await Promise.resolve(this.opts.healthCheck()).catch(() => false) : true;
+          if (!healthy && this.lastConfig) {
+            await this.opts.apply(this.lastConfig);
+            this.state.rollbacks++;
+            this.state.failedGeneration = gen;
+            this.failedEtag = etag;
+            healthError = `generation ${gen ?? etag} failed its health check after apply; rolled back to generation ${this.generation ?? this.etag}`;
+          } else {
+            this.etag = etag;
+            this.generation = gen;
+            this.lastConfig = body.config;
+            delete this.state.failedGeneration;
+            this.failedEtag = undefined;
+            this.state.applied++;
+            this.state.lastAppliedAt = new Date().toISOString();
+            logger.info(`Data plane ${this.nodeId}: applied config ${this.etag}${gen !== undefined ? ` (generation ${gen})` : ''} from ${this.base}`);
+          }
+        }
       } else if (res.status !== 304) {
         const text = await res.text().catch(() => '');
         throw new Error(`config pull failed: HTTP ${res.status}${text ? ` ${text.slice(0, 200)}` : ''}`);
       }
+      if (healthError) throw new Error(healthError);
       delete this.state.lastError;
     } catch (err) {
       this.state.failures++;
@@ -291,6 +408,8 @@ export class DataPlaneSync {
         body: JSON.stringify({
           nodeId: this.nodeId,
           ...(this.etag ? { configEtag: this.etag } : {}),
+          ...(this.generation !== undefined ? { generation: this.generation } : {}),
+          ...(this.state.failedGeneration !== undefined ? { failedGeneration: this.state.failedGeneration } : {}),
           version: VERSION,
           pullIntervalMs: this.opts.config.pullIntervalMs ?? 10_000,
           ...(this.opts.servers ? { servers: this.opts.servers() } : {}),

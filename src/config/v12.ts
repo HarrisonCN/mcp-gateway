@@ -273,9 +273,38 @@ export function buildV12ConfigSchema(topLevelKeys: readonly string[] = CONFIG_FI
         properties: Object.fromEntries(featureKeys.map((k) => [k, { ...unchanged, type: ['object', 'array'] }])),
       },
       ...Object.fromEntries(others.map((k) => [k, unchanged])),
+      // 14.1.0: optional `controlPlane.rollout` (control role only); the rest of the section is unchanged
+      ...(others.includes('controlPlane') ? { controlPlane: CONTROL_PLANE_V12 } : {}),
     },
   };
 }
+
+/** `controlPlane` in the v12 JSON Schema: other keys as in v11; `rollout` (14.1.0, optional) described precisely. */
+const CONTROL_PLANE_V12 = {
+  $comment: 'unchanged from schema v11 (validated by the runtime schema) except the optional `rollout` (14.1)',
+  type: 'object',
+  properties: {
+    rollout: {
+      type: 'object',
+      description: 'NEW in 14.1 (optional; control plane only): how config generations roll out to data planes. See docs/guides/cluster-rollout.md.',
+      additionalProperties: false,
+      properties: {
+        strategy: { enum: ['all-at-once', 'canary'], default: 'all-at-once' },
+        canary: {
+          type: 'object',
+          description: 'canary size: a data-plane count or a percentage of the known data planes (strategy canary needs one)',
+          additionalProperties: false,
+          properties: { nodes: { type: 'integer', minimum: 1, maximum: 1000 }, percent: { type: 'number', minimum: 1, maximum: 100 } },
+        },
+        bakeMs: { type: 'integer', minimum: 0, maximum: 86400000, default: 30000 },
+        failureThreshold: { type: 'integer', minimum: 1, maximum: 1000, default: 1 },
+        autoRollback: { type: 'boolean', default: true },
+        maxDivergenceMs: { type: 'integer', minimum: 1000, maximum: 86400000, default: 60000 },
+        history: { type: 'integer', minimum: 2, maximum: 100, default: 10 },
+      },
+    },
+  },
+};
 
 /** The v12 module declaration JSON Schema (draft-07). */
 export function buildV12ModuleSchema(): Record<string, unknown> {

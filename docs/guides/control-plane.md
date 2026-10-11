@@ -32,6 +32,12 @@ servers:
 | `GET /api/v1/admin/data-planes/config` | the config data planes run, with an `ETag`; `If-None-Match` → `304` |
 | `POST /api/v1/admin/data-planes/heartbeat` | `{ nodeId, configEtag, version, pullIntervalMs, servers }` → `{ ok, configEtag, inSync }` |
 | `DELETE /api/v1/admin/data-planes/:nodeId` | forget a data plane |
+| `GET /api/v1/admin/cluster/rollout` | 14.1: generations, per-node targets, canary state, divergence, rollback history |
+| `POST /api/v1/admin/cluster/rollback` | 14.1: `{ to?, reason? }` — roll the cluster back to a kept generation |
+| `POST /api/v1/admin/cluster/rollout` | 14.1: `{ force: true }` — re-publish the running config, even a generation that was rolled back |
+
+From 14.1 every distributed config is a numbered generation, rolled out all at once or canary first, rolled back
+automatically when data planes fail it, with divergence reporting — see [cluster rollout](cluster-rollout.md).
 
 The distributed config is the running config **without** `controlPlane`, `port` and `host` (each data plane keeps
 its own). It contains secrets (API keys, upstream headers), so it is only served to operators of a gateway with
@@ -58,7 +64,9 @@ controlPlane:
   unreachable control plane keeps the current config; the error is shown on both sides.
 - **No admin API:** `/api/v1/admin/*` answers `403` with the control plane URL.
 - `GET /api/v1/data-plane` (operators) shows the sync state: `ready`, `configEtag`, `lastPullAt`, `lastAppliedAt`,
-  `lastHeartbeatAt`, `lastError`, `pulls` / `applied` / `failures`.
+  `lastHeartbeatAt`, `lastError`, `pulls` / `applied` / `failures`; from 14.1 also `generation`, `failedGeneration`
+  and `rollbacks` (a config that fails the post-apply health check is rolled back locally —
+  [cluster rollout](cluster-rollout.md#health-check-and-local-rollback-on-data-planes)).
 
 ## Kubernetes
 

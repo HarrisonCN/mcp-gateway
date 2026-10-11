@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [14.1.0] - 2026-10-11
+
+Cluster coordination release (roadmap 14.1 "集群协调"). Config schema v12 gains one optional key (`controlPlane.rollout`, control plane only); clusters without it behave as in 14.0 (every data plane gets every config at once), with generations, data-plane local rollback and divergence reporting added. No breaking changes.
+
+### Added
+
+- **Config generations** ([cluster rollout guide](docs/guides/cluster-rollout.md)): every config a control plane distributes is a numbered generation (monotonic; identical content keeps its number). The config pull answers with the generation the asking data plane should run (`X-Config-Generation`, `generation`; data planes send `X-Node-Id`) and heartbeats report the generation each data plane runs.
+- **Canary rollout** (`controlPlane.rollout.strategy: canary`, `canary.nodes` / `canary.percent`, `bakeMs`): a new generation goes to the canary data planes first; the rest stay on the stable generation until every canary node has run it for `bakeMs` without failures, then everyone is promoted. `all-at-once` stays the default.
+- **Data-plane post-apply health check**: a data plane whose new config leaves every upstream offline (when some were online before the apply) after a grace period (half of `pullIntervalMs`, at most 5 s) re-applies its previous config, reports the generation as failed (`failedGeneration`, `lastError`) and does not re-apply the same config in a loop. `GET /api/v1/data-plane` shows `generation`, `failedGeneration`, `rollbacks`.
+- **Automatic cluster rollback** (`failureThreshold`, `autoRollback`): when data planes fail the current generation the control plane marks it bad and publishes the last good config as a new generation. Re-submitting a bad generation's content is refused (status `refused`) until it is force-published.
+- **Rollout API** (operators, `role: control`): `GET /api/v1/admin/cluster/rollout` (state, per-node targets, canary, failures, history, divergence), `POST /api/v1/admin/cluster/rollback` (`{ to?, reason? }`), `POST /api/v1/admin/cluster/rollout` (`{ force: true }`).
+- **Divergence reporting** (`maxDivergenceMs`): a data plane off its target generation longer than this is listed as diverged (`converged: false`); data planes on the stable generation during a canary are not.
+- **Cluster metrics**: `mcp_gateway_cluster_config_generation{role}`, `mcp_gateway_cluster_rollout_state{state}`, `mcp_gateway_cluster_diverged_nodes`, `mcp_gateway_cluster_rollbacks_total{role,trigger}`.
+- `schema/v12/config.schema.json` describes the optional `controlPlane.rollout` block (files without it stay valid).
+
+### Fixed
+
+- Several gateways in one process: gateway-level Prometheus sources (reliability / telemetry, per-stage latency, authorization counters) are now kept per instance — before, the last gateway started overwrote them for every other gateway's `/metrics` (a leftover of 13.4.0 finding F3).
+
+### Tests
+
+- `test/cluster-14-1-0.test.ts` (rollout contract R1–R9) and `test/cluster-multinode-14-1-0.test.ts`: one control plane and three real data-plane gateways over HTTP — canary promotion, health-check failure → local + automatic cluster rollback, bad generation blocked without force, pre-existing upstream outage not blocking, divergence of a stopped data plane, cluster metrics.
+
 ### Performance
 - `bench/baseline.json`: the linux-x64 kernel cold-start baseline is re-recorded from CI on the v14.0.0 merge (`all` start 144.5 ms, was a stale 74.7 ms from 13.0.0); method and previous values are kept in the file. See docs/benchmarks.md.
 
