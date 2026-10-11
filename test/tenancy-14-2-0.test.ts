@@ -36,7 +36,7 @@ import { logger } from '../src/utils/logger.js';
 
 logger.setLevel('error');
 const fixture = fileURLToPath(new URL('./fixtures/fake-mcp-server.mjs', import.meta.url));
-const srv = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id, transport: 'stdio' as const, command: process.execPath, args: [fixture], timeout: 5000, ...extra });
+const srv = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id, transport: 'stdio' as const, command: process.execPath, args: [fixture], timeoutMs: 5000, ...extra });
 
 process.env.MGW_T142_KEY_acme = 'acme-secret';
 process.env.MGW_T142_KEY_labs = 'labs-secret';
@@ -202,7 +202,7 @@ describe('I8 tenancy report', () => {
       { id: 'acme', servers: ['acme-*', 'shared-*'], members: [{ client: 'key:a', role: 'admin' }] },
       { id: 'labs', servers: ['labs-*', 'shared-*'], members: [{ client: 'key:l', role: 'admin' }] },
     ],
-    features: { 'semantic-cache': { enabled: true, scope: 'global', tools: ['*'] } },
+    features: { semanticCache: { scope: 'global', tools: ['*'] } },
   } as unknown as GatewayConfig;
   it('lists owners, ungranted sharing, shared credentials and global caches', () => {
     const r = tenancyReport(cfg);

@@ -20,7 +20,8 @@
  */
 
 import { globToRegExp } from '../utils/tool-filter.js';
-import type { TenantConfig, TenantRole } from '../utils/types.js';
+import type { TenancyConfig, TenantConfig, TenantRole } from '../utils/types.js';
+import { entitlements, isolationDecision, isolationView, ownerOf } from './isolation.js';
 import type { AccessScope } from './scopes.js';
 
 export const ROLE_RANK: Record<TenantRole, number> = { viewer: 1, admin: 2, owner: 3 };
@@ -58,21 +59,60 @@ export function withTenantScope(
   tenants: readonly TenantConfig[] | undefined,
   clientId: string | undefined,
   scope: AccessScope | undefined,
+  tenancy?: TenancyConfig,
 ): AccessScope | undefined {
   const ms = membershipsOf(tenants, clientId);
   if (ms.length === 0) return scope;
+  const isolation = isolationView(tenants, tenancy);
   return {
     ...(scope ?? {}),
     tenantServers: [...new Set(ms.flatMap((m) => m.servers))],
     writableServers: [...new Set(ms.filter((m) => ROLE_RANK[m.role] >= ROLE_RANK.admin).flatMap((m) => m.servers))],
     tenants: ms.map((m) => ({ id: m.tenant, role: m.role })),
+    ...(isolation ? { isolation } : {}),
   };
+}
+
+export interface TenantResolution {
+  /** Acting tenant of the call (undefined: the caller belongs to no tenant). */
+  tenant?: string;
+  /** `owner->tenant` when the call goes through a cross-tenant sharing grant. */
+  grant?: string;
+}
+
+/**
+ * 14.2.0: the tenant a call by `clientId` to `serverId` acts for — the caller's tenant entitled to the server (owner
+ * membership, else a grantee membership under isolation; a membership with call rights first), never another tenant.
+ * Falls back to the caller's first membership only for servers no tenant of the caller covers (pre-14.2 behaviour;
+ * such calls are refused by tenant confinement anyway). Used for credentials, budgets, quotas, caches, policy, audit.
+ */
+export function resolveTenant(tenants: readonly TenantConfig[] | undefined, tenancy: TenancyConfig | undefined, clientId: string | undefined, serverId: string): TenantResolution {
+  const ms = membershipsOf(tenants, clientId);
+  if (!ms.length) return {};
+  const view = isolationView(tenants, tenancy);
+  if (view) {
+    const owner = ownerOf(view.owners, serverId);
+    if (owner) {
+      const e = entitlements(view, ms.map((m) => ({ id: m.tenant, role: m.role })), serverId, owner)[0];
+      if (e) return { tenant: e.tenant, ...(e.grant ? { grant: e.grant } : {}) };
+    }
+  }
+  const covering = ms.filter((m) => matches(serverId, m.servers));
+  const pick = covering.find((m) => ROLE_RANK[m.role] >= ROLE_RANK.admin) ?? covering[0] ?? ms[0]!;
+  return { tenant: pick.tenant };
+}
+
+/** The acting tenant (see {@link resolveTenant}). */
+export function actingTenant(tenants: readonly TenantConfig[] | undefined, tenancy: TenancyConfig | undefined, clientId: string | undefined, serverId: string): string | undefined {
+  return resolveTenant(tenants, tenancy, clientId, serverId).tenant;
 }
 
 /** Whether the scope may call tools on `serverId` (viewers are read-only). */
 export function canCall(scope: AccessScope | undefined, serverId: string): boolean {
   if (!scope?.writableServers) return true;
-  return matches(serverId, scope.writableServers);
+  const legacy = matches(serverId, scope.writableServers);
+  if (scope.isolation && scope.tenants) return isolationDecision(scope.isolation, scope.tenants, serverId, { see: true, call: legacy }).call;
+  return legacy;
 }
 
 /** Highest role the scope holds in any tenant (undefined = not a tenant member). */
@@ -107,7 +147,3 @@ export function invalidTenants(tenants: readonly TenantConfig[] | undefined): st
   return undefined;
 }
 
-/** 14.2.0 placeholder (tests-first): legacy behaviour = the caller's first membership. */
-export function actingTenant(tenants: readonly TenantConfig[] | undefined, _tenancy: unknown, clientId: string | undefined, _serverId: string): string | undefined {
-  return membershipsOf(tenants, clientId)[0]?.tenant;
-}

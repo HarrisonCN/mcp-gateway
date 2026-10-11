@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 
 import { invalidPolicy } from '../policy/tool-policy.js';
 import { invalidTenants } from '../auth/tenants.js';
+import { invalidTenancy } from '../auth/isolation.js';
 import { ambiguousClientPatterns, clientPatternsOf } from '../auth/identity.js';
 import { invalidFilterPattern } from '../policy/output-filter.js';
 import { readFile } from 'fs/promises';
@@ -60,7 +61,7 @@ import { TaskGraphsSchema } from '../features/schemas/task-graphs.js';
 import { EdgeAutonomySchema } from '../features/schemas/edge-autonomy.js';
 import { PrivacySchema } from '../features/schemas/privacy.js';
 import { PqIdentitySchema } from '../features/schemas/pq-identity.js';
-import type { GatewayConfig, PolicyRule, ToolPolicyConfig } from '../utils/types.js';
+import type { GatewayConfig, PolicyRule, TenancyConfig, TenantConfig, ToolPolicyConfig } from '../utils/types.js';
 import { expandEnv } from '../transport/channel.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
@@ -784,6 +785,32 @@ const GatewayConfigSchema = z.object({
       if (bad) ctx.addIssue({ code: z.ZodIssueCode.custom, message: bad });
     })
     .optional(),
+  // 14.2.0: centralized tenant isolation (additive; absent = pre-14.2 behaviour)
+  tenancy: z
+    .object({
+      isolation: z
+        .object({
+          enabled: z.boolean().optional(),
+          crossTenant: z.enum(['deny', 'audit']).optional(),
+          grants: z
+            .array(
+              z
+                .object({
+                  owner: z.string().min(1),
+                  tenants: z.array(z.string().min(1)).min(1),
+                  servers: z.array(z.string().min(1)).min(1),
+                  access: z.enum(['call', 'read']).optional(),
+                  reason: z.string().max(500).optional(),
+                })
+                .strict(),
+            )
+            .optional(),
+        })
+        .strict()
+        .optional(),
+    })
+    .strict()
+    .optional(),
   portal: z
     .object({
       enabled: z.boolean().optional(),
@@ -1142,6 +1169,10 @@ const GatewayConfigSchema = z.object({
     })
     .optional(),
 }).superRefine((c, ctx) => {
+  {
+    const bad = invalidTenancy(c.tenancy as TenancyConfig | undefined, c.tenants as TenantConfig[] | undefined);
+    if (bad) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tenancy', 'isolation', 'grants'], message: bad });
+  }
   const seen = new Set<string>();
   c.servers.forEach((s, i) => {
     if (seen.has(s.id)) {

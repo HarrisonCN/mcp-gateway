@@ -17,6 +17,7 @@
 
 import { isServerInScope, isToolInScope, type AccessScope } from './scopes.js';
 import { canCall } from './tenants.js';
+import { isolationDecision } from './isolation.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 
 /** JSON-RPC error of a call the authorizer refused (same code as policy denials: REST maps it to 403). */
@@ -96,6 +97,11 @@ export function authorize(p: Principal | undefined, call: AuthzCall, deps: Autho
   }
   if (p.kind === 'system') return undefined;
   const s = p.scope;
+  // 14.2.0: a server owned by another tenant is refused as a cross-tenant crossing (audited as decision cross-tenant)
+  if (s?.isolation && s.tenants && s.tenantServers) {
+    const d = isolationDecision(s.isolation, s.tenants, call.serverId, { see: false, call: false });
+    if (d.owned && !d.see) return deny(`Cross-tenant access refused: server "${call.serverId}" belongs to tenant "${d.owner}" (tenancy.isolation; no grant)`, { decision: 'cross-tenant', reason: 'cross-tenant', owner: d.owner, principal: p.id });
+  }
   if (!isServerInScope(s, call.serverId)) return deny(`Server "${call.serverId}" is not allowed for this client`, { reason: 'scope', principal: p.id });
   if (call.kind === 'tool') {
     if (!isToolInScope(s, call.serverId, call.name)) return deny(`Tool "${call.name}" on server "${call.serverId}" is not allowed for this client`, { reason: 'scope', principal: p.id });

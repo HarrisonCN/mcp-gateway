@@ -33,6 +33,8 @@ export interface AuditQuery {
   success?: boolean;
   via?: 'rest' | 'mcp';
   kind?: 'tool' | 'resource' | 'prompt';
+  /** 14.2.0: acting tenant. */
+  tenant?: string;
 }
 
 export interface AuditPage {
@@ -61,6 +63,7 @@ export function matchesQuery(m: RequestMetric, q: AuditQuery): boolean {
   if (q.success !== undefined && m.success !== q.success) return false;
   if (q.via !== undefined && (m.via ?? 'rest') !== q.via) return false;
   if (q.kind !== undefined && (m.kind ?? 'tool') !== q.kind) return false;
+  if (q.tenant !== undefined && m.tenant !== q.tenant) return false;
   return true;
 }
 
@@ -134,8 +137,11 @@ export class SqliteAuditStore implements AuditStore {
     // 13.1.3: traceable refusal reason + error code.
     if (!cols.has('decision')) this.db.exec('ALTER TABLE requests ADD COLUMN decision TEXT');
     if (!cols.has('error_code')) this.db.exec('ALTER TABLE requests ADD COLUMN error_code INTEGER');
+    // 14.2.0: acting tenant + cross-tenant grant.
+    if (!cols.has('tenant')) this.db.exec('ALTER TABLE requests ADD COLUMN tenant TEXT');
+    if (!cols.has('tenant_grant')) this.db.exec('ALTER TABLE requests ADD COLUMN tenant_grant TEXT');
     this.insert = this.db.prepare(
-      'INSERT OR IGNORE INTO requests (id, ts, server, tool, kind, duration_ms, success, error, client_id, via, actor, chain, decision, error_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT OR IGNORE INTO requests (id, ts, server, tool, kind, duration_ms, success, error, client_id, via, actor, chain, decision, error_code, tenant, tenant_grant) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
   }
 
@@ -155,6 +161,8 @@ export class SqliteAuditStore implements AuditStore {
       m.chain?.length ? JSON.stringify(m.chain) : null,
       m.decision ?? null,
       m.errorCode ?? null,
+      m.tenant ?? null,
+      m.tenantGrant ?? null,
     );
   }
 
@@ -178,6 +186,7 @@ export class SqliteAuditStore implements AuditStore {
     if (q.success !== undefined) add('success = ?', q.success ? 1 : 0);
     if (q.via !== undefined) add("COALESCE(via, 'rest') = ?", q.via);
     if (q.kind !== undefined) add('kind = ?', q.kind);
+    if (q.tenant !== undefined) add('tenant = ?', q.tenant);
     const sql =
       'SELECT * FROM requests' + (where.length ? ` WHERE ${where.join(' AND ')}` : '') + ' ORDER BY seq DESC LIMIT ?';
     const rows = this.db.prepare(sql).all(...params, q.limit + 1);
@@ -198,6 +207,8 @@ export class SqliteAuditStore implements AuditStore {
       if (r.actor !== null && r.actor !== undefined) m.actor = String(r.actor);
       if (r.decision !== null && r.decision !== undefined) m.decision = String(r.decision);
       if (r.error_code !== null && r.error_code !== undefined) m.errorCode = Number(r.error_code);
+      if (r.tenant !== null && r.tenant !== undefined) m.tenant = String(r.tenant);
+      if (r.tenant_grant !== null && r.tenant_grant !== undefined) m.tenantGrant = String(r.tenant_grant);
       if (typeof r.chain === 'string') {
         try {
           m.chain = JSON.parse(r.chain) as string[];

@@ -343,6 +343,28 @@ program
     }
   });
 
+// ─── tenancy (14.2.0) ─────────────────────────────────────────────────────────
+
+program
+  .command('tenancy')
+  .description('Tenant isolation tools (14.2.0)')
+  .command('report')
+  .description('Report tenant boundaries: server owners, cross-tenant sharing and grants, shared credentials, global caches (exit 1 on violations)')
+  .option('-c, --config <path>', 'Path to config file')
+  .option('--json', 'Print the report as JSON')
+  .action(async (options) => {
+    try {
+      const config = await loadConfig(options.config);
+      const { tenancyReport, formatTenancyReport } = await import('./auth/isolation.js');
+      const report = tenancyReport(config);
+      console.log(options.json ? JSON.stringify(report, null, 2) : formatTenancyReport(report));
+      if (report.violations > 0) process.exit(1);
+    } catch (err) {
+      logger.error(err instanceof Error ? err.message : String(err));
+      process.exit(2);
+    }
+  });
+
 // ─── keys ─────────────────────────────────────────────────────────────────────
 
 async function readStdin(): Promise<string> {
