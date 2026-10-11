@@ -36,6 +36,7 @@ import { registerCallHook } from '../gateway/hooks.js';
 import { portableConfig, featureSection, withFeatureSection } from '../gateway/admin.js';
 import type { GatewayConfig } from '../utils/types.js';
 import { type ConsoleConfig, ConsoleSchema, ERR_ORG_REFUSED, Id, PlanSchema } from './schemas/console.js';
+import { instanceLocal } from '../kernel/instance.js';
 export { type ConsoleConfig, ConsoleSchema, ERR_ORG_REFUSED } from './schemas/console.js';
 type Cfg = z.output<typeof ConsoleSchema>;
 
@@ -74,7 +75,7 @@ export class DailyCounter {
   }
 }
 
-export const consoleCounter = new DailyCounter();
+export const consoleCounter = instanceLocal('console', 'consoleCounter', () => new DailyCounter()); // 14.0.0: per gateway instance (F3)
 
 /** Decide whether `org` may make one more call (and count it when allowed). */
 export function admitCall(c: Cfg, org: string, counter = consoleCounter): { ok: true } | { ok: false; reason: 'suspended' | 'limit'; message: string; data: Record<string, unknown> } {

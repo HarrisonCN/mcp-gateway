@@ -63,7 +63,7 @@ export interface EngineDecision {
 /** Same code as `policy.rules` denials (REST maps it to 403). */
 const ERR_POLICY_DENIED = -32003;
 
-const cache = new Map<string, CedarPolicy[]>();
+const cache = new Map<string, CedarPolicy[]>(); // f3: process-wide pure memo (same input → same value)
 
 /** All Cedar policies of a config (inline text + files), parsed; cached by source. */
 export function cedarPolicies(cfg: Parsed, configDir?: string): CedarPolicy[] | undefined {

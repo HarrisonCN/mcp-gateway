@@ -39,6 +39,7 @@ import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { VERSION } from '../utils/version.js';
 import { principalAttr } from '../observability/telemetry.js';
 import { type GenaiTelemetryConfig, GenaiTelemetrySchema } from './schemas/genai-otel.js';
+import { instanceLocal } from '../kernel/instance.js';
 export { type GenaiTelemetryConfig, GenaiTelemetrySchema } from './schemas/genai-otel.js';
 type Cfg = z.output<typeof GenaiTelemetrySchema>;
 
@@ -206,7 +207,7 @@ export class GenaiRecorder {
   }
 }
 
-export const genaiRecorder = new GenaiRecorder();
+export const genaiRecorder = instanceLocal('genai-otel', 'genaiRecorder', () => new GenaiRecorder()); // 14.0.0: per gateway instance (F3)
 
 const settings = (cfg: GatewayConfig): Cfg | undefined => {
   if (!cfg.genaiTelemetry) return undefined;
@@ -229,7 +230,12 @@ registerFeature({
   id: 'genai-otel',
   since: '6.3.0',
   summary: 'OpenTelemetry GenAI semantic conventions: execute_tool spans, operation duration and token usage metrics, OTLP export',
+  // 14.0.0: lifecycle v2 — per-instance recorder, timers and OTLP export only through the module context
+  apiVersion: 2,
+  capabilities: ['background-timers', 'outbound-network'],
   mount: (router, ctx) => {
+    const timers = ctx.timers ?? { setInterval: (fn: () => void, ms: number) => setInterval(fn, ms).unref(), setTimeout: (fn: () => void, ms: number) => setTimeout(fn, ms).unref(), clear: (t?: NodeJS.Timeout) => clearTimeout(t) };
+    const net = ctx.net ?? { fetch };
     let exported = genaiRecorder.spans.length ? genaiRecorder.spans.at(-1)! : undefined;
     const push = async () => {
       const c = settings(ctx.config());
@@ -238,22 +244,21 @@ registerFeature({
       const fresh = genaiRecorder.spans.slice(i);
       exported = genaiRecorder.spans.at(-1);
       const base = c.otlpEndpoint.replace(/\/+$/, '');
-      const post = (path: string, body: unknown) => fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) }).catch(() => undefined);
+      const post = (path: string, body: unknown) => net.fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) }).catch(() => undefined);
       if (fresh.length) await post('/v1/traces', genaiRecorder.otlpSpans(fresh, c.serviceName));
       await post('/v1/metrics', genaiRecorder.otlpMetrics(c.serviceName));
     };
     // 13.9.0 (13.4.0 finding F4): the export timer follows `exportIntervalMs` on reload (see `reconfigure`).
     const schedule = (iv: number) => {
       const st = exportTimers.get(ctx);
-      if (st?.timer) clearInterval(st.timer);
-      const timer = setInterval(() => void push(), iv);
-      timer.unref();
+      if (st?.timer) timers.clear(st.timer);
+      const timer = timers.setInterval(() => void push(), iv);
       exportTimers.set(ctx, { timer, iv, schedule });
     };
     schedule(settings(ctx.config())?.exportIntervalMs ?? 10_000);
     ctx.onStop?.(async () => {
       const st = exportTimers.get(ctx);
-      if (st?.timer) clearInterval(st.timer);
+      if (st?.timer) timers.clear(st.timer);
       exportTimers.delete(ctx);
       await push();
     });

@@ -35,7 +35,7 @@ describe('docs-check', () => {
   }, 60_000);
 
   it('a clean document passes', async () => {
-    expect(await rules(`# T\n\nSee [below](#t).\n\n${fence('bash', 'docker pull ghcr.io/harrisoncn/mcp-gateway:13.4.0\nnpm i @winstonsayno/mcp-gateway@13\nnpx mcp-gateway validate -c mcp-gateway.yml --strict')}${fence('yaml', 'version: 11\nservers:\n  - { id: a, name: A, transport: stdio, command: node }\nfeatures:\n  dlp: {}')}`)).toEqual([]);
+    expect(await rules(`# T\n\nSee [below](#t).\n\n${fence('bash', 'docker pull ghcr.io/harrisoncn/mcp-gateway:13.4.0\nnpm i @winstonsayno/mcp-gateway@13\nnpx mcp-gateway validate -c mcp-gateway.yml --strict')}${fence('yaml', 'version: 12\nservers:\n  - { id: a, name: A, transport: stdio, command: node }\nfeatures:\n  dlp: {}')}`)).toEqual([]);
   });
 
   it('fails on stale image tags, npm pins and "latest" statements', async () => {
@@ -109,6 +109,6 @@ describe('docs-check', () => {
   });
 
   it('the package version is the one the docs are checked against', () => {
-    expect(version).toMatch(/^13\./);
+    expect(version).toMatch(/^14\./);
   });
 });

@@ -33,6 +33,7 @@ import { registerFeature, objectBody, badRequest, principalOf } from '../gateway
 import { registerCallHook } from '../gateway/hooks.js';
 import type { GatewayConfig } from '../utils/types.js';
 import { type AdaptiveConfig, AdaptiveSchema, Candidate, Pool } from './schemas/adaptive.js';
+import { instanceLocal } from '../kernel/instance.js';
 export { type AdaptiveConfig, AdaptiveSchema } from './schemas/adaptive.js';
 type PoolCfg = z.output<typeof Pool>;
 
@@ -140,7 +141,7 @@ export class AdaptiveRouter {
 }
 
 /** Process-wide router (stats survive config reloads). */
-export const adaptiveRouter = new AdaptiveRouter();
+export const adaptiveRouter = instanceLocal('adaptive', 'adaptiveRouter', () => new AdaptiveRouter()); // 14.0.0: per gateway instance (F3)
 
 const pools = (cfg: GatewayConfig): PoolCfg[] => (cfg.adaptive ? AdaptiveSchema.parse(cfg.adaptive).pools : []);
 

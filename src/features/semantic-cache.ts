@@ -36,6 +36,7 @@ import { registerCallHook, type HookCall } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { type SemanticCacheConfig, SemanticCacheSchema } from './schemas/semantic-cache.js';
+import { instanceLocal } from '../kernel/instance.js';
 export { type SemanticCacheConfig, SemanticCacheSchema } from './schemas/semantic-cache.js';
 type Cfg = z.output<typeof SemanticCacheSchema>;
 
@@ -101,7 +102,7 @@ export function cosine(a: ArrayLike<number>, b: ArrayLike<number>): number {
   return na && nb ? dot / Math.sqrt(na * nb) : 0;
 }
 
-const memo = new Map<string, Float32Array>();
+const memo = new Map<string, Float32Array>(); // f3: process-wide pure memo (same input → same value)
 /** Embed `text` with the configured provider (memoised; throws on provider errors). */
 export async function embed(text: string, c: Cfg, fetchImpl: typeof fetch = fetch): Promise<Float32Array> {
   const key = `${c.embedding.provider}:${c.embedding.model}:${c.embedding.dimensions}:${text}`;
@@ -191,7 +192,7 @@ export class SemanticStore {
   }
 }
 
-export const semanticStore = new SemanticStore();
+export const semanticStore = instanceLocal('semantic-cache', 'semanticStore', () => new SemanticStore()); // 14.0.0: per gateway instance (F3)
 const MARK = 'mcp-gateway/semantic-cache';
 
 const applies = (c: Cfg, call: HookCall) => c.tools.some((p) => globToRegExp(p).test(`${call.serverId}/${call.tool}`));

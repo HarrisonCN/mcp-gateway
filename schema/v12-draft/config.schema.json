@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/HarrisonCN/mcp-gateway/blob/main/schema/v12-draft/config.schema.json",
-  "title": "MCP Gateway config schema v12 (DRAFT, 13.9.0)",
+  "$id": "https://github.com/HarrisonCN/mcp-gateway/blob/main/schema/v12/config.schema.json",
+  "title": "MCP Gateway config schema v12 (14.0)",
   "description": "Draft of the config schema 14.0 will run. 13.x runs schema v11 and refuses version 12. See docs/design/schema-v12.md.",
   "type": "object",
   "required": [
@@ -13,137 +13,7 @@
       "const": 12
     },
     "modules": {
-      "type": "object",
-      "description": "Unified module lifecycle settings (v11: kernel.*).",
-      "additionalProperties": false,
-      "properties": {
-        "activation": {
-          "enum": [
-            "lazy",
-            "eager"
-          ],
-          "default": "lazy",
-          "description": "v11 kernel.modules"
-        },
-        "failurePolicy": {
-          "type": "object",
-          "description": "v11 kernel.failurePolicy: per-module override, only for modules whose policy is configurable",
-          "propertyNames": {
-            "enum": [
-              "billing",
-              "console",
-              "realtime-budgets"
-            ]
-          },
-          "additionalProperties": {
-            "enum": [
-              "open",
-              "closed",
-              "degrade"
-            ]
-          }
-        },
-        "lifecycle": {
-          "type": "object",
-          "description": "NEW in v12 (not read by 13.x): bounds for the lifecycle calls",
-          "additionalProperties": false,
-          "properties": {
-            "initTimeoutMs": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 600000
-            },
-            "unloadTimeoutMs": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 600000
-            },
-            "drainMs": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 600000
-            }
-          }
-        },
-        "capabilities": {
-          "type": "object",
-          "description": "NEW in v12 (not read by 13.x): per-module capability denials; a module that declares a denied capability fails to activate",
-          "propertyNames": {
-            "enum": [
-              "a2a-federation",
-              "adaptive",
-              "agent-identity",
-              "anomaly",
-              "api-upstreams",
-              "approval-flows",
-              "billing",
-              "blue-green",
-              "chaos",
-              "compliance-reports",
-              "confidential",
-              "config-assistant",
-              "conformance",
-              "console",
-              "cost-advisor",
-              "data-lineage",
-              "debug-sessions",
-              "dlp",
-              "ecosystem",
-              "edge-autonomy",
-              "edge-fleet",
-              "edge-runtime",
-              "genai-otel",
-              "identity",
-              "k8s",
-              "kernel",
-              "marketplace",
-              "multimodal",
-              "offline",
-              "policy-engine",
-              "policy-sim",
-              "pq-identity",
-              "pq-tls",
-              "privacy",
-              "realtime-budgets",
-              "regions",
-              "rollouts",
-              "sanitize",
-              "self-healing",
-              "semantic-cache",
-              "sessions",
-              "sla",
-              "task-graphs",
-              "terraform",
-              "time-travel",
-              "tool-registry"
-            ]
-          },
-          "additionalProperties": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "deny": {
-                "type": "array",
-                "uniqueItems": true,
-                "items": {
-                  "enum": [
-                    "admin-routes",
-                    "client-routes",
-                    "call-hook",
-                    "security-guard",
-                    "background-timers",
-                    "state-store",
-                    "outbound-network",
-                    "filesystem",
-                    "signing-keys",
-                    "invoke-tools"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
     },
     "features": {
       "type": "object",

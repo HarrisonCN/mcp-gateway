@@ -17,6 +17,7 @@
  * @module gateway/admin
  */
 
+import { V12_SECTION_RENAMES } from '../config/v12-deprecations.js';
 import { FEATURE_CONFIG_KEYS } from './features.js';
 import express, { type Request, type RequestHandler, type Response } from 'express';
 import type { GatewayConfig } from '../utils/types.js';
@@ -37,8 +38,19 @@ export interface AdminDeps {
 
 /** Strip loader-set fields so a running config can be re-validated. */
 export function portableConfig(cfg: GatewayConfig): Record<string, unknown> {
-  const { configDir: _d, deprecations: _x, ...rest } = cfg;
+  const { configDir: _d, deprecations: _x, schemaVersion: _sv, ...rest } = cfg;
   const out = JSON.parse(JSON.stringify(rest)) as Record<string, unknown>;
+  // 14.0.0: the running config is written in schema v12 (`modules` block; feature sections named after their module)
+  out.version = 12;
+  {
+    const k = (out.kernel ?? {}) as Record<string, unknown>;
+    const m = { ...((out.modules ?? {}) as Record<string, unknown>) };
+    if (k.modules !== undefined) m.activation = k.modules;
+    if (k.failurePolicy !== undefined) m.failurePolicy = k.failurePolicy;
+    delete out.kernel;
+    if (Object.keys(m).length) out.modules = m;
+    else delete out.modules;
+  }
   // 4.0: API-key scope is nested in the schema (internals keep it flat).
   const auth = out.auth as { apiKeys?: unknown[] } | undefined;
   if (auth?.apiKeys) {
@@ -60,7 +72,7 @@ export function portableConfig(cfg: GatewayConfig): Record<string, unknown> {
     const features: Record<string, unknown> = {};
     for (const k of FEATURE_CONFIG_KEYS) {
       if (out[k] === undefined) continue;
-      features[k] = out[k];
+      features[V12_SECTION_RENAMES[k] ?? k] = out[k];
       delete out[k];
     }
     if (Object.keys(features).length) out.features = features;
@@ -77,11 +89,12 @@ export function portableConfig(cfg: GatewayConfig): Record<string, unknown> {
 }
 
 /** A feature section of a schema-form config (schema v10: under `features`). */
-export const featureSection = (p: Record<string, unknown>, key: string): unknown => ((p.features as Record<string, unknown> | undefined) ?? {})[key];
+export const featureSection = (p: Record<string, unknown>, key: string): unknown => ((p.features as Record<string, unknown> | undefined) ?? {})[V12_SECTION_RENAMES[key] ?? key];
 
 /** A schema-form config with one feature section replaced (`undefined` removes it); schema v10 keeps it under `features`. */
 export function withFeatureSection(p: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
   const features = { ...((p.features as Record<string, unknown> | undefined) ?? {}) };
+  key = V12_SECTION_RENAMES[key] ?? key; // 14.0.0: schema v12 names
   if (value === undefined) delete features[key];
   else features[key] = value;
   const { features: _f, ...rest } = p;
@@ -111,6 +124,7 @@ export async function prepareConfig(raw: Record<string, unknown>, current: Gatew
   const r: Record<string, unknown> = { ...raw };
   delete r.configDir;
   delete r.deprecations;
+  delete r.schemaVersion;
   delete r.port;
   delete r.host;
   const next = validateConfig(r);
@@ -140,6 +154,7 @@ export function createAdminRouter(deps: AdminDeps): express.Router {
     const raw = restoreRedacted(body, portableConfig(current)) as Record<string, unknown>;
     delete raw.configDir;
     delete raw.deprecations;
+    delete raw.schemaVersion;
     // port / host are restart-only and owned by the running process (CLI overrides).
     delete raw.port;
     delete raw.host;

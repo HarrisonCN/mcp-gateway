@@ -49,7 +49,7 @@ describe('4.0 removals (were 3.9 deprecations)', () => {
     expect(cfg.deprecations?.map((d) => d.id)).toBeUndefined(); // 11.0: nothing deprecated
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', servers: ['a'], scope: { servers: ['b'] } }] } })).toThrow(/removed in 4.0/);
     expect(() => validateConfig({ servers: [], auth: { strategy: 'api-key', apiKeys: [{ key: 'k', scope: { nope: 1 } }] } })).toThrow(/unknown key/);
-    expect(() => validateConfig({ version: 12, servers: [] })).toThrow(/not supported/);
+    expect(() => validateConfig({ version: 13, servers: [] })).toThrow(/not supported/);
     expect(validateConfig({ version: 11, servers: [] }).deprecations).toBeUndefined();
   });
 });

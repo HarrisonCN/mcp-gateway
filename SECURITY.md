@@ -4,13 +4,16 @@
 
 | Version | Supported |
 |---|---|
-| 13.x (current) | ✅ new features, bug and security fixes |
+| 14.x (current) | ✅ new features, bug and security fixes |
+| 13.x (maintained) | ✅ security and critical bug fixes, at least until 15.0.0 ships and no earlier than 2027-04-30 — latest 13.9.0 (npm dist-tag `v13-lts`, image `:13`, branch `lts/13.x`); upgrade to 14.x ([Migrating from 13.x to 14.0](docs/migration/v13-to-v14.md)) |
 | 12.x | ⚠️ superseded — latest 12.0.10 (npm dist-tag `v12-0`, image `:12`) carries the MGW-2026-001, MGW-2026-005, MGW-2026-007, MGW-2026-008, MGW-2026-009, MGW-2026-010, MGW-2026-011, MGW-2026-012, MGW-2026-013 and MGW-2026-014 fixes; upgrade to 13.x ([Migrating to 13.0](docs/guides/migrating-to-v13.md)) |
 | 11.x | ⚠️ superseded — 11.2.0 carries the 11.1 / 11.2 security fixes; upgrade to 12.x ([Migrating to 12.0](docs/guides/migrating-to-v12.md)) |
 | 10.x (LTS) | ✅ bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 — latest 10.9.11 (npm dist-tag `v10-lts`, image `:10`) |
 | < 10.0 | ❌ — please upgrade (`mcp-gateway migrate`, see [Migrating to 10.0](docs/guides/migrating-to-v10.md) and [Migrating to 11.0](docs/guides/migrating-to-v11.md)) |
 
-13.x is the current line (config schema v11, central authorizer, isolated stdio servers, on-demand feature modules). 10.x is the long-term-support line:
+14.x is the current line (config schema v12 — v11 files are read until 15.0 —, module lifecycle v2 with capability
+declarations, central authorizer, isolated stdio servers, on-demand feature modules). 13.9.x is maintained for security
+and critical fixes ([version policy](docs/versions.md)). 10.x is the long-term-support line:
 config schema v10 stays stable across every 10.x minor release, and its LTS dates are unchanged by 11.0.
 `ltsStatus()` / `GET /api/v1/admin/kernel` report the running line and the 10.x support window. Security fixes for
 10.x ship as 10.x patch releases.
@@ -72,7 +75,7 @@ revocation, stdio environment allowlist).
   scanning and Dependabot. Verify an image with:
 
   ```bash
-  cosign verify ghcr.io/harrisoncn/mcp-gateway:13 \
+  cosign verify ghcr.io/harrisoncn/mcp-gateway:14 \
     --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
   ```

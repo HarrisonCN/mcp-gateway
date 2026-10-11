@@ -155,9 +155,19 @@ export interface ServerHealth {
 // ─── Gateway Config ───────────────────────────────────────────────────────────
 
 export interface GatewayConfig {
-  /** Config schema version (11.0: 11). */
-  version?: 11;
-  /** Feature-module activation (10.9; `lazy` = only configured modules — the 11.0 default; `eager` = all, as in 10.x). */
+  /** Config schema version of the file (14.0: 12; 11 is read and migrated in memory until 15.0). */
+  version?: 11 | 12;
+  /** Schema the config file was written in (set by the loader, 14.0.0); 11 = migrated in memory. */
+  schemaVersion?: 11 | 12;
+  /**
+   * Module lifecycle bounds and capability denials (14.0.0, schema v12 `modules.lifecycle` / `modules.capabilities`).
+   * Schema v12's `modules.activation` / `modules.failurePolicy` are held internally in {@link kernel}.
+   */
+  modules?: {
+    lifecycle?: { initTimeoutMs?: number; unloadTimeoutMs?: number; drainMs?: number };
+    capabilities?: Record<string, { deny: Array<import('../config/v12-deprecations.js').ModuleCapability> }>;
+  };
+  /** Feature-module activation — internal form of schema v12 `modules.activation` / `modules.failurePolicy` (v11 `kernel`; 10.9; `lazy` = only configured modules — the 11.0 default; `eager` = all, as in 10.x). */
   kernel?: {
     modules?: 'eager' | 'lazy';
     /** Override the failure policy of quota / cost modules (13.1): `console`, `realtime-budgets`, `billing`. Security modules are always `closed`. */

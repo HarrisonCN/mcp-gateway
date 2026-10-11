@@ -38,7 +38,7 @@ describe('13.0: manifest and declared dependencies', () => {
     }
     const ids = FEATURE_MANIFEST.map((e) => e.id);
     expect(dependencyOrder(ids)).toEqual(ids); // manifest order already has dependencies first
-    expect(RELEASE_LINE).toEqual({ line: '13.x', lts: false });
+    expect(RELEASE_LINE).toEqual({ line: '14.x', lts: false });
   });
 
   it('declares exactly the cross-module edges the code uses', () => {
@@ -239,7 +239,7 @@ describe('13.0: lifecycle, dependency ordering and failure isolation', () => {
   it('GET /admin/kernel reports state, dependencies and evaluation on a real gateway', async () => {
     fx = await startFeatureGw({ billing: {} } as never);
     const k = (await fx.admin('kernel')).body;
-    expect(k.line).toEqual({ line: '13.x', lts: false });
+    expect(k.line).toEqual({ line: '14.x', lts: false });
     const mods = Object.fromEntries(k.modules.map((m: { id: string }) => [m.id, m]));
     expect(mods.billing).toMatchObject({ state: 'active', dependsOn: ['genai-otel'], evaluated: true, active: true });
     expect(k.evaluated).toEqual(expect.arrayContaining(['genai-otel', 'billing', 'kernel']));

@@ -467,13 +467,13 @@ program
     }
   });
 
-// ─── config migrate / diff --to v12 (13.9.0 preview) ─────────────────────────────
+// ─── config migrate / diff / rollback --to v12 (13.9.0 preview; 14.0.0 writes files) ─────────────────────────────
 
 /** `--to v12` / `12` → 12; anything else is refused (other targets: `mcp-gateway migrate --to <n>`). */
 function v12Target(to: string): number {
   const n = Number(String(to).replace(/^v/i, ''));
   if (n !== 12) {
-    logger.error(`config migrate / config diff preview schema v12 only (got --to ${to}); for v4 – v11 use \`mcp-gateway migrate --to <n>\``);
+    logger.error(`config migrate / config diff target schema v12 only (got --to ${to}); for v4 – v11 use \`mcp-gateway migrate --to <n>\``);
     process.exit(1);
   }
   return n;
@@ -489,11 +489,11 @@ async function v12Preview(options: { config?: string; to: string }) {
     process.exit(1);
   }
   const text = await readFile(path, 'utf8');
-  return { path, r: migrateToV12(text, /\.json$/i.test(path) ? 'json' : 'yaml', { from: `${path} (v11)`, to: `${path} (v12 draft)` }) };
+  return { path, text, r: migrateToV12(text, /\.json$/i.test(path) ? 'json' : 'yaml', { from: `${path} (v11)`, to: `${path} (v12)` }) };
 }
 
 function printReport(r: { changes: string[]; report: { errors: string[]; warnings: string[]; manual: string[] } }) {
-  console.log('Compatibility report (schema v11 → v12 draft)');
+  console.log('Compatibility report (schema v11 → v12)');
   console.log(`  changes: ${r.changes.length}`);
   for (const c of r.changes) console.log(`    ~ ${c}`);
   for (const e of r.report.errors) console.log(`  ✗ error: ${e}`);
@@ -501,43 +501,95 @@ function printReport(r: { changes: string[]; report: { errors: string[]; warning
   for (const m of r.report.manual) console.log(`  → manual: ${m}`);
 }
 
-const configCmd = program.command('config').description('Config schema tools: preview the migration to schema v12 (DRAFT, 14.0)');
+/** Default output of `config migrate --to v12`: `gw.yml` → `gw.v12.yml` next to it. */
+const v12OutputPath = (p: string) => (/\.(ya?ml|json)$/i.test(p) ? p.replace(/\.(ya?ml|json)$/i, '.v12.$1') : `${p}.v12.yml`);
+/** Backup written by `config migrate --in-place` and read by `config rollback`. */
+const v11BackupPath = (p: string) => `${p}.v11.bak`;
+
+const configCmd = program.command('config').description('Config schema tools: migrate a schema v11 file to schema v12 (14.0), diff, roll back');
 
 configCmd
   .command('migrate')
-  .description('Preview the migration of a schema v11 config to the schema v12 DRAFT: v12 config, unified diff and compatibility report (13.x runs v11 only)')
+  .description('Migrate a schema v11 config to schema v12 (comments and layout kept): writes <name>.v12.<ext> (or -o), or rewrites the file with --in-place (backup <file>.v11.bak); --dry-run only prints the v12 config, unified diff and compatibility report')
   .option('-c, --config <path>', 'Config file (default: the usual search paths)')
   .option('--to <version>', 'Target schema (only v12)', 'v12')
-  .option('--dry-run', 'Print the result without writing anything (the default; 13.x cannot run a v12 file)')
-  .option('-o, --output <path>', 'Also write the v12 config to this file (never over the input)')
+  .option('--dry-run', 'Print the result without writing anything')
+  .option('-o, --output <path>', 'Write the v12 config to this file (default: <name>.v12.<ext> next to the input)')
+  .option('--in-place', 'Rewrite the config file itself, after copying it to <file>.v11.bak (undo: mcp-gateway config rollback)')
+  .option('--force', 'Overwrite an existing output file / backup')
   .option('--json', 'Print { to, config, diff, changes, report } as JSON')
   .action(async (options) => {
     try {
-      const { path, r } = await v12Preview(options);
+      const { path, text, r } = await v12Preview(options);
+      const say = (m: string) => { if (!options.json) console.log(m); };
       if (options.json) console.log(JSON.stringify({ file: path, to: 12, ok: r.ok, config: r.config, text: r.text, diff: r.diff, changes: r.changes, report: r.report }, null, 2));
-      else {
-        printReport(r);
-        if (r.ok && r.changes.length) {
-          console.log('\n--- v12 config (draft) ---\n');
-          process.stdout.write(r.text);
-        } else if (r.ok) console.log(`✓ ${path} is already on schema v12`);
-      }
+      else printReport(r);
       if (!r.ok) process.exit(1);
-      if (options.output && !options.dryRun) {
-        const { resolve } = await import('path');
-        if (resolve(options.output) === resolve(path)) throw new Error('refusing to overwrite the input: 13.x cannot run a v12 file');
-        await writeFile(options.output, r.text);
-        if (!options.json) console.log(`Written to ${options.output}`);
+      if (!r.changes.length) {
+        say(`✓ ${path} is already on schema v12 — nothing to write`);
+        return;
       }
+      if (options.dryRun) {
+        if (!options.json) {
+          console.log('\n--- v12 config ---\n');
+          process.stdout.write(r.text);
+        }
+        return;
+      }
+      // never write a file the gateway would refuse
+      const { validateConfig } = await import('./config/loader.js');
+      const { parse } = await import('yaml');
+      const out = validateConfig(/\.json$/i.test(path) ? JSON.parse(r.text) : parse(r.text));
+      if (out.schemaVersion !== 12) throw new Error('the migrated file does not read as schema v12');
+      const { resolve } = await import('path');
+      const { existsSync } = await import('fs');
+      const { copyFile, rename } = await import('fs/promises');
+      if (options.inPlace) {
+        const bak = v11BackupPath(path);
+        if (existsSync(bak) && !options.force) throw new Error(`backup ${bak} already exists (an earlier migration?) — move it away or pass --force`);
+        await copyFile(path, bak);
+        const tmp = `${path}.tmp-${process.pid}`;
+        await writeFile(tmp, r.text);
+        await rename(tmp, path);
+        say(`Migrated ${path} to schema v12 in place (backup: ${bak}; undo: mcp-gateway config rollback -c ${path})`);
+        void text;
+        return;
+      }
+      const target = options.output ?? v12OutputPath(path);
+      if (resolve(target) === resolve(path)) throw new Error('refusing to write over the input: use --in-place (it keeps a backup)');
+      if (existsSync(target) && !options.force) throw new Error(`${target} already exists — pass --force to overwrite`);
+      await writeFile(target, r.text);
+      say(`Written to ${target}`);
     } catch (err) {
-      logger.error(`Migration preview failed: ${err instanceof Error ? err.message : String(err)}`);
+      logger.error(`Migration failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+configCmd
+  .command('rollback')
+  .description('Undo `config migrate --in-place`: restore <file>.v11.bak over the config file (the v12 file is kept as <file>.v12.bak)')
+  .option('-c, --config <path>', 'Config file (default: the usual search paths)')
+  .action(async (options) => {
+    try {
+      const path = resolveConfigPath(options.config);
+      if (!path) throw new Error('No config file found (use -c <path>)');
+      const bak = v11BackupPath(path);
+      const { existsSync } = await import('fs');
+      const { copyFile } = await import('fs/promises');
+      if (!existsSync(bak)) throw new Error(`no backup ${bak} — nothing to roll back`);
+      await copyFile(path, `${path}.v12.bak`);
+      await copyFile(bak, path);
+      console.log(`Restored ${path} from ${bak} (the v12 file is kept as ${path}.v12.bak). 14.x reads it as schema v11 (migrated in memory); 13.9.x reads it as it is.`);
+    } catch (err) {
+      logger.error(`Rollback failed: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
   });
 
 configCmd
   .command('diff')
-  .description('Unified diff between a schema v11 config and its schema v12 DRAFT migration (exit 3 when it would change)')
+  .description('Unified diff between a schema v11 config and its schema v12 migration (exit 3 when it would change)')
   .option('-c, --config <path>', 'Config file (default: the usual search paths)')
   .option('--to <version>', 'Target schema (only v12)', 'v12')
   .option('--json', 'Print { diff, changes, report } as JSON')

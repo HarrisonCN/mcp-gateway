@@ -36,6 +36,7 @@ import { POLICY_ERROR_CODES } from '../gateway/invoker.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig } from '../utils/types.js';
 import { type AnomalyConfig, AnomalySchema, ERR_ANOMALY_QUARANTINED } from './schemas/anomaly.js';
+import { instanceLocal } from '../kernel/instance.js';
 export { type AnomalyConfig, AnomalySchema, ERR_ANOMALY_QUARANTINED } from './schemas/anomaly.js';
 type Cfg = z.output<typeof AnomalySchema>;
 
@@ -175,7 +176,7 @@ export class AnomalyDetector {
   }
 }
 
-export const anomalyDetector = new AnomalyDetector();
+export const anomalyDetector = instanceLocal('anomaly', 'anomalyDetector', () => new AnomalyDetector()); // 14.0.0: per gateway instance (F3)
 
 const settings = (cfg: GatewayConfig): Cfg | undefined => {
   if (!cfg.anomaly) return undefined;

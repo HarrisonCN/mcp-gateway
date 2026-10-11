@@ -27,6 +27,7 @@ import { evaluatePolicy, invalidPolicy, type PolicyDecision } from '../policy/to
 import { PolicyRuleSchema } from '../policy/rule-schema.js';
 import type { GatewayConfig, ToolPolicyConfig } from '../utils/types.js';
 import { CandidatePolicySchema, type PolicyShadowConfig, PolicyShadowSchema, policyFields, validRegexes } from './schemas/policy-sim.js';
+import { instanceLocal } from '../kernel/instance.js';
 export { CandidatePolicySchema, type PolicyShadowConfig, PolicyShadowSchema } from './schemas/policy-sim.js';
 export interface SimCall {
   clientId?: string;
@@ -107,7 +108,7 @@ export class ShadowRecorder {
   }
 }
 
-export const shadowRecorder = new ShadowRecorder();
+export const shadowRecorder = instanceLocal('policy-sim', 'shadowRecorder', () => new ShadowRecorder()); // 14.0.0: per gateway instance (F3)
 
 const shadowOf = (cfg: GatewayConfig): ToolPolicyConfig | undefined => {
   if (!cfg.policyShadow) return undefined;

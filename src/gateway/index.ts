@@ -2,6 +2,8 @@
  * Gateway bootstrap — wires together all subsystems
  */
 
+import { InstanceScope, runInScope } from '../kernel/instance.js';
+import { schemaNotice } from '../config/v12-deprecations.js';
 import express, { type Request } from 'express';
 import { createServer, type Server } from 'http';
 import type { AddressInfo } from 'net';
@@ -244,7 +246,14 @@ export class Gateway {
     }
   }
 
+  /** 14.0.0: this gateway's module state (F3) — entered for start / reload / stop and every HTTP request. */
+  readonly instanceScope = new InstanceScope();
+
   async start(): Promise<void> {
+    return runInScope(this.instanceScope, () => this.startInScope());
+  }
+
+  private async startInScope(): Promise<void> {
     if (this.started) throw new Error('Gateway already started');
     const insecure = insecureBindError(this.config);
     if (insecure) throw new Error(insecure);
@@ -385,6 +394,8 @@ export class Gateway {
 
     this.app.disable('x-powered-by');
     this.applyTrustProxy();
+    // 14.0.0: every request runs in this gateway's instance scope (per-instance module state, F3)
+    this.app.use((_req, _res, next) => runInScope(this.instanceScope, next));
     this.app.use(requestIdMiddleware);
     this.app.use(securityHeadersMiddleware(() => this.config.security));
     // Network guards first: nothing else (not even CORS preflights) runs for
@@ -500,6 +511,7 @@ export class Gateway {
         authenticate: this.router.authenticate,
         isOperator: (req) => this.router!.isOperator(req),
         context: {
+          instanceScope: this.instanceScope,
           config: () => this.config,
           tools: () => this.registry.getAllTools(),
           invoke: (serverId, name, args, principal, clientId) =>
@@ -622,6 +634,8 @@ export class Gateway {
     this.app.use(createErrorHandler(() => this.config.security?.exposeErrorDetails === true));
 
     for (const d of this.config.deprecations ?? []) deprecate(d);
+    // 14.0.0: one notice when the config file is schema v11 (migrated in memory; read until 15.0.0)
+    { const n = schemaNotice(this.config); if (n) deprecate({ id: 'schema.v11', message: n, removedIn: '15.0.0' } as never); }
 
     this.metrics.start();
     if (this.config.audit?.enabled) {
@@ -704,7 +718,7 @@ export class Gateway {
 
   /** Idempotent: concurrent/double calls (e.g. SIGINT twice) share one shutdown. */
   stop(): Promise<void> {
-    this.stopping ??= this._stop();
+    this.stopping ??= runInScope(this.instanceScope, () => this._stop()).finally(() => this.instanceScope.clear());
     return this.stopping;
   }
 
@@ -930,8 +944,13 @@ export class Gateway {
    * still require a restart.
    */
   async reload(next: GatewayConfig): Promise<void> {
+    return runInScope(this.instanceScope, () => this.reloadInScope(next));
+  }
+
+  private async reloadInScope(next: GatewayConfig): Promise<void> {
     // 13.9.0: deprecated fields introduced by a reload are warned about too (once per field per process)
     for (const d of next.deprecations ?? []) deprecate(d);
+    { const n = schemaNotice(next); if (n) deprecate({ id: 'schema.v11', message: n, removedIn: '15.0.0' } as never); }
     const insecure = insecureBindError({ ...next, host: this.config.host, security: { ...next.security, insecure: next.security?.insecure ?? this.config.security?.insecure } });
     if (insecure) throw new Error(insecure.replace('Refusing to start', 'Refusing to reload'));
     // Concurrent reloads (admin API, file watcher, control plane, catalog installs) are serialized: each one prepares

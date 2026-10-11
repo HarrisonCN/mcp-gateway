@@ -36,6 +36,7 @@ import { globToRegExp } from '../utils/tool-filter.js';
 import { logger } from '../utils/logger.js';
 import type { GatewayConfig } from '../utils/types.js';
 import { RolloutSchema, type RolloutsConfig, RolloutsSchema } from './schemas/rollouts.js';
+import { instanceLocal } from '../kernel/instance.js';
 export { type RolloutsConfig, RolloutsSchema } from './schemas/rollouts.js';
 type Rollout = z.output<typeof RolloutSchema>;
 
@@ -118,7 +119,7 @@ export class RolloutManager {
   }
 }
 
-export const rolloutManager = new RolloutManager();
+export const rolloutManager = instanceLocal('rollouts', 'rolloutManager', () => new RolloutManager()); // 14.0.0: per gateway instance (F3)
 const list = (cfg: GatewayConfig): Rollout[] => (cfg.rollouts ? RolloutsSchema.parse(cfg.rollouts) : []);
 const MARK = 'mcp-gateway/rollout';
 

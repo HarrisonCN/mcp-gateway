@@ -16,7 +16,7 @@ mcp-gateway 位于 AI 客户端（Claude Code、Cursor、自研 Agent、大模�
 Streamable HTTP，或 `/api/v1` 下的 REST API——网关负责识别调用方、判断它能做什么、把调用路由到正确的上游，并记录发生了什么。
 密钥、权限范围、限流、策略、日志和指标集中在一处管理，不必在每个客户端里各配一遍。
 
-当前版本：**13.9.0**（npm `latest`）。控制面板在线演示（模拟流量，纯浏览器运行，无需后端）：
+当前版本：**14.0.0**（npm `latest`）。控制面板在线演示（模拟流量，纯浏览器运行，无需后端）：
 <https://harrisoncn.github.io/mcp-gateway/>
 
 ## 目录
@@ -139,7 +139,7 @@ docker run -d -p 4000:4000 \
   -v mcp-gateway-data:/app/data \
   -e MCP_GATEWAY_HOST=0.0.0.0 \
   -e MCP_GATEWAY_API_KEYS=sha256:<gen-key 输出的摘要> \
-  ghcr.io/harrisoncn/mcp-gateway:13
+  ghcr.io/harrisoncn/mcp-gateway:14
 ```
 
 `MCP_GATEWAY_API_KEYS`（逗号分隔，明文或 `sha256:<hex>`）无需改配置文件即可开启 API Key 鉴权；`MCP_GATEWAY_HOST`
@@ -149,7 +149,7 @@ docker run -d -p 4000:4000 \
 每个镜像都用 cosign 做了无密钥签名（GitHub OIDC），并附带 SLSA 来源证明和 SBOM。部署前请先验证，并在生产清单中固定它输出的摘要：
 
 ```bash
-cosign verify ghcr.io/harrisoncn/mcp-gateway:13.9.0 \
+cosign verify ghcr.io/harrisoncn/mcp-gateway:14.0.0 \
   --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -175,7 +175,7 @@ helm install gw ./deploy/helm/mcp-gateway --set existingSecret=gw-secrets
 `mcp-gateway.yml`——开启鉴权、接入一个 stdio 服务器：
 
 ```yaml
-version: 11            # 配置 schema 版本（13.x 使用 v11）
+version: 12            # 配置 schema 版本（14.x 使用 v12；v11 文件读取至 15.0）
 host: 127.0.0.1        # 只有开启鉴权时才改成 0.0.0.0
 port: 4000
 
@@ -249,7 +249,7 @@ API Key 打包进网页或 App：要么经由你自己的后端转发，要么�
 | `degrade` | 如 `offline`、`self-healing`、`blue-green`、`edge-autonomy` | 跳过钩子，结果中带 `_meta["mcp-gateway/degraded"]` 标记 |
 
 失效关闭是**有范围的**：故障模块只拒绝落在它自身配置范围内的调用（例如 `dlp.servers`）；范围无法确定时，拒绝所有工具调用。
-安全模块始终为 `closed`；`kernel.failurePolicy` 只能覆盖 `console`、`realtime-budgets` 和 `billing` 的策略。
+安全模块始终为 `closed`；`modules.failurePolicy` 只能覆盖 `console`、`realtime-budgets` 和 `billing` 的策略。
 `GET /api/v1/admin/kernel` 可查看每个模块的状态与策略。
 
 **热更新分阶段进行：Prepare → Validate → Commit。** 新连接、目录和模块先在旁路准备好；重载新增的服务器在提交前保持隐藏

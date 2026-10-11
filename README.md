@@ -17,7 +17,7 @@ Streamable HTTP at `/mcp` or a REST API under `/api/v1` — and the gateway auth
 do, routes the call to the right upstream and records what happened. Keys, scopes, rate limits, policy, logs and
 metrics live in one place instead of in every client.
 
-Current release: **13.9.0** (npm `latest`). Live dashboard demo with simulated traffic, no backend:
+Current release: **14.0.0** (npm `latest`). Live dashboard demo with simulated traffic, no backend:
 <https://harrisoncn.github.io/mcp-gateway/>
 
 ## Contents
@@ -150,7 +150,7 @@ docker run -d -p 4000:4000 \
   -v mcp-gateway-data:/app/data \
   -e MCP_GATEWAY_HOST=0.0.0.0 \
   -e MCP_GATEWAY_API_KEYS=sha256:<digest from gen-key> \
-  ghcr.io/harrisoncn/mcp-gateway:13
+  ghcr.io/harrisoncn/mcp-gateway:14
 ```
 
 `MCP_GATEWAY_API_KEYS` (comma-separated, plain or `sha256:<hex>`) turns on API-key auth without editing the file, and
@@ -162,7 +162,7 @@ Every image is signed with cosign (keyless, GitHub OIDC) and carries SLSA proven
 before you deploy, and pin the digest it prints:
 
 ```bash
-cosign verify ghcr.io/harrisoncn/mcp-gateway:13.9.0 \
+cosign verify ghcr.io/harrisoncn/mcp-gateway:14.0.0 \
   --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -189,7 +189,7 @@ off by default. See the [chart README](deploy/helm/mcp-gateway/README.md) and th
 `mcp-gateway.yml` — an authenticated gateway with one stdio server:
 
 ```yaml
-version: 11            # config schema (13.x uses schema v11)
+version: 12            # config schema (14.x uses schema v12; v11 files are read until 15.0)
 host: 127.0.0.1        # 0.0.0.0 only together with auth
 port: 4000
 
@@ -269,7 +269,7 @@ data residency and the security guard modules) and then freezes that target. A r
 
 Fail-closed is **scoped**: a failed module refuses only the calls in its own configured scope (for example
 `dlp.servers`); when that scope cannot be determined it refuses every tool call. Security modules are always `closed`;
-`kernel.failurePolicy` may override only `console`, `realtime-budgets` and `billing`.
+`modules.failurePolicy` may override only `console`, `realtime-budgets` and `billing`.
 `GET /api/v1/admin/kernel` shows each module's state and policy.
 
 **Hot reload is staged: Prepare → Validate → Commit.** New connections, catalog and modules are built aside; servers

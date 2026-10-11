@@ -36,6 +36,7 @@ import express, { type Request, type Response } from 'express';
 import { registerFeature, objectBody, badRequest } from '../gateway/features.js';
 import type { GatewayConfig } from '../utils/types.js';
 import { type IdentityConfig, IdentitySchema, Role } from './schemas/identity.js';
+import { instanceLocal } from '../kernel/instance.js';
 export { type IdentityConfig, IdentitySchema } from './schemas/identity.js';
 type Cfg = z.output<typeof IdentitySchema>;
 
@@ -248,7 +249,7 @@ export function resolveMemberships(groups: readonly string[], cfg: Cfg): Array<{
   return [...out.values()];
 }
 
-const jwksCache = new Map<string, JWTVerifyGetKey>();
+const jwksCache = instanceLocal('identity', 'jwksCache', () => new Map<string, JWTVerifyGetKey>()); // 14.0.0: per gateway instance (F3)
 /** Verify an OIDC ID token; returns its claims. */
 export async function verifyIdToken(token: string, oidc: NonNullable<Cfg['oidc']>): Promise<Record<string, unknown>> {
   let keys: JWTVerifyGetKey;
@@ -278,7 +279,7 @@ export function authorizeUrl(oidc: NonNullable<Cfg['oidc']>, opts: { state?: str
 }
 
 const settings = (cfg: GatewayConfig): Cfg => IdentitySchema.parse(cfg.identity ?? {});
-const directories = new Map<string, ScimDirectory>();
+const directories = instanceLocal('identity', 'directories', () => new Map<string, ScimDirectory>()); // 14.0.0: per gateway instance (F3)
 const directoryFor = (cfg: Cfg): ScimDirectory => {
   const k = cfg.storePath ?? '';
   let d = directories.get(k);

@@ -39,6 +39,11 @@ import { toolCallHttpStatus } from '../gateway/http-status.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig } from '../utils/types.js';
 import { Agent, type AgentIdentityConfig, AgentIdentitySchema, ERR_AGENT_REQUIRED } from './schemas/agent-identity.js';
+import { instanceLocal } from '../kernel/instance.js';
+/** 14.0.0: per gateway instance (F3). */
+const aiState = instanceLocal('agent-identity', 'aiState', () => ({ lastAlert: 0 }));
+
+
 export { type AgentIdentityConfig, AgentIdentitySchema, ERR_AGENT_REQUIRED } from './schemas/agent-identity.js';
 type Cfg = z.output<typeof AgentIdentitySchema>;
 
@@ -185,12 +190,11 @@ export const agentState = {
 type Store = import('../state/store.js').StateStore;
 const RKEY = (jti: string) => `agent-identity:revoked:${jti}`;
 const IKEY = (jti: string) => `agent-identity:issued:${jti}`;
-let lastAlert = 0;
 function storeAlert(what: string, err: unknown): void {
   agentState.stats.storeErrors++;
   const t = Date.now();
-  if (t - lastAlert > 10_000) {
-    lastAlert = t;
+  if (t - aiState.lastAlert > 10_000) {
+    aiState.lastAlert = t;
     logger.error(`agent-identity: revocation store unavailable (${what}): ${err instanceof Error ? err.message : String(err)} — ALERT: token-authenticated agent calls are affected (metric mcp_gateway_agent_revocation_store_errors_total)`);
   }
 }

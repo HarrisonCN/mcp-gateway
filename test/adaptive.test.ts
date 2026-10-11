@@ -1,3 +1,4 @@
+import { runInScope } from '../src/kernel/instance.js';
 import { describe, it, expect, afterEach } from 'vitest';
 import { AdaptiveRouter, AdaptiveSchema, sampleBeta, adaptiveRouter } from '../src/features/adaptive.js';
 import { startFeatureGw, type FeatureGw } from './helpers/feature-gw.js';
@@ -79,7 +80,8 @@ describe('adaptive routing 2.0 (5.8)', () => {
     expect((await h.admin('adaptive/call', { pool: 'echoes' })).status).toBe(422);
     const bad = new AdaptiveRouter();
     expect(bad.stats.size).toBe(0);
-    expect(adaptiveRouter.get('echoes', 'one').picks + adaptiveRouter.get('echoes', 'two').picks).toBeGreaterThan(0);
+    // 14.0.0: module state is per gateway instance (F3) — read it in this gateway's scope
+    expect(runInScope((h.gw as any).instanceScope, () => adaptiveRouter.get('echoes', 'one').picks + adaptiveRouter.get('echoes', 'two').picks)).toBeGreaterThan(0);
   });
 
   it('reports 502 when the picked call fails', async () => {

@@ -41,7 +41,7 @@ describe('schema v8 (8.0)', () => {
     expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/config schema v6 was removed in 7.0 — use `version: 11`/);
     expect(() => validateConfig({ servers: [{ id: 'a', transport: 'stdio', command: 'x', timeout: 5 }] })).toThrow(/servers.0.timeout: removed in 5.0 — use `timeoutMs`/);
     expect(removedConfigKeys({ version: 4, servers: [{ id: 'a', timeout: 1 }] })).toHaveLength(2);
-    expect(() => validateConfig({ version: 12, servers: [] })).toThrow(/11.0 reads `version: 11`/);
+    expect(() => validateConfig({ version: 13, servers: [] })).toThrow(/14.0 reads `version: 12`/);
     expect(() => validateConfig({ version: 7, servers: [] })).toThrow(/config schema v7 was removed in 8.0 — use `version: 11`/);
     expect(configDeprecations({ version: 7, servers: [] })).toEqual([]); // 8.0
   });

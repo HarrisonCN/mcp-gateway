@@ -7,7 +7,7 @@
  * reports, with file:line:
  *
  *   config     YAML snippets that are gateway configs (or the `mcp-gateway.yml` of a Kubernetes ConfigMap / Helm
- *              `config:` value) are validated against config schema v11 (`validateConfig`); `version:` must be 11;
+ *              `config:` value) are validated against config schema v12 (`validateConfig`); `version:` must be 12 (11 only in historical docs);
  *              unknown top-level keys are reported.
  *   syntax     JSON fences must parse; TypeScript / JavaScript fences must compile (esbuild); YAML fences must parse.
  *   cli        `mcp-gateway <command> --flag` in shell fences: the command and every flag must exist in src/cli.ts.
@@ -153,15 +153,18 @@ async function check(root: string, opts: { external?: boolean }) {
     stats.configs++;
     const unknown = Object.keys(doc).filter((k) => !CONFIG_FILE_KEYS.includes(k));
     if (unknown.length) add(rel, line, 'config', `unknown top-level key(s): ${unknown.join(', ')}`);
-    if (doc.version !== undefined && doc.version !== 11) {
-      if (!hist) add(rel, line, 'config', `config "version: ${String(doc.version)}" — the current schema is version 11`);
+    // 14.0.0: the current schema is v12; v11 is still read (migrated in memory) but current docs show v12
+    if (doc.version !== undefined && doc.version !== 12 && doc.version !== 11) {
+      if (!hist) add(rel, line, 'config', `config "version: ${String(doc.version)}" — the current schema is version 12`);
       return;
     }
+    if (doc.version === 11 && !hist) add(rel, line, 'config', 'config "version: 11" — current docs use schema v12 (`version: 12`; v11 files are only read until 15.0)');
     // `${VAR}` references get a stand-in value (docs never carry real secrets); errors on documentation placeholders
     // (`<hex>`, `…`, `...`, `xxx`, `change-me`) are not findings.
-    const filled = JSON.parse(JSON.stringify({ version: 11, servers: [], ...doc }).replace(/\$\{[A-Z0-9_]+(?::-[^}]*)?\}/g, 'docs-check-env-value-0123456789abcdef0123')) as Record<string, unknown>;
+    const filled = JSON.parse(JSON.stringify({ servers: [], ...doc }).replace(/\$\{[A-Z0-9_]+(?::-[^}]*)?\}/g, 'docs-check-env-value-0123456789abcdef0123')) as Record<string, unknown>;
     try {
-      validateConfig(filled);
+      const c = validateConfig(filled);
+      if (!hist) for (const d of c.deprecations ?? []) add(rel, line, 'config', `schema v11 field in current docs: ${(d as { path?: string }).path ?? d.id} — use ${(d as { replacement?: string }).replacement ?? 'the v12 form'}`);
     } catch (e) {
       const issues = (e as Error).message.replace(/^Invalid configuration:\s*/, '').split(/\n\s*-\s*/).map((x) => x.replace(/^\s*-\s*/, '').trim()).filter(Boolean);
       const real = issues.filter((iss) => {
@@ -403,7 +406,7 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith
   if (flag('--json')) console.log(JSON.stringify({ findings, stats }, null, 2));
   else {
     for (const f of findings) console.log(`${f.file}:${f.line}: [${f.rule}] ${f.message}`);
-    console.log(`docs-check: ${findings.length} finding(s) — ${stats.files} files, ${stats.fences} code blocks (${stats.configs} configs validated against schema v11, ${stats.skipped} skipped), ${stats.cli} CLI invocations, ${stats.links} links, ${stats.images} image references`);
+    console.log(`docs-check: ${findings.length} finding(s) — ${stats.files} files, ${stats.fences} code blocks (${stats.configs} configs validated against schema v12, ${stats.skipped} skipped), ${stats.cli} CLI invocations, ${stats.links} links, ${stats.images} image references`);
   }
   process.exit(findings.length ? 1 : 0);
 }

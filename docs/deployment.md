@@ -10,10 +10,11 @@ Images are published to GitHub Container Registry for every release (`linux/amd6
 cosign (keyless, GitHub Actions identity) and shipped with an SBOM:
 
 ```
-ghcr.io/harrisoncn/mcp-gateway:13.9.0   # exact release — immutable, use this (or a digest) in production
-ghcr.io/harrisoncn/mcp-gateway:13.9     # latest patch of 13.4
-ghcr.io/harrisoncn/mcp-gateway:13       # latest 13.x (current line, config schema v11)
+ghcr.io/harrisoncn/mcp-gateway:14.0.0   # exact release — immutable, use this (or a digest) in production
+ghcr.io/harrisoncn/mcp-gateway:14.0     # latest patch of 14.0
+ghcr.io/harrisoncn/mcp-gateway:14       # latest 14.x (current line, config schema v12; reads v11 files too)
 ghcr.io/harrisoncn/mcp-gateway:latest   # newest release of the current line
+ghcr.io/harrisoncn/mcp-gateway:13       # 13.9.x maintained line (npm dist-tag v13-lts, config schema v11)
 ghcr.io/harrisoncn/mcp-gateway:12.0     # 12.0.x security maintenance line (npm dist-tag v12-0)
 ghcr.io/harrisoncn/mcp-gateway:10       # 10.x LTS line (npm dist-tag v10-lts, config schema v10)
 ```
@@ -24,8 +25,8 @@ Which tag to use:
   under you even if a tag is moved:
 
   ```bash
-  docker buildx imagetools inspect ghcr.io/harrisoncn/mcp-gateway:13.9.0 --format '{{json .Manifest.Digest}}'
-  # → use ghcr.io/harrisoncn/mcp-gateway@sha256:<digest> (or 13.4.0@sha256:<digest> to keep the version readable)
+  docker buildx imagetools inspect ghcr.io/harrisoncn/mcp-gateway:14.0.0 --format '{{json .Manifest.Digest}}'
+  # → use ghcr.io/harrisoncn/mcp-gateway@sha256:<digest> (or 14.0.0@sha256:<digest> to keep the version readable)
   cosign verify ghcr.io/harrisoncn/mcp-gateway@sha256:<digest> \
     --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@refs/tags/v' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
@@ -44,7 +45,7 @@ docker run -d --name mcp-gateway -p 4000:4000 \
   -v mcp-gateway-data:/app/data \
   -e MCP_GATEWAY_API_KEYS="$(openssl rand -hex 24)" \
   -e GITHUB_TOKEN \
-  ghcr.io/harrisoncn/mcp-gateway:13.9.0
+  ghcr.io/harrisoncn/mcp-gateway:14.0.0
 ```
 
 - The image runs as the unprivileged `node` user, listens on `4000`, and has a `HEALTHCHECK` on the always-public
@@ -54,7 +55,7 @@ docker run -d --name mcp-gateway -p 4000:4000 \
   anything else (Python, `uvx`, …) in a derived image:
 
   ```dockerfile
-  FROM ghcr.io/harrisoncn/mcp-gateway:13.9.0
+  FROM ghcr.io/harrisoncn/mcp-gateway:14.0.0
   USER root
   RUN apk add --no-cache python3 py3-pip && pip install --break-system-packages uv
   USER node
@@ -78,7 +79,7 @@ curl -s -X POST -H "Authorization: Bearer $GATEWAY_API_KEY" -H 'content-type: ap
   -d '{"server":"echo","tool":"echo","arguments":{"hello":"world"}}' http://localhost:4000/api/v1/tools/call
 ```
 
-The Compose file uses `${MGW_IMAGE:-ghcr.io/harrisoncn/mcp-gateway:13}`: set `MGW_IMAGE` to an exact release or digest
+The Compose file uses `${MGW_IMAGE:-ghcr.io/harrisoncn/mcp-gateway:14}`: set `MGW_IMAGE` to an exact release or digest
 to pin it. [`examples/docker/`](../examples/docker) has a larger setup with Prometheus and a Postgres MCP server.
 
 ## Kubernetes
@@ -117,7 +118,7 @@ The essential parts of the Deployment:
 ```yaml
 containers:
   - name: mcp-gateway
-    image: ghcr.io/harrisoncn/mcp-gateway:13.9.0   # or @sha256:<digest>
+    image: ghcr.io/harrisoncn/mcp-gateway:14.0.0   # or @sha256:<digest>
     args: ["start", "-c", "/config/mcp-gateway.yml", "--no-watch"]
     ports: [{ name: http, containerPort: 4000 }]
     envFrom: [{ secretRef: { name: mcp-gateway } }]

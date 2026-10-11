@@ -10,7 +10,7 @@
  */
 (() => {
   'use strict';
-  const VERSION = '13.9.0';
+  const VERSION = '14.0.0';
   const realFetch = window.fetch.bind(window);
   const started = Date.now();
   // Two workspaces so the tenants card can be tried out.
@@ -772,7 +772,7 @@
       { id: 'globex', name: 'Globex', domain: 'globex.example', keyIds: ['gx-1'], verified: false, verifiedAt: null },
     ], listings: [] });
     // 10.0: unified kernel.
-    if (p === '/admin/kernel') return json({ version: VERSION, schema: 11, line: { line: '11.x', lts: false }, moduleMode: 'lazy', lts: { line: '10.x', codename: 'Kernel', lts: true, activeUntil: '2027-10-31', maintenanceUntil: '2028-10-31', status: 'active' },
+    if (p === '/admin/kernel') return json({ version: VERSION, schema: 12, line: { line: '14.x', lts: false }, moduleMode: 'lazy', lts: { line: '10.x', codename: 'Kernel', lts: true, activeUntil: '2027-10-31', maintenanceUntil: '2028-10-31', status: 'active' },
       modules: DEMO_FEATURES.map((m) => ({ ...m, path: `/api/v1/admin/${m.id}` })),
       hooks: ['chaos', 'multimodal', 'confidential', 'sla', 'self-healing'].map((id, i) => ({ order: i + 1, id, before: id !== 'multimodal' && id !== 'sla', after: id !== 'confidential' })),
       features: ['sla', 'selfHealing', 'chaos'].map((k) => ({ section: `features.${k}`, configured: !!(demoConfig.features && demoConfig.features[k]) })) });

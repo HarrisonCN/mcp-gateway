@@ -14,7 +14,7 @@ import { fileURLToPath } from 'url';
 import { parse as parseYaml, parseAllDocuments } from 'yaml';
 import Ajv from 'ajv';
 import { validateConfig } from '../src/config/loader.js';
-import { V12_DEPRECATIONS, migrateToV12, downgradeFromV12, unifiedDiff, buildV12ConfigSchema, moduleDeclarationV12 } from '../src/config/v12.js';
+import { V12_DEPRECATIONS, migrateToV12, downgradeFromV12, unifiedDiff, buildV12ConfigSchema, buildV12ModuleSchema, moduleDeclarationV12 } from '../src/config/v12.js';
 import { deprecate, runtimeDeprecations, resetDeprecations } from '../src/utils/deprecations.js';
 import { logger } from '../src/utils/logger.js';
 import { FEATURE_MANIFEST } from '../src/features/manifest.js';
@@ -46,7 +46,7 @@ function exampleConfigs(): Array<{ name: string; text: string }> {
       else if (/^mcp-gateway\.ya?ml$/.test(n)) {
         const txt = readFileSync(p, 'utf8');
         const docs = parseAllDocuments(txt).map((x) => x.toJS());
-        if (docs.length === 1 && docs[0]?.version === 11) out.push({ name: p.slice(ROOT.length + 1), text: txt });
+        if (docs.length === 1 && (docs[0]?.version === 11 || docs[0]?.version === 12)) out.push({ name: p.slice(ROOT.length + 1), text: txt });
         for (const d2 of docs) {
           const cm = d2?.kind === 'ConfigMap' ? d2.data?.['mcp-gateway.yml'] : undefined;
           if (typeof cm === 'string') out.push({ name: `${p.slice(ROOT.length + 1)} (ConfigMap)`, text: cm });
@@ -65,15 +65,19 @@ function exampleConfigs(): Array<{ name: string; text: string }> {
 }
 
 describe('schema v12 draft files', () => {
-  it('schema/v12-draft/config.schema.json and module.schema.json compile (JSON Schema draft-07)', () => {
-    for (const f of ['schema/v12-draft/config.schema.json', 'schema/v12-draft/module.schema.json']) {
+  it('schema/v12/config.schema.json and module.schema.json compile (JSON Schema draft-07)', () => {
+    for (const f of ['schema/v12/config.schema.json', 'schema/v12/module.schema.json']) {
       const s = readJson(f);
       expect(s.$schema).toBe('http://json-schema.org/draft-07/schema#');
       expect(() => compile(s), f).not.toThrow();
     }
   });
   it('config.schema.json is generated from the code (no drift)', () => {
-    expect(readJson('schema/v12-draft/config.schema.json')).toEqual(buildV12ConfigSchema());
+    expect(readJson('schema/v12/config.schema.json')).toEqual(buildV12ConfigSchema());
+    expect(readJson('schema/v12/module.schema.json')).toEqual(buildV12ModuleSchema());
+  });
+  it('schema/v12-draft (13.9 path) is kept as an identical alias copy until 15.0.0', () => {
+    for (const f of ['config.schema.json', 'module.schema.json']) expect(readJson(`schema/v12-draft/${f}`)).toEqual(readJson(`schema/v12/${f}`));
   });
   it('the design doc and the deprecation inventory doc exist and name every deprecation', () => {
     const design = readFileSync(join(ROOT, 'docs/design/schema-v12.md'), 'utf8');
@@ -86,8 +90,8 @@ describe('schema v12 draft files', () => {
     }
     for (const w of ['init', 'reconfigure', 'disable', 'dispose', 'health', 'capabilities']) expect(design).toContain(w);
   });
-  it('13.9 still runs schema v11 only: a v12 file is refused with a pointer to the draft', () => {
-    expect(() => validateConfig({ version: 12 })).toThrow(/v12.*draft/i);
+  it('14.0: schema v12 is the runtime schema; a v11 file without v11-only fields has nothing deprecated', () => {
+    expect(validateConfig({ version: 12 }).schemaVersion).toBe(12);
     expect(validateConfig({ version: 11 }).deprecations).toBeUndefined();
   });
 });
@@ -98,9 +102,9 @@ describe('deprecation inventory → runtime warnings', () => {
     delete process.env.MCP_GATEWAY_SILENCE_DEPRECATIONS;
     vi.restoreAllMocks();
   });
-  it('every inventory entry is removed in 14.0.0 and has a replacement', () => {
+  it('every inventory entry is removed in 15.0.0 (14.0: read via the in-memory migration) and has a replacement', () => {
     for (const d of V12_DEPRECATIONS) {
-      expect(d.removedIn).toBe('14.0.0');
+      expect(d.removedIn).toBe('15.0.0');
       expect(d.since).toBe('13.9.0');
       expect(d.id).toMatch(/^v12\./);
     }
@@ -152,7 +156,7 @@ describe('deprecation inventory → runtime warnings', () => {
 });
 
 describe('migration preview: v11 → v12', () => {
-  const schema = () => compile(readJson('schema/v12-draft/config.schema.json'));
+  const schema = () => compile(readJson('schema/v12/config.schema.json'));
   it('round-trips every example config: v12 output validates against the draft, downgrades to the same v11 config', () => {
     const validate = schema();
     const list = exampleConfigs();
@@ -161,6 +165,13 @@ describe('migration preview: v11 → v12', () => {
       const before = parseYaml(text);
       expect(() => validateConfig(before), name).not.toThrow();
       const r = migrateToV12(text);
+      if (before.version === 12) {
+        // 14.0.0: the examples ship in schema v12 — nothing to migrate, valid against the schema
+        expect(r.changes, name).toEqual([]);
+        expect(validateConfig(before).schemaVersion, name).toBe(12);
+        expect(validate(before), `${name}: ${ajv.errorsText(validate.errors)}`).toBe(true);
+        continue;
+      }
       expect(r.report.errors, name).toEqual([]);
       expect(r.config.version, name).toBe(12);
       expect(validate(r.config), `${name}: ${ajv.errorsText(validate.errors)}`).toBe(true);
@@ -182,7 +193,7 @@ describe('migration preview: v11 → v12', () => {
     expect(c.features.genaiTelemetry).toBeUndefined();
     expect(r.changes.length).toBe(V12_DEPRECATIONS.length + 1);
     expect(r.text).toContain('# OpenTelemetry GenAI export');
-    expect(r.report.warnings.some((w) => /draft/i.test(w))).toBe(true);
+    expect(r.report.warnings.some((w) => /draft/i.test(w))).toBe(false); // 14.0.0: v12 is the runtime schema
     expect(r.report.manual.length).toBeGreaterThan(0);
   });
   it('unified diff of the migration', () => {
@@ -310,7 +321,7 @@ describe('13.4.0 F3 / C7: instance isolation and v12 module declarations (all 46
     for (const e of FEATURE_MANIFEST) expect(await loadFeature(e.id), e.id).toBe(true);
   }, 60_000);
   it('every module has a v12 declaration (lifecycle, capabilities, failure policy) valid against module.schema.json', () => {
-    const validate = compile(readJson('schema/v12-draft/module.schema.json'));
+    const validate = compile(readJson('schema/v12/module.schema.json'));
     expect(FEATURE_MANIFEST.length).toBe(46);
     for (const e of FEATURE_MANIFEST) {
       const d = moduleDeclarationV12(e, registeredFeature(e.id)) as any;

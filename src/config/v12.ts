@@ -9,7 +9,7 @@
  *    `mcp-gateway config diff --to v12`;
  *  - {@link downgradeFromV12} (v12 → the v11 form 13.x runs), used to prove round trips and to validate v12 output
  *    with the v11 runtime schema;
- *  - the JSON Schemas under schema/v12-draft ({@link buildV12ConfigSchema}, {@link buildV12ModuleSchema}) and the v12
+ *  - the JSON Schemas under schema/v12 (14.0.0; `schema/v12-draft` is a deprecated alias copy until 15.0.0) ({@link buildV12ConfigSchema}, {@link buildV12ModuleSchema}) and the v12
  *    module declaration derived from each manifest entry ({@link moduleDeclarationV12}).
  *
  * Design: docs/design/schema-v12.md.
@@ -23,8 +23,8 @@ import type { FeatureManifestEntry, FailurePolicy } from '../features/manifest.j
 import { FEATURE_MANIFEST, failurePolicyOf } from '../features/manifest.js';
 import { FEATURE_CONFIG_KEYS, type FeatureModule } from '../gateway/features.js';
 
-export { V12_SECTION_RENAMES, V12_DEPRECATIONS, v12DeprecationsIn, type V12Deprecation } from './v12-deprecations.js';
-import { V12_SECTION_RENAMES } from './v12-deprecations.js';
+export { V12_SECTION_RENAMES, V12_DEPRECATIONS, v12DeprecationsIn, type V12Deprecation, MODULE_CAPABILITIES, type ModuleCapability, schemaNotice, normalizeSchemaVersion, RUNTIME_SCHEMA } from './v12-deprecations.js';
+import { V12_SECTION_RENAMES, MODULE_CAPABILITIES as MODULE_CAPABILITIES_ } from './v12-deprecations.js';
 
 // ─── migration preview ────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -48,8 +48,6 @@ export interface V12Migration {
   ok: boolean;
 }
 
-const DRAFT_WARNING =
-  'Schema v12 is a DRAFT (13.9.0): 13.x refuses `version: 12` — keep running the v11 file and apply this migration when you upgrade to 14.0.';
 
 
 const keyOf = (p: Pair): unknown => (isScalar(p.key) ? (p.key as Scalar).value : p.key);
@@ -64,7 +62,7 @@ function renameKey(map: YAMLMap, from: string, to: string): boolean {
 /** Migrate a v11 config file's text to the v12 draft. `format` is guessed from the content when omitted. */
 export function migrateToV12(text: string, format?: 'yaml' | 'json', names: { from?: string; to?: string } = {}): V12Migration {
   const fmt = format ?? (/^\s*[{[]/.test(text) ? 'json' : 'yaml');
-  const report: CompatibilityReport = { errors: [], warnings: [DRAFT_WARNING], manual: [] };
+  const report: CompatibilityReport = { errors: [], warnings: [], manual: [] };
   const changes: string[] = [];
   const fail = (msg: string): V12Migration => {
     report.errors.push(msg);
@@ -81,18 +79,18 @@ export function migrateToV12(text: string, format?: 'yaml' | 'json', names: { fr
   if (!isMap(root)) return fail('the config must be a mapping at the top level');
   const version = doc.get('version');
   if (version === 12) {
-    // already v12: check it by downgrading to the v11 form the runtime validates
+    // already v12 (14.0.0: the runtime schema): validate it as it is
     const obj = doc.toJS() as Record<string, unknown>;
     try {
-      validateConfig(downgradeFromV12(obj));
+      validateConfig(obj);
     } catch (e) {
-      report.errors.push(`the v12 file does not map to a valid v11 config: ${(e as Error).message}`);
+      report.errors.push(`the v12 file is not valid: ${(e as Error).message}`);
     }
     return { text, config: obj, changes, report, diff: '', ok: report.errors.length === 0 };
   }
   if (typeof version === 'number' && version < 11) return fail(`the config is on schema v${version}: run \`mcp-gateway migrate --to 11\` first (docs/guides/migrating-to-v11.md), then migrate to v12`);
   if (version !== undefined && version !== 11) return fail(`unsupported config version ${JSON.stringify(version)} (expected 11)`);
-  if (version === undefined) report.warnings.push('no `version:` in the file — read as schema v11');
+  if (version === undefined) report.warnings.push('no `version:` in the file — read as schema v11 (it uses v11 fields) or v12; `version: 12` is added');
   try {
     validateConfig(doc.toJS());
   } catch (e) {
@@ -205,13 +203,13 @@ export function unifiedDiff(a: string, b: string, fromName: string, toName: stri
   return out.join('\n') + '\n';
 }
 
-// ─── JSON Schemas (schema/v12-draft) ──────────────────────────────────────────────────────────────────────────────
+// ─── JSON Schemas (schema/v12) ────────────────────────────────────────────────────────────────────────────────────
 
 /** Capability vocabulary of the v12 module declaration. */
-export const V12_CAPABILITIES = ['admin-routes', 'client-routes', 'call-hook', 'security-guard', 'background-timers', 'state-store', 'outbound-network', 'filesystem', 'signing-keys', 'invoke-tools'] as const;
+export const V12_CAPABILITIES = MODULE_CAPABILITIES_;
 export type V12Capability = (typeof V12_CAPABILITIES)[number];
 
-const SCHEMA_BASE = 'https://github.com/HarrisonCN/mcp-gateway/blob/main/schema/v12-draft/';
+const SCHEMA_BASE = 'https://github.com/HarrisonCN/mcp-gateway/blob/main/schema/v12/';
 const POLICIES: FailurePolicy[] = ['open', 'closed', 'degrade'];
 
 /** v12 name of a v11 feature section. */
@@ -231,7 +229,7 @@ export function buildV12ConfigSchema(topLevelKeys: readonly string[] = CONFIG_FI
   return {
     $schema: 'http://json-schema.org/draft-07/schema#',
     $id: SCHEMA_BASE + 'config.schema.json',
-    title: 'MCP Gateway config schema v12 (DRAFT, 13.9.0)',
+    title: 'MCP Gateway config schema v12 (14.0)',
     description: 'Draft of the config schema 14.0 will run. 13.x runs schema v11 and refuses version 12. See docs/design/schema-v12.md.',
     type: 'object',
     required: ['version'],
@@ -285,7 +283,7 @@ export function buildV12ModuleSchema(): Record<string, unknown> {
   return {
     $schema: 'http://json-schema.org/draft-07/schema#',
     $id: SCHEMA_BASE + 'module.schema.json',
-    title: 'MCP Gateway feature module declaration v12 (DRAFT, 13.9.0)',
+    title: 'MCP Gateway feature module declaration v12 (14.0)',
     description: 'What a feature module declares to the 14.0 kernel: lifecycle methods, capabilities, config sections, dependencies, failure policy. 13.9 derives it from the manifest (moduleDeclarationV12).',
     type: 'object',
     required: ['id', 'since', 'summary', 'apiVersion', 'lifecycle', 'capabilities', 'configSections', 'dependsOn'],
@@ -294,7 +292,7 @@ export function buildV12ModuleSchema(): Record<string, unknown> {
       id: { type: 'string', pattern: '^[a-z][a-z0-9-]*$' },
       since: { type: 'string', pattern: '^\\d+\\.\\d+\\.\\d+$' },
       summary: { type: 'string', minLength: 1 },
-      apiVersion: { const: 'v12-draft' },
+      apiVersion: { enum: ['v12', 'v12-draft'], description: "'v12' (14.0). 'v12-draft' (13.9) is accepted as a deprecated alias until 15.0.0." },
       configSections: { type: 'array', uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9]*$' } },
       dependsOn: { type: 'array', uniqueItems: true, items: { type: 'string' } },
       hook: { type: 'string' },
@@ -332,12 +330,14 @@ export function moduleDeclarationV12(e: FeatureManifestEntry, mod?: FeatureModul
   if (mod?.mountClient) caps.push('client-routes');
   if (e.hook) caps.push('call-hook');
   if (e.guard) caps.push('security-guard');
+  // 14.0.0: runtime capabilities declared in the manifest (and by the module)
+  for (const c of [...(e.capabilities ?? []), ...(mod?.capabilities ?? [])]) if (!caps.includes(c)) caps.push(c);
   const sections = [...(e.activation ?? []), ...(e.hookWhen ? [e.hookWhen] : [])].map((k) => v12Section(String(k)));
   return {
     id: e.id,
     since: e.since,
     summary: e.summary,
-    apiVersion: 'v12-draft',
+    apiVersion: 'v12',
     configSections: [...new Set(sections)],
     dependsOn: [...(e.dependsOn ?? [])],
     ...(e.hook ? { hook: e.hook } : {}),

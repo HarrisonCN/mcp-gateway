@@ -57,6 +57,10 @@ export { ERR_EDGE_DENIED, type EdgeAutonomyConfig, EdgeAutonomySchema } from './
 import { EdgeRuntimeSchema } from './schemas/edge-runtime.js';
 import { OfflineSchema } from './schemas/offline.js';
 import { requireDependency } from '../gateway/kernel-runtime.js';
+import { instanceLocal } from '../kernel/instance.js';
+/** 14.0.0: per gateway instance (F3). */
+const eaState = instanceLocal('edge-autonomy', 'eaState', () => ({ liveCtx: undefined as FeatureContext | undefined, inflight: undefined as Promise<ReconcileResult> | undefined }));
+
 // 13.0: declared dependencies (manifest dependsOn) instead of static imports of other feature modules.
 const { callEdgeTool } = await requireDependency<typeof import('./edge-runtime.js')>('edge-autonomy', 'edge-runtime');
 const { isOffline, isRemote } = await requireDependency<typeof import('./offline.js')>('edge-autonomy', 'offline');
@@ -155,10 +159,9 @@ export class EdgeState {
   }
 }
 
-export const edgeState = new EdgeState();
+export const edgeState = instanceLocal('edge-autonomy', 'edgeState', () => new EdgeState()); // 14.0.0: per gateway instance (F3)
 /** Argument objects of in-flight reconcile replays: never answered locally (a replay must reach the upstream). */
 const replaying = new WeakSet<object>();
-let liveCtx: FeatureContext | undefined;
 
 export function edgeAutonomyOf(cfg: GatewayConfig): Parsed | undefined {
   if (!cfg.edgeAutonomy) return undefined;
@@ -178,7 +181,7 @@ export function disconnected(cfg: GatewayConfig, serverId: string): string | und
     const o = OfflineSchema.parse(cfg.offline);
     if (o.enabled && isOffline(o) && !o.allowRemote.some((p) => globToRegExp(p).test(serverId))) return 'network offline';
   }
-  const online = liveCtx?.onlineServers?.();
+  const online = eaState.liveCtx?.onlineServers?.();
   if (online && s && !online.includes(serverId)) return 'upstream not connected';
   return undefined;
 }
@@ -234,7 +237,6 @@ export async function localDecision(c: Parsed, cfg: GatewayConfig, call: HookCal
 
 /** Replay queued calls whose server is connected again. */
 type ReconcileResult = { applied: number; failed: number; conflicts: number; pending: number };
-let inflight: Promise<ReconcileResult> | undefined;
 
 /**
  * Replay queued outbox entries whose server is reachable again. Runs are serialized: a call made while a reconcile is
@@ -242,12 +244,12 @@ let inflight: Promise<ReconcileResult> | undefined;
  */
 export async function reconcile(cfg: GatewayConfig, invoke: FeatureContext['invoke'], principalFor: (clientId: string | undefined) => Principal = deniedPrincipal): Promise<ReconcileResult> {
   if (!edgeAutonomyOf(cfg)) return { applied: 0, failed: 0, conflicts: 0, pending: 0 };
-  if (inflight) return inflight;
-  inflight = reconcileOnce(cfg, invoke, principalFor);
+  if (eaState.inflight) return eaState.inflight;
+  eaState.inflight = reconcileOnce(cfg, invoke, principalFor);
   try {
-    return await inflight;
+    return await eaState.inflight;
   } finally {
-    inflight = undefined;
+    eaState.inflight = undefined;
   }
 }
 
@@ -343,7 +345,7 @@ registerFeature({
   since: '10.7.0',
   summary: 'Edge autonomy (EXPERIMENTAL): local cache / WASM / queue / deny decisions while an upstream is unreachable, outbox reconcile on reconnect',
   mount: (router, ctx) => {
-    liveCtx = ctx;
+    eaState.liveCtx = ctx;
     let timer: NodeJS.Timeout | undefined;
     let stopped = false;
     const loop = async () => {
@@ -361,7 +363,7 @@ registerFeature({
     ctx.onStop?.(() => {
       stopped = true;
       if (timer) clearTimeout(timer);
-      if (liveCtx === ctx) liveCtx = undefined;
+      if (eaState.liveCtx === ctx) eaState.liveCtx = undefined;
     });
     const conf = (res: import('express').Response): Parsed | undefined => {
       const c = edgeAutonomyOf(ctx.config());
