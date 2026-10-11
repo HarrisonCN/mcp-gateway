@@ -49,6 +49,7 @@
  * @module features/task-graphs
  */
 
+import { registerOpsSource } from '../gateway/ops-events.js';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -577,6 +578,14 @@ registerFeature({
     });
     const ds = durableState;
     registerMetricSource('task-graphs', () => ds.metrics.prometheus());
+    // 14.8.0: DLQ counts on the operations console cluster view (statuses counted in a Map, not keyed objects)
+    registerOpsSource('dlq', async () => {
+      if (!ds.mgr) return null;
+      const by = new Map<string, number>();
+      const es = await ds.mgr.dlqList();
+      for (const e of es) by.set(String(e.status), (by.get(String(e.status)) ?? 0) + 1);
+      return { total: es.length, byStatus: Object.fromEntries(by) };
+    });
     /** 14.4.0: the durable manager for the current config (undefined = 10.7 checkpoints). */
     const durable = (c: Parsed): DurableTasks | undefined => {
       if (!c.durable?.enabled) {

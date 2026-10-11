@@ -685,6 +685,29 @@ controlPlane:
       - {id: bob, name: bob, publicKey: "ed25519:84kFUUvAxhkllhMKEsyc9j+WLpLAR9x3OxPcC0q24EU=", roles: [approver]}
 ```
 
+### Operations console (14.8)
+
+`controlPlane.console` — the dashboard's **Operations** page and `/api/v1/admin/ops/*` (cluster status, call traces,
+denial explanations, incident timeline, troubleshooting wizard). On by default for operators; see the
+[operations console guide](guides/operations-console.md).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `controlPlane.console.enabled` | `true` | serve `/api/v1/admin/ops/*` and record call traces |
+| `controlPlane.console.viewers` | `[]` | client id globs (`key:oncall`) with read-only console access (cluster, traces, explain, timeline, reports) |
+| `controlPlane.console.traceBuffer` | `500` | call traces kept in memory (10–100000) |
+| `controlPlane.console.timelineBuffer` | `1000` | incidents kept in memory (10–100000) |
+| `controlPlane.console.explainDenials` | `false` | add the denial explanation (`policy.explain`, with the config path) to refused REST tool calls made by operators; other clients never get it |
+
+```yaml
+version: 12
+servers: []
+controlPlane:
+  console:
+    viewers: ["key:oncall"]
+    traceBuffer: 1000
+```
+
 See [Declarative config](guides/declarative-config.md). 3.0 removed `corsOrigins` and `healthCheckIntervalMs` — use
 `cors.origins` and `health.intervalMs` ([migration guide](guides/migrating-to-v3.md)).
 

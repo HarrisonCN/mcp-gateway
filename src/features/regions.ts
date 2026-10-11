@@ -41,6 +41,7 @@
  * @module features/regions
  */
 
+import { emitOpsEvent, registerOpsSource } from '../gateway/ops-events.js';
 import { createHash } from 'crypto';
 import { z } from 'zod';
 import { registerFeature, badRequest, objectBody, type FeatureContext } from '../gateway/features.js';
@@ -410,6 +411,9 @@ export class RegionMesh {
     if (p.failures >= this.cfg.downAfter) p.status = 'down';
   }
 
+  /** 14.8.0: last freshness seen by {@link freshness} (timeline transitions). */
+  private lastFresh: boolean | undefined;
+
   private lagOf(p: PeerState, now: number): number | null {
     return p.lastSyncAt === undefined ? null : Math.max(0, now - p.lastSyncAt);
   }
@@ -430,7 +434,15 @@ export class RegionMesh {
     }
     let store: 'ok' | 'stale' | undefined;
     if (this.store) store = this.storeOkAt !== undefined && now - this.storeOkAt <= max ? 'ok' : 'stale';
-    return { fresh: stale.length === 0 && store !== 'stale', stale, maxLagMs: maxLag, ...(store ? { store } : {}) };
+    const fresh = stale.length === 0 && store !== 'stale';
+    // 14.8.0: freshness transitions are incidents on the operations console timeline
+    if (this.lastFresh !== undefined && this.lastFresh !== fresh) {
+      emitOpsEvent(fresh
+        ? { kind: 'region-fresh', severity: 'info', subject: this.cfg.self, detail: 'region is fresh again: every peer synced within maxStalenessMs', source: 'regions' }
+        : { kind: 'region-stale', severity: 'error', subject: this.cfg.self, detail: `region is stale (fail closed): ${stale.length ? `peers ${stale.join(', ')}` : 'region store'} behind maxStalenessMs (${max} ms)`, source: 'regions' });
+    }
+    this.lastFresh = fresh;
+    return { fresh, stale, maxLagMs: maxLag, ...(store ? { store } : {}) };
   }
 
   /** Count a refused tool call (metrics / report). */
@@ -671,6 +683,21 @@ registerFeature({
       }
     });
     registerMetricSource('regions', () => meshFor(state)?.prometheus() ?? []);
+    // 14.8.0: regions health / replication lag on the operations console cluster view
+    registerOpsSource('regions', () => {
+      const m = meshFor(state);
+      if (!m) return null;
+      const f = m.freshness();
+      const now = m.now();
+      return {
+        self: m.settings.self,
+        fresh: f.fresh,
+        stale: f.stale,
+        maxLagMs: f.maxLagMs,
+        ...(f.store ? { store: f.store } : {}),
+        peers: m.peerList().map((p) => ({ id: p.id, status: p.status, lagMs: p.lastSyncAt === undefined ? null : Math.max(0, now - p.lastSyncAt), ...(p.lastError ? { lastError: p.lastError } : {}) })),
+      };
+    });
     // 14.6.0: replicated revocations are an authority for deferred work (edge outbox replays on reconnect).
     state.unauthority?.();
     state.unauthority = registerRevocationAuthority('regions', {

@@ -16,7 +16,7 @@ mcp-gateway 位于 AI 客户端（Claude Code、Cursor、自研 Agent、大模�
 Streamable HTTP，或 `/api/v1` 下的 REST API——网关负责识别调用方、判断它能做什么、把调用路由到正确的上游，并记录发生了什么。
 密钥、权限范围、限流、策略、日志和指标集中在一处管理，不必在每个客户端里各配一遍。
 
-当前版本：**14.7.0**（npm `latest`）。控制面板在线演示（模拟流量，纯浏览器运行，无需后端）：
+当前版本：**14.8.0**（npm `latest`）。控制面板在线演示（模拟流量，纯浏览器运行，无需后端）：
 <https://harrisoncn.github.io/mcp-gateway/>
 
 ## 目录
@@ -90,6 +90,7 @@ flowchart LR
 **运维**
 - Prometheus 指标、OpenTelemetry 链路追踪、可选 SQLite 审计日志，日志、历史和 API 输出中的密钥自动脱敏。
 - `/dashboard` 控制面板：引导式接入、实时流量、延迟与错误、服务器健康、工具调试台、请求历史。
+- 运维控制台（14.8）：集群状态、带分步耗时的调用链、附配置路径的策略拒绝解释、故障时间线和排障向导，区分运维与只读查看者角色（[运维控制台](docs/guides/operations-console.md)）。
 - 存活 / 就绪探针、已签名的容器镜像、Helm Chart、Kubernetes Operator。
 - 命令行：`init`、`validate`、`diff` / `apply`、`gen-key` / `hash-key`、`migrate`、`bench`、`conformance`、`desktop`、
   `policy test`、`plugin`、`pq`、`operator`。
@@ -149,7 +150,7 @@ docker run -d -p 4000:4000 \
 每个镜像都用 cosign 做了无密钥签名（GitHub OIDC），并附带 SLSA 来源证明和 SBOM。部署前请先验证，并在生产清单中固定它输出的摘要：
 
 ```bash
-cosign verify ghcr.io/harrisoncn/mcp-gateway:14.7.0 \
+cosign verify ghcr.io/harrisoncn/mcp-gateway:14.8.0 \
   --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -293,7 +294,7 @@ CI 中运行 CodeQL、OpenSSF Scorecard、Trivy、`npm audit` 和属性测试；
 
 | 版本线 | 最新版本 | npm dist-tag | 镜像标签 | 状态 |
 |---|---|---|---|---|
-| 14.x | 14.7.0 | `latest` | `:14`、`:latest` | 当前版本——新功能、缺陷与安全修复 |
+| 14.x | 14.8.0 | `latest` | `:14`、`:latest` | 当前版本——新功能、缺陷与安全修复 |
 | 13.x | 13.9.5 | `v13-lts` | `:13` | 维护中——安全与关键缺陷修复，至少持续到 15.0.0 发布且不早于 2027-04-30；请升级到 14.x |
 | 12.x | 12.0.15 | `v12-0` | `:12` | 已被取代——包含 MGW-2026-001、-005、-007、-008、-009、-010、-011、-012、-013、-014、-015、-016、-017、-018 和 -019 的修复；请升级到 13.x |
 | 11.x | 11.2.0 | — | `:11` | 已被取代——请升级到 13.x |

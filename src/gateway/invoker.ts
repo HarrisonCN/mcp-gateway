@@ -111,6 +111,8 @@ export interface InvokeContext {
   snapshot?: FinalCallSnapshot;
   /** Set by the invoker (13.1.3): argument names the credential injection added, and the server they belong to. */
   injected?: { target: string; arguments: readonly string[] };
+  /** 14.8.0: time the HTTP layer spent authenticating this request (ms), for the call trace. */
+  authMs?: number;
 }
 
 export interface InvokeResult extends ProxyResponse {
@@ -153,6 +155,8 @@ export interface InvokerDeps {
   balancer?: LoadBalancer;
   /** 13.8.0: per-stage latency of the call pipeline (GET /api/v1/metrics?view=stages). */
   stages?: StageTimer;
+  /** 14.8.0: receives every top-level call's trace (operations console). Must not throw. */
+  onTrace?: (t: import('./ops-console.js').TraceInput) => void;
   /** Tool result cache + in-flight de-duplication (`cache:` config). */
   cache?: ToolCache;
   /** Quotas + metering (`quotas:` config). */
@@ -275,7 +279,7 @@ export class ToolInvoker {
   private refuse(ctx: InvokeContext, code: number, message: string, data: Record<string, unknown>, span: ReturnType<Tracer['startSpan']>): InvokeResult {
     this.deps.telemetry?.deny(decisionOf(data) ?? 'refused');
     span.setAttribute('mcp.policy.deny_reason', decisionOf(data) ?? 'refused');
-    this.deps.metrics.record({
+    const rec = this.deps.metrics.record({
       serverId: ctx.serverId,
       toolName: ctx.name,
       durationMs: 0,
@@ -305,7 +309,7 @@ export class ToolInvoker {
     span.setAttribute('mcp.policy.decision', String(data.decision ?? 'deny'));
     span.setError(message);
     span.end();
-    return { success: false, durationMs: 0, error: { code, message, data }, traceparent: span.traceparent() };
+    return { success: false, durationMs: 0, error: { code, message, data }, traceparent: span.traceparent(), requestId: rec.id };
   }
 
   /** Policy rules + approval hold. Returns a refusal, or undefined to proceed. */
@@ -489,11 +493,38 @@ export class ToolInvoker {
     // 13.8.0: stage timings of top-level calls only (a nested feature call is part of its parent's stages)
     const clock = new CallClock(running ? undefined : this.deps.stages);
     const pin = running ? undefined : this.deps.generations?.acquire();
+    let out: InvokeResult | undefined;
     try {
-      if (!pin) return await this.invokePinned(ctx, clock);
-      return await callGeneration.run(pin.generation, () => this.invokePinned(ctx, clock));
+      if (!pin) return (out = await this.invokePinned(ctx, clock));
+      return (out = await callGeneration.run(pin.generation, () => this.invokePinned(ctx, clock)));
     } finally {
       pin?.release();
+      // 14.8.0: the call trace of the operations console (top-level calls only, like the stage timings)
+      if (!running && out?.requestId && this.deps.onTrace) {
+        const v = clock.view();
+        try {
+          this.deps.onTrace({
+            requestId: out.requestId,
+            serverId: ctx.serverId,
+            tool: ctx.name,
+            kind: ctx.kind,
+            via: ctx.via,
+            clientId: identityOf(ctx.principal, ctx.clientId).subject,
+            traceparent: out.traceparent,
+            success: out.success,
+            durationMs: out.durationMs,
+            errorCode: out.error?.code,
+            errorMessage: out.error?.message,
+            data: out.error?.data && typeof out.error.data === 'object' ? (out.error.data as Record<string, unknown>) : undefined,
+            stages: v.stages,
+            notes: clock.notes,
+            totalMs: v.totalMs + (ctx.authMs ?? 0),
+            authMs: ctx.authMs,
+          });
+        } catch {
+          /* tracing never fails a call */
+        }
+      }
       clock.flush();
     }
   }
@@ -645,6 +676,7 @@ export class ToolInvoker {
     if (pre) pre = { route: pre.route, ctx: { ...pre.ctx, snapshot } };
     else ctx = { ...ctx, snapshot };
     span.setAttribute('mcp.final.server', snapshot.serverId);
+    clock.note('route', snapshot.serverId === ctx.serverId ? snapshot.serverId : `${ctx.serverId} → ${snapshot.serverId}${pre ? ` (split ${pre.route.split})` : ''}`);
     clock.lap('routing');
     const usage = this.deps.usage;
     if (usage && ctx.kind === 'tool') {
@@ -685,6 +717,7 @@ export class ToolInvoker {
         clock.add('cache', Math.max(0, spent - Math.max(0, upMs)));
         clock.mark();
         if (out.status !== 'bypass') span.setAttribute('mcp.cache', out.status);
+        clock.note('cache', out.status);
         result = out.status === 'hit' || out.status === 'shared' ? { ...out.result, durationMs: out.status === 'hit' ? 0 : out.result.durationMs } : out.result;
       } else {
         result = await this.callUpstream(ctx, span, pre);

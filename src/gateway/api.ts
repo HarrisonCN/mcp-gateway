@@ -132,6 +132,8 @@ export class CapturedResponse implements ToolCallResponse {
 }
 
 export interface ApiRouterOptions {
+  /** 14.8.0: denial explanation added to refused-call error data (`controlPlane.console.explainDenials`, operators only). */
+  explainDenial?: (req: Request, call: { clientId?: string; serverId: string; tool: string }, error: { code: number; message: string; data?: unknown }) => unknown;
   /** 13.8.0: per-stage latency (marks the start of stage `auth` for the admission middleware). */
   stages?: import('./stages.js').StageTimer;
   /** 13.8.0: admission control (load protection) for tool calls, after authentication and rate limit. */
@@ -604,6 +606,13 @@ export function createApiRouter(
    * One REST-semantics tool call (auth scope, tenants, routing, policy, quotas, status mapping).
    * Used by POST /tools/call and the OpenAI / A2A bridges.
    */
+  /** 14.8.0: refusal data, plus the denial explanation for operators when `controlPlane.console.explainDenials` is on. */
+  const policyData = (req: Request, serverId: string, tool: string, error: { code: number; message: string; data?: unknown }) => {
+    const explain = options.explainDenial?.(req, { clientId: (req as AuthedRequest).clientId, serverId, tool }, error);
+    if (explain === undefined) return error.data;
+    return { ...(error.data && typeof error.data === 'object' ? (error.data as Record<string, unknown>) : {}), explain };
+  };
+
   async function runToolCall(req: Request, body: Record<string, unknown>, res: ToolCallResponse, opts: { replayOf?: string; fromPeer?: string; onProgress?: (u: { progress: number; total?: number; message?: string }) => void; signal?: AbortSignal } = {}): Promise<void> {
     const { tool, server: serverId } = body;
     const args = body.arguments ?? {};
@@ -735,6 +744,7 @@ export function createApiRouter(
       principal: clientPrincipal((req as AuthedRequest).clientId, scopeOf(req)),
       via: 'rest',
       traceparent: traceparentOf(req),
+      ...(typeof req.res?.locals?.mgwAuthMs === 'number' ? { authMs: req.res.locals.mgwAuthMs as number } : {}),
       ...(opts.replayOf ? { replayOf: opts.replayOf } : {}),
       ...(opts.fromPeer ? { fromPeer: opts.fromPeer } : {}),
       ...(opts.onProgress ? { onProgress: opts.onProgress } : {}),
@@ -766,7 +776,7 @@ export function createApiRouter(
         error: result.error.code === ERR_OUTPUT_BLOCKED ? 'Tool Output Blocked' : 'Forbidden',
         message: result.error.message,
         code: result.error.code,
-        policy: result.error.data,
+        policy: policyData(req, targetServerId, tool, result.error),
       });
       return;
     }

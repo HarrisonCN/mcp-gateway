@@ -266,6 +266,20 @@ textarea.input { font-family: var(--mono); font-size: 12.5px; resize: vertical; 
 
 /* ── Tables ──────────────────────────────────────────── */
 .table-wrap { overflow: auto; border-radius: 10px; }
+/* 14.8.0: operations console */
+.ops-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.ops-tabs [role="tab"] { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: inherit; cursor: pointer; min-height: 32px; }
+.ops-tabs [role="tab"][aria-selected="true"] { background: var(--accent, #4f46e5); color: #fff; border-color: transparent; }
+.ops-tabs [role="tab"]:focus-visible, .ops-panel :focus-visible { outline: 2px solid var(--accent, #4f46e5); outline-offset: 2px; }
+.ops-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.ops-kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+.ops-kv dt { color: var(--muted); }
+.ops-kv dd { margin: 0; overflow-wrap: anywhere; }
+.ops-steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.ops-steps li { display: grid; grid-template-columns: 110px 90px 1fr; gap: 10px; align-items: center; font-size: 13px; }
+.ops-st-ok { color: var(--good); } .ops-st-denied, .ops-st-error, .ops-st-fail { color: var(--bad); } .ops-st-warn { color: var(--warn, #b45309); } .ops-st-skipped { color: var(--faint); }
+.ops-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; align-items: end; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 th { text-align: left; color: var(--faint); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 td { padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; max-width: 280px; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
@@ -375,8 +389,8 @@ tbody tr:hover { background: var(--surface-2); }
   .hero-art div > span { grid-column: 2; }
   .pill { padding: 4px 8px; }
   .chart { height: 160px; }
-  .bottom-nav { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; z-index: 25; left: 0; right: 0; bottom: 0; padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid var(--border); }
-  .bottom-nav button { border: 0; background: none; display: grid; justify-items: center; gap: 2px; padding: 6px 2px; font-size: 10.5px; color: var(--muted); border-radius: 10px; cursor: pointer; transition: color .2s, transform .15s var(--ease); min-height: 48px; }
+  .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); position: fixed; z-index: 25; left: 0; right: 0; bottom: 0; padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid var(--border); }
+  .bottom-nav button { border: 0; background: none; display: grid; justify-items: center; gap: 2px; padding: 6px 2px; font-size: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); border-radius: 10px; cursor: pointer; transition: color .2s, transform .15s var(--ease); min-height: 48px; }
   .bottom-nav button svg { width: 21px; height: 21px; }
   .bottom-nav button[aria-selected="true"] { color: var(--accent); }
   .bottom-nav button:active { transform: scale(.92); }
@@ -521,6 +535,46 @@ tbody tr:hover { background: var(--surface-2); }
   </section>
 
   <!-- Config editor (4.6) -->
+  <!-- Operations (14.8.0) -->
+  <section class="view" id="view-ops" data-page="ops" role="tabpanel" aria-labelledby="tab-ops">
+    <div class="page-head"><div><h1 data-i18n="opTitle">Operations</h1><p data-i18n="opSub">Cluster status, call traces, incident timeline and troubleshooting (operators and console viewers)</p></div>
+      <div class="row"><button class="btn" id="opsRefresh" type="button" data-i18n="opRefresh">Refresh</button></div></div>
+    <p id="ops-status" class="status-line info" role="status" aria-live="polite"></p>
+    <div class="ops-tabs" role="tablist" aria-label="Operations views" id="opsTabs">
+      <button type="button" role="tab" id="ops-tab-cluster" aria-controls="ops-panel-cluster" aria-selected="true" tabindex="0" data-ops="cluster" data-i18n="opCluster">Cluster</button>
+      <button type="button" role="tab" id="ops-tab-traces" aria-controls="ops-panel-traces" aria-selected="false" tabindex="-1" data-ops="traces" data-i18n="opTraces">Call traces</button>
+      <button type="button" role="tab" id="ops-tab-timeline" aria-controls="ops-panel-timeline" aria-selected="false" tabindex="-1" data-ops="timeline" data-i18n="opTimeline">Incident timeline</button>
+      <button type="button" role="tab" id="ops-tab-troubleshoot" aria-controls="ops-panel-troubleshoot" aria-selected="false" tabindex="-1" data-ops="troubleshoot" data-i18n="opTroubleshoot">Troubleshoot</button>
+    </div>
+    <div class="ops-panel" role="tabpanel" id="ops-panel-cluster" aria-labelledby="ops-tab-cluster" tabindex="0"><div class="ops-grid" id="opsCluster"></div></div>
+    <div class="ops-panel" role="tabpanel" id="ops-panel-traces" aria-labelledby="ops-tab-traces" tabindex="0" hidden>
+      <div class="card"><form class="ops-form" id="opsTraceForm">
+        <div class="field"><label for="ops-tr-client" data-i18n="client">Client</label><input class="input" id="ops-tr-client" name="client" autocomplete="off" placeholder="key:…" /></div>
+        <div class="field"><label for="ops-tr-outcome" data-i18n="result">Result</label><select class="input" id="ops-tr-outcome" name="outcome"><option value="" data-i18n="any">Any</option><option value="ok">ok</option><option value="denied">denied</option><option value="error">error</option></select></div>
+        <div class="row"><button class="btn primary" type="submit" data-i18n="apply">Apply</button></div>
+      </form></div>
+      <div class="card" style="margin-top:14px"><div class="table-wrap"><table><caption class="sr-only" data-i18n="opTraces">Call traces</caption><thead><tr><th scope="col" data-i18n="time">Time</th><th scope="col" data-i18n="tool">Tool</th><th scope="col" data-i18n="client">Client</th><th scope="col" data-i18n="result">Result</th><th scope="col" data-i18n="duration">Duration</th><th scope="col"><span class="sr-only" data-i18n="opOpen">Open</span></th></tr></thead><tbody id="opsTraceBody"></tbody></table></div></div>
+      <div class="card" style="margin-top:14px" id="opsTraceDetail" hidden tabindex="-1"></div>
+    </div>
+    <div class="ops-panel" role="tabpanel" id="ops-panel-timeline" aria-labelledby="ops-tab-timeline" tabindex="0" hidden>
+      <div class="card"><form class="ops-form" id="opsTimelineForm">
+        <div class="field"><label for="ops-tl-kind" data-i18n="kind">Kind</label><select class="input" id="ops-tl-kind" name="kind"><option value="" data-i18n="any">Any</option><option value="restart">restart</option><option value="config-apply">config-apply</option><option value="gitops-release">gitops-release</option><option value="revocation">revocation</option><option value="circuit-open">circuit-open</option><option value="region-stale">region-stale</option><option value="region-fresh">region-fresh</option><option value="audit">audit</option></select></div>
+        <div class="field"><label for="ops-tl-since" data-i18n="opSince">Since</label><input class="input" id="ops-tl-since" name="since" type="datetime-local" /></div>
+        <div class="row"><button class="btn primary" type="submit" data-i18n="apply">Apply</button></div>
+      </form></div>
+      <div class="card" style="margin-top:14px"><ol class="sec-list" id="opsTimeline" aria-label="Incident timeline"></ol></div>
+    </div>
+    <div class="ops-panel" role="tabpanel" id="ops-panel-troubleshoot" aria-labelledby="ops-tab-troubleshoot" tabindex="0" hidden>
+      <div class="card"><form class="ops-form" id="opsTsForm">
+        <div class="field"><label for="ops-ts-client" data-i18n="client">Client</label><input class="input" id="ops-ts-client" name="client" autocomplete="off" required placeholder="key:…" /></div>
+        <div class="field"><label for="ops-ts-server" data-i18n="server">Server</label><input class="input" id="ops-ts-server" name="server" autocomplete="off" required /></div>
+        <div class="field"><label for="ops-ts-tool" data-i18n="tool">Tool</label><input class="input" id="ops-ts-tool" name="tool" autocomplete="off" required /></div>
+        <div class="row"><button class="btn primary" type="submit" data-i18n="opRunChecks">Run checks</button><button class="btn" type="button" id="opsExplain" data-i18n="opExplain">Explain only</button></div>
+      </form><p class="muted" data-i18n="opTsHint">Checks upstream reachability, the key, tenancy, policy (simulated), rate limits and plugin health. Reports are redacted and can be shared by id.</p></div>
+      <div class="card" style="margin-top:14px" id="opsTsResult" hidden tabindex="-1"></div>
+    </div>
+  </section>
+
   <section class="view" id="view-config" role="tabpanel" aria-labelledby="tab-config">
     <div class="page-head"><div><h1 data-i18n="cfTitle">Configuration</h1><p data-i18n="cfSub">Edit the running config</p></div>
       <div class="row"><button class="btn" id="cfValidate" type="button" data-i18n="cfValidate">Validate</button><button class="btn" id="cfDiff" type="button" data-i18n="cfDiff">Preview changes</button><button class="btn primary" id="cfApply" type="button" data-i18n="cfApply">Apply</button></div></div>
@@ -626,6 +680,7 @@ const I18N = {
     skip: 'Skip to content', guide: 'Guide', apiKey: 'API key', theme: 'Toggle theme', keyPh: 'API key or JWT',
     remember: 'Remember on this device', saveConnect: 'Save & connect', clear: 'Clear', close: 'Close',
     tabOverview: 'Overview', tabServers: 'Servers', tabPlayground: 'Playground', tabHistory: 'History', tabConfig: 'Config', tabConnect: 'Connect',
+    tabOps: 'Operations', opTitle: 'Operations', opSub: 'Cluster status, call traces, incident timeline and troubleshooting (operators and console viewers)', opRefresh: 'Refresh', opCluster: 'Cluster', opTraces: 'Call traces', opTimeline: 'Incident timeline', opTroubleshoot: 'Troubleshoot', opSince: 'Since', opRunChecks: 'Run checks', opExplain: 'Explain only', opOpen: 'Open', opTsHint: 'Checks upstream reachability, the key, tenancy, policy (simulated), rate limits and plugin health. Reports are redacted and can be shared by id.', opLoading: 'Loading…', opLoaded: 'Updated', opForbidden: 'The operations console needs an operator key or a console viewer (controlPlane.console.viewers).', opNone: 'Nothing to show', opGen: 'Config generation', opDataPlanes: 'Data planes', opRegions: 'Regions', opEdges: 'Edge gateways', opPlugins: 'Plugin circuits', opDlq: 'Dead-letter queue', opServers: 'Servers', opModules: 'Failed modules', opDiverged: 'Diverged', opWhy: 'Why it was refused', opReport: 'Report', opVerdict: 'Verdict', opAllowed: 'Allowed',
     cfTitle: 'Configuration', cfSub: 'Edit the running config — validated, diffed and hot-reloaded', cfGeneral: 'General', cfServers: 'Servers', cfRaw: 'Raw JSON (schema v10)', cfValidate: 'Validate', cfDiff: 'Preview changes', cfApply: 'Apply', cfAddServer: 'Add server', cfRemove: 'Remove', cfValid: 'Configuration is valid', cfNoChanges: 'No changes', cfApplied: 'Applied — hot reloaded', cfLocked: 'Read-only: set controlPlane.configApi: true to apply changes from the dashboard', cfBadJson: 'Invalid JSON', cfUseJson: 'Use JSON', cfConfirm: 'Apply these changes to the running gateway?', cfRate: 'Rate limit (requests / window s)', cfNaming: 'Tool naming', cfLog: 'Log level', cfEnabled: 'Enabled',
     ovTitle: 'Overview', ovSub: 'Live traffic through the gateway', window: 'Time window',
     reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server', approvals: 'Pending approvals', tenants: 'Workspaces', rpTitle: 'Request details', replay: 'Replay', replayOf: 'replay of', rpArgs: 'Arguments', rpResult: 'Result', rpReplayed: 'Replay', rpSame: 'identical', rpDifferent: 'different', rpBadJson: 'Arguments must be valid JSON', rpHint: 'Edit the arguments and replay through the gateway', rpTruncated: 'Payload too large to capture; pass arguments to replay', rpOff: 'Not captured. Turn on replay.enabled to inspect and replay calls.', quotas: 'Quotas', lb: 'Load balancing', cache: 'Result cache', purge: 'Purge', purged: 'Purged {n} cache entries', rules: 'rules', noUsage: 'No usage in the current period', ejected: 'ejected', entries: 'Entries', hitRate: 'Hit rate', hits: 'Hits', misses: 'Misses', deduped: 'Deduplicated', evictions: 'Evictions', edgeNodes: 'Edge nodes', pushConfig: 'Push config', pushed: 'Pushed to {n} edge(s), {f} failed', noEdges: 'No edge nodes yet', catalog: 'Add a server', add: 'Add', added: 'Server added', installOff: 'read-only (catalog.install is off)', installedAs: 'installed as', role: 'Role', members: 'members', roleSaved: 'Role updated', approve: 'Approve', deny: 'Deny', approved: 'Approved', denied: 'Denied', expires: 'expires',
@@ -672,6 +727,7 @@ const I18N = {
     skip: '跳到内容', guide: '新手引导', apiKey: 'API 密钥', theme: '切换主题', keyPh: 'API 密钥或 JWT',
     remember: '在此设备上记住', saveConnect: '保存并连接', clear: '清除', close: '关闭',
     tabOverview: '总览', tabServers: '服务器', tabPlayground: '调试台', tabHistory: '历史', tabConfig: '配置', tabConnect: '接入',
+    tabOps: '运维', opTitle: '运维控制台', opSub: '集群状态、调用链、故障时间线与排障向导（运维人员与只读查看者）', opRefresh: '刷新', opCluster: '集群', opTraces: '调用链', opTimeline: '故障时间线', opTroubleshoot: '排障向导', opSince: '起始时间', opRunChecks: '运行检查', opExplain: '仅解释', opOpen: '打开', opTsHint: '检查上游可达性、密钥、租户、策略（模拟）、限流和插件健康。报告已脱敏，可按 ID 分享。', opLoading: '加载中…', opLoaded: '已更新', opForbidden: '运维控制台需要运维密钥或只读查看者身份（controlPlane.console.viewers）。', opNone: '暂无数据', opGen: '配置代次', opDataPlanes: '数据面', opRegions: '区域', opEdges: '边缘网关', opPlugins: '插件熔断', opDlq: '死信队列', opServers: '服务器', opModules: '失败模块', opDiverged: '未同步', opWhy: '拒绝原因', opReport: '报告', opVerdict: '结论', opAllowed: '允许',
     cfTitle: '配置', cfSub: '编辑运行中的配置——校验、对比差异并热加载', cfGeneral: '常规', cfServers: '服务器', cfRaw: '原始 JSON（schema v4）', cfValidate: '校验', cfDiff: '预览变更', cfApply: '应用', cfAddServer: '添加服务器', cfRemove: '移除', cfValid: '配置有效', cfNoChanges: '没有变更', cfApplied: '已应用（热加载）', cfLocked: '只读：设置 controlPlane.configApi: true 后才能在仪表盘中应用变更', cfBadJson: 'JSON 无效', cfUseJson: '使用 JSON', cfConfirm: '将这些变更应用到运行中的网关？', cfRate: '限流（请求数 / 窗口秒）', cfNaming: '工具命名', cfLog: '日志级别', cfEnabled: '启用',
     ovTitle: '总览', ovSub: '网关实时流量', window: '时间范围',
     reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用', approvals: '待审批调用', tenants: '工作区', rpTitle: '请求详情', replay: '重放', replayOf: '重放自', rpArgs: '参数', rpResult: '结果', rpReplayed: '重放结果', rpSame: '一致', rpDifferent: '不一致', rpBadJson: '参数必须是合法 JSON', rpHint: '可修改参数后经网关重放', rpTruncated: '负载过大未被捕获；重放需手动填写参数', rpOff: '未捕获。开启 replay.enabled 后可查看并重放调用。', quotas: '配额', lb: '负载均衡', cache: '结果缓存', purge: '清空', purged: '已清除 {n} 条缓存', rules: '条规则', noUsage: '当前周期暂无用量', ejected: '已摘除', entries: '条目', hitRate: '命中率', hits: '命中', misses: '未命中', deduped: '合并请求', evictions: '淘汰', edgeNodes: '边缘节点', pushConfig: '推送配置', pushed: '已推送到 {n} 个边缘节点，失败 {f} 个', noEdges: '暂无边缘节点', catalog: '添加服务器', add: '添加', added: '已添加服务器', installOff: '只读（未开启 catalog.install）', installedAs: '已安装为', role: '角色', members: '成员', roleSaved: '角色已更新', approve: '批准', deny: '拒绝', approved: '已批准', denied: '已拒绝', expires: '到期',
@@ -748,6 +804,7 @@ const fmtDateTime = (ts) => new Date(ts).toLocaleString(lang === 'zh' ? 'zh-CN' 
 const statusCls = (s) => ({ online: 'ok', degraded: 'warn', reconnecting: 'info', offline: 'bad' })[s] || '';
 const ORIGIN = window.__MCP_GATEWAY_DEMO__ ? 'http://localhost:4000' : location.origin;
 const ICON = {
+  ops: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>',
   overview: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 13h4l3-8 4 14 3-6h4"/></svg>',
   servers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/></svg>',
   playground: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M7 4v16l13-8z"/></svg>',
@@ -853,7 +910,7 @@ const state = {
 };
 
 // ─── Navigation ──────────────────────────────────────────────────────────────
-const VIEWS = ['overview', 'servers', 'playground', 'history', 'config', 'connect'];
+const VIEWS = ['overview', 'servers', 'playground', 'history', 'ops', 'config', 'connect'];
 function buildNav() {
   const tabs = $('#tabs'), bottom = $('#bottomNav');
   tabs.querySelectorAll('.tab').forEach((b) => b.remove());
@@ -903,10 +960,125 @@ function go(view, push = true) {
   if (view === 'servers') loadServers();
   if (view === 'playground') renderPlayground($('#pgMain'), 'main');
   if (view === 'history') loadHistory();
+  if (view === 'ops') loadOpsConsole();
   if (view === 'config') loadConfigEditor();
   if (view === 'connect') { renderSnippets($('#connectCard'), 'main'); loadSecurity(); }
   if (view === 'overview') requestAnimationFrame(renderCharts);
 }
+// ─── Operations console (14.8.0) ─────────────────────────────────────────────
+const opsState = { tab: 'cluster' };
+const OPS_TABS = ['cluster', 'traces', 'timeline', 'troubleshoot'];
+function opsStatus(msg) { const el = $('#ops-status'); if (el) el.textContent = msg; }
+function opsTab(tab, focus = false) {
+  opsState.tab = tab;
+  for (const id of OPS_TABS) {
+    const b = $(`#ops-tab-${id}`), p = $(`#ops-panel-${id}`);
+    const on = id === tab;
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+    b.tabIndex = on ? 0 : -1;
+    p.hidden = !on;
+  }
+  if (focus) $(`#ops-tab-${tab}`).focus();
+  loadOpsConsole();
+}
+function opsError(e) {
+  opsStatus(e && e.status === 403 ? t('opForbidden') : (e && e.message) || String(e));
+}
+const kv = (rows) => `<dl class="ops-kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+async function loadOpsConsole() {
+  opsStatus(t('opLoading'));
+  try {
+    if (opsState.tab === 'cluster') {
+      const c = await api('/admin/ops/cluster');
+      const card = (title, body) => `<div class="card"><h2>${esc(title)}</h2>${body}</div>`;
+      const dp = c.dataPlanes || {};
+      const rg = c.regions;
+      $('#opsCluster').innerHTML = [
+        card(t('opGen'), kv([['role', c.role], ['generation', c.generation.current], ['committed', c.generation.committedAt], ['alive', c.generation.alive], ['rollbacks', c.generation.rollbacks]])),
+        card(t('opDataPlanes'), kv([['total', dp.total], ['online', dp.online], ['in sync', dp.inSync], [t('opDiverged'), (dp.diverged || []).map((d) => d.nodeId).join(', ') || '—']])),
+        card(t('opRegions'), rg ? kv([['self', rg.self], ['fresh', rg.fresh ? '✓' : '✕'], ['max lag (ms)', rg.maxLagMs ?? '—'], ['stale', (rg.stale || []).join(', ') || '—']]) : `<p class="muted">${esc(t('opNone'))}</p>`),
+        card(t('opEdges'), kv([['total', c.edges.total], ['queued calls', c.edges.queued]])),
+        card(t('opPlugins'), kv([['total', c.plugins.total], ['open', c.plugins.open.join(', ') || '—']])),
+        card(t('opDlq'), c.dlq ? kv([['total', c.dlq.total ?? '—']]) : `<p class="muted">${esc(t('opNone'))}</p>`),
+        card(t('opServers'), kv([['total', c.servers.total], ['online', c.servers.online], ['offline', (c.servers.offline || []).join(', ') || '—']])),
+        card(t('opModules'), `<p>${esc((c.modules.failed || []).join(', ') || '—')}</p>`),
+      ].join('');
+    } else if (opsState.tab === 'traces') {
+      const f = new FormData($('#opsTraceForm'));
+      const q = new URLSearchParams();
+      for (const [k, v] of f) if (v) q.set(k, String(v));
+      const r = await api(`/admin/ops/traces?${q}`);
+      $('#opsTraceBody').innerHTML = r.traces.length
+        ? r.traces.map((x) => `<tr><td>${esc(new Date(x.at).toLocaleTimeString())}</td><td class="mono">${esc(x.serverId)}/${esc(x.tool)}</td><td class="mono">${esc(x.clientId || '—')}</td><td class="ops-st-${esc(x.outcome)}">${esc(x.outcome)}${x.decision ? ` (${esc(x.decision)})` : ''}</td><td>${esc(x.totalMs)} ms</td><td><button class="btn sm" type="button" data-trace="${esc(x.requestId)}">${esc(t('opOpen'))}</button></td></tr>`).join('')
+        : `<tr><td colspan="6" class="muted">${esc(t('opNone'))}</td></tr>`;
+      $$('#opsTraceBody [data-trace]').forEach((b) => b.addEventListener('click', () => openTrace(b.dataset.trace)));
+    } else if (opsState.tab === 'timeline') {
+      const f = new FormData($('#opsTimelineForm'));
+      const q = new URLSearchParams();
+      if (f.get('kind')) q.set('kind', String(f.get('kind')));
+      if (f.get('since')) q.set('since', new Date(String(f.get('since'))).toISOString());
+      const r = await api(`/admin/ops/timeline?${q}`);
+      $('#opsTimeline').innerHTML = r.events.length
+        ? r.events.map((e) => `<li><span class="badge ops-st-${e.severity === 'info' ? 'ok' : e.severity === 'error' ? 'fail' : 'warn'}">${esc(e.kind)}</span><span><time datetime="${esc(e.at)}">${esc(new Date(e.at).toLocaleString())}</time> — ${e.subject ? `<span class="mono">${esc(e.subject)}</span>: ` : ''}${esc(e.detail)}</span></li>`).join('')
+        : `<li class="muted">${esc(t('opNone'))}</li>`;
+    }
+    opsStatus(t('opLoaded'));
+  } catch (e) { opsError(e); }
+}
+async function openTrace(id) {
+  try {
+    const x = await api(`/admin/ops/traces/${encodeURIComponent(id)}`);
+    const el = $('#opsTraceDetail');
+    el.innerHTML = `<h2 class="mono">${esc(x.serverId)}/${esc(x.tool)}</h2>${kv([['request', x.requestId], ['trace id', x.traceId || '—'], ['client', x.clientId || '—'], ['total', `${x.totalMs} ms`]])}
+      <ol class="ops-steps" aria-label="Call pipeline">${x.steps.map((s) => `<li><b>${esc(s.step)}</b><span class="ops-st-${esc(s.status)}">${esc(s.status)}</span><span>${s.ms === null ? '—' : `${esc(s.ms)} ms`}${s.note ? ` · ${esc(s.note)}` : ''}</span></li>`).join('')}</ol>
+      ${x.explain ? `<h3>${esc(t('opWhy'))}</h3>${kv([['layer', x.explain.layer], ['rule', x.explain.rule || '—'], ['tenant', x.explain.tenant || '—'], ['permission', x.explain.permission || '—'], ['config', x.explain.configPath || '—'], ['reason', x.explain.reason]])}` : ''}`;
+    el.hidden = false;
+    el.focus();
+  } catch (e) { opsError(e); }
+}
+function opsCall() {
+  const f = new FormData($('#opsTsForm'));
+  return { client: String(f.get('client') || ''), server: String(f.get('server') || ''), tool: String(f.get('tool') || '') };
+}
+async function runTroubleshoot(explainOnly) {
+  const el = $('#opsTsResult');
+  opsStatus(t('opLoading'));
+  try {
+    const body = JSON.stringify(opsCall());
+    if (explainOnly) {
+      const r = await api('/admin/ops/explain', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      el.innerHTML = `<h2>${esc(r.allowed ? t('opAllowed') : t('opWhy'))}</h2>${kv([['allowed', r.allowed ? '✓' : '✕'], ['layer', r.layer || '—'], ['rule', r.rule || '—'], ['config', r.configPath || '—'], ['reason', r.reason || '—']])}`;
+    } else {
+      const r = await api('/admin/ops/troubleshoot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      el.innerHTML = `<h2>${esc(t('opReport'))} <span class="mono">${esc(r.id)}</span></h2><p>${esc(t('opVerdict'))}: <b class="ops-st-${esc(r.verdict === 'pass' ? 'ok' : r.verdict)}">${esc(r.verdict)}</b></p>
+        <ul class="sec-list">${r.checks.map((c) => `<li><span class="badge ops-st-${c.status === 'pass' ? 'ok' : esc(c.status)}">${esc(c.status)}</span><span><b>${esc(c.title)}</b> — ${esc(c.detail)}${c.configPath ? ` <span class="mono">(${esc(c.configPath)})</span>` : ''}</span></li>`).join('')}</ul>
+        <p class="muted mono">GET /api/v1/admin/ops/reports/${esc(r.id)}</p>`;
+    }
+    el.hidden = false;
+    el.focus();
+    opsStatus(t('opLoaded'));
+  } catch (e) { opsError(e); }
+}
+function initOps() {
+  const tabs = $('#opsTabs');
+  if (!tabs) return;
+  $$('#opsTabs [role="tab"]').forEach((b) => b.addEventListener('click', () => opsTab(b.dataset.ops)));
+  tabs.addEventListener('keydown', (e) => {
+    const keys = { ArrowRight: 1, ArrowLeft: -1, Home: 'first', End: 'last' };
+    if (!(e.key in keys)) return;
+    e.preventDefault();
+    const i = OPS_TABS.indexOf(opsState.tab);
+    const k = keys[e.key];
+    const next = k === 'first' ? 0 : k === 'last' ? OPS_TABS.length - 1 : (i + k + OPS_TABS.length) % OPS_TABS.length;
+    opsTab(OPS_TABS[next], true);
+  });
+  $('#opsRefresh').addEventListener('click', () => loadOpsConsole());
+  $('#opsTraceForm').addEventListener('submit', (e) => { e.preventDefault(); loadOpsConsole(); });
+  $('#opsTimelineForm').addEventListener('submit', (e) => { e.preventDefault(); loadOpsConsole(); });
+  $('#opsTsForm').addEventListener('submit', (e) => { e.preventDefault(); runTroubleshoot(false); });
+  $('#opsExplain').addEventListener('click', () => { if ($('#opsTsForm').reportValidity()) runTroubleshoot(true); });
+}
+initOps();
 window.addEventListener('hashchange', () => go(location.hash.slice(1), false));
 window.addEventListener('resize', () => { markNav(); scheduleCharts(); });
 

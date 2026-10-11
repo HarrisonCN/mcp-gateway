@@ -533,7 +533,10 @@ const namedKeys = (cfg: AnyCfg): Map<string, { servers?: string[]; tools?: strin
   for (const k of Array.isArray(auth.apiKeys) ? auth.apiKeys : []) {
     if (!isObj(k) || typeof k.name !== 'string') continue;
     const sc = isObj(k.scope) ? k.scope : k;
-    out.set(k.name, { servers: Array.isArray(sc.servers) ? (sc.servers as string[]) : undefined, tools: Array.isArray(sc.tools) ? (sc.tools as string[]) : undefined });
+    const v = { servers: Array.isArray(sc.servers) ? (sc.servers as string[]) : undefined, tools: Array.isArray(sc.tools) ? (sc.tools as string[]) : undefined };
+    out.set(k.name, v);
+    // 14.8.0: recorded calls carry the client id (`key:<name>`), not the bare key name
+    if (!out.has(`key:${k.name}`)) out.set(`key:${k.name}`, v);
   }
   return out;
 };
@@ -556,6 +559,11 @@ function decide(cfg: AnyCfg, other: AnyCfg, c: SimulatedCall): SimDecision {
   const verb = d.effect === 'allow' ? 'allows' : d.effect === 'deny' ? 'denies' : 'holds for approval';
   if (d.rule) return { effect: d.effect, layer: 'policy', rule: d.rule, reason: `rule "${d.rule}" ${verb} ${c.serverId}/${c.tool}${d.message ? ` (${d.message})` : ''}` };
   return { effect: d.effect, layer: 'policy', rule: '(default)', reason: `no rule matches ${c.serverId}/${c.tool}; the default is ${d.effect}${pol ? '' : ' (no policy)'}` };
+}
+
+/** 14.8.0: the decision of one call under one config (troubleshooting wizard; same layers as {@link simulateRelease}). */
+export function simulateDecision(cfg: AnyCfg, c: SimulatedCall, _keyName?: string): SimDecision {
+  return decide(cfg, cfg, c);
 }
 
 /**

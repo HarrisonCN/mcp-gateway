@@ -36,6 +36,8 @@ import { corsMiddleware } from '../middleware/cors.js';
 import { requestIdMiddleware } from '../middleware/request-id.js';
 import { createErrorHandler, notFoundHandler } from '../middleware/error-handler.js';
 import { dashboardCsp, securityHeadersMiddleware } from '../security/headers.js';
+import { OpsTimeline, TraceStore, buildTrace, createOpsConsoleRouter, emitOpsEvent, explainDenial as explainOpsDenial, opsSettings } from './ops-console.js';
+import { decisionOf as decisionOfData } from './invoker.js';
 import { crossSiteGuardMiddleware, defaultAllowedHosts, effectiveRebindingProtection, hostCheckMiddleware, ipAllowlistMiddleware, LOOPBACK_ORIGIN_PATTERN } from '../security/network.js';
 import { configureRedaction } from '../security/redact.js';
 import { experimentalFeatureWarnings, insecureBindError, securityWarnings } from '../security/posture.js';
@@ -314,9 +316,15 @@ export class Gateway {
       '# TYPE mcp_gateway_degraded_calls_total counter',
       `mcp_gateway_degraded_calls_total ${this.invoker?.degradedCalls ?? 0}`,
     ]);
+    // 14.8.0: the incident timeline listens from the start (restarts, config applies, revocations, circuits, regions)
+    this.opsTimeline = new OpsTimeline(() => opsSettings(this.config).timelineBuffer);
+    this.featureStops.push(() => this.opsTimeline?.stop());
     this.invoker = new ToolInvoker({
       proxy: this.proxy,
       metrics: this.metrics,
+      onTrace: (t) => {
+        if (opsSettings(this.config).enabled) this.traceStore.add(buildTrace(t, this.config));
+      },
       tracer: () => this.tracer,
       telemetry: this.telemetry,
       // 13.2.0: every config read of a call resolves in the generation the call pinned (cfgNow / callGeneration).
@@ -378,6 +386,13 @@ export class Gateway {
     this.router = createApiRouter(this.withPortalKeys(this.config), this.registry, this.proxy, this.metrics, {
       stages: this.stages,
       admit: this.admitFor('rest'),
+      // 14.8.0: denial explanations in refused-call error data — admin flag + operator callers only
+      explainDenial: (req, call, err) => {
+        const st = opsSettings(this.config);
+        if (!st.enabled || !st.explainDenials || !this.router?.isOperator(req)) return undefined;
+        const data = err.data && typeof err.data === 'object' ? (err.data as Record<string, unknown>) : {};
+        return explainOpsDenial(call, decisionOfData(data), data, err.message, this.config);
+      },
       perf: () => this.perfReport(),
       portal: this.portal,
       supervisor: this.supervisor,
@@ -532,6 +547,36 @@ export class Gateway {
       isOperator: (req) => this.router!.isOperator(req),
     });
     this.app.use('/api/v1', edgeControl);
+    // 14.8.0: operations console (/api/v1/admin/ops/*): cluster, traces, explain, timeline, troubleshooting wizard
+    this.app.use(
+      '/api/v1',
+      createOpsConsoleRouter({
+        config: () => this.config,
+        authenticate: this.router.authenticate,
+        isOperator: (req) => this.router!.isOperator(req),
+        traces: this.traceStore,
+        timeline: this.opsTimeline!,
+        recent: (limit) => this.metrics.getRecent(limit),
+        principalFor: (clientId) => this.principalFor(clientId),
+        resolveClient: (clientId) => this.router?.resolveClient(clientId),
+        generations: () => this.generations(),
+        committedAt: () => this.gens.current.committedAt,
+        dataPlanes: () => this.controlPlaneRouter?.summary() ?? { total: 0, online: 0, inSync: 0, diverged: [] },
+        ...(this.dataPlane ? { dataPlane: () => this.dataPlane!.status() } : {}),
+        edges: () => [...edgeControl.nodes.values()],
+        plugins: () => this.plugins.status(),
+        servers: () => this.registry.getAllServers().map((s) => ({ id: s.id, status: this.invoker?.balancer?.anyConnected(s.id) ?? this.proxy.isConnected(s.id) ? 'online' : (this.registry.getHealth(s.id)?.status ?? 'offline') })),
+        serverInfo: (id) => {
+          const s = this.registry.getServer(id);
+          if (!s) return { exists: false, connected: false, tools: [] };
+          const connected = this.invoker?.balancer?.anyConnected(id) ?? this.proxy.isConnected(id);
+          return { exists: true, connected, status: this.registry.getHealth(id)?.status, tools: this.registry.getTools(id).map((t) => t.name) };
+        },
+        exposed: (serverId, tool) => this.registry.isToolExposed(serverId, tool),
+        failedModules: () => this.moduleFailures.ids(),
+        portable: () => portableConfig(this.config),
+      }),
+    );
     // 5.1: feature modules under /api/v1/admin/<id> (src/features).
     this.featureRouter = createFeatureRouter({
         failures: this.moduleFailures,
@@ -706,6 +751,7 @@ export class Gateway {
         this.server.off('error', onError);
         const { port } = this.address() ?? { port: this.config.port };
         logger.info(`mcp-gateway v${VERSION} listening on http://${this.config.host}:${port}`);
+        emitOpsEvent({ kind: 'restart', severity: 'info', detail: `mcp-gateway v${VERSION} started (role ${this.config.controlPlane?.role ?? 'all'}, generation ${this.gens.current.id})`, source: 'gateway' });
         logger.info(`API: http://${this.config.host}:${port}/api/v1`);
         const experimental = new Set(experimentalFeatureWarnings(this.config).map((w) => w.id));
         for (const w of securityWarnings(this.config)) {
@@ -821,7 +867,11 @@ export class Gateway {
   private admitFor(kind: 'rest' | 'mcp'): RequestHandler {
     return (req, res, next) => {
       const t0 = res.locals.mgwAuthT0;
-      if (typeof t0 === 'number') this.stages.record('auth', performance.now() - t0);
+      if (typeof t0 === 'number') {
+        const ms = performance.now() - t0;
+        res.locals.mgwAuthMs = ms; // 14.8.0: per-call trace
+        this.stages.record('auth', ms);
+      }
       const o = this.overload;
       if (!o.enabled) return next();
       const clientId = (req as AuthedRequest).clientId;
@@ -850,6 +900,9 @@ export class Gateway {
   }
   /** 13.3.0: this gateway's module failure registry (feeds `mcp_gateway_module_failures_total`). */
   private readonly moduleFailures = new ModuleFailures();
+  /** 14.8.0: operations console — recent call traces and the incident timeline of this gateway. */
+  private readonly traceStore = new TraceStore(() => opsSettings(this.config).traceBuffer);
+  private opsTimeline?: OpsTimeline;
 
   /** 13.3.0: consecutive failed health pings per connected server (see `health.restartAfter`). */
   private readonly failedPings = new Map<string, number>();
@@ -1032,7 +1085,16 @@ export class Gateway {
    * still require a restart.
    */
   async reload(next: GatewayConfig): Promise<void> {
-    return runInScope(this.instanceScope, () => this.reloadInScope(next));
+    return runInScope(this.instanceScope, async () => {
+      try {
+        await this.reloadInScope(next);
+      } catch (err) {
+        emitOpsEvent({ kind: 'config-apply', severity: 'error', detail: `config apply failed: ${err instanceof Error ? err.message : String(err)}`, source: 'gateway' });
+        throw err;
+      }
+      if (this.stopping) return;
+      emitOpsEvent({ kind: 'config-apply', severity: 'info', detail: `config generation ${this.gens.current.id} committed`, source: 'gateway' });
+    });
   }
 
   private async reloadInScope(next: GatewayConfig): Promise<void> {

@@ -570,11 +570,23 @@ const TENANCY_V12 = {
   },
 };
 
-/** `controlPlane` in the v12 JSON Schema: other keys as in v11; `rollout` (14.1.0, optional) described precisely. */
+/** `controlPlane` in the v12 JSON Schema: other keys as in v11; `rollout` (14.1.0), `gitops` (14.7.0) and `console` (14.8.0) described precisely. */
 const CONTROL_PLANE_V12 = {
-  $comment: 'unchanged from schema v11 (validated by the runtime schema) except the optional `rollout` (14.1) and `gitops` (14.7)',
+  $comment: 'unchanged from schema v11 (validated by the runtime schema) except the optional `rollout` (14.1), `gitops` (14.7) and `console` (14.8)',
   type: 'object',
   properties: {
+    console: {
+      type: 'object',
+      description: 'NEW in 14.8 (optional): operations console — /api/v1/admin/ops/* and the dashboard Operations page. See docs/guides/operations-console.md.',
+      additionalProperties: false,
+      properties: {
+        enabled: { type: 'boolean', default: true, description: 'Serve /api/v1/admin/ops/* and record call traces.' },
+        viewers: { type: 'array', maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 200 }, description: 'Client id globs (key:oncall) with read-only console access.' },
+        traceBuffer: { type: 'integer', minimum: 10, maximum: 100000, default: 500, description: 'Call traces kept in memory.' },
+        timelineBuffer: { type: 'integer', minimum: 10, maximum: 100000, default: 1000, description: 'Incidents kept in memory.' },
+        explainDenials: { type: 'boolean', default: false, description: 'Add the denial explanation (with the config path) to refused REST tool calls made by operators; other clients never get it.' },
+      },
+    },
     token: { type: 'string', minLength: 1, description: 'Data plane: an operator API key of the control plane. ${VAR} references are expanded; an unset variable is a config error (14.7, MGW-2026-019).' },
     gitops: {
       type: 'object',

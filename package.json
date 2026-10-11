@@ -1,6 +1,6 @@
 {
   "name": "@winstonsayno/mcp-gateway",
-  "version": "14.7.0",
+  "version": "14.8.0",
   "description": "MCP gateway for AI models (OpenAI, Grok, DeepSeek, Claude and other function-calling LLMs) and for web pages and apps: one authenticated, observable endpoint in front of your MCP servers with routing, scopes, rate limits and metrics.",
   "keywords": [
     "mcp",
@@ -50,6 +50,7 @@
     "commander": "^12.1.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.7.1",
     "jose": "^5.4.0",
     "undici": "^6.29.0",
     "ws": "^8.18.0",

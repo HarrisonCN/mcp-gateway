@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [14.8.0] - 2026-10-11
+
+Operations console release (roadmap 14.8 "运维控制台升级"). Upgrades the existing dashboard and admin API — no rewrite: one cluster status view, per-call traces through the whole pipeline with step timings, policy denial explanations that name the rule, tenant or permission and the config path, an incident timeline, and a troubleshooting wizard that produces a redacted, shareable report. Operators see everything; `controlPlane.console.viewers` get read-only views.
+
+### Added
+
+- **Cluster status** — `GET /api/v1/admin/ops/cluster`: role, committed config generation (alive / pinned generations, rollbacks), data planes with the **diverged** nodes (not on the generation targeted at them), regions (fresh / stale, stale peers, replication lag per peer), edge gateways and their queued calls, plugin circuit breakers (open / half-open), task-graph **DLQ** counts by status, servers online / offline, failed feature modules.
+- **Call traces** — every top-level call is traced: `GET /api/v1/admin/ops/traces` (filters `client`, `server`, `tool`, `outcome=ok|denied|error`) and `GET /api/v1/admin/ops/traces/:requestId` with the steps **auth → tenant → policy → plugins → route → upstream → cache → response**, each with its time (from the 13.8 pipeline stage clock), status (`ok` / `denied` / `error` / `skipped`), cache status and final route, plus the W3C `traceId` / `traceparent` of the gateway's OpenTelemetry span. Kept in memory (`traceBuffer`).
+- **Policy denial explanation** — a refused call's trace carries `explain`: `decision`, `layer` (exposure, scope, tenant, delegation, policy, approval, plugin, residency, quota, budget, module, route), `rule`, `tenant`, `permission`, `reason` and the matching **`configPath`** (`policy.rules[0]`, `auth.apiKeys[3].scope.tools`, `tenants[1].members`, `tenancy.isolation`, …). `POST /api/v1/admin/ops/explain` answers *would this call be allowed* without making it (authorizer, then tool policy).
+- **Denial explanations in error data, behind an admin flag** — `controlPlane.console.explainDenials: true` adds `policy.explain` to refused REST tool calls **made by operators**; scoped keys, tenant members and console viewers never get it (off by default).
+- **Incident timeline** — `GET /api/v1/admin/ops/timeline`: restarts, config applies (and failed applies), GitOps releases / refusals / drift, revocations, plugin circuit opens, region stale / fresh transitions and refused calls (audit), newest first; filters `kind`, `since`, `until`, `subject`, `limit`.
+- **Troubleshooting wizard** — `POST /api/v1/admin/ops/troubleshoot` (operators): upstream reachability, auth / key, tenancy / scope (central authorizer), policy (the 14.7 policy simulation against the running config), rate limits / recent quota refusals, plugin health → `pass` / `warn` / `fail` per check with the config path, an overall verdict, argument values `<redacted>`; shareable at `GET /api/v1/admin/ops/reports/:id`. Rate limited to 30 runs per minute per client (`429` with `RateLimit` headers).
+- **RBAC** — `controlPlane.console.viewers` (client id globs): read-only console access (cluster, traces, explain, timeline, reports) without any other admin route; the wizard is operator-only. No console response carries key material, secrets or call arguments.
+- **Dashboard: Operations page** — Cluster, Call traces (open a trace to see its steps and why it was refused), Incident timeline (kind / since filters), Troubleshoot (run checks / explain only). ARIA tab list with arrow / Home / End keys, labelled fields, focus moved to results, polite live region for status; demo mode mocks.
+- `controlPlane.console` config (`enabled`, `viewers`, `traceBuffer`, `timelineBuffer`, `explainDenials`); config schema v12 describes it.
+- Docs: [Operations console guide](docs/guides/operations-console.md), configuration `controlPlane.console`, API reference.
+
+### Changed
+
+- GitOps policy simulation (14.7): API key scope is now matched for recorded calls, whose client id is `key:<name>` (before, only bare key names matched, so scope changes were never reported for recorded or recent calls).
+- Dashboard: the mobile bottom navigation keeps all seven sections on one row.
+- Refused calls return their history / audit record id internally (`requestId`), so they can be traced; client responses are unchanged.
+- `express-rate-limit` (already in the dependency tree through the MCP SDK) is now a runtime dependency, used for the troubleshooting wizard's per-client limit.
+
+### Tests
+
+- `test/ops-console-14-8-0.test.ts` (10): config schema; cluster status (operator / viewer / scoped keys, no secrets); call trace steps, order, timings, list and lookup, `__proto__` / `constructor` ids; denial explanation in traces and the explain API (policy rule, key scope path), never in client errors; `explainDenials` for operators only; incident timeline (restart, config apply, revocation, audit; kind / since filters, 400 on unknown kind; no secrets); troubleshooting wizard (checks, verdict, redacted arguments, shared report, unknown client, unknown server, operator-only); console disabled → 404, viewers get no other admin route; dashboard Operations page accessibility markup; wizard rate limit (30 / minute per client → 429).
+
 ## [14.7.0] - 2026-10-11
 
 GitOps and governance release (roadmap 14.7 "GitOps 与治理"). Builds on declarative config (`diff` / `apply`, 7.1), config generations and cluster rollout (14.1) and schema v12 (14.0): the config lives in a git directory with environment overlays and secrets by reference only, every change is reviewed as an environment diff and a plan against the live gateway with a policy simulation, and a gateway can be set to accept only ed25519-signed releases approved by N people, with drift detection, audit entries and metrics.
