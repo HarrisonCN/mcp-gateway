@@ -1,0 +1,432 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/HarrisonCN/mcp-gateway/blob/main/schema/v12/config.schema.json",
+  "title": "MCP Gateway config schema v12 (14.0)",
+  "description": "Draft of the config schema 14.0 will run. 13.x runs schema v11 and refuses version 12. See docs/design/schema-v12.md.",
+  "type": "object",
+  "required": [
+    "version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 12
+    },
+    "modules": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "features": {
+      "type": "object",
+      "description": "Feature module sections, each named after its module id (camelCase).",
+      "additionalProperties": false,
+      "properties": {
+        "a2aFederation": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "adaptive": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "agentIdentity": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "anomaly": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "apiUpstreams": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "approvalFlows": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "billing": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "blueGreen": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "chaos": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "complianceReports": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "confidential": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "configAssistant": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "console": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "costAdvisor": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "dataLineage": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "debugSessions": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "dlp": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "ecosystem": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "edgeAutonomy": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "edgeFleet": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "edgeRuntime": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "genaiOtel": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "identity": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "marketplace": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "multimodal": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "offline": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "pluginTrust": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "policyEngine": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "policySim": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "pqIdentity": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "pqTls": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "privacy": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "realtimeBudgets": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "regions": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "rollouts": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "sanitize": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "selfHealing": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "semanticCache": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "sessions": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "sla": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "taskGraphs": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "timeTravel": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "toolRegistry": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        }
+      }
+    },
+    "a2a": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "audit": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "auth": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "cache": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "catalog": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "chains": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "compliance": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "controlPlane": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "cors": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "costs": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "federation": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "health": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "host": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "logLevel": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "mcp": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "monitor": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "mtls": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "observability": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "openai": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "overload": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "plugins": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "policy": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "port": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "portal": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "quotas": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "rateLimit": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "reconnect": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "replay": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "routing": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "secrets": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "security": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "servers": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "store": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "streaming": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "tenants": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    }
+  }
+}

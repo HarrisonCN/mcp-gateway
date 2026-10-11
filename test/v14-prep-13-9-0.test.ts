@@ -14,7 +14,7 @@ import { fileURLToPath } from 'url';
 import { parse as parseYaml, parseAllDocuments } from 'yaml';
 import Ajv from 'ajv';
 import { validateConfig } from '../src/config/loader.js';
-import { V12_DEPRECATIONS, migrateToV12, downgradeFromV12, unifiedDiff, buildV12ConfigSchema, moduleDeclarationV12 } from '../src/config/v12.js';
+import { V12_DEPRECATIONS, migrateToV12, downgradeFromV12, unifiedDiff, buildV12ConfigSchema, buildV12ModuleSchema, moduleDeclarationV12 } from '../src/config/v12.js';
 import { deprecate, runtimeDeprecations, resetDeprecations } from '../src/utils/deprecations.js';
 import { logger } from '../src/utils/logger.js';
 import { FEATURE_MANIFEST } from '../src/features/manifest.js';
@@ -65,15 +65,19 @@ function exampleConfigs(): Array<{ name: string; text: string }> {
 }
 
 describe('schema v12 draft files', () => {
-  it('schema/v12-draft/config.schema.json and module.schema.json compile (JSON Schema draft-07)', () => {
-    for (const f of ['schema/v12-draft/config.schema.json', 'schema/v12-draft/module.schema.json']) {
+  it('schema/v12/config.schema.json and module.schema.json compile (JSON Schema draft-07)', () => {
+    for (const f of ['schema/v12/config.schema.json', 'schema/v12/module.schema.json']) {
       const s = readJson(f);
       expect(s.$schema).toBe('http://json-schema.org/draft-07/schema#');
       expect(() => compile(s), f).not.toThrow();
     }
   });
   it('config.schema.json is generated from the code (no drift)', () => {
-    expect(readJson('schema/v12-draft/config.schema.json')).toEqual(buildV12ConfigSchema());
+    expect(readJson('schema/v12/config.schema.json')).toEqual(buildV12ConfigSchema());
+    expect(readJson('schema/v12/module.schema.json')).toEqual(buildV12ModuleSchema());
+  });
+  it('schema/v12-draft (13.9 path) is kept as an identical alias copy until 15.0.0', () => {
+    for (const f of ['config.schema.json', 'module.schema.json']) expect(readJson(`schema/v12-draft/${f}`)).toEqual(readJson(`schema/v12/${f}`));
   });
   it('the design doc and the deprecation inventory doc exist and name every deprecation', () => {
     const design = readFileSync(join(ROOT, 'docs/design/schema-v12.md'), 'utf8');
@@ -152,7 +156,7 @@ describe('deprecation inventory → runtime warnings', () => {
 });
 
 describe('migration preview: v11 → v12', () => {
-  const schema = () => compile(readJson('schema/v12-draft/config.schema.json'));
+  const schema = () => compile(readJson('schema/v12/config.schema.json'));
   it('round-trips every example config: v12 output validates against the draft, downgrades to the same v11 config', () => {
     const validate = schema();
     const list = exampleConfigs();
@@ -317,7 +321,7 @@ describe('13.4.0 F3 / C7: instance isolation and v12 module declarations (all 46
     for (const e of FEATURE_MANIFEST) expect(await loadFeature(e.id), e.id).toBe(true);
   }, 60_000);
   it('every module has a v12 declaration (lifecycle, capabilities, failure policy) valid against module.schema.json', () => {
-    const validate = compile(readJson('schema/v12-draft/module.schema.json'));
+    const validate = compile(readJson('schema/v12/module.schema.json'));
     expect(FEATURE_MANIFEST.length).toBe(46);
     for (const e of FEATURE_MANIFEST) {
       const d = moduleDeclarationV12(e, registeredFeature(e.id)) as any;

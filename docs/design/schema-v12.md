@@ -5,10 +5,10 @@
 > until 15.0.0. Upgrade guide: [docs/migration/v13-to-v14.md](../migration/v13-to-v14.md). 13.9.0 shipped this design
 > as a draft (13.x refuses `version: 12`).
 
-Machine-readable schemas (the directory keeps its 13.9 name `v12-draft`; the content is the 14.0 runtime schema):
+Machine-readable schemas (14.0 runtime schema; the 13.9 path `schema/v12-draft/` is kept as an identical, deprecated alias copy until 15.0.0):
 
-- [`schema/v12-draft/config.schema.json`](../../schema/v12-draft/config.schema.json): config file (JSON Schema draft-07);
-- [`schema/v12-draft/module.schema.json`](../../schema/v12-draft/module.schema.json): feature module declaration.
+- [`schema/v12/config.schema.json`](../../schema/v12/config.schema.json): config file (JSON Schema draft-07);
+- [`schema/v12/module.schema.json`](../../schema/v12/module.schema.json): feature module declaration.
 
 Both are generated from the code (`npx tsx scripts/gen-schema-v12.ts`; `--check` reports drift) and are covered by
 `test/v14-prep-13-9-0.test.ts`.
@@ -77,7 +77,7 @@ instances is still present in 13.x and is removed by the 14.0 lifecycle (per-ins
 
 ## Module declaration and capabilities
 
-Each module declares (draft `module.schema.json`): `id`, `since`, `summary`, `apiVersion: v12-draft`,
+Each module declares (`module.schema.json`): `id`, `since`, `summary`, `apiVersion: v12` (`v12-draft` accepted as an alias until 15.0.0),
 `configSections`, `dependsOn`, `hook`, `lifecycle` (which of `mount`, `init`, `reconfigure`, `disable`, `dispose`,
 `health` it implements), `capabilities` and `failurePolicy` (`default`, `configurable`). Rules: a module with a call
 hook declares `call-hook` and a failure policy; a `security-guard` module's policy is `closed` and not configurable.

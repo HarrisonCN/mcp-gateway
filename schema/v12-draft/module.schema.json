@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/HarrisonCN/mcp-gateway/blob/main/schema/v12-draft/module.schema.json",
-  "title": "MCP Gateway feature module declaration v12 (DRAFT, 13.9.0)",
+  "$id": "https://github.com/HarrisonCN/mcp-gateway/blob/main/schema/v12/module.schema.json",
+  "title": "MCP Gateway feature module declaration v12 (14.0)",
   "description": "What a feature module declares to the 14.0 kernel: lifecycle methods, capabilities, config sections, dependencies, failure policy. 13.9 derives it from the manifest (moduleDeclarationV12).",
   "type": "object",
   "required": [
@@ -29,7 +29,11 @@
       "minLength": 1
     },
     "apiVersion": {
-      "const": "v12-draft"
+      "enum": [
+        "v12",
+        "v12-draft"
+      ],
+      "description": "'v12' (14.0). 'v12-draft' (13.9) is accepted as a deprecated alias until 15.0.0."
     },
     "configSections": {
       "type": "array",

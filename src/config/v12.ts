@@ -9,7 +9,7 @@
  *    `mcp-gateway config diff --to v12`;
  *  - {@link downgradeFromV12} (v12 → the v11 form 13.x runs), used to prove round trips and to validate v12 output
  *    with the v11 runtime schema;
- *  - the JSON Schemas under schema/v12-draft ({@link buildV12ConfigSchema}, {@link buildV12ModuleSchema}) and the v12
+ *  - the JSON Schemas under schema/v12 (14.0.0; `schema/v12-draft` is a deprecated alias copy until 15.0.0) ({@link buildV12ConfigSchema}, {@link buildV12ModuleSchema}) and the v12
  *    module declaration derived from each manifest entry ({@link moduleDeclarationV12}).
  *
  * Design: docs/design/schema-v12.md.
@@ -203,13 +203,13 @@ export function unifiedDiff(a: string, b: string, fromName: string, toName: stri
   return out.join('\n') + '\n';
 }
 
-// ─── JSON Schemas (schema/v12-draft) ──────────────────────────────────────────────────────────────────────────────
+// ─── JSON Schemas (schema/v12) ────────────────────────────────────────────────────────────────────────────────────
 
 /** Capability vocabulary of the v12 module declaration. */
 export const V12_CAPABILITIES = MODULE_CAPABILITIES_;
 export type V12Capability = (typeof V12_CAPABILITIES)[number];
 
-const SCHEMA_BASE = 'https://github.com/HarrisonCN/mcp-gateway/blob/main/schema/v12-draft/';
+const SCHEMA_BASE = 'https://github.com/HarrisonCN/mcp-gateway/blob/main/schema/v12/';
 const POLICIES: FailurePolicy[] = ['open', 'closed', 'degrade'];
 
 /** v12 name of a v11 feature section. */
@@ -229,7 +229,7 @@ export function buildV12ConfigSchema(topLevelKeys: readonly string[] = CONFIG_FI
   return {
     $schema: 'http://json-schema.org/draft-07/schema#',
     $id: SCHEMA_BASE + 'config.schema.json',
-    title: 'MCP Gateway config schema v12 (DRAFT, 13.9.0)',
+    title: 'MCP Gateway config schema v12 (14.0)',
     description: 'Draft of the config schema 14.0 will run. 13.x runs schema v11 and refuses version 12. See docs/design/schema-v12.md.',
     type: 'object',
     required: ['version'],
@@ -283,7 +283,7 @@ export function buildV12ModuleSchema(): Record<string, unknown> {
   return {
     $schema: 'http://json-schema.org/draft-07/schema#',
     $id: SCHEMA_BASE + 'module.schema.json',
-    title: 'MCP Gateway feature module declaration v12 (DRAFT, 13.9.0)',
+    title: 'MCP Gateway feature module declaration v12 (14.0)',
     description: 'What a feature module declares to the 14.0 kernel: lifecycle methods, capabilities, config sections, dependencies, failure policy. 13.9 derives it from the manifest (moduleDeclarationV12).',
     type: 'object',
     required: ['id', 'since', 'summary', 'apiVersion', 'lifecycle', 'capabilities', 'configSections', 'dependsOn'],
@@ -292,7 +292,7 @@ export function buildV12ModuleSchema(): Record<string, unknown> {
       id: { type: 'string', pattern: '^[a-z][a-z0-9-]*$' },
       since: { type: 'string', pattern: '^\\d+\\.\\d+\\.\\d+$' },
       summary: { type: 'string', minLength: 1 },
-      apiVersion: { const: 'v12-draft' },
+      apiVersion: { enum: ['v12', 'v12-draft'], description: "'v12' (14.0). 'v12-draft' (13.9) is accepted as a deprecated alias until 15.0.0." },
       configSections: { type: 'array', uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9]*$' } },
       dependsOn: { type: 'array', uniqueItems: true, items: { type: 'string' } },
       hook: { type: 'string' },
@@ -337,7 +337,7 @@ export function moduleDeclarationV12(e: FeatureManifestEntry, mod?: FeatureModul
     id: e.id,
     since: e.since,
     summary: e.summary,
-    apiVersion: 'v12-draft',
+    apiVersion: 'v12',
     configSections: [...new Set(sections)],
     dependsOn: [...(e.dependsOn ?? [])],
     ...(e.hook ? { hook: e.hook } : {}),

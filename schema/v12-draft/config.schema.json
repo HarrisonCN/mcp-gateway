@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/HarrisonCN/mcp-gateway/blob/main/schema/v12-draft/config.schema.json",
-  "title": "MCP Gateway config schema v12 (DRAFT, 13.9.0)",
+  "$id": "https://github.com/HarrisonCN/mcp-gateway/blob/main/schema/v12/config.schema.json",
+  "title": "MCP Gateway config schema v12 (14.0)",
   "description": "Draft of the config schema 14.0 will run. 13.x runs schema v11 and refuses version 12. See docs/design/schema-v12.md.",
   "type": "object",
   "required": [
