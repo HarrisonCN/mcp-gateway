@@ -159,6 +159,11 @@ export interface InvokerDeps {
   usage?: UsageMeter;
   /** Tenant ids of a client (for per-tenant quotas and metering). */
   tenantsOf?: (clientId: string | undefined) => string[];
+  /**
+   * 14.2.0: the acting tenant of a call to `serverId` (+ the sharing grant it uses). Every per-call tenant decision
+   * (credentials, budgets, quotas, caches, hooks / policy, residency, audit) uses it — never the first membership.
+   */
+  tenantFor?: (clientId: string | undefined, serverId: string) => { tenant?: string; grant?: string };
   /** 11.1: server tool filter, enforced by the central authorizer for every caller. */
   exposed?: (serverId: string, tool: string) => boolean;
   /** 13.1: runtime / load failure of a feature module in this gateway's kernel (failure policies). */
@@ -242,6 +247,23 @@ export class ToolInvoker {
     return this.deps.telemetry ? this.deps.telemetry.principalAttribute(id) : principalAttr(id);
   }
 
+  /** 14.2.0: acting tenant of the call (see deps.tenantFor); legacy first membership when not wired. */
+  private tenantOf(ctx: { clientId?: string; serverId: string }): string | undefined {
+    return this.deps.tenantFor ? this.deps.tenantFor(ctx.clientId, ctx.serverId).tenant : this.deps.tenantsOf?.(ctx.clientId)?.[0];
+  }
+
+  /** 14.2.0: tenants a call is charged to / limited by — the acting tenant only (no cross-tenant spend). */
+  private tenantList(ctx: { clientId?: string; serverId: string }): string[] {
+    const t = this.tenantOf(ctx);
+    return t ? [t] : [];
+  }
+
+  /** 14.2.0: tenant fields of the audit record. */
+  private tenantAudit(ctx: { clientId?: string; serverId: string }): { tenant?: string; tenantGrant?: string } {
+    const r = this.deps.tenantFor ? this.deps.tenantFor(ctx.clientId, ctx.serverId) : { tenant: this.tenantOf(ctx) };
+    return { ...(r.tenant ? { tenant: r.tenant } : {}), ...(r.grant ? { tenantGrant: r.grant } : {}) };
+  }
+
   /** Delegation / origin fields of the audit record (13.1.2): absent for plain direct calls. */
   private auditOf(ctx: InvokeContext): { actor?: string; chain?: string[] } {
     const id = ctx.identity;
@@ -264,12 +286,14 @@ export class ToolInvoker {
       errorCode: code,
       decision: decisionOf(data) ?? 'refused',
       ...this.auditOf(ctx),
+      ...this.tenantAudit(ctx),
     });
+    if (decisionOf(data) === 'cross-tenant') logger.warn(`audit: cross-tenant ${ctx.name} -> ${ctx.serverId} refused for ${ctx.clientId ?? 'anonymous'} (owner ${String((data as { owner?: unknown }).owner ?? '?')})`);
     if (this.deps.requestLog?.() !== false) logger.info(`${ctx.name} → ${ctx.serverId} refused (${decisionOf(data) ?? 'refused'}): ${message}`);
     const hookCfg = ctx.kind === 'tool' ? this.deps.config?.() : undefined;
     if (hookCfg) {
       // 13.4.0: refused hooks get the same identity context as before / after hooks (subject + principal)
-      const call: HookCall = { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params, principal: ctx.principal };
+      const call: HookCall = { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.tenantOf(ctx), args: ctx.params, principal: ctx.principal };
       for (const h of callHookPlan(hookCfg, this.deps.moduleFailure).hooks) {
         try {
           h.refused?.(call, { code, message, data }, hookCfg);
@@ -331,7 +355,7 @@ export class ToolInvoker {
   private residencyDenial(ctx: InvokeContext): FinalDenial | undefined {
     const comp = this.deps.compliance;
     if (!comp || ctx.kind !== 'tool' || ctx.fromPeer) return undefined;
-    const tenant = this.deps.tenantsOf?.(ctx.clientId)?.[0];
+    const tenant = this.tenantOf(ctx);
     const region = this.deps.serverConfig?.(ctx.serverId)?.region;
     if (comp.residencyAllows(tenant, region)) return undefined;
     comp.noteResidencyBlock();
@@ -386,7 +410,7 @@ export class ToolInvoker {
       const plan = cfgNow ? (reroute.plan ?? callHookPlan(cfgNow, this.deps.moduleFailure)) : undefined;
       if (changed && plan) {
         // 13.1.1: a failed `closed` module that governs the NEW target refuses the moved call.
-        const closed = closedFor(plan, { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], principal: ctx.principal });
+        const closed = closedFor(plan, { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.tenantOf(ctx), principal: ctx.principal });
         if (closed.length) {
           this.moduleFailureDenials++;
           const ids = closed.map((m) => m.id);
@@ -413,7 +437,7 @@ export class ToolInvoker {
         } else if (round === 0 && checked?.approvalPending) approval.pending = true;
         let rewritten = false;
         if (cfgNow && plan) {
-          const call: HookCall = { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params, principal: ctx.principal };
+          const call: HookCall = { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.tenantOf(ctx), args: ctx.params, principal: ctx.principal };
           for (const h of plan.hooks) {
             if (!h.before || !isGuardHook(h.id)) continue;
             const s = seen.get(h.id);
@@ -519,7 +543,7 @@ export class ToolInvoker {
     const pluginSet = this.pluginSet();
     const plugins = pluginSet ? this.deps.plugins : undefined;
     const call: PluginCall | undefined = plugins
-      ? { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, method: ctx.method, arguments: ctx.params, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], via: ctx.via, state: new Map() }
+      ? { serverId: ctx.serverId, name: ctx.name, kind: ctx.kind, method: ctx.method, arguments: ctx.params, clientId: ctx.clientId, tenant: this.tenantOf(ctx), via: ctx.via, state: new Map() }
       : undefined;
     if (plugins && call) {
       try {
@@ -554,7 +578,7 @@ export class ToolInvoker {
       if (!routes.has(serverId)) routes.set(serverId, router.route(serverId, ctx.name, ctx.clientId) ?? null);
       return routes.get(serverId) ?? undefined;
     };
-    const hookCall = (): HookCall => ({ serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], args: ctx.params, principal: ctx.principal, routedTo: () => routeOf(ctx.serverId)?.server ?? ctx.serverId });
+    const hookCall = (): HookCall => ({ serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.tenantOf(ctx), args: ctx.params, principal: ctx.principal, routedTo: () => routeOf(ctx.serverId)?.server ?? ctx.serverId });
     let preset: ProxyResponse | undefined;
     const plan = hookCfg && ctx.kind === 'tool' ? callHookPlan(hookCfg, this.deps.moduleFailure) : undefined;
     const rerouteBy: string[] = [];
@@ -562,7 +586,7 @@ export class ToolInvoker {
     if (hookCfg && plan) {
       // 13.1: a failed security module never fails open. 13.1.1: only the calls in its failure scope are refused
       // (a module whose scope cannot be determined governs every call).
-      const closed = closedFor(plan, { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], principal: ctx.principal });
+      const closed = closedFor(plan, { serverId: ctx.serverId, tool: ctx.name, clientId: ctx.clientId, tenant: this.tenantOf(ctx), principal: ctx.principal });
       if (closed.length) {
         this.moduleFailureDenials++;
         const ids = closed.map((m) => m.id);
@@ -624,7 +648,7 @@ export class ToolInvoker {
     clock.lap('routing');
     const usage = this.deps.usage;
     if (usage && ctx.kind === 'tool') {
-      const over = usage.take({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name });
+      const over = usage.take({ clientId: ctx.clientId, tenants: this.tenantList(ctx), serverId: ctx.serverId, tool: ctx.name });
       if (over) {
         const message = `Quota "${over.rule}" exceeded for ${over.subject} (${over.limit} per period)`;
         return this.refuse(ctx, ERR_QUOTA_EXCEEDED, message, { decision: 'quota', quota: over.rule, limit: over.limit, resetsAt: new Date(over.resetsAt).toISOString() }, span);
@@ -632,7 +656,7 @@ export class ToolInvoker {
     }
     const costs = this.deps.costs;
     if (costs && ctx.kind === 'tool') {
-      const over = costs.blocked(ctx.clientId, this.deps.tenantsOf?.(ctx.clientId));
+      const over = costs.blocked(ctx.clientId, this.tenantList(ctx));
       if (over) {
         const message = `Budget "${over.budget}" exhausted for ${over.subject} (${over.spent} of ${over.limit}); resets ${over.resetsAt}`;
         return this.refuse(ctx, ERR_BUDGET_EXCEEDED, message, { decision: 'budget', budget: over.budget, limit: over.limit, spent: over.spent, resetsAt: over.resetsAt }, span);
@@ -655,7 +679,7 @@ export class ToolInvoker {
           }
         };
         const c0 = performance.now();
-        const out = await cache.run({ serverId: ctx.serverId, target: pre?.ctx.serverId, tool: ctx.name, args: pre?.ctx.params ?? ctx.params, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], principal: { kind: ctx.principal.kind, actors: ctx.identity?.actors ?? [], scope: ctx.principal.scope, delegation: ctx.principal.delegation } }, timedUpstream);
+        const out = await cache.run({ serverId: ctx.serverId, target: pre?.ctx.serverId, tool: ctx.name, args: pre?.ctx.params ?? ctx.params, clientId: ctx.clientId, tenant: this.tenantOf(ctx), principal: { kind: ctx.principal.kind, actors: ctx.identity?.actors ?? [], scope: ctx.principal.scope, delegation: ctx.principal.delegation } }, timedUpstream);
         const spent = performance.now() - c0;
         if (upMs >= 0) clock.add('upstream', upMs);
         clock.add('cache', Math.max(0, spent - Math.max(0, upMs)));
@@ -771,7 +795,7 @@ export class ToolInvoker {
     const secrets = this.deps.secrets;
     const server = this.deps.serverConfig?.(ctx.serverId);
     if (!secrets || !server?.inject?.length) return ctx;
-    const values = await secrets.injections(server, { tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0], clientId: ctx.clientId });
+    const values = await secrets.injections(server, { tenant: this.tenantOf(ctx), clientId: ctx.clientId });
     let params = ctx.params;
     let meta = ctx.meta;
     const names: string[] = [];
@@ -790,11 +814,11 @@ export class ToolInvoker {
     const canFailover = ctx.kind === 'tool' && !ctx.fromPeer && !!fed?.failsOver(ctx.serverId);
     const local = await this.callLocal(ctx, span, pre);
     if (!canFailover || classifyFailure(local) !== 'not-connected') return local;
-    const tenant = this.deps.tenantsOf?.(ctx.clientId)?.[0];
+    const tenant = this.tenantOf(ctx);
     const peers = fed!.candidates(ctx.serverId, ctx.name).filter((p) => this.deps.compliance?.residencyAllows(tenant, p.region) ?? true);
     for (const peer of peers) {
       logger.warn(`${ctx.serverId}/${ctx.name}: local server unavailable; failing over to peer gateway "${peer.id}"`);
-      const r = await fed!.forward(peer, { server: ctx.serverId, tool: ctx.name, arguments: ctx.params, clientId: ctx.clientId, tenant: this.deps.tenantsOf?.(ctx.clientId)?.[0] }, ctx.timeoutMs);
+      const r = await fed!.forward(peer, { server: ctx.serverId, tool: ctx.name, arguments: ctx.params, clientId: ctx.clientId, tenant: this.tenantOf(ctx) }, ctx.timeoutMs);
       span.setAttribute('mcp.federation.peer', peer.id);
       if (r.success || classifyFailure(r) !== 'not-connected') {
         const { peer: _p, ...rest } = r;
@@ -926,9 +950,9 @@ export class ToolInvoker {
       }
     }
     if (ctx.kind === 'tool') {
-      this.deps.usage?.record({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name, success: result.success, durationMs: result.durationMs });
+      this.deps.usage?.record({ clientId: ctx.clientId, tenants: this.tenantList(ctx), serverId: ctx.serverId, tool: ctx.name, success: result.success, durationMs: result.durationMs });
       if (result.success && this.deps.costs?.enabled) {
-        const c = this.deps.costs.record({ clientId: ctx.clientId, tenants: this.deps.tenantsOf?.(ctx.clientId), serverId: ctx.serverId, tool: ctx.name, result: result.result });
+        const c = this.deps.costs.record({ clientId: ctx.clientId, tenants: this.tenantList(ctx), serverId: ctx.serverId, tool: ctx.name, result: result.result });
         if (c.cost) span.setAttribute('mcp.cost', c.cost);
         if (c.usage) span.setAttribute('gen_ai.usage.input_tokens', c.usage.inputTokens), span.setAttribute('gen_ai.usage.output_tokens', c.usage.outputTokens);
       }
@@ -944,6 +968,7 @@ export class ToolInvoker {
       via: ctx.via,
       ...(ctx.kind === 'tool' ? {} : { kind: ctx.kind }),
       ...this.auditOf(ctx),
+      ...this.tenantAudit(ctx),
     });
     this.deps.recorder?.capture({
       id: record.id,

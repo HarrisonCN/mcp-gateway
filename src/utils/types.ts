@@ -316,6 +316,8 @@ export interface GatewayConfig {
   catalog?: CatalogConfig;
   /** Tenants / workspaces with owner / admin / viewer roles. */
   tenants?: TenantConfig[];
+  /** 14.2.0: centralized tenant isolation rules. */
+  tenancy?: TenancyConfig;
   /** Tool result caching (per-tool opt-in) and in-flight de-duplication. */
   cache?: CacheConfig;
   /** Request capture + replay / debugger (3.2). Off by default. */
@@ -922,6 +924,10 @@ export interface RequestMetric {
    * `quota`, `snapshot-mismatch`, …) or `upstream-error` when the upstream itself failed.
    */
   decision?: string;
+  /** 14.2.0: the acting tenant of the call (the caller's tenant entitled to the server). */
+  tenant?: string;
+  /** 14.2.0: `owner->tenant` when the call used a cross-tenant sharing grant. */
+  tenantGrant?: string;
 }
 
 export interface AggregatedMetrics {
@@ -1165,4 +1171,29 @@ export interface QuotasConfig {
   rules?: QuotaRule[];
   /** How long hourly metering buckets are kept (days, default 35). */
   meteringRetentionDays?: number;
+}
+
+/** 14.2.0: an explicit, audited cross-tenant sharing grant. */
+export interface TenancyGrant {
+  /** Tenant owning the servers. */
+  owner: string;
+  /** Tenants whose members may use them (their own role in that tenant applies). */
+  tenants: string[];
+  /** Server id globs (servers must be owned by `owner`). */
+  servers: string[];
+  /** `call` (default): see and call; `read`: catalog / resources / prompts only. */
+  access?: 'call' | 'read';
+  /** Why the grant exists (shown in the tenancy report). */
+  reason?: string;
+}
+
+/** 14.2.0: centralized tenant isolation rules (`tenancy`). */
+export interface TenancyConfig {
+  isolation?: {
+    /** Default true when the block is present. */
+    enabled?: boolean;
+    /** `deny` (default): cross-tenant access only through grants; `audit`: allowed as before, every crossing recorded. */
+    crossTenant?: 'deny' | 'audit';
+    grants?: TenancyGrant[];
+  };
 }

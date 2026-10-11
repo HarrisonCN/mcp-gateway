@@ -38,6 +38,7 @@ import { redactArgs } from '../security/redact.js';
 import { effectiveRebindingProtection } from '../security/network.js';
 import type { CatalogEntry, InstallRequest } from '../catalog/index.js';
 import { withTenantScope, canCall, highestRole, roleIn, ROLE_RANK, membershipsOf, memberGrantError } from '../auth/tenants.js';
+import { isCrossTenantRefusal } from '../auth/isolation.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { ERR_BUDGET_EXCEEDED } from '../costs/index.js';
 import { ERR_QUOTA_EXCEEDED, usageCsv, type UsageGroup } from './usage.js';
@@ -319,7 +320,7 @@ export function createApiRouter(
   const applyTenant = (req: Request) => {
     if (!cfg.tenants?.length) return;
     const r = req as AuthedRequest;
-    const scoped = withTenantScope(cfg.tenants, r.clientId, r.scope);
+    const scoped = withTenantScope(cfg.tenants, r.clientId, r.scope, cfg.tenancy);
     if (scoped) r.scope = scoped;
   };
   const auth: RequestHandler = withLockout(
@@ -361,7 +362,7 @@ export function createApiRouter(
   router.takeRateLimit = (req) => limiterFor(req).take(req);
   router.resolveClient = (clientId) => {
     const r = authMw.resolveClient?.(clientId);
-    return r && cfg.tenants?.length ? { ...r, scope: withTenantScope(cfg.tenants, clientId, r.scope) } : r;
+    return r && cfg.tenants?.length ? { ...r, scope: withTenantScope(cfg.tenants, clientId, r.scope, cfg.tenancy) } : r;
   };
   router.update = (next: GatewayConfig) => {
     const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -677,7 +678,10 @@ export function createApiRouter(
       return;
     }
 
-    if (!isServerInScope(scope, targetServerId)) {
+    // 14.2.0: a refused cross-tenant crossing is left to the central authorizer so it is recorded (decision
+    // `cross-tenant`, audited) instead of being turned away here without a trace.
+    const crossTenant = isCrossTenantRefusal(scope, targetServerId);
+    if (!crossTenant && !isServerInScope(scope, targetServerId)) {
       forbidden(`Server "${targetServerId}" is not allowed for this client`);
       return;
     }
@@ -691,11 +695,11 @@ export function createApiRouter(
       return;
     }
 
-    if (isToolInScope(scope, targetServerId, tool) && !canCall(scope, targetServerId)) {
+    if (!crossTenant && isToolInScope(scope, targetServerId, tool) && !canCall(scope, targetServerId)) {
       forbidden(`Read-only role: tool calls on server "${targetServerId}" need the admin or owner role`);
       return;
     }
-    if (!isToolInScope(scope, targetServerId, tool)) {
+    if (!crossTenant && !isToolInScope(scope, targetServerId, tool)) {
       forbidden(`Tool "${tool}" on server "${targetServerId}" is not allowed for this client`);
       return;
     }
@@ -1644,7 +1648,7 @@ export function createApiRouter(
   // ─── Recent Requests ────────────────────────────────────────────────────────
 
   // History: in-memory log, or the persistent audit log when `audit.enabled`.
-  // Filters: server, tool, client, success, via, kind, since, until (ISO or ms), cursor.
+  // Filters: server, tool, client, tenant (14.2.0), success, via, kind, since, until (ISO or ms), cursor.
   router.get('/requests', auth, (req, res) => {
     const limit = parseIntParam(req.query.limit, 50, 1, 500);
     const str = (k: string) => (typeof req.query[k] === 'string' && req.query[k] !== '' ? (req.query[k] as string) : undefined);
@@ -1679,6 +1683,7 @@ export function createApiRouter(
         success: success === undefined ? undefined : success === 'true',
         via: via as 'rest' | 'mcp' | undefined,
         kind: kind as 'tool' | 'resource' | 'prompt' | undefined,
+        tenant: str('tenant'),
       });
       res.json(page);
     } catch (err) {

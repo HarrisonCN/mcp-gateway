@@ -1,0 +1,62 @@
+# Motionary Studio: controlled AI tool access per tenant (14.2.0 joint example: MCP Gateway 14.2 + Motionary 14.4)
+# Motionary is NOT a dependency of mcp-gateway: install it next to this file
+#   npm i --no-save motionary@13.0.2      (pinned; newer Motionary releases are expected to work too)
+# Replace the three placeholder digests below with your own keys' digests (one key per Studio workspace):
+#   npx mcp-gateway hash-key "$(openssl rand -hex 24)"
+# then start the gateway from this directory:
+#   npx mcp-gateway start -c mcp-gateway.yml
+# and check the tenant boundaries before going live:
+#   npx mcp-gateway tenancy report -c mcp-gateway.yml
+
+version: 12
+port: 4000
+host: 127.0.0.1
+logLevel: info
+
+auth:
+  strategy: api-key
+  apiKeys:
+    - { key: "sha256:82f707c80325220597d0224dc9febb18deef59e8455b593c3377e4e2f0a540c0", name: ops } # operator (no tenant): sees everything, reads the audit log
+    - { key: "sha256:70a64c15caa6cc0435ac14c8f007621d2d26d5c2c4699334700bbe75404107a5", name: studio-a }  # Studio workspace A's AI client
+    - { key: "sha256:ed14ed486a9d7d27db9d7af65ccaeec3ce30c89c5fc93744237c9e43c6ef2838", name: studio-b }  # Studio workspace B's AI client
+
+# One Motionary MCP upstream per tenant: separate processes, separate caches, separate audit trails.
+servers:
+  - id: motionary-a
+    name: Motionary (studio A)
+    transport: stdio
+    command: node
+    args: ["node_modules/motionary/bin/motionary-mcp.mjs"]
+    tags: [motionary]
+  - id: motionary-b
+    name: Motionary (studio B)
+    transport: stdio
+    command: node
+    args: ["node_modules/motionary/bin/motionary-mcp.mjs"]
+    tags: [motionary]
+
+tenants:
+  - id: studio-a
+    servers: ["motionary-a"]
+    members:
+      - { client: "key:studio-a", role: admin }
+  - id: studio-b
+    servers: ["motionary-b"]
+    members:
+      - { client: "key:studio-b", role: admin }
+
+# 14.2: cross-tenant access is denied by default; sharing needs an explicit, audited grant, e.g.
+#   grants:
+#     - { owner: studio-a, tenants: [studio-b], servers: [motionary-a], access: read, reason: "design review" }
+tenancy:
+  isolation:
+    crossTenant: deny
+
+# Every call (allowed or refused) is kept with the caller and the acting tenant: GET /api/v1/requests?tenant=studio-a
+audit:
+  enabled: true
+  path: ./motionary-studio-audit.db
+  retentionDays: 30
+
+mcp:
+  allowedOrigins: []

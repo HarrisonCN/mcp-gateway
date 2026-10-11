@@ -275,9 +275,44 @@ export function buildV12ConfigSchema(topLevelKeys: readonly string[] = CONFIG_FI
       ...Object.fromEntries(others.map((k) => [k, unchanged])),
       // 14.1.0: optional `controlPlane.rollout` (control role only); the rest of the section is unchanged
       ...(others.includes('controlPlane') ? { controlPlane: CONTROL_PLANE_V12 } : {}),
+      // 14.2.0: optional centralized tenant isolation rules
+      ...(others.includes('tenancy') ? { tenancy: TENANCY_V12 } : {}),
     },
   };
 }
+
+/** `tenancy` in the v12 JSON Schema (14.2.0, optional). */
+const TENANCY_V12 = {
+  type: 'object',
+  description: 'NEW in 14.2 (optional): centralized tenant isolation. Absent = pre-14.2 behaviour. See docs/guides/tenant-isolation.md.',
+  additionalProperties: false,
+  properties: {
+    isolation: {
+      type: 'object',
+      additionalProperties: false,
+      description: 'With isolation on, each server belongs to the first tenant (config order) whose `servers` globs match it; other tenants reach it only through a grant.',
+      properties: {
+        enabled: { type: 'boolean', default: true },
+        crossTenant: { enum: ['deny', 'audit'], default: 'deny', description: 'deny: cross-tenant access only through grants; audit: allowed as before, every crossing recorded' },
+        grants: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['owner', 'tenants', 'servers'],
+            additionalProperties: false,
+            properties: {
+              owner: { type: 'string', minLength: 1, description: 'tenant owning the servers' },
+              tenants: { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 }, description: 'tenants whose members may use them (their own role applies)' },
+              servers: { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 }, description: 'server id globs owned by `owner`' },
+              access: { enum: ['call', 'read'], default: 'call' },
+              reason: { type: 'string', maxLength: 500 },
+            },
+          },
+        },
+      },
+    },
+  },
+};
 
 /** `controlPlane` in the v12 JSON Schema: other keys as in v11; `rollout` (14.1.0, optional) described precisely. */
 const CONTROL_PLANE_V12 = {

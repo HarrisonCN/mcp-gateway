@@ -163,6 +163,7 @@ Admin traffic (`/api/v1/admin/*`, dashboard, control plane) takes steps 1–2 an
 | MGW-2026-012 | B7 (Redis reply desync) | 7 |
 | MGW-2026-013 | B4 (client-supplied scope globs in agent-identity token requests) | — (availability: glob matching is linear since 13.5.0) |
 | MGW-2026-014 | B7 (Redis connection setup: `AUTH` / `SELECT` before the first command) | 7 |
+| MGW-2026-015 | B3 (tenant boundary: per-call tenant for credentials, budgets, caches, policy) | 3 |
 
 Details, affected ranges and fixed versions: [SECURITY.md](../../SECURITY.md#security-advisories).
 

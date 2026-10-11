@@ -285,6 +285,31 @@ tenants:
   `DELETE /api/v1/tenants/:id/members/:client` (owners and operators; a tenant keeps at least one owner). Runtime
   member changes are **not written back** to the config file. The dashboard shows a *Workspaces* card with role
   selectors for owners. Hot reloadable.
+- 14.2: per-call tenant decisions (credential `{tenant}`, budgets, quotas, caches, policy, audit) use the **acting
+  tenant** — the caller's tenant entitled to the called server.
+
+### Tenant isolation (14.2)
+
+```yaml
+tenants:
+  - { id: acme, servers: ['acme-*', 'shared-*'] }
+  - { id: labs, servers: ['labs-*', 'shared-*'] }
+tenancy:
+  isolation:
+    crossTenant: deny     # deny (default) | audit
+    grants:
+      - { owner: acme, tenants: [labs], servers: ['shared-kb'], access: call, reason: pilot }
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `tenancy.isolation.enabled` | `true` when the block is present | turn isolation off without removing the block |
+| `tenancy.isolation.crossTenant` | `deny` | `deny`: a server belongs to the first matching tenant; others need a grant. `audit`: allowed, recorded |
+| `tenancy.isolation.grants[]` | `[]` | `owner`, `tenants`, `servers` (globs), `access` (`call` / `read`), `reason` |
+
+Optional and additive (no block = pre-14.2 sharing). Refusals are recorded with decision `cross-tenant`; request
+records carry `tenant` / `tenantGrant`. Check a config with `mcp-gateway tenancy report`. See
+[Tenant isolation](guides/tenant-isolation.md).
 
 ## Load balancing and failover
 

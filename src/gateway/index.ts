@@ -55,7 +55,7 @@ import { PortalStore } from '../portal/index.js';
 import { ToolCache } from './cache.js';
 import { ReplayRecorder } from './replay.js';
 import { UsageMeter } from './usage.js';
-import { membershipsOf } from '../auth/tenants.js';
+import { membershipsOf, resolveTenant } from '../auth/tenants.js';
 import { Catalog, InstalledServers, buildServerConfig, type InstallRequest } from '../catalog/index.js';
 import { ChainService } from '../orchestration/service.js';
 import { MtlsManager, setUpstreamTls } from '../security/mtls.js';
@@ -188,8 +188,12 @@ export class Gateway {
   });
   private readonly plugins = new PluginHost({
     resolveSecret: (ref, plugin) => this.secrets.get(ref, { user: `plugin:${plugin}` }),
-    tenantOf: (clientId) => {
-      const m = this.config.tenants?.length ? membershipsOf(this.config.tenants, clientId)[0] : undefined;
+    tenantOf: (clientId, serverId) => {
+      if (!this.config.tenants?.length) return undefined;
+      const ms = membershipsOf(this.config.tenants, clientId);
+      // 14.2.0: the acting tenant of the call (not simply the first membership)
+      const t = serverId ? resolveTenant(this.config.tenants, this.config.tenancy, clientId, serverId).tenant : ms[0]?.tenant;
+      const m = ms.find((x) => x.tenant === t) ?? ms[0];
       return m ? { id: m.tenant, name: m.name, role: m.role } : undefined;
     },
   });
@@ -327,6 +331,10 @@ export class Gateway {
       tenantsOf: (clientId) => {
         const tenants = this.cfgNow().tenants;
         return tenants?.length ? membershipsOf(tenants, clientId).map((m) => m.tenant) : [];
+      },
+      tenantFor: (clientId, serverId) => {
+        const c = this.cfgNow();
+        return c.tenants?.length ? resolveTenant(c.tenants, c.tenancy, clientId, serverId) : {};
       },
       secrets: this.secrets,
       serverConfig: (id) => {
@@ -1044,6 +1052,7 @@ export class Gateway {
       const prevSecrets = this.config.secrets;
       const prevFederation = this.config.federation;
       const prevTenants = this.config.tenants;
+      const prevTenancy = this.config.tenancy;
       const prevCatalog = this.config.catalog;
       for (const field of ['port', 'host', 'health', 'controlPlane', 'audit', 'state', 'observability'] as const) {
         if (!same(this.config[field], next[field])) {
@@ -1217,9 +1226,9 @@ export class Gateway {
           this.catalog.commit(preparedCatalog);
           applied.push('catalog');
         }
-        if (!same(prevTenants, next.tenants)) {
+        if (!same(prevTenants, next.tenants) || !same(prevTenancy, next.tenancy)) {
           this.mcp?.refreshClients();
-          applied.push('tenants');
+          applied.push(same(prevTenants, next.tenants) ? 'tenancy' : 'tenants');
         }
         if (!same(prevFederation, next.federation)) {
           this.federation?.refreshPeers();

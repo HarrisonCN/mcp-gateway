@@ -20,6 +20,7 @@
 
 import type { RateLimitConfig, ToolInfo } from '../utils/types.js';
 import { globToRegExp } from '../utils/tool-filter.js';
+import { isolationDecision, type IsolationView } from './isolation.js';
 
 export interface AccessScope {
   /** Optional label (API key `name`), used in client ids and logs. */
@@ -34,6 +35,8 @@ export interface AccessScope {
   writableServers?: string[];
   /** The client's tenant memberships. */
   tenants?: Array<{ id: string; role: 'owner' | 'admin' | 'viewer' }>;
+  /** 14.2.0: `tenancy.isolation` view (owned servers follow ownership + grants instead of the member's globs). */
+  isolation?: IsolationView;
 }
 
 export const JWT_SERVERS_CLAIM = 'mcp_servers';
@@ -43,7 +46,11 @@ const matches = (value: string, patterns: readonly string[]) => patterns.some((p
 
 /** Whether the scope lets the client use `serverId` at all. */
 export function isServerInScope(scope: AccessScope | undefined, serverId: string): boolean {
-  if (scope?.tenantServers && !matches(serverId, scope.tenantServers)) return false;
+  if (scope?.tenantServers) {
+    const legacy = matches(serverId, scope.tenantServers);
+    const ok = scope.isolation && scope.tenants ? isolationDecision(scope.isolation, scope.tenants, serverId, { see: legacy, call: legacy }).see : legacy;
+    if (!ok) return false;
+  }
   if (!scope?.servers) return true;
   return matches(serverId, scope.servers);
 }
