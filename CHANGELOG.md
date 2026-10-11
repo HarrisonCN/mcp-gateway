@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [12.0.14] - 2026-10-11
+
+**Security backport (12.x).** Backports the MGW-2026-018 fix from 14.6.0 (the fix only — the 14.6 edge-autonomy
+features such as offline permission boundaries, queue expiry and the sealed queue are not backported); no other
+changes. The config schema is unchanged.
+
+### Security
+- **MGW-2026-018 (Low): edge-autonomy queued calls were replayed with a removed or re-scoped key; the edge state files
+  were world-readable.** On reconnect `features.edgeAutonomy` replayed each queued call with the principal captured
+  when it was queued, so a key removed or narrowed while the edge was offline still had its queued calls executed
+  upstream with its old rights; `outbox.json` / `cache.json` in `edgeAutonomy.dir` were written with the process umask
+  (typically `0644`). Each replay now re-resolves the queuing client's current scope (a removed key's call is parked
+  as a conflict and never executed; a stored delegation chain still narrows), and the files are written `0600` in a
+  `0700` directory.
+
 ## [12.0.13] - 2026-10-11
 
 **Security backport (12.x).** Backports the MGW-2026-017 fix from 14.4.0 (the fix only — 14.4 durable task
