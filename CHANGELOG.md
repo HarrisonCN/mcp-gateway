@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [14.2.0] - 2026-10-11
+
+Tenant isolation release (roadmap 14.2 "租户隔离强化"). Config schema v12 gains one optional key (`tenancy`); configs without it keep their behaviour apart from the security fix below. v11 files are still migrated automatically. No breaking changes.
+
+### Security
+
+- **MGW-2026-015 (Medium) — cross-tenant credential use and spend.** For a client in several tenants, every per-call tenant decision used the caller's *first* membership instead of the tenant owning the called server: a `servers[].inject` reference with `{tenant}` sent the first tenant's secret to another tenant's upstream; cost budgets and quotas charged and blocked every tenant of the caller; cache partitions, policy-engine / Cedar `tenant`, data residency and plugin contexts saw the wrong tenant. Every per-call decision now uses the **acting tenant** — the caller's tenant entitled to the called server. Affected since 3.5.0 through 14.1.0 / 13.9.0 / 12.0.10 / 10.9.11.
+
+### Added
+
+- **`tenancy.isolation`** ([tenant isolation guide](docs/guides/tenant-isolation.md)): centralized isolation rules. Each server belongs to the first tenant whose `servers` globs match it; cross-tenant access is denied by default (`crossTenant: deny`), hidden from `tools/list` (REST and `/mcp`, per-session `list_changed`) and refused with decision `cross-tenant`; explicit sharing `grants` (`owner`, `tenants`, `servers`, `access: call | read`, `reason`) are the only way across, and every granted call is audited. `crossTenant: audit` keeps the old sharing but records crossings. Hot reloadable.
+- **`mcp-gateway tenancy report [-c] [--json]`**: server owners, overlapping tenants, grants, credential scoping and findings (`overlap-ungranted` violation, `isolation-off`, `shared-credential`, `global-cache`, `grant-unowned-server`, `member-glob`, …); exits 1 on violations.
+- **Audit**: request records carry `tenant` (acting tenant) and `tenantGrant`; `GET /api/v1/requests?tenant=`; the SQLite audit log gains `tenant` / `tenant_grant` columns (added to existing databases automatically).
+- `schema/v12/config.schema.json` describes the optional `tenancy` block.
+- **Joint example `examples/motionary-studio/`** (MCP 14.2 + Motionary 14.4 Studio): one Motionary MCP upstream per tenant, default-deny isolation, audit log per call.
+
+### Fixed
+
+- Semantic cache partitions use typed subjects, so a tenant id can no longer collide with a client id (`scope: tenant`).
+- Plugin contexts (API v3+) get the acting tenant of the call.
+
+### Tests
+
+- `test/tenancy-14-2-0.test.ts` (I1–I11): acting tenant, credentials, budgets, audit, isolation + grants, config validation, report + CLI, per-tenant `list_changed`, and a property-based isolation matrix (fast-check, 300 runs: tenants × memberships × roles × grants × servers × catalog/call × principals against an independent oracle).
+- `test/motionary-e2e.test.ts`: tenant A cannot see or call tenant B's Motionary tools; every call (allowed and refused) is audited with caller and acting tenant (real `motionary-mcp` in CI).
+
 ## [14.1.0] - 2026-10-11
 
 Cluster coordination release (roadmap 14.1 "集群协调"). Config schema v12 gains one optional key (`controlPlane.rollout`, control plane only); clusters without it behave as in 14.0 (every data plane gets every config at once), with generations, data-plane local rollback and divergence reporting added. No breaking changes.

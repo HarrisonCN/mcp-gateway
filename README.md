@@ -17,7 +17,7 @@ Streamable HTTP at `/mcp` or a REST API under `/api/v1` — and the gateway auth
 do, routes the call to the right upstream and records what happened. Keys, scopes, rate limits, policy, logs and
 metrics live in one place instead of in every client.
 
-Current release: **14.1.0** (npm `latest`). Live dashboard demo with simulated traffic, no backend:
+Current release: **14.2.0** (npm `latest`). Live dashboard demo with simulated traffic, no backend:
 <https://harrisoncn.github.io/mcp-gateway/>
 
 ## Contents
@@ -162,7 +162,7 @@ Every image is signed with cosign (keyless, GitHub OIDC) and carries SLSA proven
 before you deploy, and pin the digest it prints:
 
 ```bash
-cosign verify ghcr.io/harrisoncn/mcp-gateway:14.1.0 \
+cosign verify ghcr.io/harrisoncn/mcp-gateway:14.2.0 \
   --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
