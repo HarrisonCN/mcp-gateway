@@ -30,12 +30,45 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
 
-      - uses: docker/setup-qemu-action@v4
+      # QEMU (binfmt) and BuildKit images: ECR Public mirror first (Docker Hub unauthenticated pulls are
+      # rate limited), Docker Hub second, then ECR Public once more after a pause. ECR Public also answers
+      # `toomanyrequests` for anonymous pulls; one registry being throttled must not fail a release.
+      - id: qemu
+        uses: docker/setup-qemu-action@v4
+        continue-on-error: true
         with:
           image: public.ecr.aws/vend/tonistiigi/binfmt:latest
-      - uses: docker/setup-buildx-action@v4
+      - id: qemu_hub
+        if: steps.qemu.outcome == 'failure'
+        uses: docker/setup-qemu-action@v4
+        continue-on-error: true
         with:
-          # BuildKit from the ECR Public mirror (Docker Hub unauthenticated pulls are rate limited)
+          image: docker.io/tonistiigi/binfmt:latest
+      - name: Wait before the last binfmt attempt
+        if: steps.qemu.outcome == 'failure' && steps.qemu_hub.outcome == 'failure'
+        run: sleep 90
+      - if: steps.qemu.outcome == 'failure' && steps.qemu_hub.outcome == 'failure'
+        uses: docker/setup-qemu-action@v4
+        with:
+          image: public.ecr.aws/vend/tonistiigi/binfmt:latest
+
+      - id: buildx
+        uses: docker/setup-buildx-action@v4
+        continue-on-error: true
+        with:
+          driver-opts: image=public.ecr.aws/vend/moby/buildkit:buildx-stable-1
+      - id: buildx_hub
+        if: steps.buildx.outcome == 'failure'
+        uses: docker/setup-buildx-action@v4
+        continue-on-error: true
+        with:
+          driver-opts: image=docker.io/moby/buildkit:buildx-stable-1
+      - name: Wait before the last BuildKit attempt
+        if: steps.buildx.outcome == 'failure' && steps.buildx_hub.outcome == 'failure'
+        run: sleep 90
+      - if: steps.buildx.outcome == 'failure' && steps.buildx_hub.outcome == 'failure'
+        uses: docker/setup-buildx-action@v4
+        with:
           driver-opts: image=public.ecr.aws/vend/moby/buildkit:buildx-stable-1
 
       - uses: docker/login-action@v4
