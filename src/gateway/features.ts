@@ -7,6 +7,7 @@
  * @module gateway/features
  */
 
+import { V12_SECTION_RENAMES, type ModuleCapability } from '../config/v12-deprecations.js';
 import express, { type Request, type RequestHandler, type Router } from 'express';
 import type { GatewayConfig, ToolInfo, RequestMetric, ProxyResponse } from '../utils/types.js';
 import { VERSION } from '../utils/version.js';
@@ -51,6 +52,34 @@ export interface FeatureContext {
   kernel?: () => KernelModuleView[];
   /** 13.2.0: hot reload state — committed config generation, generations kept alive by in-flight calls, rollbacks. */
   reloadState?: () => { generation: number; committedAt: string; alive: number; pinned: Record<string, number>; committed: number; rollbacks: number };
+  /**
+   * 14.0.0 (lifecycle v2, set by the kernel for each module): timers owned by the module — cleared by the kernel when
+   * the module is disabled or the gateway stops. Requires the `background-timers` capability (declared, not denied).
+   */
+  timers?: ModuleTimers;
+  /** 14.0.0: outbound network of the module; requires the `outbound-network` capability (declared, not denied). */
+  net?: { fetch: typeof fetch };
+  /** 14.0.0: capabilities the module declared (manifest + module). */
+  capabilities?: readonly ModuleCapability[];
+  /** 14.0.0: the gateway instance's module state (F3); the kernel drops a module's state on disable / dispose. */
+  instanceScope?: import('../kernel/instance.js').InstanceScope;
+}
+
+/** Timers a module starts through its context (14.0.0). */
+export interface ModuleTimers {
+  setInterval: (fn: () => void, ms: number) => NodeJS.Timeout;
+  setTimeout: (fn: () => void, ms: number) => NodeJS.Timeout;
+  clear: (t: NodeJS.Timeout | undefined) => void;
+}
+
+/** A module used a capability it did not declare, or one the operator denied (14.0.0). */
+export class CapabilityError extends Error {
+  constructor(readonly moduleId: string, readonly capability: ModuleCapability, readonly reason: 'denied' | 'undeclared') {
+    super(reason === 'denied'
+      ? `capability "${capability}" denied by modules.capabilities.${moduleId}.deny`
+      : `capability "${capability}" not declared by module "${moduleId}"`);
+    this.name = 'CapabilityError';
+  }
 }
 
 /** Health a module reports (13.0 lifecycle). */
@@ -71,6 +100,10 @@ export interface KernelModuleView {
   dependsOn: readonly string[];
   /** What tool calls get while the module is failed (13.1). */
   failurePolicy: import('../features/manifest.js').FailurePolicy;
+  /** 14.0.0: `v2` = the module implements lifecycle v2 natively; `v11-compat` = it runs through the compatibility adapter. */
+  lifecycle: 'v2' | 'v11-compat';
+  /** 14.0.0: declared capabilities. */
+  capabilities: readonly ModuleCapability[];
   loadMs?: number;
   error?: string;
   health?: ModuleHealth;
@@ -83,6 +116,14 @@ export interface FeatureModule {
   since: string;
   summary: string;
   mount: (router: Router, ctx: FeatureContext) => void;
+  /**
+   * 14.0.0: `2` = lifecycle v2 — the module keeps its state per gateway instance and uses timers and the network only
+   * through `ctx.timers` / `ctx.net` (checked against {@link capabilities}). Modules without it run through the
+   * v11-compat adapter (13.x behaviour: `mount` + `onStop`).
+   */
+  apiVersion?: 2;
+  /** 14.0.0: runtime capabilities (added to the manifest's declaration). */
+  capabilities?: readonly ModuleCapability[];
   /** Routes for any authenticated client (not only operators) under `/api/v1/features/<id>` (7.7). */
   mountClient?: (router: Router, ctx: FeatureContext) => void;
   /**
@@ -223,15 +264,84 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
   // module leaves no timer, socket or pool behind, and re-enabling it starts them once again.
   const stops = new Map<string, Array<() => void | Promise<void>>>();
   const contexts = new Map<string, FeatureContext>();
+  // 14.0.0: capability declarations and denials
+  const declared = (id: string): ModuleCapability[] => {
+    const e = explicit ? undefined : manifestEntry(id);
+    const m = moduleOf(id);
+    const out = new Set<ModuleCapability>([...(e?.capabilities ?? []), ...(m?.capabilities ?? [])]);
+    if (e?.hook) out.add('call-hook');
+    if (e?.guard) out.add('security-guard');
+    return [...out];
+  };
+  const denied = (id: string): readonly ModuleCapability[] => cfg().modules?.capabilities?.[id]?.deny ?? [];
+  const isV2 = (id: string) => (moduleOf(id)?.apiVersion ?? (explicit ? undefined : manifestEntry(id)?.apiVersion)) === 2;
+  const need = (id: string, cap: ModuleCapability) => {
+    if (denied(id).includes(cap)) throw new CapabilityError(id, cap, 'denied');
+    if (isV2(id) && !declared(id).includes(cap)) throw new CapabilityError(id, cap, 'undeclared');
+  };
+  const timers = new Map<string, Set<NodeJS.Timeout>>();
+  const timersOf = (id: string) => timers.get(id) ?? timers.set(id, new Set()).get(id)!;
+  const clearTimers = (id: string) => {
+    for (const t of timers.get(id) ?? []) clearTimeout(t);
+    timers.delete(id);
+  };
   const ctxFor = (id: string): FeatureContext => {
     let c = contexts.get(id);
     if (!c) {
-      c = { ...ctx, onStop: (fn) => void (stops.get(id) ?? stops.set(id, []).get(id)!).push(fn) };
+      const own = (t: NodeJS.Timeout) => (timersOf(id).add(t), t);
+      c = {
+        ...ctx,
+        onStop: (fn) => void (stops.get(id) ?? stops.set(id, []).get(id)!).push(fn),
+        timers: {
+          setInterval: (fn, ms) => (need(id, 'background-timers'), own(setInterval(fn, ms).unref())),
+          setTimeout: (fn, ms) => {
+            need(id, 'background-timers');
+            const t: NodeJS.Timeout = setTimeout(() => {
+              timersOf(id).delete(t);
+              fn();
+            }, ms).unref();
+            return own(t);
+          },
+          clear: (t) => {
+            if (!t) return;
+            clearTimeout(t);
+            timers.get(id)?.delete(t);
+          },
+        },
+        net: {
+          fetch: ((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+            try {
+              need(id, 'outbound-network');
+            } catch (e) {
+              return Promise.reject(e);
+            }
+            return fetch(input, init);
+          }) as typeof fetch,
+        },
+        get capabilities() {
+          return declared(id);
+        },
+      };
       contexts.set(id, c);
     }
     return c;
   };
+  // 14.0.0: init / disable / dispose are bounded (`modules.lifecycle.initTimeoutMs` / `unloadTimeoutMs`)
+  const bounded = async (what: string, ms: number | undefined, p: void | Promise<void> | undefined): Promise<void> => {
+    if (!ms || !p || typeof (p as Promise<void>).then !== 'function') return void (await p);
+    let t: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([p, new Promise<never>((_, rej) => { t = setTimeout(() => rej(new Error(`${what} timed out after ${ms} ms`)), ms); t.unref(); })]);
+    } finally {
+      clearTimeout(t);
+    }
+  };
+  const initMs = () => cfg().modules?.lifecycle?.initTimeoutMs;
+  const unloadMs = () => cfg().modules?.lifecycle?.unloadTimeoutMs;
+  /** 14.0.0: drop the module's per-instance state (F3) — a module that comes back starts fresh. */
+  const dropState = (id: string) => deps.context.instanceScope?.drop(id);
   const runStops = async (id: string) => {
+    clearTimers(id);
     for (const fn of (stops.get(id) ?? []).splice(0).reverse()) {
       await Promise.resolve()
         .then(fn)
@@ -308,11 +418,20 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
           return refuse(`dependency "${d}" failed: ${states.get(d)?.error ?? failureOf(d) ?? 'unknown error'}`);
         }
       }
+      // 14.0.0: a declared capability the operator denied refuses the activation (before the module is evaluated)
+      if (!explicit) {
+        const bad = declared(id).find((c) => denied(id).includes(c));
+        if (bad) return refuse(new CapabilityError(id, bad, 'denied').message);
+      }
       if (!explicit && !(await loadFeature(id))) return refuse(loadRecord(id)?.error ?? 'failed to load');
       const m = moduleOf(id);
       if (!m) return refuse('the module did not register itself');
+      {
+        const bad = declared(id).find((c) => denied(id).includes(c));
+        if (bad) return refuse(new CapabilityError(id, bad, 'denied').message);
+      }
       try {
-        await m.init?.(ctxFor(id));
+        await bounded('init', initMs(), m.init?.(ctxFor(id)));
         mount(m);
       } catch (e) {
         // 13.4.0: whatever the module's mount started before the failure is released
@@ -334,6 +453,7 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
         fn: async () => {
           await unmount(id);
           await m.dispose?.();
+          dropState(id);
           states.delete(id);
           const i = activatedOrder.indexOf(id);
           if (i >= 0) activatedOrder.splice(i, 1);
@@ -405,8 +525,9 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
       const m = moduleOf(id);
       if (!isFeatureActive(next, id)) {
         try {
-          await m?.disable?.(ctxFor(id));
+          await bounded('disable', unloadMs(), m?.disable?.(ctxFor(id)));
           await unmount(id);
+          dropState(id);
           states.set(id, { state: 'disabled' });
           txn?.undo.push({
             id,
@@ -450,7 +571,8 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
     for (const id of [...activatedOrder].reverse()) {
       const m = moduleOf(id);
       await unmount(id);
-      await Promise.resolve(m?.dispose?.()).catch(() => {});
+      await bounded('dispose', unloadMs(), Promise.resolve().then(() => m?.dispose?.())).catch((e) => logger.warn(`feature module "${id}" dispose: ${errText(e)}`));
+      dropState(id);
       clearRuntimeFailed(id);
     }
     // modules mounted without completing activation (failed init) or registered cleanups late
@@ -483,6 +605,8 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
         evaluated: explicit ? true : e ? rec?.status === 'loaded' : true,
         dependsOn: e?.dependsOn ?? [],
         failurePolicy: failurePolicyOf(id, cfg(), !!e?.hook),
+        lifecycle: isV2(id) ? 'v2' : 'v11-compat',
+        capabilities: declared(id),
         ...(rec?.loadMs !== undefined ? { loadMs: rec.loadMs } : {}),
         ...(st?.error ?? failureOf(id) ? { error: st?.error ?? failureOf(id) } : {}),
         ...(health ? { health } : {}),
@@ -501,7 +625,7 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
   const inactive = (id: string, res: express.Response) =>
     void res.status(404).json({
       error: 'Not Found',
-      message: `Feature module "${id}" is not active: kernel.modules is lazy and ${(FEATURE_ACTIVATION[id] ?? []).map((k) => `features.${String(k)}`).join(' / ')} is not configured`,
+      message: `Feature module "${id}" is not active: modules.activation is lazy and ${(FEATURE_ACTIVATION[id] ?? []).map((k) => `features.${V12_SECTION_RENAMES[String(k)] ?? String(k)}`).join(' / ')} is not configured`,
     });
   const failed = (id: string, res: express.Response) =>
     void res.status(503).json({ error: 'Service Unavailable', message: `Feature module "${id}" failed: ${states.get(id)?.error ?? failureOf(id) ?? 'unknown error'}` });
