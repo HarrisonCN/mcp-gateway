@@ -162,9 +162,9 @@ function guardFs(rule) {
     obj[name] = function (...args) { check(name, args); return f.apply(this, args); };
   }
 }
-function lockdown(perms) {
+function lockdown(perms, dir) {
   guardNetwork(perms.network);
-  guardFs(perms.fs);
+  if (inWorker) guardFs(perms.fs && { read: [...(perms.fs.read || []), ...(dir ? [dir] : [])], write: perms.fs.write });
   const refuse = (what) => function () { const e = new Error(what + ' is not available to plugins in an isolated runtime'); e.code = 'EACCES'; throw e; };
   const cp = require('node:child_process');
   for (const k of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']) cp[k] = refuse('child_process.' + k);
@@ -176,7 +176,7 @@ function lockdown(perms) {
 }
 const clone = (v) => { try { return structuredClone(v); } catch { return JSON.parse(JSON.stringify(v ?? null)); } };
 async function init(m) {
-  lockdown(m.permissions || {});
+  lockdown(m.permissions || {}, m.dir);
   let mod;
   try {
     mod = await import(m.url);
@@ -289,6 +289,7 @@ export class IsolatedRuntimeHandle {
   private starting?: Promise<Channel>;
   private readonly inflight = new Map<number, Inflight>();
   private seq = 0;
+  private reserved = 0;
   private crashes = 0;
   private closed = false;
   restarts = 0;
@@ -408,7 +409,7 @@ export class IsolatedRuntimeHandle {
             }
           },
         );
-        ch.post({ type: 'init', url: this.spec.url, label: this.spec.label, name: this.spec.name, options: this.spec.options, permissions: this.spec.permissions, gatewayVersion: this.spec.gatewayVersion, apiVersion: this.spec.apiVersion });
+        ch.post({ type: 'init', dir: this.spec.dir, url: this.spec.url, label: this.spec.label, name: this.spec.name, options: this.spec.options, permissions: this.spec.permissions, gatewayVersion: this.spec.gatewayVersion, apiVersion: this.spec.apiVersion });
       });
     })().finally(() => {
       this.starting = undefined;
@@ -446,8 +447,14 @@ export class IsolatedRuntimeHandle {
   /** Run one hook in the runtime. */
   async call(hook: HookName, payload: Record<string, unknown>, secrets?: Inflight['secrets']): Promise<{ out?: unknown; arguments?: Record<string, unknown>; state?: Map<string, unknown> }> {
     const max = this.spec.limits.maxConcurrent ?? 16;
-    if (this.inflight.size >= max) throw new PluginBusy(`busy: ${max} hook calls in flight (limits.maxConcurrent)`);
-    const ch = await this.channel();
+    if (this.inflight.size + this.reserved >= max) throw new PluginBusy(`busy: ${max} hook calls in flight (limits.maxConcurrent)`);
+    this.reserved++;
+    let ch: Channel;
+    try {
+      ch = await this.channel();
+    } finally {
+      this.reserved--;
+    }
     const id = ++this.seq;
     const ms = this.timeoutMs;
     return new Promise((resolve, reject) => {

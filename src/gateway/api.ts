@@ -1579,6 +1579,8 @@ export function createApiRouter(
   router.get('/plugins', auth, (req, res) => {
     if (!operatorOnly(req, res)) return;
     const list = invoker.pluginHost?.list() ?? [];
+    // 14.3.0: runtime, circuit breaker and permissions per plugin
+    const status = new Map((invoker.pluginHost?.status?.() ?? []).map((s) => [s.name, s]));
     res.json({
       plugins: list.map((p) => {
         const w = p as unknown as { stats?: () => Array<{ key: string; calls: number; alive: boolean }>; isolation?: string };
@@ -1589,6 +1591,10 @@ export function createApiRouter(
           kind: typeof w.stats === 'function' ? 'wasm' : 'module',
           hooks,
           ...(typeof w.stats === 'function' ? { isolation: w.isolation, sandboxes: w.stats() } : {}),
+          ...(() => {
+            const { name: _n, ...rest } = status.get(p.name) ?? ({} as Record<string, unknown>);
+            return rest;
+          })(),
         };
       }),
     });
