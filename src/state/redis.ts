@@ -174,9 +174,14 @@ export class RedisClient {
         if (this.conn === conn) this.conn = undefined;
         RedisClient.failAll(conn, new Error('Redis connection closed'));
       });
+      socket.on('end', () => {
+        conn.dead = true;
+        if (this.conn === conn) this.conn = undefined;
+      });
       socket.once(this.url.protocol === 'rediss:' ? 'secureConnect' : 'connect', () => {
         clearTimeout(timer);
-        this.conn = conn;
+        // MGW-2026-014: published as `this.conn` only once AUTH / SELECT have completed (below); before, a command
+        // issued in that window ran before SELECT (on db 0) or ahead of the AUTH reply.
         resolve(conn);
       });
       socket.once('close', () => {
@@ -202,6 +207,8 @@ export class RedisClient {
           conn.socket.destroy();
           throw new Error('Redis client is closed');
         }
+        if (conn.dead || conn.socket.destroyed) throw new Error('Redis connection closed');
+        this.conn = conn;
         return conn;
       })
       .finally(() => {
