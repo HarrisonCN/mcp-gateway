@@ -26,7 +26,29 @@ release can be read from the PR's checks.
 | `finish` | `onResponse` plugins, metrics, request log |
 | `total` | the whole call inside the invoker |
 
-## Results: 2-CPU arm64 sandbox (13.8.0 release branch)
+## Results: x64 CI (13.8.0, authoritative)
+
+`Load + faults (Node 22)` on PR #178 (GitHub-hosted linux-x64, 4 CPU, Node v22.23.3), same seed / mix as the baseline:
+**743.6 req/s, p50 19.8 ms, p95 39.1 ms, p99 47.8 ms**, max 68.3 ms, 0 % errors — against the 13.3.0 baseline
+(774 req/s, p95 37.5 ms, p99 47.2 ms): −3.9 % throughput, +1.6 ms p95, +0.6 ms p99, within run-to-run noise of a
+shared runner (no regression; the always-on stage timer included).
+
+| Stage | p50 ms | p95 ms | p99 ms | mean ms | calls |
+|---|---:|---:|---:|---:|---:|
+| auth | 0.019 | 0.030 | 0.050 | 0.021 | 4000 |
+| authz | 0.001 | 0.003 | 0.004 | 0.002 | 4000 |
+| policy | 0.045 | 0.072 | 0.095 | 0.049 | 4000 |
+| hooks | 0.010 | 0.016 | 0.031 | 0.011 | 4000 |
+| routing | 0.024 | 0.040 | 0.064 | 0.026 | 4000 |
+| cache | 0.007 | 0.046 | 0.072 | 0.013 | 4000 |
+| upstream | 8.148 | 27.271 | 34.928 | 9.185 | 3434 |
+| finish | 0.023 | 0.055 | 0.082 | 0.027 | 4000 |
+| total | 7.406 | 25.986 | 34.523 | 8.048 | 4000 |
+
+The gateway's own stages add up to ≈0.4 ms at p99 (≈0.15 ms mean); the remaining ≈13 ms between the in-invoker p99
+(34.5 ms) and the client p99 (47.8 ms) is HTTP / socket time and event-loop queueing.
+
+## Results: 2-CPU arm64 sandbox (13.8.0 release branch, noisy)
 
 Shared, noisy machine (other builds running): read the proportions, not the absolute values.
 Client view: 349.6 req/s, p50 38.8 ms, p95 96.2 ms, p99 132.9 ms; event-loop delay p99 55.6 ms.
@@ -56,11 +78,12 @@ Client view: 349.6 req/s, p50 38.8 ms, p95 96.2 ms, p99 132.9 ms; event-loop del
    upstream connection pool rather than for computation. This is what load protection addresses: an adaptive
    concurrency limit keeps the number of calls in flight near what the machine sustains, so the excess waits in a
    bounded, fair queue (or is shed with 503 + Retry-After) instead of inflating everyone's latency.
-3. **Feature modules** ([module-costs.md](module-costs.md), same sandbox, 300 sequential calls × 3 rounds; baseline
-   p50 1.8 ms / p99 12.0 ms / 127 KiB allocated per call): of the 20 call-hook modules measured, none adds more than
-   0.8 ms at p50. The largest allocators are DLP (+38 KiB / call), anomaly (+32) and sanitize (+30); the largest p99
-   delta is time-travel (+16.5 ms, its call journal), which is the first candidate for a follow-up. 18 modules have no
-   call hook (no per-call cost); 8 need real settings to activate and are not measured with defaults.
+3. **Feature modules** ([module-costs.md](module-costs.md)): on x64 CI (`Module cost report`, 300 sequential calls
+   × 3 rounds; baseline p50 1.41 ms / p99 2.34 ms / 127 KiB allocated per call) none of the 20 call-hook modules
+   measured adds more than 0.13 ms at p50 or 0.45 ms at p99 (multimodal). The largest allocators are DLP (+39 KiB / call),
+   anomaly (+33) and sanitize (+30) — the first candidates if allocation pressure matters. (The committed reference run
+   from the noisy sandbox shows larger p99 swings, e.g. time-travel +16.5 ms, that CI does not reproduce: −0.02 ms.)
+   18 modules have no call hook (no per-call cost); 8 need real settings to activate and are not measured with defaults.
 
 ## Reproduce
 
