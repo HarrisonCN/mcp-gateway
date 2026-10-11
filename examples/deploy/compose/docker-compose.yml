@@ -1,7 +1,7 @@
 # Docker Compose deployment example (docs/deployment.md#docker-compose).
 #   GATEWAY_API_KEY=$(openssl rand -hex 24) docker compose up -d
 #   curl -H "Authorization: Bearer $GATEWAY_API_KEY" http://localhost:4000/api/v1/tools
-# Pin a release in production: MGW_IMAGE=ghcr.io/harrisoncn/mcp-gateway:14.9.0 (or @sha256:<digest>).
+# Pin a release in production: MGW_IMAGE=ghcr.io/harrisoncn/mcp-gateway:14.9.1 (or @sha256:<digest>).
 services:
   mcp-gateway:
     image: ${MGW_IMAGE:-ghcr.io/harrisoncn/mcp-gateway:14}

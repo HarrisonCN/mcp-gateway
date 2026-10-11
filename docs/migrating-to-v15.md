@@ -3,7 +3,7 @@
 15.0.0 is the "Governed AI Infrastructure" major. It removes what 14.x deprecated and changes one default; nothing
 else breaks. Every change below is reported by **14.9.0** at run time, so the safe path is:
 
-1. Upgrade to **14.9.0** (`npm i @winstonsayno/mcp-gateway@14.9.0`, image `:14.9.0`).
+1. Upgrade to **14.9.1** or later 14.9.x (`npm i @winstonsayno/mcp-gateway@14.9.1`, image `:14.9.1`; 14.9.1 fixes the 14.9.0 memory growth).
 2. Run `mcp-gateway validate -c mcp-gateway.yml` and check `GET /api/v1/admin/deprecations` on every instance.
 3. Fix each reported id (table below) until both are empty.
 4. Try the release candidate in staging once it is published after 14.9.0 (`npm view @winstonsayno/mcp-gateway dist-tags` shows `next: 15.0.0-rc.1`): `npm i @winstonsayno/mcp-gateway@next` (`15.0.0-rc.1`), image
