@@ -318,9 +318,9 @@ See [Observability](docs/configuration.md#observability) and [Audit log](docs/co
 | Line | Latest | npm dist-tag | Image tag | Status |
 |---|---|---|---|---|
 | 13.x | 13.7.0 | `latest` | `:13`, `:latest` | Current — new features, bug and security fixes |
-| 12.x | 12.0.9 | `v12-0` | `:12` | Superseded — carries the MGW-2026-001, -005, -007, -008, -009, -010, -011, -012 and -013 fixes; upgrade to 13.x |
+| 12.x | 12.0.10 | `v12-0` | `:12` | Superseded — carries the MGW-2026-001, -005, -007, -008, -009, -010, -011, -012, -013 and -014 fixes; upgrade to 13.x |
 | 11.x | 11.2.0 | — | `:11` | Superseded — upgrade to 13.x |
-| 10.x (LTS) | 10.9.10 | `v10-lts` | `:10` | Bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |
+| 10.x (LTS) | 10.9.11 | `v10-lts` | `:10` | Bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |
 | < 10.0 | — | — | — | Unsupported — upgrade with `mcp-gateway migrate` |
 
 ```bash
