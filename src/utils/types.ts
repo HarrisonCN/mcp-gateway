@@ -316,6 +316,8 @@ export interface GatewayConfig {
   catalog?: CatalogConfig;
   /** Tenants / workspaces with owner / admin / viewer roles. */
   tenants?: TenantConfig[];
+  /** 14.2.0: centralized tenant isolation rules. */
+  tenancy?: TenancyConfig;
   /** Tool result caching (per-tool opt-in) and in-flight de-duplication. */
   cache?: CacheConfig;
   /** Request capture + replay / debugger (3.2). Off by default. */
@@ -1166,3 +1168,6 @@ export interface QuotasConfig {
   /** How long hourly metering buckets are kept (days, default 35). */
   meteringRetentionDays?: number;
 }
+
+/** 14.2.0 placeholder. */
+export interface TenancyConfig { isolation?: Record<string, any> }

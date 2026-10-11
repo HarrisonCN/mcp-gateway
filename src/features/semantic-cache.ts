@@ -196,7 +196,7 @@ export const semanticStore = instanceLocal('semantic-cache', 'semanticStore', ()
 const MARK = 'mcp-gateway/semantic-cache';
 
 const applies = (c: Cfg, call: HookCall) => c.tools.some((p) => globToRegExp(p).test(`${call.serverId}/${call.tool}`));
-const partition = (c: Cfg, call: HookCall, exact: string) => {
+export const semanticPartition = (c: Cfg, call: HookCall, exact: string) => {
   const subject = c.scope === 'global' ? '*' : c.scope === 'client' ? call.clientId ?? 'anonymous' : call.tenant ?? call.clientId ?? 'anonymous';
   // 13.1.1: keyed on the server the call is routed to (routing splits), so split targets never share entries.
   const target = call.routedTo?.() ?? call.serverId;
@@ -223,7 +223,7 @@ registerCallHook({
       semanticStore.stats.errors++;
       return;
     }
-    const hit = semanticStore.lookup(partition(c, call, exact), vec, c);
+    const hit = semanticStore.lookup(semanticPartition(c, call, exact), vec, c);
     if (!hit) {
       semanticStore.stats.misses++;
       return;
@@ -246,7 +246,7 @@ registerCallHook({
     const { text, exact } = splitArgs(call.args);
     if (!text) return;
     try {
-      semanticStore.store(partition(c, call, exact), await embed(text, c), text, result, c);
+      semanticStore.store(semanticPartition(c, call, exact), await embed(text, c), text, result, c);
     } catch {
       semanticStore.stats.errors++;
     }

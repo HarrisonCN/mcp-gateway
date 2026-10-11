@@ -106,3 +106,8 @@ export function invalidTenants(tenants: readonly TenantConfig[] | undefined): st
   }
   return undefined;
 }
+
+/** 14.2.0 placeholder (tests-first): legacy behaviour = the caller's first membership. */
+export function actingTenant(tenants: readonly TenantConfig[] | undefined, _tenancy: unknown, clientId: string | undefined, _serverId: string): string | undefined {
+  return membershipsOf(tenants, clientId)[0]?.tenant;
+}
