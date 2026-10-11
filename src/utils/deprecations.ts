@@ -16,7 +16,7 @@
 
 import { logger } from './logger.js';
 import { FEATURE_CONFIG_KEYS } from '../gateway/features.js';
-import { v12DeprecationsIn } from '../config/v12-deprecations.js';
+import { v12DeprecationsIn, V12_SECTION_RENAMES } from '../config/v12-deprecations.js';
 
 export interface Deprecation {
   id: string;
@@ -57,8 +57,7 @@ export function removedConfigKeys(raw: unknown): string[] {
   const out = Object.entries(REMOVED_IN_3)
     .filter(([k]) => r[k] !== undefined)
     .map(([k, v]) => `${k}: removed in 3.0 — use \`${v}\` (see docs/guides/migrating-to-v3.md)`);
-  if (r.version === 12) out.push('version: config version 12 is not supported — 11.0 reads `version: 11` (config schema v12 is a DRAFT in 13.x, see docs/design/schema-v12.md; preview the migration with `mcp-gateway config migrate --to v12 --dry-run`)');
-  else if (r.version === 3) out.push(`version: config schema v3 was removed in 4.0 — use \`version: 4\`; ${GUIDE4}`);
+  if (r.version === 3) out.push(`version: config schema v3 was removed in 4.0 — use \`version: 4\`; ${GUIDE4}`);
   else if (r.version === 4) out.push(`version: config schema v4 was removed in 5.0 — use \`version: 11\`; ${GUIDE11}`);
   else if (r.version === 5) out.push(`version: config schema v5 was removed in 6.0 — use \`version: 11\`; ${GUIDE11}`);
   else if (r.version === 6) out.push(`version: config schema v6 was removed in 7.0 — use \`version: 11\`; ${GUIDE11}`);
@@ -66,7 +65,7 @@ export function removedConfigKeys(raw: unknown): string[] {
   else if (r.version === 8) out.push(`version: config schema v8 was removed in 9.0 — use \`version: 11\`; ${GUIDE11}`);
   else if (r.version === 9) out.push(`version: config schema v9 was removed in 10.0 — use \`version: 11\`; ${GUIDE11}`);
   else if (r.version === 10) out.push(`version: config schema v10 was removed in 11.0 — use \`version: 11\`; ${GUIDE11}`);
-  else if (r.version !== undefined && r.version !== 11) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 11.0 reads \`version: 11\` (see docs/guides/migrating-to-v11.md)`);
+  else if (r.version !== undefined && r.version !== 11 && r.version !== 12) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 14.0 reads \`version: 12\` (and \`version: 11\`, migrated in memory until 15.0.0; see docs/migration/v13-to-v14.md)`);
   // 11.0: the 6.2 workflow engine was removed (task graphs replace it).
   if ((r.features as { workflows?: unknown } | undefined)?.workflows !== undefined || r.workflows !== undefined) out.push(`features.workflows: removed in 11.0 — use \`features.taskGraphs\`; ${GUIDE11}`);
   // 10.0: feature modules live under `features`; top-level feature sections were removed.
@@ -74,7 +73,8 @@ export function removedConfigKeys(raw: unknown): string[] {
   if (r.features !== undefined) {
     if (!r.features || typeof r.features !== 'object' || Array.isArray(r.features)) out.push('features: must be an object');
     else {
-      const unknown = Object.keys(r.features as object).filter((k) => k !== 'workflows' && !(FEATURE_CONFIG_KEYS as readonly string[]).includes(k));
+      // 14.0.0: schema v12 section names are accepted too (normalizeSchemaVersion maps them to the internal names)
+      const unknown = Object.keys(r.features as object).filter((k) => k !== 'workflows' && !(FEATURE_CONFIG_KEYS as readonly string[]).includes(k) && !Object.values(V12_SECTION_RENAMES).includes(k));
       if (unknown.length) out.push(`features: unknown feature section(s) ${unknown.join(', ')} — known: ${FEATURE_CONFIG_KEYS.join(', ')}`);
     }
   }
@@ -112,6 +112,8 @@ export function removedConfigKeys(raw: unknown): string[] {
  */
 export function configDeprecations(raw: unknown): Array<Deprecation & { detail?: string }> {
   if (typeof raw !== 'object' || raw === null) return [];
+  // 14.0.0: only a schema v11 file has them (a v12 file using them is refused by the loader)
+  if ((raw as { version?: unknown }).version === 12) return [];
   return v12DeprecationsIn(raw);
 }
 

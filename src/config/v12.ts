@@ -23,8 +23,8 @@ import type { FeatureManifestEntry, FailurePolicy } from '../features/manifest.j
 import { FEATURE_MANIFEST, failurePolicyOf } from '../features/manifest.js';
 import { FEATURE_CONFIG_KEYS, type FeatureModule } from '../gateway/features.js';
 
-export { V12_SECTION_RENAMES, V12_DEPRECATIONS, v12DeprecationsIn, type V12Deprecation } from './v12-deprecations.js';
-import { V12_SECTION_RENAMES } from './v12-deprecations.js';
+export { V12_SECTION_RENAMES, V12_DEPRECATIONS, v12DeprecationsIn, type V12Deprecation, MODULE_CAPABILITIES, type ModuleCapability, schemaNotice, normalizeSchemaVersion, RUNTIME_SCHEMA } from './v12-deprecations.js';
+import { V12_SECTION_RENAMES, MODULE_CAPABILITIES as MODULE_CAPABILITIES_ } from './v12-deprecations.js';
 
 // ─── migration preview ────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -208,7 +208,7 @@ export function unifiedDiff(a: string, b: string, fromName: string, toName: stri
 // ─── JSON Schemas (schema/v12-draft) ──────────────────────────────────────────────────────────────────────────────
 
 /** Capability vocabulary of the v12 module declaration. */
-export const V12_CAPABILITIES = ['admin-routes', 'client-routes', 'call-hook', 'security-guard', 'background-timers', 'state-store', 'outbound-network', 'filesystem', 'signing-keys', 'invoke-tools'] as const;
+export const V12_CAPABILITIES = MODULE_CAPABILITIES_;
 export type V12Capability = (typeof V12_CAPABILITIES)[number];
 
 const SCHEMA_BASE = 'https://github.com/HarrisonCN/mcp-gateway/blob/main/schema/v12-draft/';
@@ -347,7 +347,3 @@ export function moduleDeclarationV12(e: FeatureManifestEntry, mod?: FeatureModul
   };
 }
 
-
-/** 14.0.0 placeholder (tests-first). */
-export const MODULE_CAPABILITIES = V12_CAPABILITIES;
-export const schemaNotice = (_cfg: unknown): string | undefined => undefined;

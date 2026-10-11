@@ -2,6 +2,7 @@
  * Gateway bootstrap — wires together all subsystems
  */
 
+import { schemaNotice } from '../config/v12-deprecations.js';
 import express, { type Request } from 'express';
 import { createServer, type Server } from 'http';
 import type { AddressInfo } from 'net';
@@ -622,6 +623,8 @@ export class Gateway {
     this.app.use(createErrorHandler(() => this.config.security?.exposeErrorDetails === true));
 
     for (const d of this.config.deprecations ?? []) deprecate(d);
+    // 14.0.0: one notice when the config file is schema v11 (migrated in memory; read until 15.0.0)
+    { const n = schemaNotice(this.config); if (n) deprecate({ id: 'schema.v11', message: n, removedIn: '15.0.0' } as never); }
 
     this.metrics.start();
     if (this.config.audit?.enabled) {
@@ -932,6 +935,7 @@ export class Gateway {
   async reload(next: GatewayConfig): Promise<void> {
     // 13.9.0: deprecated fields introduced by a reload are warned about too (once per field per process)
     for (const d of next.deprecations ?? []) deprecate(d);
+    { const n = schemaNotice(next); if (n) deprecate({ id: 'schema.v11', message: n, removedIn: '15.0.0' } as never); }
     const insecure = insecureBindError({ ...next, host: this.config.host, security: { ...next.security, insecure: next.security?.insecure ?? this.config.security?.insecure } });
     if (insecure) throw new Error(insecure.replace('Refusing to start', 'Refusing to reload'));
     // Concurrent reloads (admin API, file watcher, control plane, catalog installs) are serialized: each one prepares

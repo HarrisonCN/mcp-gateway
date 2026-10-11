@@ -65,6 +65,7 @@ import { expandEnv } from '../transport/channel.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
 import { validateChains, type ChainsConfig } from '../orchestration/chains.js';
+import { normalizeSchemaVersion, MODULE_CAPABILITIES } from './v12-deprecations.js';
 import { configDeprecations, normalizeApiKeyScopes, normalizeFeaturesV10, normalizeSchemaV5, normalizeStoreV9, removedConfigKeys } from '../utils/deprecations.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
@@ -534,7 +535,29 @@ const GatewayConfigSchema = z.object({
     })
     .optional(),
   servers: z.array(McpServerSchema).default([]),
-  version: z.literal(11).optional(),
+  // 14.0.0: `version` is consumed by normalizeSchemaVersion (12, or 11 migrated in memory) before this schema runs
+  version: z.union([z.literal(11), z.literal(12)]).optional(),
+  // 14.0.0 (schema v12 `modules`): lifecycle bounds and per-module capability denials. `modules.activation` /
+  // `modules.failurePolicy` are adapted to the internal `kernel` block below.
+  modules: z
+    .object({
+      lifecycle: z
+        .object({
+          initTimeoutMs: z.number().int().min(1).max(600_000).optional(),
+          unloadTimeoutMs: z.number().int().min(1).max(600_000).optional(),
+          drainMs: z.number().int().min(0).max(600_000).optional(),
+        })
+        .strict()
+        .optional(),
+      capabilities: z
+        .record(z.object({ deny: z.array(z.enum(MODULE_CAPABILITIES)).default([]) }).strict())
+        .optional()
+        .superRefine((v, c) => {
+          for (const id of Object.keys(v ?? {})) if (!manifestEntry(id)) c.addIssue({ code: z.ZodIssueCode.custom, message: `modules.capabilities: unknown module "${id}"` });
+        }),
+    })
+    .strict()
+    .optional(),
   // 10.9: how feature modules are activated. 11.0 default: lazy (only modules whose section is configured);
   // eager mounts every module (10.x behaviour).
   kernel: z
@@ -1208,19 +1231,25 @@ function authSilentlyOff(raw: unknown): string | undefined {
 
 export function validateConfig(raw: unknown): GatewayConfig {
   const removed = removedConfigKeys(raw);
-  const v4 = normalizeApiKeyScopes(normalizeSchemaV5(removed.length ? raw : normalizeStoreV9(normalizeFeaturesV10(raw))));
+  // 14.0.0: schema v12 is the runtime schema; v11 files are migrated in memory (internal form keeps the v11 names)
+  const sv = removed.length ? { raw, errors: [] as string[], schemaVersion: undefined } : normalizeSchemaVersion(raw);
+  removed.push(...sv.errors);
+  const v4 = normalizeApiKeyScopes(normalizeSchemaV5(removed.length ? raw : normalizeStoreV9(normalizeFeaturesV10(sv.raw))));
   removed.push(...v4.errors);
   if (removed.length > 0) throw new Error(`Invalid configuration:\n${removed.map((m) => `  - ${m}`).join('\n')}`);
   const authOff = authSilentlyOff(v4.raw);
   if (authOff) throw new Error(`Invalid configuration:\n  - auth: ${authOff}`);
   const result = GatewayConfigSchema.safeParse(v4.raw);
   if (!result.success) {
+    // a v12 file reads its errors in v12 names
+    const v12Name = (t: string) => (sv.schemaVersion === 12 ? t.replace(/\bkernel\.failurePolicy\b/g, 'modules.failurePolicy').replace(/\bkernel\.modules\b/g, 'modules.activation').replace(/^genaiTelemetry\b/, 'features.genaiOtel').replace(/^policyShadow\b/, 'features.policySim').replace(/^postQuantumTls\b/, 'features.pqTls') : t);
     throw new Error(
-      `Invalid configuration:\n${result.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n')}`
+      `Invalid configuration:\n${result.error.issues.map((i) => `  - ${v12Name(`${i.path.join('.')}: ${i.message}`)}`).join('\n')}`
     );
   }
   const config = result.data as GatewayConfig;
-  const deprecations = configDeprecations(raw);
+  if (sv.schemaVersion) config.schemaVersion = sv.schemaVersion;
+  const deprecations = sv.schemaVersion === 11 ? configDeprecations(raw) : [];
   if (deprecations.length > 0) config.deprecations = deprecations;
   return config;
 }

@@ -98,11 +98,11 @@ describe('14.0 config: schema v12 is the runtime schema', () => {
   it('the startup notice and the deprecation warnings are logged once at start', async () => {
     const warn = vi.spyOn(logger, 'warn');
     const cfg = validateConfig({ version: 11, servers: [], kernel: { modules: 'lazy' } });
-    const h = await startFeatureGw({ ...cfg, servers: [] } as any);
-    await h.gw.reload({ ...cfg, servers: [] } as any);
+    const h = await startFeatureGw({ kernel: cfg.kernel, deprecations: cfg.deprecations, schemaVersion: cfg.schemaVersion } as any);
+    await h.gw.reload({ ...(h.gw as any).config });
     await h.stop();
     const lines = warn.mock.calls.map((c) => String(c[0]));
-    expect(lines.filter((l) => /schema v11/.test(l) && /15\.0/.test(l))).toHaveLength(1);
+    expect(lines.filter((l) => /Config file uses schema v11/.test(l) && /15\.0/.test(l))).toHaveLength(1);
     expect(lines.filter((l) => /DEPRECATED \(removed in 15\.0\.0\).*kernel\.modules/.test(l))).toHaveLength(1);
     warn.mockRestore();
   });
@@ -228,7 +228,7 @@ describe('14.0 module lifecycle v2, capabilities and per-instance state', () => 
 
   it('a built-in module whose declared capability is denied is refused at activation (genai-otel, outbound-network)', async () => {
     const cfg = validateConfig({ version: 12, servers: [], modules: { capabilities: { 'genai-otel': { deny: ['outbound-network'] } } }, features: { genaiOtel: {} } });
-    const h = await startFeatureGw({ ...cfg, servers: [] } as any);
+    const h = await startFeatureGw({ modules: cfg.modules, genaiTelemetry: cfg.genaiTelemetry } as any);
     const k = await h.admin('kernel');
     const m = k.body.modules.find((x: any) => x.id === 'genai-otel');
     expect(m.state).toBe('failed');
