@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.8.0] - 2026-10-11
+
+Performance and backpressure release (roadmap 13.8 "性能和背压控制"). Config schema v11 is unchanged except for one new optional section (`overload:`, off by default); no breaking changes.
+
+### Added
+
+- **Load protection** (`overload:`, [configuration](docs/configuration.md#load-protection-and-fair-scheduling-138)): admission control in front of every tool call (REST `/tools/call`, `/tools/stream`, MCP endpoint POSTs), after authentication and rate limiting. An adaptive concurrency limit (gradient: shrinks ×0.9 when a window of completions is `tolerance`× slower than the long-term average or above `targetLatencyMs`, +1 when healthy and saturated, clamped to `min`/`max`); excess requests wait in a bounded queue (`queue.maxSize`, `queue.perTenant`, `queue.timeoutMs`) and are shed with **HTTP 503 + `Retry-After`** (REST `{ error, message, reason, retryAfterSeconds }`, MCP JSON-RPC **-32030**).
+- **Fair scheduling across tenants**: the admission queue is a weighted fair queue (start-time fair queuing; `fairness.weights` per tenant, `defaultWeight`), so a tenant flooding the gateway is served at its share and cannot starve the others. Clients without a tenant are their own flow.
+- **Queue and load metrics**: `mcp_gateway_overload_limit`, `_inflight`, `_queue_depth{tenant}`, `_admitted_total`, `_shed_total{reason}`, `_queue_wait_ms{quantile}`.
+- **Per-stage latency** (always on): `GET /api/v1/perf/stages` (operators) and `mcp_gateway_stage_duration_ms{stage,quantile}` break each call into `queue`, `auth`, `authz`, `policy`, `hooks`, `routing`, `cache`, `upstream`, `finish`, `total`. `bench/load.mjs` prints the breakdown and the `Load + faults` CI job publishes it as a check-run annotation.
+- **End-to-end p99 analysis** ([docs/perf/p99-analysis.md](docs/perf/p99-analysis.md)): the gateway's own stages add < 3 ms at p99; the tail is event-loop / upstream queueing, which the adaptive limit addresses.
+- **Per-module cost report**: `scripts/module-costs.mjs` measures each of the 46 feature modules' import cost and, for call-hook modules, added p50 / p99 latency and allocation per call against a gateway without features; reference run committed as [docs/perf/module-costs.md](docs/perf/module-costs.md) + `.json`; CI job `Module cost report` (Performance workflow, informational) regenerates it on every PR.
+- `Multi-instance reliability (real Redis)` is now a required release-gate check (`scripts/required-checks.json`, [docs/release-gates.md](docs/release-gates.md)).
+
 ## [13.7.0] - 2026-10-10
 
 Multi-instance reliability release (roadmap 13.7 "多实例可靠性"). Config schema v11 is unchanged; no breaking changes.
