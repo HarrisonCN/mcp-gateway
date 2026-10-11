@@ -73,6 +73,7 @@
   "files": [
     "dist",
     "wit",
+    "schema",
     "dashboard/index.html",
     "dashboard/portal.html",
     "README.md",

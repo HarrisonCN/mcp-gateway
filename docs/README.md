@@ -6,6 +6,8 @@ Start with the project README: [English](../README.md) · [简体中文](../READ
 |---|---|
 | [Getting started](guides/getting-started.md) | first gateway in five minutes |
 | [Configuration reference](configuration.md) | every config key, env overrides, scopes, hot reload |
+| [Deprecations](deprecations.md) | fields scheduled for removal, runtime warnings and how to silence them; schema v12 inventory (13.9) |
+| [Config schema v12 design (draft)](design/schema-v12.md) | what 14.0 changes: unified module lifecycle, capabilities, migration preview |
 | [API reference](api-reference.md) | REST `/api/v1`, MCP endpoint `/mcp`, errors, **stability & versioning policy** |
 | [Deployment guide](deployment.md) | Docker / ghcr.io image, Kubernetes, reverse proxy, security checklist, systemd |
 | [Guides](guides) | one page per feature module, plus migration guides |
