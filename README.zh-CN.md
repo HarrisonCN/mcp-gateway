@@ -16,7 +16,7 @@ mcp-gateway 位于 AI 客户端（Claude Code、Cursor、自研 Agent、大模�
 Streamable HTTP，或 `/api/v1` 下的 REST API——网关负责识别调用方、判断它能做什么、把调用路由到正确的上游，并记录发生了什么。
 密钥、权限范围、限流、策略、日志和指标集中在一处管理，不必在每个客户端里各配一遍。
 
-当前版本：**14.0.0**（npm `latest`）。控制面板在线演示（模拟流量，纯浏览器运行，无需后端）：
+当前版本：**14.1.0**（npm `latest`）。控制面板在线演示（模拟流量，纯浏览器运行，无需后端）：
 <https://harrisoncn.github.io/mcp-gateway/>
 
 ## 目录
@@ -149,7 +149,7 @@ docker run -d -p 4000:4000 \
 每个镜像都用 cosign 做了无密钥签名（GitHub OIDC），并附带 SLSA 来源证明和 SBOM。部署前请先验证，并在生产清单中固定它输出的摘要：
 
 ```bash
-cosign verify ghcr.io/harrisoncn/mcp-gateway:14.0.0 \
+cosign verify ghcr.io/harrisoncn/mcp-gateway:14.1.0 \
   --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
