@@ -190,6 +190,12 @@ export interface DataPlaneStatus {
   controlPlane: string;
   ready: boolean;
   configEtag?: string;
+  /** Generation number of the running config (14.1.0; from the control plane's X-Config-Generation). */
+  generation?: number;
+  /** Generation that failed to apply or failed its post-apply health check (cleared by the next good one). */
+  failedGeneration?: number;
+  /** Local rollbacks after a failed post-apply health check. */
+  rollbacks: number;
   lastPullAt?: string;
   lastAppliedAt?: string;
   lastHeartbeatAt?: string;
@@ -204,6 +210,8 @@ export interface DataPlaneSyncOptions {
   /** Validate + hot-apply a pulled config (throws when invalid; the running config is kept). */
   apply: (config: Record<string, unknown>) => Promise<void>;
   servers?: () => { online: number; total: number };
+  /** 14.1.0: checked after every apply; false → the previous config is re-applied and the generation reported failed. */
+  healthCheck?: () => boolean | Promise<boolean>;
   fetch?: typeof fetch;
 }
 
@@ -211,10 +219,13 @@ export interface DataPlaneSyncOptions {
 export class DataPlaneSync {
   readonly nodeId: string;
   private etag?: string;
+  private generation?: number;
+  private failedEtag?: string;
+  private lastConfig?: Record<string, unknown>;
   private timer?: NodeJS.Timeout;
   private running?: Promise<void>;
   private stopped = false;
-  private state: Omit<DataPlaneStatus, 'role' | 'nodeId' | 'controlPlane' | 'ready' | 'configEtag'> = { pulls: 0, applied: 0, failures: 0 };
+  private state: Omit<DataPlaneStatus, 'role' | 'nodeId' | 'controlPlane' | 'ready' | 'configEtag' | 'generation'> = { pulls: 0, applied: 0, failures: 0, rollbacks: 0 };
 
   constructor(private readonly opts: DataPlaneSyncOptions) {
     this.nodeId = opts.config.nodeId ?? `${hostname()}-${randomUUID().slice(0, 8)}`;
@@ -229,7 +240,15 @@ export class DataPlaneSync {
   }
 
   status(): DataPlaneStatus {
-    return { role: 'data', nodeId: this.nodeId, controlPlane: this.base, ready: this.ready, ...(this.etag ? { configEtag: this.etag } : {}), ...this.state };
+    return {
+      role: 'data',
+      nodeId: this.nodeId,
+      controlPlane: this.base,
+      ready: this.ready,
+      ...(this.etag ? { configEtag: this.etag } : {}),
+      ...(this.generation !== undefined ? { generation: this.generation } : {}),
+      ...this.state,
+    };
   }
 
   start(): void {
@@ -262,20 +281,50 @@ export class DataPlaneSync {
     const headers = { authorization: `Bearer ${this.opts.config.token}`, 'content-type': 'application/json' };
     try {
       this.state.pulls++;
-      const res = await f(`${this.base}/api/v1/admin/data-planes/config`, { headers: { ...headers, ...(this.etag ? { 'if-none-match': this.etag } : {}) }, signal: AbortSignal.timeout(10_000) });
+      const res = await f(`${this.base}/api/v1/admin/data-planes/config`, {
+        headers: { ...headers, 'x-node-id': this.nodeId, ...(this.etag ? { 'if-none-match': this.etag } : {}) },
+        signal: AbortSignal.timeout(10_000),
+      });
       this.state.lastPullAt = new Date().toISOString();
+      let healthError: string | undefined;
       if (res.status === 200) {
-        const body = (await res.json()) as { etag?: string; config?: Record<string, unknown> };
+        const body = (await res.json()) as { etag?: string; generation?: number; config?: Record<string, unknown> };
         if (!body.config || typeof body.config !== 'object') throw new Error('control plane sent no config');
-        await this.opts.apply(body.config);
-        this.etag = body.etag ?? res.headers.get('etag') ?? undefined;
-        this.state.applied++;
-        this.state.lastAppliedAt = new Date().toISOString();
-        logger.info(`Data plane ${this.nodeId}: applied config ${this.etag} from ${this.base}`);
+        const etag = body.etag ?? res.headers.get('etag') ?? undefined;
+        const hdr = Number(res.headers.get('x-config-generation'));
+        const gen = typeof body.generation === 'number' ? body.generation : Number.isInteger(hdr) && hdr > 0 ? hdr : undefined;
+        // 14.1.0: a generation that already failed here is not re-applied until the control plane serves another one
+        if (etag === undefined || etag !== this.failedEtag) {
+          try {
+            await this.opts.apply(body.config);
+          } catch (err) {
+            this.state.failedGeneration = gen;
+            this.failedEtag = etag;
+            throw err;
+          }
+          const healthy = this.opts.healthCheck ? await Promise.resolve(this.opts.healthCheck()).catch(() => false) : true;
+          if (!healthy && this.lastConfig) {
+            await this.opts.apply(this.lastConfig);
+            this.state.rollbacks++;
+            this.state.failedGeneration = gen;
+            this.failedEtag = etag;
+            healthError = `generation ${gen ?? etag} failed its health check after apply; rolled back to generation ${this.generation ?? this.etag}`;
+          } else {
+            this.etag = etag;
+            this.generation = gen;
+            this.lastConfig = body.config;
+            delete this.state.failedGeneration;
+            this.failedEtag = undefined;
+            this.state.applied++;
+            this.state.lastAppliedAt = new Date().toISOString();
+            logger.info(`Data plane ${this.nodeId}: applied config ${this.etag}${gen !== undefined ? ` (generation ${gen})` : ''} from ${this.base}`);
+          }
+        }
       } else if (res.status !== 304) {
         const text = await res.text().catch(() => '');
         throw new Error(`config pull failed: HTTP ${res.status}${text ? ` ${text.slice(0, 200)}` : ''}`);
       }
+      if (healthError) throw new Error(healthError);
       delete this.state.lastError;
     } catch (err) {
       this.state.failures++;
@@ -289,6 +338,8 @@ export class DataPlaneSync {
         body: JSON.stringify({
           nodeId: this.nodeId,
           ...(this.etag ? { configEtag: this.etag } : {}),
+          ...(this.generation !== undefined ? { generation: this.generation } : {}),
+          ...(this.state.failedGeneration !== undefined ? { failedGeneration: this.state.failedGeneration } : {}),
           version: VERSION,
           pullIntervalMs: this.opts.config.pullIntervalMs ?? 10_000,
           ...(this.opts.servers ? { servers: this.opts.servers() } : {}),

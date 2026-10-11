@@ -267,7 +267,7 @@ describe('R7 data plane local rollback', () => {
     const dp = new DataPlaneSync({
       config: { role: 'data', url: 'http://cp', token: 't', nodeId: 'dp-y', pullIntervalMs: 60_000 },
       apply: async (c) => {
-        if (c === cfgB) throw new Error('invalid: servers[0].url');
+        if ((c as typeof cfgB).rateLimit?.limit === 200) throw new Error('invalid: servers[0].url'); // pulled configs arrive as JSON
       },
       fetch: cp.f,
     });
