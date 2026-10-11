@@ -29,6 +29,7 @@ import { configEtag } from './config-etag.js';
 import { expandCredential } from '../config/env-ref.js';
 import { GitopsSchema, type GitopsConfig } from '../config/gitops.js';
 import { RolloutCoordinator, RolloutError, RolloutSchema, type RolloutPolicy } from './rollout.js';
+import { OpsConsoleSchema, type OpsConsoleConfig } from './ops-console.js';
 
 export const ControlPlaneSchema = z
   .object({
@@ -42,6 +43,8 @@ export const ControlPlaneSchema = z
     nodeId: z.string().min(1).max(128).optional(),
     rollout: RolloutSchema.optional(),
     gitops: GitopsSchema.optional(),
+    // 14.8.0: operations console (/api/v1/admin/ops/*)
+    console: OpsConsoleSchema.optional(),
   })
   .strict()
   .superRefine((c, ctx) => {
@@ -77,6 +80,8 @@ export interface ControlPlaneConfig {
   rollout?: Partial<RolloutPolicy>;
   /** 14.7.0: GitOps — signed release manifests, enforcement, drift detection (see docs/guides/gitops.md). */
   gitops?: GitopsConfig;
+  /** 14.8.0: operations console — viewers, trace / timeline buffers, denial explanations (docs/guides/operations-console.md). */
+  console?: OpsConsoleConfig;
 }
 
 export const roleOf = (cfg: GatewayConfig): 'all' | 'control' | 'data' => cfg.controlPlane?.role ?? 'all';
@@ -106,6 +111,14 @@ export interface DataPlaneNode {
 
 const MAX_NODES = 1000;
 
+/** 14.8.0: data planes as the operations console summarizes them. */
+export interface DataPlaneSummary {
+  total: number;
+  online: number;
+  inSync: number;
+  diverged: Array<{ nodeId: string; status: string; configEtag?: string; lastError?: string }>;
+}
+
 export interface ControlPlaneDeps {
   config: () => GatewayConfig;
   /** Running config in schema form (secrets included). */
@@ -118,8 +131,8 @@ export interface ControlPlaneDeps {
 /** Control-plane routes under `/api/v1/admin/data-planes` (operators only). */
 export function createControlPlaneRouter(
   deps: ControlPlaneDeps,
-): express.Router & { nodes: Map<string, Omit<DataPlaneNode, 'inSync' | 'status'>>; rollout: RolloutCoordinator } {
-  const router = express.Router() as express.Router & { nodes: Map<string, Omit<DataPlaneNode, 'inSync' | 'status'>>; rollout: RolloutCoordinator };
+): express.Router & { nodes: Map<string, Omit<DataPlaneNode, 'inSync' | 'status'>>; rollout: RolloutCoordinator; summary: () => DataPlaneSummary } {
+  const router = express.Router() as express.Router & { nodes: Map<string, Omit<DataPlaneNode, 'inSync' | 'status'>>; rollout: RolloutCoordinator; summary: () => DataPlaneSummary };
   const nodes = new Map<string, Omit<DataPlaneNode, 'inSync' | 'status'>>();
   router.nodes = nodes;
   const now = deps.now ?? Date.now;
@@ -160,6 +173,18 @@ export function createControlPlaneRouter(
     const ttl = 3 * (n.pullIntervalMs ?? 10_000);
     const target = etag ? rollout.targetFor(n.nodeId)?.etag ?? etag : undefined;
     return { ...n, inSync: !!target && n.configEtag === target, status: now() - Date.parse(n.lastSeen) <= ttl ? 'online' : 'stale' };
+  };
+
+  // 14.8.0: data-plane summary for the operations console (diverged = not running the generation targeted at it)
+  router.summary = () => {
+    const etag = roleOf(deps.config()) === 'control' ? current().etag : undefined;
+    const list = [...nodes.values()].map((n) => view(n, etag));
+    return {
+      total: list.length,
+      online: list.filter((n) => n.status === 'online').length,
+      inSync: list.filter((n) => n.inSync).length,
+      diverged: list.filter((n) => etag && !n.inSync).map((n) => ({ nodeId: n.nodeId, status: n.status, ...(n.configEtag ? { configEtag: n.configEtag } : {}), ...(n.lastError ? { lastError: n.lastError } : {}) })),
+    };
   };
 
   router.get('/admin/data-planes', ...guard, (_req, res) => {

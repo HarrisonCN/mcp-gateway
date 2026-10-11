@@ -111,6 +111,15 @@ export class CallClock {
   mark(): void {
     this.last = performance.now();
   }
+  /** 14.8.0: per-call annotations for the call trace (cache status, final route). */
+  readonly notes = new Map<string, string>();
+  note(key: string, value: string): void {
+    this.notes.set(key, value);
+  }
+  /** 14.8.0: this call's stage times so far (ms) and its elapsed time — read before {@link flush}. */
+  view(): { stages: Map<Stage, number>; totalMs: number } {
+    return { stages: new Map(this.acc), totalMs: performance.now() - this.t0 };
+  }
   flush(): void {
     if (!this.timer) return;
     for (const [s, ms] of this.acc) this.timer.record(s, ms);

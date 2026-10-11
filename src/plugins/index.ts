@@ -39,6 +39,7 @@
  * @module plugins
  */
 
+import { emitOpsEvent } from '../gateway/ops-events.js';
 import { dirname, isAbsolute, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { readFile } from 'fs/promises';
@@ -862,7 +863,10 @@ export class PluginHost {
     if (pol?.breaker && !(err instanceof PluginBusy)) {
       c.failures++;
       if (c.state === 'half-open' || c.failures >= pol.breaker.maxFailures) {
-        if (c.state !== 'open') logger.warn(`Plugin "${p.name}" circuit opened after ${c.failures} consecutive failure(s); retrying in ${pol.breaker.cooldownMs} ms`);
+        if (c.state !== 'open') {
+          logger.warn(`Plugin "${p.name}" circuit opened after ${c.failures} consecutive failure(s); retrying in ${pol.breaker.cooldownMs} ms`);
+          emitOpsEvent({ kind: 'circuit-open', severity: 'error', subject: p.name, detail: `plugin circuit opened after ${c.failures} consecutive failure(s) in ${hook}: ${msg}`, source: 'plugins' });
+        }
         c.state = 'open';
         c.openedAt = Date.now();
       }

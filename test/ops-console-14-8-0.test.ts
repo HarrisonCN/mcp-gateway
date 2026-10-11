@@ -20,13 +20,14 @@ const VIEW = 'viewer-SECRET-41be';
 const CI = 'ci-SECRET-90dd';
 const SCOPED = 'scoped-SECRET-55aa';
 const hdr = (k: string, extra: Record<string, string> = {}) => ({ authorization: `Bearer ${k}`, 'content-type': 'application/json', ...extra });
+// programmatic configs keep the internal (flat) key scope — see docs/guides/migrating-to-v4.md#4
 const auth = {
   strategy: 'api-key',
   apiKeys: [
     { key: OP, name: 'ops' },
-    { key: VIEW, name: 'oncall', scope: { servers: ['fake'] } },
-    { key: CI, name: 'ci', scope: { servers: ['fake'] } },
-    { key: SCOPED, name: 'narrow', scope: { servers: ['fake'], tools: ['add'] } },
+    { key: VIEW, name: 'oncall', servers: ['fake'] },
+    { key: CI, name: 'ci', servers: ['fake'] },
+    { key: SCOPED, name: 'narrow', servers: ['fake'], tools: ['add'] },
   ],
 };
 const policy = { rules: [{ name: 'ci-no-echo', clients: ['key:ci'], tools: ['echo'], effect: 'deny', message: 'CI may not echo' }] };
@@ -128,24 +129,25 @@ describe('operations console (14.8.0)', () => {
     noSecrets(full.body);
   });
 
-  it('O4b explainDenials: explanation in error data for operators that ask (x-mcp-explain), never for other clients', async () => {
-    await start({ policy: { rules: [{ name: 'nobody-add', clients: ['*'], tools: ['add'], effect: 'deny' }, ...policy.rules] } }, { explainDenials: true });
-    const asOp = await call(OP, 'add', { a: 1, b: 2 }, { 'x-mcp-explain': '1' });
+  it('O4b explainDenials: explanation in error data for operators only (admin flag), never for other clients', async () => {
+    await start({ policy: { rules: [{ name: 'ops-no-echo', clients: ['key:ops', 'key:oncall'], tools: ['echo'], effect: 'deny' }, ...policy.rules] } }, { explainDenials: true });
+    const asOp = await call(OP, 'echo', {}, { 'x-mcp-explain': '1' });
     expect(asOp.status).toBe(403);
-    expect(asOp.body.policy.explain).toMatchObject({ layer: 'policy', rule: 'nobody-add', configPath: 'policy.rules[0]' });
-    const opNoHeader = await call(OP, 'add', { a: 1, b: 2 });
-    expect(opNoHeader.body.policy?.explain).toBeUndefined();
+    expect(asOp.body.policy.explain).toMatchObject({ layer: 'policy', rule: 'ops-no-echo', configPath: 'policy.rules[0]' });
+    // the admin flag is the config switch: operator callers get it with or without the header
+    const opNoHeader = await call(OP, 'echo', {});
+    expect(opNoHeader.body.policy.explain).toMatchObject({ rule: 'ops-no-echo' });
     const ci = await call(CI, 'echo', {}, { 'x-mcp-explain': '1' });
     expect(ci.status).toBe(403);
     expect(JSON.stringify(ci.body)).not.toContain('configPath');
-    const viewer = await call(VIEW, 'add', { a: 1, b: 2 }, { 'x-mcp-explain': '1' });
+    const viewer = await call(VIEW, 'echo', {}, { 'x-mcp-explain': '1' });
     expect(JSON.stringify(viewer.body)).not.toContain('configPath');
   });
 
   it('O5 incident timeline: restart, config apply, revocation, denials (audit) with kind / time filters', async () => {
     await start();
-    const desired = (await h!.admin('config', undefined, 'GET', hdr(OP))).body;
-    expect((await fetch(`${h!.base}/api/v1/admin/config`, { method: 'PUT', headers: hdr(OP), body: JSON.stringify(desired) })).status).toBe(200);
+    const desired = (await h!.admin('config', undefined, 'GET', hdr(OP))).body.config;
+    expect((await fetch(`${h!.base}/api/v1/admin/config`, { method: 'PUT', headers: hdr(OP), body: JSON.stringify({ ...desired, logLevel: 'warn' }) })).status).toBe(200);
     runInScope(h!.gw['instanceScope'], () => announceRevocation('key:portal-x', 'test revocation'));
     await call(CI, 'echo');
     const t = await get('timeline');
