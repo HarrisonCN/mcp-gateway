@@ -6,7 +6,7 @@ name: Performance
 # fails. A deliberate regression is accepted by updating bench/baseline.json in the same PR with a `justification`.
 on:
   pull_request:
-    paths: ['src/**', 'bench/**', 'package.json', 'package-lock.json', '.github/workflows/perf.yml']
+    paths: ['src/**', 'bench/**', 'scripts/module-costs.mjs', 'package.json', 'package-lock.json', '.github/workflows/perf.yml']
   push:
     branches: [main]
     paths: ['src/**', 'bench/**', 'package.json', 'package-lock.json']
@@ -49,6 +49,15 @@ jobs:
           sed -n '/^load /,$p' load.txt | tee -a "$GITHUB_STEP_SUMMARY"
           sed -n '1,/^}/p' load.txt > load.json
           exit ${rc:-0}
+      - name: Stage breakdown as an annotation (13.8.0; readable from the check-run API)
+        if: always()
+        run: |
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("load.json", "utf8"));
+            const st = Object.entries(r.stages ?? {}).map(([k, v]) => `${k} p50=${v.p50} p95=${v.p95} p99=${v.p99} mean=${v.mean} n=${v.count}`);
+            const head = `${r.platform} ${r.node} ${r.cpus}cpu ${r.requests}@${r.concurrency}: rps=${r.rps} p50=${r.latency.p50Ms} p95=${r.latency.p95Ms} p99=${r.latency.p99Ms} max=${r.latency.maxMs} errors=${r.errors.rate}%`;
+            console.log(`::notice title=load ${r.version}::${[head, ...st].join("%0A")}`);
+          ' || true
       - name: Load with fault injection (replica kill, stdio stall, session loss)
         run: |
           set -o pipefail
@@ -64,4 +73,39 @@ jobs:
           path: |
             load.json
             load-faults.json
+          retention-days: 30
+
+  module-costs:
+    name: Module cost report
+    # 13.8.0: added latency / allocations / import cost of each feature module (scripts/module-costs.mjs). Report only:
+    # informational in scripts/required-checks.json, never a release gate; the JSON is uploaded for comparison with the
+    # committed docs/perf/module-costs.json.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Per-module cost report
+        run: |
+          node scripts/module-costs.mjs --calls 300 --rounds 3 --json module-costs.json --md module-costs.md
+          cat module-costs.md >> "$GITHUB_STEP_SUMMARY"
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("module-costs.json", "utf8"));
+            const rows = r.modules.filter((m) => m.call.status === "measured").map((m) => `${m.id} +p50=${m.call.addedP50Ms} +p99=${m.call.addedP99Ms} +KiB=${m.call.addedAllocKbPerCall} import=${m.import.ms}`);
+            console.log(`::notice title=module costs ${r.version} (${r.machine.platform})::baseline p50=${r.baseline?.p50Ms} p99=${r.baseline?.p99Ms} KiB=${r.baseline?.allocKbPerCall}%0A${rows.join("%0A")}`);
+          ' || true
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: module-costs
+          path: |
+            module-costs.json
+            module-costs.md
+          if-no-files-found: ignore
           retention-days: 30

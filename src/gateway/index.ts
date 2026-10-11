@@ -823,7 +823,14 @@ export class Gateway {
         '# HELP mcp_gateway_overload_queue_depth Requests waiting for admission, per tenant flow (13.8)',
         '# TYPE mcp_gateway_overload_queue_depth gauge',
         `mcp_gateway_overload_queue_depth ${s.queued}`,
-        ...Object.entries(s.queuedByTenant).map(([k, v]) => `mcp_gateway_overload_queue_depth{tenant="${k.replace(/["\\\n]/g, '_')}"} ${v}`),
+        // tenant ids only: flows of clients without a tenant are summed as "_none" (client names never become labels)
+        ...Object.entries(
+          Object.entries(s.queuedByTenant).reduce<Record<string, number>>((acc, [k, v]) => {
+            const label = k.startsWith('client:') || k === 'anonymous' ? '_none' : k.replace(/["\\\n]/g, '_');
+            acc[label] = (acc[label] ?? 0) + v;
+            return acc;
+          }, {}),
+        ).map(([k, v]) => `mcp_gateway_overload_queue_depth{tenant="${k}"} ${v}`),
         '# HELP mcp_gateway_overload_admitted_total Requests admitted by the load protection (13.8)',
         '# TYPE mcp_gateway_overload_admitted_total counter',
         `mcp_gateway_overload_admitted_total ${s.admitted}`,

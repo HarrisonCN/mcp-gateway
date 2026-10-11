@@ -48,7 +48,7 @@ conclude `success` (or `skipped`):
 ## Everything else
 
 Any other check run on the release commit that concludes `failure`, `cancelled`, `timed_out`, `action_required` or
-`stale` refuses the gate too, except these informational ones: `Scorecard analysis` (OpenSSF Scorecard), `Build site`
+`stale` refuses the gate too, except these informational ones: `Scorecard analysis` (OpenSSF Scorecard), `Module cost report` (Performance, 13.8.0: per-module cost report, report only), `Build site`
 and `Deploy` (dashboard demo on GitHub Pages) and the post-release jobs `assets`, `image`, `npm`, `maven-central`
 (they run *because* of the release).
 

@@ -142,6 +142,7 @@ de-duplicated. Unknown format → `400`.
 | `429` | rate limited (`Retry-After`) |
 | `502` | the MCP server returned a JSON-RPC error (`code`, `message`) |
 | `503` | server not connected (`status`, `Retry-After` when a reconnect is scheduled) |
+| `503` | gateway overloaded (13.8, `overload:`): `{ "error", "message", "reason", "retryAfterSeconds" }` with `Retry-After`; on `/mcp` JSON-RPC error `-32030` |
 | `504` | no answer within the server's `timeout` |
 
 A tool that runs but fails is a `200` whose `result.isError` is `true` (that is the MCP server's answer).
@@ -273,6 +274,23 @@ Viewers get `403` (REST) / `-32003` (`/mcp`) on tool calls.
                { "id": "github~1", "weight": 1, "connected": false, "healthy": false, "calls": 3, "errors": 3,
                  "ejectedUntil": "2026-10-07T18:00:30.000Z" } ] } ] }
 ```
+
+### Performance (13.8)
+
+`GET /api/v1/perf/stages` (operator keys) — latency per call-pipeline stage over the last 4096 calls, and the load
+protection state:
+
+```json
+{ "window": 4096,
+  "stages": { "auth": { "count": 812, "mean": 0.05, "p50": 0.04, "p95": 0.09, "p99": 0.21, "max": 1.3 },
+              "upstream": { "count": 640, "mean": 3.1, "p50": 2.2, "p95": 8.4, "p99": 14.9, "max": 31 } },
+  "overload": { "enabled": true, "limit": 61, "inflight": 12, "queued": 0, "queuedByTenant": {}, "admitted": 812,
+                "shed": { "queue-full": 0, "tenant-queue-full": 0, "queue-timeout": 0, "aborted": 0 },
+                "queueWaitMs": { "p50": 0, "p99": 0.4 } } }
+```
+
+Stages: `queue`, `auth`, `authz`, `policy`, `hooks`, `routing`, `cache`, `upstream`, `finish`, `total` (see
+[configuration](configuration.md#load-protection-and-fair-scheduling-138)).
 
 ### Developer portal (3.8)
 
