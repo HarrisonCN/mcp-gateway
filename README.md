@@ -98,6 +98,9 @@ section is present in the config.
 - Web dashboard at `/dashboard`: guided setup, live traffic, latency and errors, server health, tool playground,
   request history.
 - Liveness / readiness probes, signed container image, Helm chart, Kubernetes operator.
+- GitOps (14.7): config directories with environment overlays and secrets by reference, env diffs, release
+  plans with policy simulation, ed25519-signed releases with required approvers, enforcement and drift detection
+  ([GitOps guide](docs/guides/gitops.md)).
 - CLI: `init`, `validate`, `diff` / `apply`, `gen-key` / `hash-key`, `migrate`, `bench`, `conformance`, `desktop`,
   `policy test`, `plugin`, `pq`, `operator`.
 - Embeddable as a library: `import { Gateway, loadConfig } from '@winstonsayno/mcp-gateway'`.

@@ -21,7 +21,7 @@ controlPlane:
 auth:
   strategy: api-key
   apiKeys:
-    - ${OPERATOR_KEY} # unscoped = operator; data planes authenticate with it
+    - ${OPERATOR_KEY} # unscoped = operator; data planes authenticate with it (expanded since 14.7 — MGW-2026-019)
 servers:
   - {id: github, name: GitHub, transport: streamable-http, url: https://api.githubcopilot.com/mcp/}
 ```
@@ -56,6 +56,10 @@ controlPlane:
   nodeId: dp-eu-1 # default: <hostname>-<random>
 ```
 
+- **`${OPERATOR_KEY}` must be set** in the environment of both processes. Before 14.7 (and 13.9.5 / 12.0.15 /
+  10.9.16) neither `auth.apiKeys: ["${…}"]` nor `controlPlane.token` was expanded, so the literal text was the operator
+  key — see [MGW-2026-019](../../SECURITY.md#security-advisories) and rotate it. Since then an unset variable is a
+  config error.
 - **Fail closed:** until the first config has been pulled and applied, every route except `/`, `/api/v1/health`,
   `/api/v1/health/live` and `/api/v1/data-plane` answers `503` (`/api/v1/health/ready` too, so Kubernetes keeps the
   pod out of the Service).

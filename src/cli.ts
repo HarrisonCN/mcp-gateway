@@ -890,6 +890,13 @@ taskOpts(edgeCmd.command('reconcile').description('Replay queued calls whose ser
 
 const gitopsCmd = program.command('gitops').description('GitOps (14.7): render config directories, env diffs, signed releases, plan / apply / status');
 const gitopsDir = (cmd: Command) => cmd.requiredOption('-d, --dir <path>', 'Config directory (base.yml + environments/<env>.yml)').requiredOption('-e, --env <name>', 'Environment');
+const gitopsRemoteDir = (cmd: Command) =>
+  cmd
+    .requiredOption('-d, --dir <path>', 'Config directory (base.yml + environments/<env>.yml)')
+    .requiredOption('-e, --env <name>', 'Environment')
+    .option('--url <url>', 'Gateway base URL (default env MCP_GATEWAY_URL or http://localhost:4000)')
+    .option('--key <key>', 'Operator API key (default env MCP_GATEWAY_ADMIN_KEY)')
+    .option('--json', 'Print JSON');
 const gitopsFail = (err: unknown): never => {
   const e = err as { issues?: string[] };
   logger.error(err instanceof Error ? err.message : String(err));
@@ -928,9 +935,9 @@ gitopsDir(gitopsCmd.command('render').description('Render a config directory for
     }
   });
 
-taskOpts(
-  gitopsDir(gitopsCmd.command('diff').description('What differs: <env> → --against-env <other>, or the running gateway → <env> (exit 3 when there are changes)')).option('--against-env <name>', 'Compare two environments of the directory (no gateway needed)'),
-).action(async (o) => {
+gitopsRemoteDir(gitopsCmd.command('diff').description('What differs: <env> → --against-env <other>, or the running gateway → <env> (exit 3 when there are changes)'))
+  .option('--against-env <name>', 'Compare two environments of the directory (no gateway needed)')
+  .action(async (o) => {
   try {
     const { renderConfigDir, diffEnvironments } = await import('./config/gitops.js');
     const b = await renderConfigDir(o.dir, o.env);
@@ -949,11 +956,10 @@ taskOpts(
   }
 });
 
-taskOpts(
-  gitopsDir(gitopsCmd.command('plan').description('Review a release against the running gateway: diff, manifest verification, policy simulation (exit 3 when there are changes)'))
-    .option('--manifest <file>', 'Release manifest (mcp-gateway gitops sign)')
-    .option('--calls <file>', 'Calls to simulate (JSON array or JSON lines of { clientId?, serverId, tool, args? }); default: recorded calls'),
-).action(async (o) => {
+gitopsRemoteDir(gitopsCmd.command('plan').description('Review a release against the running gateway: diff, manifest verification, policy simulation (exit 3 when there are changes)'))
+  .option('--manifest <file>', 'Release manifest (mcp-gateway gitops sign)')
+  .option('--calls <file>', 'Calls to simulate (JSON array or JSON lines of { clientId?, serverId, tool, args? }); default: recorded calls')
+  .action(async (o) => {
   try {
     const { renderConfigDir } = await import('./config/gitops.js');
     const b = await renderConfigDir(o.dir, o.env);
@@ -987,11 +993,10 @@ taskOpts(
   }
 });
 
-taskOpts(
-  gitopsDir(gitopsCmd.command('apply').description('Apply a release to the running gateway (refused when enforcement is on and the release is unsigned or not approved)'))
-    .option('--manifest <file>', 'Release manifest (mcp-gateway gitops sign / approve)')
-    .option('--dry-run', 'Verify and show the diff without applying'),
-).action(async (o) => {
+gitopsRemoteDir(gitopsCmd.command('apply').description('Apply a release to the running gateway (refused when enforcement is on and the release is unsigned or not approved)'))
+  .option('--manifest <file>', 'Release manifest (mcp-gateway gitops sign / approve)')
+  .option('--dry-run', 'Verify and show the diff without applying')
+  .action(async (o) => {
   try {
     const { renderConfigDir } = await import('./config/gitops.js');
     const b = await renderConfigDir(o.dir, o.env);

@@ -29,6 +29,7 @@ import { join, relative, dirname, resolve, extname } from 'path';
 import { parse as parseYaml, parseAllDocuments } from 'yaml';
 import { transformSync } from 'esbuild';
 import { validateConfig, CONFIG_FILE_KEYS } from '../src/config/loader.js';
+import { listEnvironments, renderConfigDir } from '../src/config/gitops.js';
 
 export interface Finding {
   file: string;
@@ -162,7 +163,7 @@ async function check(root: string, opts: { external?: boolean }) {
     if (doc.version === 11 && !hist) add(rel, line, 'config', 'config "version: 11" — current docs use schema v12 (`version: 12`; v11 files are only read until 15.0)');
     // `${VAR}` references get a stand-in value (docs never carry real secrets); errors on documentation placeholders
     // (`<hex>`, `…`, `...`, `xxx`, `change-me`) are not findings.
-    const filled = JSON.parse(JSON.stringify({ servers: [], ...doc }).replace(/\$\{[A-Z0-9_]+(?::-[^}]*)?\}/g, 'docs-check-env-value-0123456789abcdef0123')) as Record<string, unknown>;
+    const filled = JSON.parse(JSON.stringify({ servers: [], ...doc }).replace(/\$\{([A-Z0-9_]+)(?::-[^}]*)?\}/g, (_m, n: string) => `docs-check-env-${n.toLowerCase()}-0123456789abcdef0123`)) as Record<string, unknown>;
     try {
       const c = validateConfig(filled);
       if (!hist) for (const d of c.deprecations ?? []) add(rel, line, 'config', `schema v11 field in current docs: ${(d as { path?: string }).path ?? d.id} — use ${(d as { replacement?: string }).replacement ?? 'the v12 form'}`);
@@ -242,12 +243,23 @@ async function check(root: string, opts: { external?: boolean }) {
     }
   };
   const externals: Array<{ rel: string; n: number; url: string }> = [];
+  const gitopsRoots = new Set<string>();
+  const gitopsRootOf = (abs: string): string | undefined => {
+    for (let d = dirname(abs); d.startsWith(root) && d !== root; d = dirname(d)) if (existsSync(join(d, 'environments')) && (existsSync(join(d, 'base.yml')) || existsSync(join(d, 'base.yaml')))) return d;
+    return undefined;
+  };
 
   for (const abs of files) {
     stats.files++;
     const rel = relative(root, abs);
     const hist = isHistorical(rel);
     const text = readFileSync(abs, 'utf8');
+    // 14.7.0: a gitops config directory (base.yml + environments/) holds fragments — it is checked rendered, per environment
+    const gitopsRoot = gitopsRootOf(abs);
+    if (gitopsRoot && /\.ya?ml$/.test(abs)) {
+      gitopsRoots.add(gitopsRoot);
+      continue;
+    }
     if (/\.ya?ml$/.test(abs)) {
       // example config / manifest files
       try {
@@ -334,7 +346,7 @@ async function check(root: string, opts: { external?: boolean }) {
               command = tokens[0];
               i = 1;
               // 14.4.0: nested groups (`tasks dlq list`; 14.6.0: `regions …`, `edge …`): descend while the next token is a known sub-command
-              if (['tasks', 'regions', 'edge'].includes(command)) while (tokens[i] && !tokens[i]!.startsWith('-') && cli.has(tokens[i]!) && i < 3) command = tokens[i++]!;
+              if (['tasks', 'regions', 'edge', 'gitops'].includes(command)) while (tokens[i] && !tokens[i]!.startsWith('-') && cli.has(tokens[i]!) && i < 3) command = tokens[i++]!;
               if (!cli.has(command)) {
                 if (['config', 'plugin', 'pq', 'policy', 'tenancy'].includes(command) && tokens[1] && cli.has(tokens[1])) {
                   command = tokens[1];
@@ -385,6 +397,19 @@ async function check(root: string, opts: { external?: boolean }) {
   }
   const lock = JSON.parse(readFileSync(join(root, 'package-lock.json'), 'utf8')) as { version?: string };
   if (lock.version !== V) add('package-lock.json', 1, 'version', `package-lock version ${lock.version} != package ${V}`);
+
+  // 14.7.0: gitops config directories — each environment rendered (includes, overlays, secret references) and validated
+  for (const dir of [...gitopsRoots].sort()) {
+    for (const env of await listEnvironments(dir)) {
+      const at = relative(root, join(dir, 'environments', `${env}.yml`));
+      try {
+        const b = await renderConfigDir(dir, env);
+        checkConfig(at, 1, b.config, false);
+      } catch (e) {
+        add(at, 1, 'config', `gitops render ${env}: ${(e as Error).message}`);
+      }
+    }
+  }
 
   if (opts.external) {
     const seen = new Map<string, number>();

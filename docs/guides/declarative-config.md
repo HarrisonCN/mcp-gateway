@@ -48,3 +48,6 @@ Output:
 ```
 
 `--json` prints machine-readable output for CI (e.g. post the diff on a pull request, apply on merge).
+
+For config directories with environment overlays, signed and approved releases and drift detection, see
+[GitOps](gitops.md) (14.7).
