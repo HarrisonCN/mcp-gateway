@@ -9,7 +9,7 @@
  * @module gateway/rollout
  */
 import { z } from 'zod';
-import { configEtag } from './control-plane.js';
+import { configEtag } from './config-etag.js';
 
 /** `controlPlane.rollout` (14.1.0, control role only). */
 export const RolloutSchema = z

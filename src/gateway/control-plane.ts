@@ -18,13 +18,15 @@
  * @module gateway/control-plane
  */
 
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import express, { type Request, type RequestHandler } from 'express';
 import { z } from 'zod';
 import type { GatewayConfig } from '../utils/types.js';
 import { VERSION } from '../utils/version.js';
 import { logger } from '../utils/logger.js';
+import { configEtag } from './config-etag.js';
+import { RolloutSchema, type RolloutPolicy } from './rollout.js';
 
 export const ControlPlaneSchema = z
   .object({
@@ -35,12 +37,14 @@ export const ControlPlaneSchema = z
     token: z.string().min(1).optional(),
     pullIntervalMs: z.number().int().min(1000).max(3_600_000).default(10_000),
     nodeId: z.string().min(1).max(128).optional(),
+    rollout: RolloutSchema.optional(),
   })
   .strict()
   .superRefine((c, ctx) => {
     if (c.role === 'data') {
       if (!c.url) ctx.addIssue({ code: 'custom', path: ['url'], message: 'a data plane needs `controlPlane.url` (the control plane base URL)' });
       if (!c.token) ctx.addIssue({ code: 'custom', path: ['token'], message: 'a data plane needs `controlPlane.token` (an operator API key of the control plane)' });
+      if (c.rollout !== undefined) ctx.addIssue({ code: 'custom', path: ['rollout'], message: '`rollout` is a control-plane setting (role: control)' });
     } else {
       if (c.url !== undefined) ctx.addIssue({ code: 'custom', path: ['url'], message: '`url` is a data-plane setting (role: data)' });
       if (c.token !== undefined) ctx.addIssue({ code: 'custom', path: ['token'], message: '`token` is a data-plane setting (role: data)' });
@@ -64,19 +68,13 @@ export interface ControlPlaneConfig {
   pullIntervalMs?: number;
   /** Data plane: id reported in heartbeats (default `<hostname>-<random>`). */
   nodeId?: string;
+  /** Control plane (14.1.0): how config generations roll out to data planes. */
+  rollout?: Partial<RolloutPolicy>;
 }
 
 export const roleOf = (cfg: GatewayConfig): 'all' | 'control' | 'data' => cfg.controlPlane?.role ?? 'all';
 
-const stable = (v: unknown): string =>
-  Array.isArray(v)
-    ? `[${v.map(stable).join(',')}]`
-    : v && typeof v === 'object'
-      ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable((v as Record<string, unknown>)[k])}`).join(',')}}`
-      : JSON.stringify(v) ?? 'null';
-
-/** Strong ETag of a config object (order independent). */
-export const configEtag = (config: unknown) => `"${createHash('sha256').update(stable(config)).digest('hex').slice(0, 32)}"`;
+export { configEtag } from './config-etag.js';
 
 /** The config a control plane distributes: `portable` minus `controlPlane`, `port` and `host` (schema v9). */
 export function distributedConfig(portable: Record<string, unknown>): Record<string, unknown> {
