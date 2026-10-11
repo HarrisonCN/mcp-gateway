@@ -39,6 +39,7 @@ import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { VERSION } from '../utils/version.js';
 import { principalAttr } from '../observability/telemetry.js';
 import { type GenaiTelemetryConfig, GenaiTelemetrySchema } from './schemas/genai-otel.js';
+import { instanceLocal } from '../kernel/instance.js';
 export { type GenaiTelemetryConfig, GenaiTelemetrySchema } from './schemas/genai-otel.js';
 type Cfg = z.output<typeof GenaiTelemetrySchema>;
 
@@ -206,7 +207,7 @@ export class GenaiRecorder {
   }
 }
 
-export const genaiRecorder = new GenaiRecorder();
+export const genaiRecorder = instanceLocal('genai-otel', 'genaiRecorder', () => new GenaiRecorder()); // 14.0.0: per gateway instance (F3)
 
 const settings = (cfg: GatewayConfig): Cfg | undefined => {
   if (!cfg.genaiTelemetry) return undefined;

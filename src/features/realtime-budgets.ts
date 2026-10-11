@@ -56,6 +56,7 @@ import { globToRegExp } from '../utils/tool-filter.js';
 import type { GatewayConfig } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { BudgetSchema, CarbonSchema, ERR_BUDGET_EXCEEDED, type RealtimeBudgetsConfig, RealtimeBudgetsSchema } from './schemas/realtime-budgets.js';
+import { instanceLocal } from '../kernel/instance.js';
 export { ERR_BUDGET_EXCEEDED, type RealtimeBudgetsConfig, RealtimeBudgetsSchema } from './schemas/realtime-budgets.js';
 type Parsed = z.output<typeof RealtimeBudgetsSchema>;
 type Budget = Parsed['budgets'][number];
@@ -217,7 +218,7 @@ export class RealtimeBudgets {
   }
 }
 
-export const realtimeBudgets = new RealtimeBudgets();
+export const realtimeBudgets = instanceLocal('realtime-budgets', 'realtimeBudgets', () => new RealtimeBudgets()); // 14.0.0: per gateway instance (F3)
 
 export function rtOf(cfg: GatewayConfig): Parsed | undefined {
   const raw = cfg.realtimeBudgets;

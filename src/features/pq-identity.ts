@@ -44,6 +44,11 @@ import { isToolInScope } from '../auth/scopes.js';
 import type { AuthedRequest } from '../auth/middleware.js';
 import { logger } from '../utils/logger.js';
 import { type PqIdentityConfig, PqIdentitySchema } from './schemas/pq-identity.js';
+import { instanceLocal } from '../kernel/instance.js';
+/** 14.0.0: per gateway instance (F3). */
+const pqState = instanceLocal('pq-identity', 'pqState', () => ({ rt: undefined as Runtime | undefined }));
+
+
 export { type PqIdentityConfig, PqIdentitySchema } from './schemas/pq-identity.js';
 type Parsed = z.output<typeof PqIdentitySchema>;
 
@@ -230,7 +235,6 @@ interface Runtime {
   keys: { privateKey: HybridPrivateKey; publicKey: HybridPublicKey };
   chain: AuditChain;
 }
-let rt: Runtime | undefined;
 
 export function pqIdentityOf(cfg: GatewayConfig): Runtime | undefined {
   if (!cfg.pqIdentity) return undefined;
@@ -239,22 +243,22 @@ export function pqIdentityOf(cfg: GatewayConfig): Runtime | undefined {
   const base = cfg.configDir ?? process.cwd();
   const keyFile = resolve(base, c.keyFile);
   const cfgKey = JSON.stringify([keyFile, c.keyId, c.auditLog]);
-  if (rt?.cfgKey === cfgKey) {
-    rt.c = c;
-    return rt;
+  if (pqState.rt?.cfgKey === cfgKey) {
+    pqState.rt.c = c;
+    return pqState.rt;
   }
   const keys = loadHybridKey(keyFile);
   const dir = c.auditLog.dir ? resolve(base, c.auditLog.dir) : undefined;
-  const chain = rt && rt.chain && JSON.stringify(rt.c.auditLog) === JSON.stringify(c.auditLog) ? rt.chain : undefined;
+  const chain = pqState.rt && pqState.rt.chain && JSON.stringify(pqState.rt.c.auditLog) === JSON.stringify(c.auditLog) ? pqState.rt.chain : undefined;
   const next: Runtime = { cfgKey, c, keys, chain: chain ?? (undefined as unknown as AuditChain) };
   next.chain = chain ?? new AuditChain(() => ({ dir, maxEntries: next.c.auditLog.maxEntries, checkpointEvery: next.c.auditLog.checkpointEvery, keyId: next.c.keyId, key: next.keys.privateKey }));
-  rt = next;
-  return rt;
+  pqState.rt = next;
+  return pqState.rt;
 }
 
 /** Test helper. */
 export function resetPqIdentity(): void {
-  rt = undefined;
+  pqState.rt = undefined;
 }
 
 export function identityDocument(r: Runtime, now = new Date()): SignedDocument<Record<string, unknown>> {
@@ -310,7 +314,7 @@ registerFeature({
       if (timer) clearInterval(timer);
       timer = undefined;
       try {
-        const r = pqIdentityOf(ctx.config()) ?? last ?? rt;
+        const r = pqIdentityOf(ctx.config()) ?? last ?? pqState.rt;
         if (r?.c.auditLog.enabled) r.chain.checkpoint();
       } catch {
         /* ignore */

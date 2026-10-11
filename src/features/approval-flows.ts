@@ -44,6 +44,7 @@ import { globToRegExp } from '../utils/tool-filter.js';
 import { redactValue } from '../security/redact.js';
 import type { GatewayConfig } from '../utils/types.js';
 import { type ApprovalFlowsConfig, ApprovalFlowsSchema, Cond, Flow, Step } from './schemas/approval-flows.js';
+import { instanceLocal } from '../kernel/instance.js';
 export { type ApprovalFlowsConfig, ApprovalFlowsSchema } from './schemas/approval-flows.js';
 type Cfg = z.output<typeof ApprovalFlowsSchema>;
 type FlowT = z.output<typeof Flow>;
@@ -226,7 +227,7 @@ export class FlowQueue {
   }
 }
 
-export const flowQueue = new FlowQueue();
+export const flowQueue = instanceLocal('approval-flows', 'flowQueue', () => new FlowQueue()); // 14.0.0: per gateway instance (F3)
 
 const settings = (cfg: GatewayConfig): Cfg | undefined => {
   if (!cfg.approvalFlows) return undefined;

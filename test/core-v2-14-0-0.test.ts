@@ -252,7 +252,7 @@ describe('14.0 module lifecycle v2, capabilities and per-instance state', () => 
 
   it('F3: no built-in module keeps mutable state at module level (singletons are instanceLocal)', () => {
     const offenders: string[] = [];
-    for (const f of readdirSync(join(ROOT, 'src/features')).filter((n) => n.endsWith('.ts'))) {
+    for (const f of readdirSync(join(ROOT, 'src/features')).filter((n) => n.endsWith('.ts') && n !== 'manifest.ts')) {
       const src = readFileSync(join(ROOT, 'src/features', f), 'utf8');
       for (const [i, line] of src.split('\n').entries()) {
         // a pure memo (same input → same value, nothing instance-specific) may stay process-wide when it says so

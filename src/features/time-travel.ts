@@ -49,6 +49,7 @@ import { evaluatePolicy } from '../policy/tool-policy.js';
 import type { GatewayConfig, ProxyResponse } from '../utils/types.js';
 import { logger } from '../utils/logger.js';
 import { type TimeTravelConfig, TimeTravelSchema } from './schemas/time-travel.js';
+import { instanceLocal } from '../kernel/instance.js';
 export { type TimeTravelConfig, TimeTravelSchema } from './schemas/time-travel.js';
 type Parsed = z.output<typeof TimeTravelSchema>;
 
@@ -234,9 +235,8 @@ export class Journal {
   }
 }
 
-let journal: Journal | undefined;
-let journalCfg: Parsed = TimeTravelSchema.parse({});
-let journalBase: string | undefined;
+/** 14.0.0: the journal of each gateway instance (F3). */
+const ttState = instanceLocal('time-travel', 'journal', () => ({ journal: undefined as Journal | undefined, journalCfg: TimeTravelSchema.parse({}) as Parsed, journalBase: undefined as string | undefined }));
 
 export function parsedOf(cfg: GatewayConfig): Parsed | undefined {
   const raw = cfg.timeTravel;
@@ -245,20 +245,20 @@ export function parsedOf(cfg: GatewayConfig): Parsed | undefined {
   return p.enabled ? p : undefined;
 }
 
-/** The process-wide journal for a config (created on first use). */
+/** The journal of this gateway instance for a config (created on first use; 14.0.0: per instance). */
 export function journalFor(cfg: GatewayConfig): Journal | undefined {
   const p = parsedOf(cfg);
   if (!p) return undefined;
-  journalCfg = p;
-  journalBase = cfg.configDir;
-  if (!journal) journal = new Journal(() => journalCfg, () => journalBase);
-  journal.load();
-  return journal;
+  ttState.journalCfg = p;
+  ttState.journalBase = cfg.configDir;
+  if (!ttState.journal) ttState.journal = new Journal(() => ttState.journalCfg, () => ttState.journalBase);
+  ttState.journal.load();
+  return ttState.journal;
 }
 
-/** Test helper: forget the process-wide journal. */
+/** Test helper: forget this instance's journal. */
 export function resetJournal(): void {
-  journal = undefined;
+  ttState.journal = undefined;
 }
 
 registerCallHook({

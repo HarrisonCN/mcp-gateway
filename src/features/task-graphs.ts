@@ -62,6 +62,7 @@ import { GraphSchema, Id, NodeSchema, Retry, Target, type TaskGraphsConfig, Task
 export { type TaskGraphsConfig, TaskGraphsSchema, topoLayers } from './schemas/task-graphs.js';
 import { A2aFederationSchema } from './schemas/a2a-federation.js';
 import { requireDependency } from '../gateway/kernel-runtime.js';
+import { instanceLocal } from '../kernel/instance.js';
 // 13.0: declared dependency (manifest dependsOn) instead of a static import of another feature module.
 const { sendToRemote } = await requireDependency<typeof import('./a2a-federation.js')>('task-graphs', 'a2a-federation');
 type Parsed = z.output<typeof TaskGraphsSchema>;
@@ -330,8 +331,8 @@ export class TaskRunStore {
   }
 }
 
-export const taskRuns = new TaskRunStore();
-const active = new Map<string, { cancel: boolean; done: Promise<TaskRun> }>();
+export const taskRuns = instanceLocal('task-graphs', 'taskRuns', () => new TaskRunStore()); // 14.0.0: per gateway instance (F3)
+const active = instanceLocal('task-graphs', 'active', () => new Map<string, { cancel: boolean; done: Promise<TaskRun> }>()); // 14.0.0: per gateway instance (F3)
 
 export function taskGraphsOf(cfg: GatewayConfig): Parsed | undefined {
   if (!cfg.taskGraphs) return undefined;

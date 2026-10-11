@@ -36,6 +36,7 @@ import type { GatewayConfig } from '../utils/types.js';
 import { type BillingConfig, BillingSchema, Money } from './schemas/billing.js';
 export { type BillingConfig, BillingSchema } from './schemas/billing.js';
 import { requireDependency } from '../gateway/kernel-runtime.js';
+import { instanceLocal } from '../kernel/instance.js';
 // 13.0: declared dependency (manifest dependsOn) instead of a static import of another feature module.
 const { extractUsage } = await requireDependency<typeof import('./genai-otel.js')>('billing', 'genai-otel');
 type Cfg = z.output<typeof BillingSchema>;
@@ -142,7 +143,7 @@ const settings = (cfg: GatewayConfig): Cfg | undefined => {
   const c = BillingSchema.parse(cfg.billing);
   return c.enabled ? c : undefined;
 };
-const meters = new Map<string, UsageMeter>();
+const meters = instanceLocal('billing', 'meters', () => new Map<string, UsageMeter>()); // 14.0.0: per gateway instance (F3)
 /** The meter for a config's `storePath` (process-wide; in-memory when unset). */
 export function usageMeter(cfg: Cfg): UsageMeter {
   const k = cfg.storePath ?? '';

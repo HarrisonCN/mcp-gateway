@@ -32,6 +32,7 @@ import { registerFeature, objectBody, badRequest } from '../gateway/features.js'
 import { portableConfig } from '../gateway/admin.js';
 import type { GatewayConfig } from '../utils/types.js';
 import { type ConfigAssistantConfig, ConfigAssistantSchema } from './schemas/config-assistant.js';
+import { instanceLocal } from '../kernel/instance.js';
 export { type ConfigAssistantConfig, ConfigAssistantSchema } from './schemas/config-assistant.js';
 type Cfg = z.output<typeof ConfigAssistantSchema>;
 
@@ -173,7 +174,7 @@ export const withoutSecrets = (v: unknown): unknown =>
   Array.isArray(v) ? v.map(withoutSecrets) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v as Raw).map(([k, x]) => [k, SECRET.test(k) && typeof x === 'string' ? '<redacted>' : withoutSecrets(x)])) : v;
 
 const hash = (v: unknown) => createHash('sha256').update(JSON.stringify(v)).digest('hex');
-const plans = new Map<string, { config: Raw; base: string; expires: number }>();
+const plans = instanceLocal('config-assistant', 'plans', () => new Map<string, { config: Raw; base: string; expires: number }>()); // 14.0.0: per gateway instance (F3)
 
 registerFeature({
   id: 'config-assistant',

@@ -50,6 +50,7 @@ import { isToolInScope } from '../auth/scopes.js';
 import type { AuthedRequest } from '../auth/middleware.js';
 import type { GatewayConfig } from '../utils/types.js';
 import { ERR_PRIVACY_PROTECTED, type PrivacyConfig, PrivacySchema } from './schemas/privacy.js';
+import { instanceLocal } from '../kernel/instance.js';
 export { ERR_PRIVACY_PROTECTED, type PrivacyConfig, PrivacySchema } from './schemas/privacy.js';
 type Parsed = z.output<typeof PrivacySchema>;
 
@@ -171,7 +172,7 @@ export class EpsilonLedger {
     this.spent.clear();
   }
 }
-export const epsilonLedger = new EpsilonLedger();
+export const epsilonLedger = instanceLocal('privacy', 'epsilonLedger', () => new EpsilonLedger()); // 14.0.0: per gateway instance (F3)
 
 export function privacyOf(cfg: GatewayConfig): Parsed | undefined {
   if (!cfg.privacy) return undefined;
