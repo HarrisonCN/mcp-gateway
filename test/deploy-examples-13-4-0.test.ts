@@ -17,7 +17,9 @@ import { logger } from '../src/utils/logger.js';
 logger.setLevel('error');
 const root = fileURLToPath(new URL('..', import.meta.url));
 const ex = (p: string) => join(root, 'examples/deploy', p);
-const V = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string }).version;
+const PKG = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string }).version;
+// 15.0.0-rc.1: while the package carries a prerelease (npm `next`), the examples keep the stable `latest` release
+const V = PKG.includes('-') ? (JSON.parse(readFileSync(join(root, 'scripts/docs-check.json'), 'utf8')) as { prerelease: { stable: string } }).prerelease.stable : PKG;
 const MAJOR = V.split('.')[0];
 const IMAGE = 'ghcr.io/harrisoncn/mcp-gateway';
 const KEY = 'deploy-example-key-0123456789abcdef0123';

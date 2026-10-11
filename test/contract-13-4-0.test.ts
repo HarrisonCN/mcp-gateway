@@ -84,7 +84,7 @@ const start = async (cfg: GatewayConfig) => {
   await gw.start();
   return gw;
 };
-const semver = (v: string) => v.split('.').map(Number).reduce((a, n) => a * 1000 + n, 0);
+const semver = (v: string) => v.split('-')[0].split('.').map(Number).reduce((a, n) => a * 1000 + n, 0);
 
 beforeAll(async () => {
   for (const id of IDS) expect(await loadFeature(id), `load ${id}`).toBe(true);
