@@ -9,6 +9,8 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
+> **15.0 release candidate:** `15.0.0-rc.1` is available for testing under the npm dist-tag `next` (`npm i @winstonsayno/mcp-gateway@next`; image `:15.0.0-rc.1`). `latest` stays on 14.x. The 15.0 API / config freeze, what changes and how to upgrade: [freeze list](docs/v15/freeze.md) · [migrating to v15](docs/migrating-to-v15.md) · [release candidate notice](docs/v15/release-candidate.md).
+
 **One authenticated, observable endpoint in front of all your MCP servers.**
 
 mcp-gateway sits between AI clients (Claude Code, Cursor, your own agents, LLM apps, web and mobile front-ends) and

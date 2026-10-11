@@ -1,0 +1,74 @@
+name: Soak
+
+# 14.9.0: long-running soak (scripts/soak.mjs) — two gateway instances sharing a real Redis, steady load from several
+# tenants, fault injection (kill -9 + restart, instance ↔ Redis partition, Redis restart), invariants (no cross-tenant
+# leakage, no repeated non-idempotent execution) and p95 / p99 / throughput / memory growth / recovery time compared
+# with a baseline measured by the same harness on the same runner (default: 13.3.0, the roadmap's v13.3 baseline).
+#
+# The 15.0.0 gate is a 72 h run. GitHub-hosted runners stop jobs after 6 h, so the 72 h run needs a self-hosted runner
+# (labels: self-hosted, linux, soak — a dedicated machine, nothing else running, so the baseline comparison is fair):
+#   gh workflow run soak.yml -f duration=72h -f runner=soak -f baseline_duration=6h
+# Short runs (≤ 5 h) fit on ubuntu-latest: gh workflow run soak.yml -f duration=2h -f runner=ubuntu-latest
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: Soak duration (e.g. 45m, 6h, 72h)
+        default: 2h
+      runner:
+        description: "'soak' (self-hosted, required above 5h) or 'ubuntu-latest'"
+        default: ubuntu-latest
+      baseline:
+        description: Baseline release measured first with the same settings (empty = no baseline run)
+        default: 13.3.0
+      baseline_duration:
+        description: Baseline duration (same settings, shorter is fine for latency / throughput; memory growth needs hours)
+        default: 1h
+
+permissions:
+  contents: read
+
+concurrency:
+  group: soak
+  cancel-in-progress: false
+
+jobs:
+  soak:
+    name: Soak (${{ inputs.duration }})
+    runs-on: ${{ inputs.runner == 'soak' && fromJSON('["self-hosted","linux","soak"]') || inputs.runner }}
+    timeout-minutes: 4500 # 75 h: self-hosted jobs may run up to 5 days; GitHub-hosted ones are cut at 6 h anyway
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: redis-server
+        run: |
+          command -v redis-server || { sudo apt-get update -q && sudo apt-get install -y -q redis-server && sudo systemctl stop redis-server || true; }
+          redis-server --version
+      - name: Baseline (${{ inputs.baseline }})
+        if: inputs.baseline != ''
+        run: |
+          mkdir -p /tmp/baseline && cd /tmp/baseline && echo '{"private":true}' > package.json
+          npm i -s --no-audit --no-fund "@winstonsayno/mcp-gateway@${{ inputs.baseline }}"
+          cd "$GITHUB_WORKSPACE"
+          node scripts/soak.mjs --duration "${{ inputs.baseline_duration }}" --impl /tmp/baseline/node_modules/@winstonsayno/mcp-gateway --out soak-baseline.json --log soak-baseline.log
+      - name: Soak (this commit)
+        run: node scripts/soak.mjs --duration "${{ inputs.duration }}" ${{ inputs.baseline != '' && '--baseline soak-baseline.json' || '' }} --out soak-report.json --log soak.log
+      - name: Summary
+        if: always()
+        run: |
+          [ -f soak-report.json ] || exit 0
+          node -e "const r=require('./soak-report.json'); const s=['## Soak '+r.impl+' — '+(r.pass?'PASS':'FAIL'), '', '| | p50 | p95 | p99 | ok/s | RSS growth MB/h |', '|---|---|---|---|---|---|', '| run | '+r.latencyMs.steady.p50+' | '+r.latencyMs.steady.p95+' | '+r.latencyMs.steady.p99+' | '+r.throughput.steadyOkPerSecond+' | '+(r.memory.growthMbPerHour??'-')+' |', '', 'violations: '+r.violations.length, '', '\`\`\`json', JSON.stringify({vsBaseline:r.vsBaseline, recoveryMs:r.recoveryMs, invariants:r.invariants}, null, 2), '\`\`\`']; require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, s.join('\n'))"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: soak-${{ github.run_id }}
+          path: |
+            soak-report.json
+            soak-baseline.json
+            soak.log
+            soak-baseline.log

@@ -17,7 +17,8 @@
     "Lint and render chart",
     "Load + faults (Node 22)",
     "Compose example boots",
-    "Kubernetes and Helm examples boot (kind)"
+    "Kubernetes and Helm examples boot (kind)",
+    "Upgrade + security regressions (real Redis)"
   ],
   "informational": [
     "Scorecard analysis",

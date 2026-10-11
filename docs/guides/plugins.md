@@ -8,8 +8,10 @@ object, or a factory that receives a context and returns one.
 ```yaml
 plugins:
   - module: ./plugins/tenant-header.mjs   # relative to the config file, or a package name
+    runtime: worker                       # 14.x default: inline; 15.0 default: worker — say which you want
     options: { header: x-tenant }
   - module: '@acme/mcp-gateway-audit'
+    runtime: inline
     enabled: false
 ```
 
@@ -94,6 +96,7 @@ evicted). 5.0 refuses v2 and deprecates v3 (it still loads, with a warning, unti
     ```yaml
     plugins:
       - module: ./plugins/notify.mjs
+        runtime: worker
         secrets:
           SLACK_TOKEN: secret://vault/mcp/slack#token
     ```

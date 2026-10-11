@@ -237,6 +237,33 @@ jobs:
           npx vitest run test/multi-instance-13-7-0.test.ts test/state.test.ts --reporter=default --reporter=json --outputFile.json=multi-instance.json
           node -e "const r=require('./multi-instance.json'); const s=r.testResults.flatMap(f=>f.assertionResults).filter(a=>a.status==='skipped'||a.status==='pending'); const n=r.numPassedTests; console.log(n+' passed'); if(r.numFailedTests||n<13){process.exit(1)}"
 
+  rc-validation:
+    name: Upgrade + security regressions (real Redis)
+    # 14.9.0: v15 release-candidate validation that needs real infrastructure: upgrade / rollback from the published
+    # 13.9.5 and 14.8.0 packages on SQLite and a real redis-server (scripts/upgrade-test.sh), the consolidated security
+    # regression suite (its Redis cases run here) and the fuzz runs at FC_RUNS=1000.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: redis-server
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q redis-server
+          sudo systemctl stop redis-server || true
+          redis-server --version
+      - name: Upgrade / rollback (13.9.5, 14.8.0 → this commit)
+        run: bash scripts/upgrade-test.sh 13.9.5 14.8.0
+      - name: Security regressions, cross-tenant matrix, fuzz
+        env:
+          FC_RUNS: '1000'
+        run: npx vitest run test/security-regressions-14-9-0.test.ts test/cross-tenant-matrix-14-9-0.test.ts test/fuzz-14-9-0.test.ts
+
   js-client:
     name: JS client (Node ${{ matrix.node }})
     runs-on: ubuntu-latest

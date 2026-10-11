@@ -42,6 +42,8 @@ interface Settings {
   lts: Record<string, string>;
   distTags: string[];
   historical: string[];
+  /** 14.9.0: a published pre-release of the next major (npm dist-tag + version, e.g. `next` / `15.0.0-rc.1`). */
+  prerelease?: { tag: string; version: string };
 }
 
 const args = process.argv.slice(2);
@@ -115,7 +117,8 @@ async function check(root: string, opts: { external?: boolean }) {
     ltsAliases.add(line.split('.')[0]);
     ltsAliases.add(latest);
   }
-  const okVersion = (x: string) => ['latest', MAJ, `${MAJ}.${MIN}`, V, ...settings.distTags].includes(x) || ltsAliases.has(x);
+  const pre = settings.prerelease ? [settings.prerelease.tag, settings.prerelease.version] : [];
+  const okVersion = (x: string) => ['latest', MAJ, `${MAJ}.${MIN}`, V, ...settings.distTags, ...pre].includes(x) || ltsAliases.has(x);
   const cli = cliSpec(root);
   const findings: Finding[] = [];
   const stats: Record<string, number> = { files: 0, fences: 0, configs: 0, skipped: 0, links: 0, cli: 0, images: 0 };
@@ -166,7 +169,7 @@ async function check(root: string, opts: { external?: boolean }) {
     const filled = JSON.parse(JSON.stringify({ servers: [], ...doc }).replace(/\$\{([A-Z0-9_]+)(?::-[^}]*)?\}/g, (_m, n: string) => `docs-check-env-${n.toLowerCase()}-0123456789abcdef0123`)) as Record<string, unknown>;
     try {
       const c = validateConfig(filled);
-      if (!hist) for (const d of c.deprecations ?? []) add(rel, line, 'config', `schema v11 field in current docs: ${(d as { path?: string }).path ?? d.id} — use ${(d as { replacement?: string }).replacement ?? 'the v12 form'}`);
+      if (!hist) for (const d of c.deprecations ?? []) add(rel, line, 'config', `${d.id.startsWith('v15.') ? 'removed / changed in 15.0.0' : 'schema v11 field'} in current docs: ${(d as { path?: string }).path ?? d.id} — use ${(d as { replacement?: string }).replacement ?? 'the v12 form'}`);
     } catch (e) {
       const issues = (e as Error).message.replace(/^Invalid configuration:\s*/, '').split(/\n\s*-\s*/).map((x) => x.replace(/^\s*-\s*/, '').trim()).filter(Boolean);
       const real = issues.filter((iss) => {

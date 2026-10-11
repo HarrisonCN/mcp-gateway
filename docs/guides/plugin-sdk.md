@@ -36,6 +36,7 @@ export default definePlugin({
 ```yaml
 plugins:
   - module: ./plugins/notes.mjs
+    runtime: worker       # explicit: 14.x defaults to inline, 15.0 to worker
     options: { max: 50 }
     timeoutMs: 200        # per onToolCall / onResponse call; a timeout fails the call closed (-32006)
 ```

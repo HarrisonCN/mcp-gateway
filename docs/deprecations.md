@@ -36,3 +36,18 @@ mcp-gateway config diff --to v12 -c mcp-gateway.yml                 # preview on
 
 Exit codes: `config migrate` 1 when the compatibility report has errors; `config diff` 3 when the file would change,
 1 on errors. Comments and layout of YAML files are kept.
+
+## Removed in 15.0.0 (announced 14.9.0)
+
+14.9.0 lists these for every config it loads (log warning once per id, `mcp-gateway validate`,
+`GET /api/v1/admin/deprecations`). The full freeze list is [docs/v15/freeze.md](v15/freeze.md); the upgrade steps are
+in [migrating to v15](migrating-to-v15.md).
+
+| Id | What 14.x does | What 15.0.0 does | Do this now |
+|---|---|---|---|
+| `schema.v11` | reads `version: 11` files, migrated in memory (the `v12.*` ids above) | refuses them | `mcp-gateway config migrate --to v12 --in-place -c mcp-gateway.yml` |
+| `v15.plugins.<i>.runtime` | runs a module plugin without `runtime` / `isolation` inline, in the gateway process | runs it in a `worker` (own heap, `limits`, `permissions`, crash isolation) | set `runtime: worker` and test it, or `runtime: inline` to keep the 14.x behaviour |
+| `v15.config.unknown-key.<key>` | ignores a top-level key that is not part of schema v12 (`include:` of a GitOps fragment, a typo such as `servrs:`) | refuses the file | remove or fix the key; render GitOps directories with `mcp-gateway gitops render` |
+
+The `schema/v12-draft/` alias (the 13.9 path of the v12 JSON schemas) is removed in 15.0.0 as well; use
+`schema/v12/config.schema.json`.
