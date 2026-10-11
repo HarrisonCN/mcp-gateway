@@ -69,6 +69,19 @@ export function withTenantScope(
   };
 }
 
+/**
+ * MGW-2026-015 (LTS backport of 14.2.0): the tenant a call by `clientId` to `serverId` acts for — the caller's
+ * membership covering the server (one with call rights first), never another tenant. Falls back to the caller's
+ * first membership only for servers no tenant of the caller covers (such calls are refused by tenant confinement).
+ */
+export function actingTenant(tenants: readonly TenantConfig[] | undefined, clientId: string | undefined, serverId: string): string | undefined {
+  const ms = membershipsOf(tenants, clientId);
+  if (!ms.length) return undefined;
+  const covering = ms.filter((m) => matches(serverId, m.servers));
+  const pick = covering.find((m) => ROLE_RANK[m.role] >= ROLE_RANK.admin) ?? covering[0] ?? ms[0]!;
+  return pick.tenant;
+}
+
 /** Whether the scope may call tools on `serverId` (viewers are read-only). */
 export function canCall(scope: AccessScope | undefined, serverId: string): boolean {
   if (!scope?.writableServers) return true;
