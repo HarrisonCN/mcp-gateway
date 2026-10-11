@@ -282,7 +282,8 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
   const timers = new Map<string, Set<NodeJS.Timeout>>();
   const timersOf = (id: string) => timers.get(id) ?? timers.set(id, new Set()).get(id)!;
   const clearTimers = (id: string) => {
-    for (const t of timers.get(id) ?? []) clearTimeout(t);
+    // clearInterval also clears timeouts in Node; one call for both kinds
+    for (const t of timers.get(id) ?? []) clearInterval(t);
     timers.delete(id);
   };
   const ctxFor = (id: string): FeatureContext => {
@@ -304,7 +305,7 @@ export function createFeatureRouter(deps: FeatureRouterDeps): FeatureRouter {
           },
           clear: (t) => {
             if (!t) return;
-            clearTimeout(t);
+            clearInterval(t);
             timers.get(id)?.delete(t);
           },
         },

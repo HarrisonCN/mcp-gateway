@@ -46,7 +46,7 @@ function exampleConfigs(): Array<{ name: string; text: string }> {
       else if (/^mcp-gateway\.ya?ml$/.test(n)) {
         const txt = readFileSync(p, 'utf8');
         const docs = parseAllDocuments(txt).map((x) => x.toJS());
-        if (docs.length === 1 && docs[0]?.version === 11) out.push({ name: p.slice(ROOT.length + 1), text: txt });
+        if (docs.length === 1 && (docs[0]?.version === 11 || docs[0]?.version === 12)) out.push({ name: p.slice(ROOT.length + 1), text: txt });
         for (const d2 of docs) {
           const cm = d2?.kind === 'ConfigMap' ? d2.data?.['mcp-gateway.yml'] : undefined;
           if (typeof cm === 'string') out.push({ name: `${p.slice(ROOT.length + 1)} (ConfigMap)`, text: cm });
@@ -86,8 +86,8 @@ describe('schema v12 draft files', () => {
     }
     for (const w of ['init', 'reconfigure', 'disable', 'dispose', 'health', 'capabilities']) expect(design).toContain(w);
   });
-  it('13.9 still runs schema v11 only: a v12 file is refused with a pointer to the draft', () => {
-    expect(() => validateConfig({ version: 12 })).toThrow(/v12.*draft/i);
+  it('14.0: schema v12 is the runtime schema; a v11 file without v11-only fields has nothing deprecated', () => {
+    expect(validateConfig({ version: 12 }).schemaVersion).toBe(12);
     expect(validateConfig({ version: 11 }).deprecations).toBeUndefined();
   });
 });
@@ -98,9 +98,9 @@ describe('deprecation inventory → runtime warnings', () => {
     delete process.env.MCP_GATEWAY_SILENCE_DEPRECATIONS;
     vi.restoreAllMocks();
   });
-  it('every inventory entry is removed in 14.0.0 and has a replacement', () => {
+  it('every inventory entry is removed in 15.0.0 (14.0: read via the in-memory migration) and has a replacement', () => {
     for (const d of V12_DEPRECATIONS) {
-      expect(d.removedIn).toBe('14.0.0');
+      expect(d.removedIn).toBe('15.0.0');
       expect(d.since).toBe('13.9.0');
       expect(d.id).toMatch(/^v12\./);
     }
@@ -161,6 +161,13 @@ describe('migration preview: v11 → v12', () => {
       const before = parseYaml(text);
       expect(() => validateConfig(before), name).not.toThrow();
       const r = migrateToV12(text);
+      if (before.version === 12) {
+        // 14.0.0: the examples ship in schema v12 — nothing to migrate, valid against the schema
+        expect(r.changes, name).toEqual([]);
+        expect(validateConfig(before).schemaVersion, name).toBe(12);
+        expect(validate(before), `${name}: ${ajv.errorsText(validate.errors)}`).toBe(true);
+        continue;
+      }
       expect(r.report.errors, name).toEqual([]);
       expect(r.config.version, name).toBe(12);
       expect(validate(r.config), `${name}: ${ajv.errorsText(validate.errors)}`).toBe(true);
@@ -182,7 +189,7 @@ describe('migration preview: v11 → v12', () => {
     expect(c.features.genaiTelemetry).toBeUndefined();
     expect(r.changes.length).toBe(V12_DEPRECATIONS.length + 1);
     expect(r.text).toContain('# OpenTelemetry GenAI export');
-    expect(r.report.warnings.some((w) => /draft/i.test(w))).toBe(true);
+    expect(r.report.warnings.some((w) => /draft/i.test(w))).toBe(false); // 14.0.0: v12 is the runtime schema
     expect(r.report.manual.length).toBeGreaterThan(0);
   });
   it('unified diff of the migration', () => {

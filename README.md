@@ -189,7 +189,7 @@ off by default. See the [chart README](deploy/helm/mcp-gateway/README.md) and th
 `mcp-gateway.yml` — an authenticated gateway with one stdio server:
 
 ```yaml
-version: 11            # config schema (13.x uses schema v11)
+version: 12            # config schema (14.x uses schema v12; v11 files are read until 15.0)
 host: 127.0.0.1        # 0.0.0.0 only together with auth
 port: 4000
 

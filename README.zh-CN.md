@@ -175,7 +175,7 @@ helm install gw ./deploy/helm/mcp-gateway --set existingSecret=gw-secrets
 `mcp-gateway.yml`——开启鉴权、接入一个 stdio 服务器：
 
 ```yaml
-version: 11            # 配置 schema 版本（13.x 使用 v11）
+version: 12            # 配置 schema 版本（14.x 使用 v12；v11 文件读取至 15.0）
 host: 127.0.0.1        # 只有开启鉴权时才改成 0.0.0.0
 port: 4000
 

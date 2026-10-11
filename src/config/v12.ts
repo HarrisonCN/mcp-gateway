@@ -330,6 +330,8 @@ export function moduleDeclarationV12(e: FeatureManifestEntry, mod?: FeatureModul
   if (mod?.mountClient) caps.push('client-routes');
   if (e.hook) caps.push('call-hook');
   if (e.guard) caps.push('security-guard');
+  // 14.0.0: runtime capabilities declared in the manifest (and by the module)
+  for (const c of [...(e.capabilities ?? []), ...(mod?.capabilities ?? [])]) if (!caps.includes(c)) caps.push(c);
   const sections = [...(e.activation ?? []), ...(e.hookWhen ? [e.hookWhen] : [])].map((k) => v12Section(String(k)));
   return {
     id: e.id,

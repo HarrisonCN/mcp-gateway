@@ -10,7 +10,7 @@ image:
   tag: ""
 
 config:
-  version: 11
+  version: 12
   monitor: { prometheus: true }
   servers:
     - id: echo
