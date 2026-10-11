@@ -9,7 +9,7 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-> **15.0 release candidate (coming next):** `15.0.0-rc.1` will be published for testing under the npm dist-tag `next` (`npm i @winstonsayno/mcp-gateway@next`; image `:15.0.0-rc.1`) — until it appears there, `next` does not point at it. `latest` stays on 14.x. The 15.0 API / config freeze, what changes and how to upgrade: [freeze list](docs/v15/freeze.md) · [migrating to v15](docs/migrating-to-v15.md) · [release candidate notice](docs/v15/release-candidate.md).
+> **15.0 release candidate:** `15.0.0-rc.1` is a prerelease for testing under the npm dist-tag `next` (`npm i @winstonsayno/mcp-gateway@next`; image `:15.0.0-rc.1`). `latest`, `:latest` and `:14` stay on 14.9. The 15.0 API / config freeze, what changes and how to upgrade: [freeze list](docs/v15/freeze.md) · [migrating to v15](docs/migrating-to-v15.md) · [release candidate notice](docs/v15/release-candidate.md).
 
 **One authenticated, observable endpoint in front of all your MCP servers.**
 
@@ -197,7 +197,7 @@ off by default. See the [chart README](deploy/helm/mcp-gateway/README.md) and th
 `mcp-gateway.yml` — an authenticated gateway with one stdio server:
 
 ```yaml
-version: 12            # config schema (14.x uses schema v12; v11 files are read until 15.0)
+version: 12            # config schema v12 (15.0 refuses v11 files: mcp-gateway config migrate --to v12)
 host: 127.0.0.1        # 0.0.0.0 only together with auth
 port: 4000
 

@@ -5,7 +5,7 @@
 > until 15.0.0. Upgrade guide: [docs/migration/v13-to-v14.md](../migration/v13-to-v14.md). 13.9.0 shipped this design
 > as a draft (13.x refuses `version: 12`).
 
-Machine-readable schemas (14.0 runtime schema; the 13.9 path `schema/v12-draft/` is kept as an identical, deprecated alias copy until 15.0.0):
+Machine-readable schemas (14.0 runtime schema; the 13.9 alias path `schema/v12-draft/` was removed in 15.0.0):
 
 - [`schema/v12/config.schema.json`](../../schema/v12/config.schema.json): config file (JSON Schema draft-07);
 - [`schema/v12/module.schema.json`](../../schema/v12/module.schema.json): feature module declaration.

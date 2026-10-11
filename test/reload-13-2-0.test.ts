@@ -227,12 +227,12 @@ describe('plugin updates are transactional (13.2.0)', () => {
 
   it('a failing plugin update fails the whole reload; built instances are closed; old ones keep running', async () => {
     reset();
-    h = await startFeatureGw({ configDir: dir, plugins: [{ module: './pa.mjs', options: { tag: 'v1' } }] } as never);
+    h = await startFeatureGw({ configDir: dir, plugins: [{ module: './pa.mjs', runtime: 'inline', options: { tag: 'v1' } }] } as never);
     const gw = h.gw as Gw;
     await call('fake');
     expect(G().seen).toEqual(['pa#1:v1']);
     await expect(
-      gw.reload({ ...gw.config, configDir: dir, logLevel: 'warn', plugins: [{ module: './pa.mjs', options: { tag: 'v2' } }, { module: './broken.mjs' }] } as GatewayConfig),
+      gw.reload({ ...gw.config, configDir: dir, logLevel: 'warn', plugins: [{ module: './pa.mjs', runtime: 'inline', options: { tag: 'v2' } }, { module: './broken.mjs', runtime: 'inline' }] } as GatewayConfig),
     ).rejects.toThrow(/broken plugin/);
     expect(G().closed).toEqual(['pa#2:v2']); // the partially built instance — never the running one
     expect(gw.config.logLevel).not.toBe('warn');
@@ -243,7 +243,7 @@ describe('plugin updates are transactional (13.2.0)', () => {
 
   it('a commit failure after the plugin swap restores the old instances (not closed) and closes the new ones', async () => {
     reset();
-    h = await startFeatureGw({ configDir: dir, plugins: [{ module: './pa.mjs', options: { tag: 'v1' } }] } as never);
+    h = await startFeatureGw({ configDir: dir, plugins: [{ module: './pa.mjs', runtime: 'inline', options: { tag: 'v1' } }] } as never);
     const gw = h.gw as Gw;
     const orig = gw.invoker.refreshPolicy.bind(gw.invoker);
     gw.invoker.refreshPolicy = () => {
@@ -251,7 +251,7 @@ describe('plugin updates are transactional (13.2.0)', () => {
       throw new Error('policy commit exploded');
     };
     await expect(
-      gw.reload({ ...gw.config, configDir: dir, plugins: [{ module: './pa.mjs', options: { tag: 'v2' } }], policy: { rules: [{ effect: 'allow', tools: ['*'] }] } } as GatewayConfig),
+      gw.reload({ ...gw.config, configDir: dir, plugins: [{ module: './pa.mjs', runtime: 'inline', options: { tag: 'v2' } }], policy: { rules: [{ effect: 'allow', tools: ['*'] }] } } as GatewayConfig),
     ).rejects.toThrow(/policy commit exploded/);
     expect(G().closed).toEqual(['pa#2:v2']);
     await call('fake');
@@ -260,14 +260,14 @@ describe('plugin updates are transactional (13.2.0)', () => {
 
   it('a call in flight across a plugin swap runs onResponse of its own generation’s plugins, closed only after it ends', async () => {
     reset();
-    h = await startFeatureGw({ configDir: dir, plugins: [{ module: './pa.mjs', options: { tag: 'v1' } }] } as never);
+    h = await startFeatureGw({ configDir: dir, plugins: [{ module: './pa.mjs', runtime: 'inline', options: { tag: 'v1' } }] } as never);
     const gw = h.gw as Gw;
     let release!: () => void;
     G().hold = new Promise<void>((r) => (release = r));
     const inflight = call('fake');
     await sleep(200);
     G().hold = undefined;
-    await gw.reload({ ...gw.config, configDir: dir, plugins: [{ module: './pa.mjs', options: { tag: 'v2' } }] } as GatewayConfig);
+    await gw.reload({ ...gw.config, configDir: dir, plugins: [{ module: './pa.mjs', runtime: 'inline', options: { tag: 'v2' } }] } as GatewayConfig);
     expect(G().closed).toEqual([]); // still used by the in-flight call
     release();
     expect((await inflight).status).toBe(200);

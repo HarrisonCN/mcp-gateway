@@ -1,5 +1,5 @@
 /**
- * 14.9.0: what 15.0.0 changes, announced one minor ahead (docs/versions.md "Deprecations"; docs/deprecations.md).
+ * 15.0.0 enforces what 14.9.0 announced one minor ahead (docs/versions.md "Deprecations"; docs/deprecations.md).
  *
  * - `v15.plugins.<i>.runtime` — a module plugin without `runtime` / `isolation` runs inline in 14.x; 15.0.0 runs module
  *   plugins in a `worker` by default. Set `runtime: worker` (recommended) or keep the 14.x behaviour with `runtime: inline`.
@@ -10,7 +10,6 @@
  *
  * @module config/v15-deprecations
  */
-import type { Deprecation } from '../utils/deprecations.js';
 
 /** Id prefixes of the 15.0.0 deprecations (docs/deprecations.md, docs/v15/freeze.md). */
 export const V15_DEPRECATION_IDS = ['v15.plugins.<i>.runtime', 'v15.config.unknown-key.<key>', 'schema.v11'] as const;
@@ -35,27 +34,15 @@ export function v12TopLevelKeys(): Set<string> {
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
-/** The 15.0.0 deprecations a raw config (file object, before normalisation) uses. */
-export function v15DeprecationsIn(raw: unknown): Deprecation[] {
-  if (!isObj(raw)) return [];
-  const out: Deprecation[] = [];
-  const plugins = Array.isArray(raw.plugins) ? raw.plugins : [];
-  plugins.forEach((p, i) => {
-    if (!isObj(p) || typeof p.module !== 'string' || p.component !== undefined) return;
-    if (p.runtime !== undefined || p.isolation !== undefined) return;
-    out.push({
-      id: `v15.plugins.${i}.runtime`,
-      message: `plugins[${i}] (${String(p.name ?? p.module)}) has no \`runtime\`: it runs inline in 14.x, and in a worker by default from 15.0.0`,
-      removedIn: '15.0.0',
-      replacement: 'set `runtime: worker` (isolation, limits, permissions; recommended) or `runtime: inline` to keep running in the gateway process',
-    });
-  });
-  if (raw.version === 12) {
-    const known = v12TopLevelKeys();
-    for (const k of Object.keys(raw)) {
-      if (known.has(k)) continue;
-      out.push({ id: `v15.config.unknown-key.${k}`, message: `top-level key \`${k}\` is not part of config schema v12 and is ignored; 15.0.0 refuses unknown keys`, removedIn: '15.0.0', replacement: 'remove it (or fix the typo); GitOps fragments with `include:` are rendered with `mcp-gateway gitops render`, not loaded directly' });
-    }
-  }
-  return out;
+/**
+ * 15.0.0: the errors for what 14.9.0 announced as `v15.config.unknown-key.<key>` — a top-level key of a `version: 12`
+ * file that is not part of config schema v12 refuses the file. (Module plugins without `runtime` now run in a worker
+ * — `v15.plugins.<i>.runtime` needs no error; schema v11 files are refused by the loader.)
+ */
+export function v15ConfigErrors(raw: unknown): string[] {
+  if (!isObj(raw) || raw.version !== 12) return [];
+  const known = v12TopLevelKeys();
+  return Object.keys(raw)
+    .filter((k) => !known.has(k))
+    .map((k) => `${k}: \`${k}\` is not a top-level key of config schema v12 (15.0.0 refuses unknown keys; 14.x ignored them and 14.9 reported \`v15.config.unknown-key.${k}\`) — remove it or fix the typo; GitOps fragments with \`include:\` are rendered with \`mcp-gateway gitops render\`, not loaded directly`);
 }

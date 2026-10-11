@@ -23,6 +23,7 @@ import { Gateway } from '../src/gateway/index.js';
 import type { GatewayConfig } from '../src/utils/types.js';
 import { logger } from '../src/utils/logger.js';
 import { VERSION } from '../src/utils/version.js';
+import { v12Section } from '../src/config/v12.js';
 import { validateConfig } from '../src/config/loader.js';
 import { FEATURE_MANIFEST, failurePolicyOf, hookOwner } from '../src/features/manifest.js';
 import { FEATURE_CONFIG_KEYS, registeredFeature, registerFeature, type FeatureModule } from '../src/gateway/features.js';
@@ -83,7 +84,7 @@ const start = async (cfg: GatewayConfig) => {
   await gw.start();
   return gw;
 };
-const semver = (v: string) => v.split('.').map(Number).reduce((a, n) => a * 1000 + n, 0);
+const semver = (v: string) => v.split('-')[0].split('.').map(Number).reduce((a, n) => a * 1000 + n, 0);
 
 beforeAll(async () => {
   for (const id of IDS) expect(await loadFeature(id), `load ${id}`).toBe(true);
@@ -113,9 +114,10 @@ describe('C1 manifest contract', () => {
       seen.delete(x);
     };
     walk(id);
-    // the minimal section is valid schema-v11 configuration
+    // the minimal section is valid schema-v12 configuration (15.0.0: v12 section names — genaiOtel, policySim, pqTls)
     const { configDir: _dir, ...features } = sections[id] as Record<string, unknown>;
-    expect(() => validateConfig({ version: 11, servers: [], features })).not.toThrow();
+    const v12Features = Object.fromEntries(Object.entries(features).map(([k, v]) => [v12Section(k), v]));
+    expect(() => validateConfig({ version: 12, servers: [], features: v12Features })).not.toThrow();
   });
 });
 

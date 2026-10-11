@@ -67,7 +67,7 @@ import { ControlPlaneSchema } from '../gateway/control-plane.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
 import { validateChains, type ChainsConfig } from '../orchestration/chains.js';
 import { normalizeSchemaVersion, MODULE_CAPABILITIES } from './v12-deprecations.js';
-import { v15DeprecationsIn } from './v15-deprecations.js';
+import { v15ConfigErrors } from './v15-deprecations.js';
 import { configDeprecations, normalizeApiKeyScopes, normalizeFeaturesV10, normalizeSchemaV5, normalizeStoreV9, removedConfigKeys } from '../utils/deprecations.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
@@ -1151,7 +1151,7 @@ const GatewayConfigSchema = z.object({
           }
           if (iso && !['inline', 'worker', 'process'].includes(iso)) issue('isolation', `isolation "${iso}": "isolation" tenant | client | shared settings apply to WASM component plugins only — module plugins use runtime (or isolation): inline | worker | process`);
           if (iso && p.runtime && iso !== p.runtime) issue('runtime', `"runtime: ${p.runtime}" and "isolation: ${iso}" disagree`);
-          const rt = p.runtime ?? (iso as 'inline' | 'worker' | 'process' | undefined) ?? 'inline';
+          const rt = p.runtime ?? (iso as 'inline' | 'worker' | 'process' | undefined) ?? 'worker'; // 15.0.0: worker by default
           const l = p.limits ?? {};
           if (l.maxInstances !== undefined) issue('limits', 'limits.maxInstances applies to WASM component plugins');
           if (rt === 'inline') {
@@ -1311,11 +1311,30 @@ function authSilentlyOff(raw: unknown): string | undefined {
   return `no auth.strategy is set, so authentication would be OFF (strategy "none") although the block has ${[...creds, ...unknown.map((k) => `unknown key "${k}"`)].join(', ')} — set auth.strategy (api-key, jwt, oauth2) or "none" explicitly`;
 }
 
+/** 15.0.0: the error for a schema v11 file (`version: 11`, or no `version` and v11 fields such as `kernel`). */
+export const V11_REFUSED = 'version: config schema v11 is no longer read by 15.0.0 (14.x migrated it in memory and reported `schema.v11`) — rewrite the file with `mcp-gateway config migrate --to v12 --in-place -c <file>` (backup <file>.v11.bak; preview with `mcp-gateway config diff --to v12 -c <file>`), see docs/migrating-to-v15.md';
+
 export function validateConfig(raw: unknown): GatewayConfig {
+  return validate(raw, false);
+}
+
+/**
+ * 15.0.0: validates a schema v11 file as 14.x did (in-memory migration), for the migration tooling only
+ * (`config migrate / diff --to v12`, `migrateToV12`). The gateway itself refuses v11 files ({@link validateConfig}).
+ * @internal
+ */
+export function validateV11ForMigration(raw: unknown): GatewayConfig {
+  return validate(raw, true);
+}
+
+function validate(raw: unknown, allowV11: boolean): GatewayConfig {
   const removed = removedConfigKeys(raw);
   // 14.0.0: schema v12 is the runtime schema; v11 files are migrated in memory (internal form keeps the v11 names)
   const sv = removed.length ? { raw, errors: [] as string[], schemaVersion: undefined } : normalizeSchemaVersion(raw);
-  removed.push(...sv.errors);
+  // 15.0.0: schema v11 files are refused (14.x migrated them in memory) and unknown top-level keys of a v12 file are
+  // refused (14.x ignored them) — both announced in 14.9.0 (docs/migrating-to-v15.md)
+  if (sv.schemaVersion === 11 && !allowV11) removed.push(V11_REFUSED);
+  else removed.push(...sv.errors, ...v15ConfigErrors(raw));
   const v4 = normalizeApiKeyScopes(normalizeSchemaV5(removed.length ? raw : normalizeStoreV9(normalizeFeaturesV10(sv.raw))));
   removed.push(...v4.errors);
   if (removed.length > 0) throw new Error(`Invalid configuration:\n${removed.map((m) => `  - ${m}`).join('\n')}`);
@@ -1331,9 +1350,12 @@ export function validateConfig(raw: unknown): GatewayConfig {
   }
   const config = result.data as GatewayConfig;
   if (sv.schemaVersion) config.schemaVersion = sv.schemaVersion;
-  // 14.9.0: the 15.0.0 deprecations (plugin runtime default, unknown top-level keys) are listed for every schema
-  const deprecations = [...(sv.schemaVersion === 11 ? configDeprecations(raw) : []), ...v15DeprecationsIn(raw)];
-  if (deprecations.length > 0) config.deprecations = deprecations;
+  // a v11 file reaches here only through the migration tooling (validateV11ForMigration): list its v11 fields
+  if (sv.schemaVersion === 11) {
+    const deprecations = configDeprecations(raw);
+    if (deprecations.length > 0) config.deprecations = deprecations;
+  }
+
   return config;
 }
 

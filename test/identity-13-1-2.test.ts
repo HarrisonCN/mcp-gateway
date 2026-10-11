@@ -250,7 +250,7 @@ describe('acceptance 5: identity keys include the issuer when several issuers ar
   });
 
   it('config with several issuers refuses ambiguous unqualified client patterns', () => {
-    const cfg = (extra: Record<string, unknown>) => ({ version: 11, servers: [], auth: { strategy: 'oauth2', oauth: { authorizationServers: ['https://a.example', 'https://b.example'] } }, ...extra });
+    const cfg = (extra: Record<string, unknown>) => ({ version: 12, servers: [], auth: { strategy: 'oauth2', oauth: { authorizationServers: ['https://a.example', 'https://b.example'] } }, ...extra });
     expect(() => validateConfig(cfg({ tenants: [{ id: 't', servers: ['*'], members: [{ client: 'oauth:alice', role: 'admin' }] }] }))).toThrow(/issuer/);
     expect(() => validateConfig(cfg({ policy: { rules: [{ clients: ['oauth:bob'], effect: 'deny' }] } }))).toThrow(/issuer/);
     expect(() => validateConfig(cfg({ tenants: [{ id: 't', servers: ['*'], members: [{ client: 'oauth:https://a.example#alice', role: 'admin' }] }] }))).not.toThrow();

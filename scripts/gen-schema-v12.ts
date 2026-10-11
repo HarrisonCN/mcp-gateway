@@ -2,7 +2,7 @@
  * Writes the config schema v12 JSON Schemas (14.0.0) from the code:
  *   schema/v12/config.schema.json   (buildV12ConfigSchema)
  *   schema/v12/module.schema.json   (buildV12ModuleSchema)
- * and the same files to schema/v12-draft/ — the 13.9 path, kept as a deprecated alias copy until 15.0.0.
+ * (15.0.0: the 13.9 alias copy under schema/v12-draft/ is removed.)
  *
  *   npx tsx scripts/gen-schema-v12.ts [--check]
  *
@@ -15,7 +15,7 @@ import '../src/config/loader.js';
 import { buildV12ConfigSchema, buildV12ModuleSchema } from '../src/config/v12.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const DIRS = ['schema/v12', 'schema/v12-draft'];
+const DIRS = ['schema/v12'];
 const files: Record<string, unknown> = { 'config.schema.json': buildV12ConfigSchema(), 'module.schema.json': buildV12ModuleSchema() };
 let drift = 0;
 for (const d of DIRS) for (const [name, schema] of Object.entries(files)) {

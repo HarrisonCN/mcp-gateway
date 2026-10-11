@@ -139,13 +139,16 @@ describe('X4 concurrency and breaker recovery', () => {
 });
 
 describe('X5 compatibility and config', () => {
-  it('isolation: worker alias, inline unchanged, onRequest refused in a worker, per-hook failure policy', async () => {
+  it('isolation: worker alias, worker by default (15.0) and explicit inline, onRequest refused in a worker, per-hook failure policy', async () => {
     const d = dir();
     const m = write(d, 'plain.mjs', `export default { name: 'plain', apiVersion: 5, onToolCall: (c) => ({ action: 'rewrite', arguments: { ...c.arguments, x: process.pid } }) };`);
     const iso = await run({ module: m, isolation: 'worker' }, d);
     expect(pluginRuntimeOf(iso.p)).toBe('worker');
     expect((iso.c.arguments as { x: number }).x).toBe(process.pid); // same pid: a thread, not a process
-    const inline = await run({ module: m }, d);
+    // 15.0.0: no runtime → worker; inline only when asked for
+    const dflt = await run({ module: m }, d);
+    expect(pluginRuntimeOf(dflt.p)).toBe('worker');
+    const inline = await run({ module: m, runtime: 'inline' }, d);
     expect(pluginRuntimeOf(inline.p)).toBe('inline');
     expect((inline.c.arguments as { x: number }).x).toBe(process.pid);
     const proc = await run({ module: m, runtime: 'process' }, d);
@@ -165,8 +168,11 @@ describe('X5 compatibility and config', () => {
     const base = { version: 12, servers: [] } as Record<string, unknown>;
     expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', isolation: 'worker', limits: { memoryMb: 64 } }] })).not.toThrow();
     expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', isolation: 'tenant' }] })).toThrow(/isolation/);
-    expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', permissions: { network: false } }] })).toThrow(/isolated runtime/);
-    expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', limits: { memoryMb: 64 } }] })).toThrow(/runtime: worker \| process/);
+    // 15.0.0: a module plugin without runtime runs in a worker, so permissions / limits apply; inline refuses them
+    expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', permissions: { network: false } }] })).not.toThrow();
+    expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', limits: { memoryMb: 64 } }] })).not.toThrow();
+    expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', runtime: 'inline', permissions: { network: false } }] })).toThrow(/isolated runtime/);
+    expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', runtime: 'inline', limits: { memoryMb: 64 } }] })).toThrow(/runtime: worker \| process/);
     expect(() => validateConfig({ ...base, plugins: [{ component: './p.wasm', limits: { memoryMb: 16, timeoutMs: 50 } }] })).not.toThrow();
     expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', runtime: 'worker', isolation: 'process' }] })).toThrow(/disagree/);
     // the v12 JSON Schema describes the same block

@@ -4,7 +4,8 @@ import { mkdtempSync, writeFileSync, readFileSync, appendFileSync, existsSync } 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
-import { validateConfig, generateDefaultConfig, loadConfig } from '../src/config/loader.js';
+// 15.0.0: these tests cover the pre-v12 migration chain, whose output (schema v11) only the migration tooling reads
+import { validateV11ForMigration as validateConfig, generateDefaultConfig, loadConfig } from '../src/config/loader.js';
 import { migrateConfigText } from '../src/config/migrate.js';
 import { configDeprecations, removedConfigKeys, normalizeStoreV9, DEPRECATIONS } from '../src/utils/deprecations.js';
 import { portableConfig } from '../src/gateway/admin.js';
@@ -60,7 +61,7 @@ describe('9.0: schema v9', () => {
 
   it('MCP_GATEWAY_REDIS_URL sets store.backend: redis on a v9 file (8.9 wrote the conflicting `state` block)', async () => {
     const dir = tmp();
-    writeFileSync(join(dir, 'mcp-gateway.yml'), 'version: 11\nstore: { failureMode: closed }\nservers: []\n');
+    writeFileSync(join(dir, 'mcp-gateway.yml'), 'version: 12\nstore: { failureMode: closed }\nservers: []\n');
     process.env.MCP_GATEWAY_REDIS_URL = 'redis://env:6379';
     const cfg = await loadConfig(join(dir, 'mcp-gateway.yml'));
     expect(cfg.state).toMatchObject({ store: 'redis', redis: { url: 'redis://env:6379' }, failureMode: 'closed' });

@@ -14,7 +14,7 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { parse as parseYaml } from 'yaml';
 import express from 'express';
-import { validateConfig } from '../src/config/loader.js';
+import { validateConfig, validateV11ForMigration } from '../src/config/loader.js';
 import { portableConfig } from '../src/gateway/admin.js';
 import { resetDeprecations } from '../src/utils/deprecations.js';
 import { logger } from '../src/utils/logger.js';
@@ -63,29 +63,27 @@ describe('14.0 config: schema v12 is the runtime schema', () => {
     expect(() => validateConfig({ version: 13, servers: [] })).toThrow(/version/);
   });
 
-  it('auto-migrates a v11 file in memory: same runtime config, one deprecation per field (removed in 15.0.0), a startup notice', () => {
+  it('15.0.0: a v11 file is refused with the migrate command; the migration tooling still reads it (same runtime config as v12)', () => {
     const v11 = { version: 11, servers: [], kernel: { modules: 'eager', failurePolicy: { billing: 'closed' } }, features: { genaiTelemetry: { otlpEndpoint: 'http://c:4318' }, postQuantumTls: {} } };
-    const cfg = validateConfig(v11) as any;
+    expect(() => validateConfig(v11)).toThrow(/schema v11 is no longer read by 15\.0\.0.*config migrate --to v12 --in-place/s);
+    const cfg = validateV11ForMigration(v11) as any; // what `config migrate --to v12` reads
     expect(cfg.schemaVersion).toBe(11);
     expect(moduleMode(cfg)).toBe('eager');
-    expect(cfg.deprecations.map((d: any) => d.id).sort()).toEqual(['v12.features.genaiTelemetry', 'v12.features.postQuantumTls', 'v12.kernel.failurePolicy', 'v12.kernel.modules']);
-    for (const d of cfg.deprecations) expect(d.removedIn).toBe('15.0.0');
-    expect(schemaNotice(cfg)).toMatch(/schema v11.*migrated in memory.*15\.0.*config migrate --to v12/s);
-    // the same file written as v12 gives the same runtime config
     const v12 = validateConfig({ version: 12, servers: [], modules: { activation: 'eager', failurePolicy: { billing: 'closed' } }, features: { genaiOtel: { otlpEndpoint: 'http://c:4318' }, pqTls: {} } }) as any;
     const strip = (c: any) => { const { schemaVersion: _s, deprecations: _d, version: _v, ...rest } = c; return rest; };
     expect(strip(v12)).toEqual(strip(cfg));
   });
 
-  it('an unversioned file is v12 unless it uses a v11-only field', () => {
+  it('an unversioned file is v12; one that uses a v11-only field is a v11 file and refused (15.0.0)', () => {
     expect((validateConfig({ servers: [] }) as any).schemaVersion).toBe(12);
     expect((validateConfig({ servers: [], features: { genaiOtel: {} } }) as any).schemaVersion).toBe(12);
-    expect((validateConfig({ servers: [], kernel: { modules: 'lazy' } }) as any).schemaVersion).toBe(11);
-    expect(() => validateConfig({ servers: [], kernel: { modules: 'lazy' }, modules: { activation: 'lazy' } })).toThrow(/both/);
+    expect(() => validateConfig({ servers: [], kernel: { modules: 'lazy' } })).toThrow(/schema v11 is no longer read/);
+    expect(() => validateConfig({ servers: [], features: { genaiTelemetry: {} } })).toThrow(/schema v11 is no longer read/);
+    expect(() => validateV11ForMigration({ servers: [], kernel: { modules: 'lazy' }, modules: { activation: 'lazy' } })).toThrow(/both/);
   });
 
-  it('the admin API returns the running config in v12 form (also when the file was v11)', () => {
-    const cfg = validateConfig({ version: 11, servers: [], kernel: { modules: 'eager' }, features: { genaiTelemetry: {} } });
+  it('the admin API returns the running config in v12 form', () => {
+    const cfg = validateV11ForMigration({ version: 11, servers: [], kernel: { modules: 'eager' }, features: { genaiTelemetry: {} } });
     const p = portableConfig(cfg) as any;
     expect(p.version).toBe(12);
     expect(p.kernel).toBeUndefined();
@@ -95,17 +93,6 @@ describe('14.0 config: schema v12 is the runtime schema', () => {
     expect((validateConfig(p) as any).schemaVersion).toBe(12);
   });
 
-  it('the startup notice and the deprecation warnings are logged once at start', async () => {
-    const warn = vi.spyOn(logger, 'warn');
-    const cfg = validateConfig({ version: 11, servers: [], kernel: { modules: 'lazy' } });
-    const h = await startFeatureGw({ kernel: cfg.kernel, deprecations: cfg.deprecations, schemaVersion: cfg.schemaVersion } as any);
-    await h.gw.reload({ ...(h.gw as any).config });
-    await h.stop();
-    const lines = warn.mock.calls.map((c) => String(c[0]));
-    expect(lines.filter((l) => /Config file uses schema v11/.test(l) && /15\.0/.test(l))).toHaveLength(1);
-    expect(lines.filter((l) => /DEPRECATED \(removed in 15\.0\.0\).*kernel\.modules/.test(l))).toHaveLength(1);
-    warn.mockRestore();
-  });
 });
 
 describe('14.0 migration tool: config migrate --to v12 writes files', () => {

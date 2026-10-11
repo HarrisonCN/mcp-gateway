@@ -393,10 +393,10 @@ async function assertUnchanged(v: VerifiedArtifact, label: string): Promise<void
 
 const dataUrl = (bytes: Buffer) => `data:text/javascript;base64,${bytes.toString('base64')}`;
 
-/** 14.3.0: which runtime a module plugin entry asks for (`runtime`, or the `isolation: worker|process|inline` alias). */
-export function runtimeOfConfig(cfg: PluginConfig): 'inline' | IsolatedRuntime | undefined {
+/** 14.3.0: which runtime a module plugin entry asks for (`runtime`, or the `isolation: worker|process|inline` alias); 15.0.0: `worker` when it names none. */
+export function runtimeOfConfig(cfg: PluginConfig): 'inline' | IsolatedRuntime {
   const iso = cfg.isolation as string | undefined;
-  return cfg.runtime ?? (iso === 'inline' || iso === 'worker' || iso === 'process' ? iso : undefined);
+  return cfg.runtime ?? (iso === 'inline' || iso === 'worker' || iso === 'process' ? iso : undefined) ?? 'worker'; // 15.0.0: worker by default
 }
 
 /** 14.3.0: where a loaded plugin runs — `inline` (in the gateway process), `worker`, `process` or `wasm`. */
@@ -406,7 +406,6 @@ export function pluginRuntimeOf(p: unknown): 'inline' | IsolatedRuntime | 'wasm'
   return typeof (p as { stats?: unknown })?.stats === 'function' ? 'wasm' : 'inline';
 }
 
-let inlineNoticeShown = false;
 
 /** Plugin API v5 outcome (`{ action }`) → the internal shape; v4 shapes pass through. */
 export function normalizeToolCallOutcome(out: unknown): ToolCallOutcome {
@@ -456,10 +455,6 @@ export async function loadPlugin(cfg: PluginConfig, baseDir = process.cwd(), tru
   if (verified) await assertUnchanged(verified, label);
   const target = verified ? dataUrl(verified.bytes) : isPath ? pathToFileURL(resolve(baseDir, spec)).href : spec;
   if (runtime === 'worker' || runtime === 'process') return loadIsolated(cfg, runtime, target, isPath ? dirname(resolve(baseDir, spec)) : undefined);
-  if (!runtime && !inlineNoticeShown) {
-    inlineNoticeShown = true;
-    logger.info(`Plugin ${label} runs in the gateway process (runtime: inline). Set \`runtime: worker\` for isolation, resource limits and permissions — worker becomes the default for module plugins in 15.0 (docs/guides/plugin-security.md).`);
-  }
   let mod: Record<string, unknown>;
   try {
     mod = (await import(target)) as Record<string, unknown>;

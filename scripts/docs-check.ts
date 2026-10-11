@@ -43,7 +43,8 @@ interface Settings {
   distTags: string[];
   historical: string[];
   /** 14.9.0: a published pre-release of the next major (npm dist-tag + version, e.g. `next` / `15.0.0-rc.1`). */
-  prerelease?: { tag: string; version: string };
+  /** 15.0.0-rc.1: while package.json carries a prerelease, docs are checked against `stable` (the npm `latest` release). */
+  prerelease?: { tag: string; version: string; stable?: string };
 }
 
 const args = process.argv.slice(2);
@@ -107,7 +108,9 @@ export function cliSpec(root: string): Map<string, Set<string>> {
 async function check(root: string, opts: { external?: boolean }) {
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string; name: string };
   const settings = JSON.parse(readFileSync(join(root, 'scripts/docs-check.json'), 'utf8')) as Settings;
-  const V = pkg.version;
+  // 15.0.0-rc.1: a prerelease package (e.g. 15.0.0-rc.1 on `next`) does not change what the docs call current —
+  // README, image tags and examples keep naming the stable `latest` release until GA.
+  const V = pkg.version.includes('-') && settings.prerelease?.stable ? settings.prerelease.stable : pkg.version;
   const [MAJ, MIN] = V.split('.');
   const historical = settings.historical.map(globToRe);
   const isHistorical = (f: string) => historical.some((r) => r.test(f));
@@ -399,7 +402,7 @@ async function check(root: string, opts: { external?: boolean }) {
     if (mv && mv !== V) add('dashboard/demo/mock.js', 1, 'version', `demo VERSION ${mv} != package ${V}`);
   }
   const lock = JSON.parse(readFileSync(join(root, 'package-lock.json'), 'utf8')) as { version?: string };
-  if (lock.version !== V) add('package-lock.json', 1, 'version', `package-lock version ${lock.version} != package ${V}`);
+  if (lock.version !== pkg.version) add('package-lock.json', 1, 'version', `package-lock version ${lock.version} != package ${pkg.version}`);
 
   // 14.7.0: gitops config directories — each environment rendered (includes, overlays, secret references) and validated
   for (const dir of [...gitopsRoots].sort()) {

@@ -18,7 +18,7 @@
  */
 
 import { parseDocument, isMap, isScalar, type Document, type YAMLMap, type Pair, type Scalar } from 'yaml';
-import { validateConfig, CONFIG_FILE_KEYS } from './loader.js';
+import { validateConfig, validateV11ForMigration, CONFIG_FILE_KEYS } from './loader.js';
 import type { FeatureManifestEntry, FailurePolicy } from '../features/manifest.js';
 import { FEATURE_MANIFEST, failurePolicyOf } from '../features/manifest.js';
 import { FEATURE_CONFIG_KEYS, type FeatureModule } from '../gateway/features.js';
@@ -92,7 +92,7 @@ export function migrateToV12(text: string, format?: 'yaml' | 'json', names: { fr
   if (version !== undefined && version !== 11) return fail(`unsupported config version ${JSON.stringify(version)} (expected 11)`);
   if (version === undefined) report.warnings.push('no `version:` in the file — read as schema v11 (it uses v11 fields) or v12; `version: 12` is added');
   try {
-    validateConfig(doc.toJS());
+    validateV11ForMigration(doc.toJS()); // 15.0.0: the loader refuses v11; migration still reads it
   } catch (e) {
     report.errors.push(`the file is not a valid v11 config — fix it first:\n${(e as Error).message.replace(/^Invalid configuration:\n?/, '')}`);
   }

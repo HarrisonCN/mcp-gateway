@@ -9,7 +9,7 @@
 
 [English](README.md) · **简体中文**
 
-> **15.0 发布候选（即将发布）：** `15.0.0-rc.1` 将在 14.9.0 之后以 npm dist-tag `next` 发布供测试（`npm i @winstonsayno/mcp-gateway@next`；镜像 `:15.0.0-rc.1`）——在 `next` 指向它之前尚未发布。`latest` 仍为 14.x。15.0 的 API / 配置冻结、变更内容与升级方法：[冻结清单](docs/v15/freeze.md) · [迁移到 v15](docs/migrating-to-v15.md) · [发布候选说明](docs/v15/release-candidate.md)。
+> **15.0 发布候选：** `15.0.0-rc.1` 是以 npm dist-tag `next` 发布的预发布版本，供测试（`npm i @winstonsayno/mcp-gateway@next`；镜像 `:15.0.0-rc.1`）。`latest`、`:latest` 与 `:14` 仍为 14.9。15.0 的 API / 配置冻结、变更内容与升级方法：[冻结清单](docs/v15/freeze.md) · [迁移到 v15](docs/migrating-to-v15.md) · [发布候选说明](docs/v15/release-candidate.md)。
 
 **在所有 MCP 服务器前面，只放一个带鉴权、可观测的入口。**
 

@@ -1,7 +1,8 @@
 /** 7.0: schema v7 only — `admin` / `dashboard` removed (now `controlPlane`), `migrate --to 7`. */
 import { describe, it, expect } from 'vitest';
 import { parse } from 'yaml';
-import { validateConfig } from '../src/config/loader.js';
+// 15.0.0: these tests cover the pre-v12 migration chain, whose output (schema v11) only the migration tooling reads
+import { validateV11ForMigration as validateConfig } from '../src/config/loader.js';
 import { migrateConfigText, migrateConfigObject } from '../src/config/migrate.js';
 import { configDeprecations, removedConfigKeys } from '../src/utils/deprecations.js';
 import { configEtag, distributedConfig } from '../src/gateway/control-plane.js';
