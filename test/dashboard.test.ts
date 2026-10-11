@@ -7,9 +7,11 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import vm from 'vm';
-import { VERSION } from '../src/utils/version.js';
+import { VERSION as PKG_VERSION } from '../src/utils/version.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
+// 15.0.0-rc.1: the Pages demo keeps the stable release while the package carries a prerelease (docs-check.json prerelease.stable)
+const VERSION: string = PKG_VERSION.includes('-') ? JSON.parse(readFileSync(new URL('../scripts/docs-check.json', import.meta.url), 'utf8')).prerelease.stable : PKG_VERSION;
 const html = readFileSync(`${root}dashboard/index.html`, 'utf8');
 const mockSrc = readFileSync(`${root}dashboard/demo/mock.js`, 'utf8');
 

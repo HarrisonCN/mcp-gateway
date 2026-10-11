@@ -77,8 +77,10 @@ describe('Kubernetes operator and Helm (6.8)', () => {
     expect(crd).toEqual(MCPGATEWAY_CRD);
     const chart = parse(readFileSync(new URL('../deploy/helm/mcp-gateway/Chart.yaml', import.meta.url), 'utf8'));
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-    expect(chart.appVersion).toBe(pkg.version);
-    expect(chart.version).toBe(pkg.version);
+    // 15.0.0-rc.1: a prerelease (npm `next`) does not move the chart — it keeps the stable release (docs-check.json prerelease.stable)
+    const stable = pkg.version.includes('-') ? JSON.parse(readFileSync(new URL('../scripts/docs-check.json', import.meta.url), 'utf8')).prerelease.stable : pkg.version;
+    expect(chart.appVersion).toBe(stable);
+    expect(chart.version).toBe(stable);
     const values = parse(readFileSync(new URL('../deploy/helm/mcp-gateway/values.yaml', import.meta.url), 'utf8'));
     expect(values.operator.enabled).toBe(false);
     expect(values.config).toBeTypeOf('object');

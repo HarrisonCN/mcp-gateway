@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [14.9.0] - 2026-10-11
 
-v15 release candidate line (roadmap 14.9 "v15 候选版"). 14.9.0 freezes the 15.0 API and config surface, announces the three 15.0 breaking changes as run-time deprecations, and adds the validation the 15.0 gates need: upgrade / rollback tests on real stores, migration validation, a consolidated security regression suite, a cross-tenant matrix, fuzz / property runs and a soak harness. The soak found unbounded growth of durable task-graph state, fixed here. `15.0.0-rc.1` follows on the npm dist-tag `next`; `latest` stays on 14.x.
+v15 release candidate line (roadmap 14.9 "v15 候选版"). 14.9.0 freezes the 15.0 API and config surface, announces the three 15.0 breaking changes as run-time deprecations, and adds the validation the 15.0 gates need: upgrade / rollback tests on real stores, migration validation, a consolidated security regression suite, a cross-tenant matrix, fuzz / property runs and a soak harness. The soak found unbounded growth of durable task-graph state; the fix here removes the latency blow-up and the unexecuted runs, but memory growth remains (see Known issue). `15.0.0-rc.1` follows on the npm dist-tag `next`; `latest` stays on 14.x.
 
 ### Added
 
@@ -51,7 +51,11 @@ v15 release candidate line (roadmap 14.9 "v15 候选版"). 14.9.0 freezes the 15
 
 ### Fixed
 
-- **Durable task graphs: state and sweep cost grew without bound** (found by the 30-minute soak: gateway RSS +712 MB/h). The sweep (every 2 s by default) loaded every run record ever written, and finished runs were never deleted. A sweep now loads only runs not known to be finished (a full pass every 30th sweep re-checks the rest and applies retention), and finished runs expire after `retentionHours`.
+- **Durable task graphs: sweep cost and stored state grew without bound** (found by the 30-minute soak). The sweep (every 2 s by default) loaded every run record ever written, and finished runs were never deleted. A sweep now loads only runs not known to be finished (a full pass every 30th sweep re-checks the rest and applies retention), and finished runs expire after `retentionHours`. In the soak this removed the latency blow-up (p95 343 → 13 ms) and the durable runs that were never executed (8 → 0). *Corrected after release:* it did **not** remove the memory growth — see Known issue.
+
+### Known issue
+
+- **Memory growth under sustained load is not fixed in 14.9.0.** In the 30-minute soak (2 instances + Redis, durable task graphs enabled) gateway RSS still grew about 620 MB/h with this release, against about 30 MB/h for 13.3.0 on the same harness and machine. Under investigation; it blocks v15 gate A.
 
 ### Changed
 
