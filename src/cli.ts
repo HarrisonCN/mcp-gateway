@@ -793,6 +793,51 @@ taskOpts(dlqCmd.command('discard <id>').description('Give up on the run (its com
   taskCall(o, 'POST', `/dlq/${encodeURIComponent(id)}/discard`, { compensate: o.compensate !== false, wait: true }, (d) => `discarded ${d.id}${d.run ? ` (run ${(d.run as { status: string }).status})` : ''}`),
 );
 
+// ─── 14.5.0: multi-region consistency ─────────────────────────────────────────
+
+/** Human-readable `regions report`. */
+export function formatRegionsReport(d: Record<string, unknown>): string {
+  const peers = (d.peers ?? []) as Array<Record<string, unknown>>;
+  const ms = (v: unknown) => (typeof v === 'number' ? `${v} ms` : '—');
+  const lines = [
+    `region ${String(d.self)} — ${d.fresh ? 'fresh' : 'NOT FRESH'} (max staleness ${ms(d.maxStalenessMs)}, on stale: ${String(d.onStale)}, max clock skew ${ms(d.maxClockSkewMs)})`,
+    `replicated:   ${((d.boundaries as { replicated?: string[] })?.replicated ?? []).join(', ')}`,
+    `region-local: ${((d.boundaries as { regionLocal?: string[] })?.regionLocal ?? []).join(', ')}`,
+    '',
+    'peer            status   fresh  lag        skew       clock     policy',
+  ];
+  for (const p of peers)
+    lines.push(
+      `${String(p.id).padEnd(15)} ${String(p.status).padEnd(8)} ${(p.fresh ? 'yes' : 'NO').padEnd(6)} ${ms(p.lagMs).padEnd(10)} ${ms(p.skewMs).padEnd(10)} ${String(p.clockSkew).padEnd(9)} ${p.policyDrift ? 'DRIFT' : 'same'}${p.lastError ? `  (${String(p.lastError)})` : ''}`,
+    );
+  if (!peers.length) lines.push('(no peers)');
+  const rej = (d.rejected ?? {}) as Record<string, number>;
+  const den = (d.denied ?? {}) as Record<string, number>;
+  lines.push('', `revocations ${String(d.revocations ?? 0)} · kv keys ${String(d.keys ?? 0)} · conflicts ${String(d.conflicts ?? 0)} · rejected entries ${Object.entries(rej).map(([k, v]) => `${k} ${v}`).join(', ')} · denied calls stale ${den.stale ?? 0}, revoked ${den.revoked ?? 0}`);
+  return lines.join('\n');
+}
+async function regionsCall(options: { url?: string; key?: string; json?: boolean }, method: string, path: string, body?: unknown, show?: (d: Record<string, unknown>) => string, okStatus: number[] = []): Promise<void> {
+  try {
+    const r = await adminCall(options.url ?? process.env.MCP_GATEWAY_URL ?? 'http://localhost:4000', options.key ?? process.env.MCP_GATEWAY_ADMIN_KEY, method, `/admin/regions${path}`, body);
+    if (r.status >= 400 && !okStatus.includes(r.status)) throw new Error(`Gateway answered ${r.status}: ${String(r.data.message ?? r.data.error ?? '')}`);
+    console.log(options.json || !show ? JSON.stringify(r.data, null, 2) : show(r.data));
+    if (r.status >= 400) process.exit(2);
+  } catch (err) {
+    logger.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+const regionsCmd = program.command('regions').description('Multi-region consistency (14.5): report, health, replicated revocations');
+taskOpts(regionsCmd.command('report').description('Consistency report: boundaries, freshness and lag per peer, clock skew, conflicts, policy drift')).action((o) =>
+  regionsCall(o, 'GET', '/report', undefined, formatRegionsReport),
+);
+taskOpts(regionsCmd.command('health').description('Exit 0 when this region is fresh, 2 when it is not')).action((o) =>
+  regionsCall(o, 'GET', '/health', undefined, (d) => `region ${String(d.region)}: ${d.fresh ? 'fresh' : `NOT fresh (stale peers: ${((d.stale ?? []) as string[]).join(', ')})`}`, [503]),
+);
+taskOpts(regionsCmd.command('revoke <clientId>').description('Revoke a client id in every region (replicated; cannot be undone)').option('--reason <text>', 'Reason (replicated)')).action((id, o) =>
+  regionsCall(o, 'POST', '/revocations', { clientId: id, ...(o.reason ? { reason: o.reason } : {}) }, (d) => `revoked ${String(d.clientId)} (region ${String(d.region)})`),
+);
+
 program.parse(process.argv);
 
 if (!process.argv.slice(2).length) {

@@ -34,7 +34,7 @@ async function region(redisUrl: string) {
   const cfg = {
     port: 0, host: '127.0.0.1', logLevel: 'error', monitor: { requestLog: false },
     servers: [fakeServer('fake')],
-    auth: { strategy: 'api-key', apiKeys: ['op', { key: 'scoped', name: 'scoped', servers: ['fake'], rateLimit: { limit: 2, windowSeconds: 60 } }, { key: 'other', name: 'other', servers: ['fake'] }] },
+    auth: { strategy: 'api-key', apiKeys: ['op', { key: 'scoped', name: 'scoped', servers: ['fake'], rateLimit: { limit: 2, windowSeconds: 60 } }, { key: 'other', name: 'other', servers: ['fake'] }, { key: 'third', name: 'third', servers: ['fake'] }] },
     state: { store: 'redis', redis: { url: redisUrl, connectTimeoutMs: 500, commandTimeoutMs: 1000, keyPrefix: 'mgw-region:' } },
   } as unknown as GatewayConfig;
   const gw = new Gateway(cfg);
@@ -80,6 +80,7 @@ describe.skipIf(!redisServerAvailable)('14.5.0 regions: partition with two gatew
     await A.admin('/revocations', { clientId: 'key:other', reason: 'compromised' });
     await until(() => B.call('other'), (x) => x.text.includes(String(ERR_REGION_REVOKED)), 1500 + 1500);
 
+    expect((await A.call('third')).status).toBe(200);
     // hard partition (both directions): neither region can confirm freshness → both fail closed
     toB.refuse();
     toA.refuse();
@@ -87,14 +88,25 @@ describe.skipIf(!redisServerAvailable)('14.5.0 regions: partition with two gatew
     expect((await B.call('op')).text).toContain(String(ERR_REGION_STALE));
     expect((await A.call('op')).text).toContain(String(ERR_REGION_STALE));
     // a revocation issued during the partition is applied in B once it heals; B never served while unsure
-    await B.admin('/revocations', { clientId: 'key:scoped' });
+    expect((await A.call('third')).text).toContain(String(ERR_REGION_STALE));
+    await B.admin('/revocations', { clientId: 'key:third' });
     toB.heal();
     toA.heal();
     await until(async () => [(await A.admin('/health')).status, (await B.admin('/health')).status], (s) => s[0] === 200 && s[1] === 200, 8000);
-    expect((await A.call('scoped')).text).toContain(String(ERR_REGION_REVOKED));
+    expect((await A.call('third')).text).toContain(String(ERR_REGION_REVOKED));
     expect((await A.call('op')).status).toBe(200);
     const report = await A.admin('/report');
     expect(report.body.revocations).toBe(2);
     expect(report.body.peers[0]).toMatchObject({ id: 'b', status: 'up', fresh: true });
+    expect(report.body.store).toMatchObject({ status: 'ok' });
+
+    // a second instance of region A (same Redis) learns the region's revocations through the shared store
+    const A2 = await region(r1.url);
+    await A2.gw.reload({ ...A2.cfg, regions: { self: 'a', syncIntervalMs: 250, consistency: { maxStalenessMs: 1500 }, peers: [] } } as GatewayConfig);
+    await until(() => A2.call('other'), (x) => x.text.includes(String(ERR_REGION_REVOKED)), 3000);
+    expect((await A2.call('op')).status).toBe(200);
+    // the region store goes away → the instance cannot confirm freshness → fail closed
+    await r1.kill();
+    await until(() => A2.call('op'), (x) => x.text.includes(String(ERR_REGION_STALE)), 6000);
   }, 60_000);
 });

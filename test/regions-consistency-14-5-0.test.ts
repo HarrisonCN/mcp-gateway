@@ -138,7 +138,7 @@ const regionsCfg = (self: string, peer: { id: string; url: string }, consistency
 async function pair(consistency: Record<string, unknown> = {}) {
   const a = await startFeatureGw({ servers: [fakeServer('fake')], auth: AUTH } as never);
   gws.push(a);
-  const b = await startFeatureGw({ servers: [fakeServer('fake')], auth: AUTH, regions: regionsCfg('b', { id: 'a', url: a.base }, consistency) } as never);
+  const b = await startFeatureGw({ servers: [fakeServer('fake')], auth: AUTH, monitor: { requestLog: false, prometheus: true }, regions: regionsCfg('b', { id: 'a', url: a.base }, consistency) } as never);
   gws.push(b);
   await a.gw.reload({ ...(a.gw as any).config, regions: regionsCfg('a', { id: 'b', url: b.base }, consistency) }); // eslint-disable-line @typescript-eslint/no-explicit-any
   await until(async () => [(await a.admin('regions/health')).status, (await b.admin('regions/health')).status], (s) => s[0] === 200 && s[1] === 200);
