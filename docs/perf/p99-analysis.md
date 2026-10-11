@@ -16,7 +16,7 @@ release can be read from the PR's checks.
 | Stage | What it covers |
 |---|---|
 | `queue` | waiting for admission (`overload:` only) |
-| `auth` | HTTP authentication: API key / JWT / OAuth, lockout, tenant scope |
+| `auth` | HTTP authentication: API key / JWT / OAuth, lockout, tenant scope (plus the rate limit on REST) |
 | `authz` | the central authorizer (scope, delegation, tool exposure) |
 | `policy` | plugin `onToolCall`, policy rules / approvals, residency, quotas, budgets |
 | `hooks` | feature-module call hooks (before + after) and the output filter |

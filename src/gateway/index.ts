@@ -749,6 +749,8 @@ export class Gateway {
   /** 13.8.0: admission control middleware (after authentication); a no-op unless `overload.enabled`. */
   private admitFor(kind: 'rest' | 'mcp'): RequestHandler {
     return (req, res, next) => {
+      const t0 = res.locals.mgwAuthT0;
+      if (typeof t0 === 'number') this.stages.record('auth', performance.now() - t0);
       const o = this.overload;
       if (!o.enabled) return next();
       const clientId = (req as AuthedRequest).clientId;

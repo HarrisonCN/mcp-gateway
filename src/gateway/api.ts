@@ -130,7 +130,7 @@ export class CapturedResponse implements ToolCallResponse {
 }
 
 export interface ApiRouterOptions {
-  /** 13.8.0: per-stage latency (HTTP authentication is recorded as stage `auth`). */
+  /** 13.8.0: per-stage latency (marks the start of stage `auth` for the admission middleware). */
   stages?: import('./stages.js').StageTimer;
   /** 13.8.0: admission control (load protection) for tool calls, after authentication and rate limit. */
   admit?: RequestHandler;
@@ -320,7 +320,7 @@ export function createApiRouter(
     const scoped = withTenantScope(cfg.tenants, r.clientId, r.scope);
     if (scoped) r.scope = scoped;
   };
-  const authInner: RequestHandler = withLockout(
+  const auth: RequestHandler = withLockout(
     (req, res, next) =>
       authMw(req, res, (err?: unknown) => {
         if (err) return next(err);
@@ -329,17 +329,13 @@ export function createApiRouter(
       }),
     () => lockout,
   );
-  // 13.8.0: HTTP authentication time (stage `auth`), recorded once per request that passes.
-  const stages = options.stages;
-  const auth: RequestHandler = stages
-    ? (req, res, next) => {
-        const t0 = performance.now();
-        authInner(req, res, (err?: unknown) => {
-          if (!err) stages.record('auth', performance.now() - t0);
-          next(err as never);
-        });
-      }
-    : authInner;
+  // 13.8.0: stage `auth` (authentication + rate limit) is measured from router entry to admission (see admitFor).
+  if (options.stages) {
+    router.use((_req, res, next) => {
+      res.locals.mgwAuthT0 = performance.now();
+      next();
+    });
+  }
   const admit: RequestHandler = (req, res, next) => (options.admit ? options.admit(req, res, next) : next());
   const rateLimit: RequestHandler = (req, res, next) => limiterFor(req)(req, res, next);
   const protectable =

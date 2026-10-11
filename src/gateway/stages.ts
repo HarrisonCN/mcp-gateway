@@ -4,7 +4,7 @@
  *
  * Stages (see docs/perf/p99-analysis.md):
  *  - `queue`    waiting for admission (`overload:`; only when load protection is on)
- *  - `auth`     HTTP authentication (API key / JWT / OAuth, lockout, tenant scope)
+ *  - `auth`     HTTP authentication (API key / JWT / OAuth, lockout, tenant scope), plus the rate limit on REST
  *  - `authz`    the central authorizer (client / tenant / delegation scope, tool exposure)
  *  - `policy`   plugin `onToolCall`, tool policy rules / approvals, residency, quotas and budgets
  *  - `hooks`    feature-module call hooks (before + after) and the output filter
