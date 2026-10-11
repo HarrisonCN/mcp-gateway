@@ -42,11 +42,11 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { registerFeature, badRequest, objectBody, type FeatureContext } from '../gateway/features.js';
-import { deniedPrincipal, type Principal } from '../auth/authorizer.js';
+import { clientPrincipal, deniedPrincipal, type Principal } from '../auth/authorizer.js';
 import { registerCallHook, type HookCall } from '../gateway/hooks.js';
 import { globToRegExp } from '../utils/tool-filter.js';
 import { ERR_NOT_CONNECTED, ERR_TIMEOUT } from '../proxy/index.js';
@@ -124,9 +124,16 @@ export class EdgeState {
   persist(what: 'outbox' | 'cache'): void {
     if (!this.dir) return;
     try {
-      mkdirSync(this.dir, { recursive: true });
+      // MGW-2026-018: the outbox / cache carry queued arguments, cached results and the caller's principal
+      mkdirSync(this.dir, { recursive: true, mode: 0o700 });
+      try {
+        chmodSync(this.dir, 0o700);
+      } catch {
+        /* not ours to change */
+      }
       const tmp = join(this.dir, `.${what}.tmp`);
-      writeFileSync(tmp, JSON.stringify(what === 'outbox' ? this.outbox : Object.fromEntries(this.cache)));
+      writeFileSync(tmp, JSON.stringify(what === 'outbox' ? this.outbox : Object.fromEntries(this.cache)), { mode: 0o600 });
+      chmodSync(tmp, 0o600);
       renameSync(tmp, join(this.dir, `${what}.json`));
     } catch (e) {
       logger.warn(`edge-autonomy: ${what} write failed: ${(e as Error).message}`);
@@ -240,10 +247,29 @@ let inflight: Promise<ReconcileResult> | undefined;
  * Replay queued outbox entries whose server is reachable again. Runs are serialized: a call made while a reconcile is
  * already running (e.g. the background loop) joins it and returns that run's result instead of reporting zeros.
  */
-export async function reconcile(cfg: GatewayConfig, invoke: FeatureContext['invoke'], principalFor: (clientId: string | undefined) => Principal = deniedPrincipal): Promise<ReconcileResult> {
+/**
+ * MGW-2026-018: the principal a replay runs as — the queuing client's *current* scope (a key removed or re-scoped while
+ * the edge was offline does not act through the outbox; a stored delegation chain still narrows). `undefined` = the
+ * credential was removed: the call is not replayed.
+ */
+function replayPrincipal(e: OutboxEntry, principalFor: (clientId: string | undefined) => Principal, resolveScope?: FeatureContext['resolveScope']): Principal | undefined {
+  const p = e.principal;
+  if (!p) {
+    const r = resolveScope?.(e.clientId);
+    if (r && !r.known) return undefined;
+    return principalFor(e.clientId);
+  }
+  if (p.kind !== 'client' || !resolveScope) return p;
+  const r = resolveScope(p.id);
+  if (r === undefined) return p; // the scope travels with the credential (JWT / OAuth)
+  if (!r.known) return undefined;
+  return { ...clientPrincipal(p.id, r.scope), ...(p.delegation?.length ? { delegation: p.delegation } : {}) };
+}
+
+export async function reconcile(cfg: GatewayConfig, invoke: FeatureContext['invoke'], principalFor: (clientId: string | undefined) => Principal = deniedPrincipal, resolveScope?: FeatureContext['resolveScope']): Promise<ReconcileResult> {
   if (!edgeAutonomyOf(cfg)) return { applied: 0, failed: 0, conflicts: 0, pending: 0 };
   if (inflight) return inflight;
-  inflight = reconcileOnce(cfg, invoke, principalFor);
+  inflight = reconcileOnce(cfg, invoke, principalFor, resolveScope);
   try {
     return await inflight;
   } finally {
@@ -251,7 +277,7 @@ export async function reconcile(cfg: GatewayConfig, invoke: FeatureContext['invo
   }
 }
 
-async function reconcileOnce(cfg: GatewayConfig, invoke: FeatureContext['invoke'], principalFor: (clientId: string | undefined) => Principal): Promise<ReconcileResult> {
+async function reconcileOnce(cfg: GatewayConfig, invoke: FeatureContext['invoke'], principalFor: (clientId: string | undefined) => Principal, resolveScope?: FeatureContext['resolveScope']): Promise<ReconcileResult> {
   const c = edgeAutonomyOf(cfg)!;
   const out = { applied: 0, failed: 0, conflicts: 0, pending: 0 };
   edgeState.reconciling = true;
@@ -267,8 +293,13 @@ async function reconcileOnce(cfg: GatewayConfig, invoke: FeatureContext['invoke'
       replaying.add(args);
       let r: ProxyResponse;
       try {
-        // 11.1: replayed under the principal that queued the call (re-authorized now), else the client's current scope.
-        r = await invoke(e.serverId, e.tool, args, e.principal ?? principalFor(e.clientId), e.clientId);
+        // MGW-2026-018: replayed as the queuing client's current scope; a removed credential is never replayed.
+        const who = replayPrincipal(e, principalFor, resolveScope);
+        if (who) r = await invoke(e.serverId, e.tool, args, who, e.clientId);
+        else {
+          e.attempts = Math.max(e.attempts, c.reconcile.maxAttempts); // parked for the operator, never executed
+          r = { success: false, durationMs: 0, error: { code: -32003, message: `not replayed: the credential that queued this call (${e.principal?.id ?? e.clientId ?? 'unknown'}) was removed (MGW-2026-018)` } };
+        }
       } catch (err) {
         r = { success: false, durationMs: 0, error: { code: -32603, message: (err as Error).message } };
       }
@@ -348,7 +379,7 @@ registerFeature({
     let stopped = false;
     const loop = async () => {
       const c = edgeAutonomyOf(ctx.config());
-      if (c && edgeState.outbox.some((e) => e.status === 'queued')) await reconcile(ctx.config(), ctx.invoke, ctx.principalFor).catch((e: unknown) => logger.warn(`edge-autonomy: reconcile failed: ${(e as Error).message}`));
+      if (c && edgeState.outbox.some((e) => e.status === 'queued')) await reconcile(ctx.config(), ctx.invoke, ctx.principalFor, ctx.resolveScope).catch((e: unknown) => logger.warn(`edge-autonomy: reconcile failed: ${(e as Error).message}`));
       if (!stopped) {
         timer = setTimeout(() => void loop(), c?.reconcile.intervalMs ?? 5000);
         timer.unref?.();
@@ -405,7 +436,7 @@ registerFeature({
     });
     router.post('/reconcile', async (_req, res) => {
       if (!conf(res)) return;
-      res.json(await reconcile(ctx.config(), ctx.invoke, ctx.principalFor));
+      res.json(await reconcile(ctx.config(), ctx.invoke, ctx.principalFor, ctx.resolveScope));
     });
     router.post('/outbox/:id/retry', (req, res) => {
       if (!conf(res)) return;
