@@ -130,6 +130,13 @@ export class CapturedResponse implements ToolCallResponse {
 }
 
 export interface ApiRouterOptions {
+  /** 13.8.0: per-stage latency (marks the start of stage `auth` for the admission middleware). */
+  stages?: import('./stages.js').StageTimer;
+  /** 13.8.0: admission control (load protection) for tool calls, after authentication and rate limit. */
+  admit?: RequestHandler;
+  /** 13.8.0: `GET /metrics?view=stages` — per-stage latency and load-protection state. */
+  perf?: () => Record<string, unknown>;
+
   /** Enables POST /servers/:id/reconnect and reconnect info. */
   supervisor?: ServerSupervisor;
   /** Makes GET /health/ready answer 503 while the gateway is shutting down. */
@@ -324,6 +331,14 @@ export function createApiRouter(
       }),
     () => lockout,
   );
+  // 13.8.0: stage `auth` (authentication + rate limit) is measured from router entry to admission (see admitFor).
+  if (options.stages) {
+    router.use((_req, res, next) => {
+      res.locals.mgwAuthT0 = performance.now();
+      next();
+    });
+  }
+  const admit: RequestHandler = (req, res, next) => (options.admit ? options.admit(req, res, next) : next());
   const rateLimit: RequestHandler = (req, res, next) => limiterFor(req)(req, res, next);
   const protectable =
     (flag: 'health' | 'metrics'): RequestHandler =>
@@ -482,6 +497,7 @@ export function createApiRouter(
   });
 
   router.get('/metrics', protectable('metrics'), (req, res) => {
+    if (req.query.view === 'stages' && options.perf) return void res.json(options.perf());
     const samples = serverStateSamples(registry, proxy);
     if (cfg.monitor?.prometheus && wantsPrometheus(req)) {
       res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8').send(metrics.toPrometheusText(samples));
@@ -782,6 +798,7 @@ export function createApiRouter(
     '/tools/call',
     auth,
     rateLimit,
+    admit,
     asyncHandler(async (req, res) => {
       await runToolCall(req, (req.body ?? {}) as Record<string, unknown>, res);
     }),
@@ -792,6 +809,7 @@ export function createApiRouter(
     '/tools/stream',
     auth,
     rateLimit,
+    admit,
     asyncHandler(async (req, res) => {
       const limits = cfg.streaming ?? {};
       res.status(200).set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });

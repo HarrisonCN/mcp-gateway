@@ -200,6 +200,8 @@ export interface McpEndpointDeps {
   metrics: MetricsCollector;
   /** Auth middleware (sets `clientId`). */
   authenticate: RequestHandler;
+  /** 13.8.0: admission control (load protection) for POSTs, after authentication. */
+  admit?: RequestHandler;
   /** Count one rate-limited call for the request. */
   takeRateLimit: (req: Request) => RateLimitDecision | undefined | Promise<RateLimitDecision | undefined>;
   /**
@@ -336,7 +338,13 @@ export class McpEndpoint {
     };
     const path = this.cfg.path;
     const guard: RequestHandler = (req, res, next) => this.checkOrigin(req, res, next);
-    r.post(path, guard, this.deps.authenticate, json, (req, res, next) => {
+    const admit: RequestHandler = (req, res, next) => (this.deps.admit ? this.deps.admit(req, res, next) : next());
+    // 13.8.0: start of stage `auth` (authentication), read by the admission middleware
+    const stamp: RequestHandler = (_req, res, next) => {
+      res.locals.mgwAuthT0 = performance.now();
+      next();
+    };
+    r.post(path, stamp, guard, this.deps.authenticate, admit, json, (req, res, next) => {
       this.handlePost(req, res).catch(next);
     });
     r.get(path, guard, this.deps.authenticate, (req, res, next) => {

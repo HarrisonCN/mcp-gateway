@@ -1,0 +1,779 @@
+{
+  "version": "13.8.0-pre",
+  "generatedAt": "2026-10-11T00:41:47.478Z",
+  "machine": {
+    "node": "v22.23.3",
+    "platform": "linux-arm64",
+    "cpus": 2,
+    "cpuModel": "unknown"
+  },
+  "method": {
+    "callsPerRun": 300,
+    "rounds": 3,
+    "concurrency": 1,
+    "tool": "echo over Streamable HTTP (REST /api/v1/tools/call)",
+    "allocation": "heap growth / calls, --expose-gc --max-semi-space-size=64"
+  },
+  "baseline": {
+    "p50Ms": 1.835,
+    "p99Ms": 12.043,
+    "allocKbPerCall": 126.679
+  },
+  "durationSeconds": 298,
+  "modules": [
+    {
+      "id": "conformance",
+      "since": "5.1.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 4.132,
+        "heapKb": 26
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "regions",
+      "since": "5.2.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 5.464,
+        "heapKb": 24
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "edge-fleet",
+      "since": "5.3.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 6.719,
+        "heapKb": 11
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "marketplace",
+      "since": "5.4.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 44.551,
+        "heapKb": 611
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "sessions",
+      "since": "5.5.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 2.769,
+        "heapKb": 43
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "dlp",
+      "since": "5.6.0",
+      "hook": "dlp",
+      "failurePolicy": "closed",
+      "import": {
+        "ms": 6.352,
+        "heapKb": 35
+      },
+      "call": {
+        "status": "measured",
+        "section": "dlp",
+        "addedP50Ms": 0.184,
+        "addedP99Ms": -1.713,
+        "addedAllocKbPerCall": 37.872,
+        "p50Ms": 2.231,
+        "p99Ms": 10.92,
+        "errors": 0
+      }
+    },
+    {
+      "id": "adaptive",
+      "since": "5.8.0",
+      "hook": "adaptive",
+      "failurePolicy": "open",
+      "import": {
+        "ms": 4.963,
+        "heapKb": 36
+      },
+      "call": {
+        "status": "measured",
+        "section": "adaptive",
+        "addedP50Ms": 0.13,
+        "addedP99Ms": 1.52,
+        "addedAllocKbPerCall": 1.366,
+        "p50Ms": 1.964,
+        "p99Ms": 12.905,
+        "errors": 0
+      }
+    },
+    {
+      "id": "api-upstreams",
+      "since": "6.1.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 9.894,
+        "heapKb": 27
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "genai-otel",
+      "since": "6.3.0",
+      "hook": "genai-otel",
+      "failurePolicy": "open",
+      "import": {
+        "ms": 8.377,
+        "heapKb": 48
+      },
+      "call": {
+        "status": "measured",
+        "section": "genaiTelemetry",
+        "addedP50Ms": 0.302,
+        "addedP99Ms": 1.657,
+        "addedAllocKbPerCall": 8.908,
+        "p50Ms": 2.309,
+        "p99Ms": 14.111,
+        "errors": 0
+      }
+    },
+    {
+      "id": "identity",
+      "since": "6.4.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 291.016,
+        "heapKb": 845
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "policy-sim",
+      "since": "6.5.0",
+      "hook": "policy-shadow",
+      "failurePolicy": "open",
+      "import": {
+        "ms": 7.447,
+        "heapKb": 20
+      },
+      "call": {
+        "status": "measured",
+        "section": "policyShadow",
+        "addedP50Ms": 0.015,
+        "addedP99Ms": -0.226,
+        "addedAllocKbPerCall": 5.151,
+        "p50Ms": 1.637,
+        "p99Ms": 9.482,
+        "errors": 0
+      }
+    },
+    {
+      "id": "anomaly",
+      "since": "6.6.0",
+      "hook": "anomaly",
+      "failurePolicy": "closed",
+      "import": {
+        "ms": 7.602,
+        "heapKb": 51
+      },
+      "call": {
+        "status": "measured",
+        "section": "anomaly",
+        "addedP50Ms": 0.117,
+        "addedP99Ms": 0.12,
+        "addedAllocKbPerCall": 31.505,
+        "p50Ms": 1.792,
+        "p99Ms": 10.352,
+        "errors": 0
+      }
+    },
+    {
+      "id": "billing",
+      "since": "6.7.0",
+      "hook": "billing",
+      "failurePolicy": "open",
+      "import": {
+        "ms": 11.568,
+        "heapKb": 28
+      },
+      "call": {
+        "status": "measured",
+        "section": "billing",
+        "addedP50Ms": 0.088,
+        "addedP99Ms": -1.836,
+        "addedAllocKbPerCall": 5.294,
+        "p50Ms": 1.729,
+        "p99Ms": 9.383,
+        "errors": 0
+      }
+    },
+    {
+      "id": "k8s",
+      "since": "6.8.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 183.418,
+        "heapKb": 806
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "terraform",
+      "since": "7.1.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 16.618,
+        "heapKb": 26
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "console",
+      "since": "7.2.0",
+      "hook": "console",
+      "failurePolicy": "closed",
+      "import": {
+        "ms": 4.644,
+        "heapKb": 26
+      },
+      "call": {
+        "status": "measured",
+        "section": "console",
+        "addedP50Ms": 0.157,
+        "addedP99Ms": -0.473,
+        "addedAllocKbPerCall": 6.39,
+        "p50Ms": 1.769,
+        "p99Ms": 9.409,
+        "errors": 0
+      }
+    },
+    {
+      "id": "sanitize",
+      "since": "7.3.0",
+      "hook": "sanitize",
+      "failurePolicy": "closed",
+      "import": {
+        "ms": 11.171,
+        "heapKb": 30
+      },
+      "call": {
+        "status": "measured",
+        "section": "sanitize",
+        "addedP50Ms": 0.568,
+        "addedP99Ms": 1.267,
+        "addedAllocKbPerCall": 29.937,
+        "p50Ms": 2.362,
+        "p99Ms": 14.847,
+        "errors": 0
+      }
+    },
+    {
+      "id": "semantic-cache",
+      "since": "7.4.0",
+      "hook": "semantic-cache",
+      "failurePolicy": "open",
+      "import": {
+        "ms": 8.683,
+        "heapKb": 33
+      },
+      "call": {
+        "status": "not-activated",
+        "section": "semanticCache",
+        "note": "features.semanticCache: {} does not validate (Invalid configuration:)"
+      }
+    },
+    {
+      "id": "rollouts",
+      "since": "7.5.0",
+      "hook": "rollouts",
+      "failurePolicy": "open",
+      "import": {
+        "ms": 13.105,
+        "heapKb": 40
+      },
+      "call": {
+        "status": "not-activated",
+        "section": "rollouts",
+        "note": "features.rollouts: {} does not validate (Invalid configuration:)"
+      }
+    },
+    {
+      "id": "offline",
+      "since": "7.6.0",
+      "hook": "offline",
+      "failurePolicy": "degrade",
+      "import": {
+        "ms": 5.992,
+        "heapKb": 35
+      },
+      "call": {
+        "status": "measured",
+        "section": "offline",
+        "addedP50Ms": -0.083,
+        "addedP99Ms": -3.619,
+        "addedAllocKbPerCall": 8.665,
+        "p50Ms": 2.547,
+        "p99Ms": 17.983,
+        "errors": 0
+      }
+    },
+    {
+      "id": "approval-flows",
+      "since": "7.7.0",
+      "hook": "approval-flows",
+      "failurePolicy": "closed",
+      "import": {
+        "ms": 6.023,
+        "heapKb": 49
+      },
+      "call": {
+        "status": "measured",
+        "section": "approvalFlows",
+        "addedP50Ms": -0.787,
+        "addedP99Ms": -1.036,
+        "addedAllocKbPerCall": 7.433,
+        "p50Ms": 1.804,
+        "p99Ms": 19.359,
+        "errors": 0
+      }
+    },
+    {
+      "id": "compliance-reports",
+      "since": "7.8.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 24.973,
+        "heapKb": 38
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "agent-identity",
+      "since": "8.1.0",
+      "hook": "agent-identity",
+      "failurePolicy": "closed",
+      "import": {
+        "ms": 33.803,
+        "heapKb": 70
+      },
+      "call": {
+        "status": "not-activated",
+        "section": "agentIdentity",
+        "note": "features.agentIdentity: {} does not validate (Invalid configuration:)"
+      }
+    },
+    {
+      "id": "a2a-federation",
+      "since": "8.2.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 7.05,
+        "heapKb": 34
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "debug-sessions",
+      "since": "8.3.0",
+      "hook": "debug-sessions",
+      "failurePolicy": "degrade",
+      "import": {
+        "ms": 10.678,
+        "heapKb": 83
+      },
+      "call": {
+        "status": "measured",
+        "section": "debugSessions",
+        "addedP50Ms": 0.15,
+        "addedP99Ms": 4.138,
+        "addedAllocKbPerCall": 9.773,
+        "p50Ms": 2.41,
+        "p99Ms": 17.618,
+        "errors": 0
+      }
+    },
+    {
+      "id": "cost-advisor",
+      "since": "8.4.0",
+      "hook": "cost-advisor",
+      "failurePolicy": "open",
+      "import": {
+        "ms": 3.967,
+        "heapKb": 20
+      },
+      "call": {
+        "status": "measured",
+        "section": "costAdvisor",
+        "addedP50Ms": 0.792,
+        "addedP99Ms": -0.81,
+        "addedAllocKbPerCall": 13.762,
+        "p50Ms": 2.743,
+        "p99Ms": 16.583,
+        "errors": 0
+      }
+    },
+    {
+      "id": "blue-green",
+      "since": "8.5.0",
+      "hook": "blue-green",
+      "failurePolicy": "degrade",
+      "import": {
+        "ms": 5.666,
+        "heapKb": 33
+      },
+      "call": {
+        "status": "not-activated",
+        "section": "blueGreen",
+        "note": "features.blueGreen: {} does not validate (Invalid configuration:)"
+      }
+    },
+    {
+      "id": "data-lineage",
+      "since": "8.6.0",
+      "hook": "data-lineage",
+      "failurePolicy": "open",
+      "import": {
+        "ms": 7.195,
+        "heapKb": 27
+      },
+      "call": {
+        "status": "measured",
+        "section": "dataLineage",
+        "addedP50Ms": 0.098,
+        "addedP99Ms": 2.529,
+        "addedAllocKbPerCall": 14.942,
+        "p50Ms": 1.608,
+        "p99Ms": 12.841,
+        "errors": 0
+      }
+    },
+    {
+      "id": "config-assistant",
+      "since": "8.7.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 4.769,
+        "heapKb": 30
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "chaos",
+      "since": "8.8.0",
+      "hook": "chaos",
+      "failurePolicy": "open",
+      "import": {
+        "ms": 10.132,
+        "heapKb": 38
+      },
+      "call": {
+        "status": "measured",
+        "section": "chaos",
+        "addedP50Ms": -0.39,
+        "addedP99Ms": -4.343,
+        "addedAllocKbPerCall": 5.801,
+        "p50Ms": 2.077,
+        "p99Ms": 13.539,
+        "errors": 0
+      }
+    },
+    {
+      "id": "multimodal",
+      "since": "9.1.0",
+      "hook": "multimodal",
+      "failurePolicy": "closed",
+      "import": {
+        "ms": 10.821,
+        "heapKb": 59
+      },
+      "call": {
+        "status": "measured",
+        "section": "multimodal",
+        "addedP50Ms": 0.012,
+        "addedP99Ms": -0.345,
+        "addedAllocKbPerCall": 11.909,
+        "p50Ms": 1.902,
+        "p99Ms": 9.785,
+        "errors": 0
+      }
+    },
+    {
+      "id": "edge-runtime",
+      "since": "9.2.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 5.635,
+        "heapKb": 65
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "confidential",
+      "since": "9.3.0",
+      "hook": "confidential",
+      "failurePolicy": "closed",
+      "import": {
+        "ms": 6.275,
+        "heapKb": 36
+      },
+      "call": {
+        "status": "measured",
+        "section": "confidential",
+        "addedP50Ms": -0.11,
+        "addedP99Ms": 1.708,
+        "addedAllocKbPerCall": 4.232,
+        "p50Ms": 1.682,
+        "p99Ms": 10.37,
+        "errors": 0
+      }
+    },
+    {
+      "id": "tool-registry",
+      "since": "9.4.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 3.749,
+        "heapKb": 94
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "sla",
+      "since": "9.5.0",
+      "hook": "sla",
+      "failurePolicy": "open",
+      "import": {
+        "ms": 4.872,
+        "heapKb": 33
+      },
+      "call": {
+        "status": "measured",
+        "section": "sla",
+        "addedP50Ms": 0.026,
+        "addedP99Ms": 1.844,
+        "addedAllocKbPerCall": 4.748,
+        "p50Ms": 1.427,
+        "p99Ms": 4.68,
+        "errors": 0
+      }
+    },
+    {
+      "id": "self-healing",
+      "since": "9.6.0",
+      "hook": "self-healing",
+      "failurePolicy": "degrade",
+      "import": {
+        "ms": 4.84,
+        "heapKb": 40
+      },
+      "call": {
+        "status": "measured",
+        "section": "selfHealing",
+        "addedP50Ms": 0.178,
+        "addedP99Ms": 2.304,
+        "addedAllocKbPerCall": 12.55,
+        "p50Ms": 1.935,
+        "p99Ms": 10.416,
+        "errors": 0
+      }
+    },
+    {
+      "id": "pq-tls",
+      "since": "9.7.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 4.4,
+        "heapKb": 32
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "ecosystem",
+      "since": "9.8.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 13.039,
+        "heapKb": 80
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "policy-engine",
+      "since": "10.5.0",
+      "hook": "policy-engine",
+      "failurePolicy": "closed",
+      "import": {
+        "ms": 5.649,
+        "heapKb": 47
+      },
+      "call": {
+        "status": "not-activated",
+        "section": "policyEngine",
+        "note": "features.policyEngine: {} does not validate (Invalid configuration:)"
+      }
+    },
+    {
+      "id": "time-travel",
+      "since": "10.6.0",
+      "hook": "time-travel",
+      "failurePolicy": "open",
+      "import": {
+        "ms": 5.637,
+        "heapKb": 92
+      },
+      "call": {
+        "status": "measured",
+        "section": "timeTravel",
+        "addedP50Ms": 0.11,
+        "addedP99Ms": 16.49,
+        "addedAllocKbPerCall": 9.146,
+        "p50Ms": 2.228,
+        "p99Ms": 25.126,
+        "errors": 0
+      }
+    },
+    {
+      "id": "realtime-budgets",
+      "since": "10.6.0",
+      "hook": "realtime-budgets",
+      "failurePolicy": "closed",
+      "import": {
+        "ms": 10.196,
+        "heapKb": 39
+      },
+      "call": {
+        "status": "not-activated",
+        "section": "realtimeBudgets",
+        "note": "features.realtimeBudgets: {} does not validate (Invalid configuration:)"
+      }
+    },
+    {
+      "id": "task-graphs",
+      "since": "10.7.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 8.42,
+        "heapKb": 51
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    },
+    {
+      "id": "edge-autonomy",
+      "since": "10.7.0",
+      "hook": "edge-autonomy",
+      "failurePolicy": "degrade",
+      "import": {
+        "ms": 5.704,
+        "heapKb": 59
+      },
+      "call": {
+        "status": "not-activated",
+        "section": "edgeAutonomy",
+        "note": "features.edgeAutonomy: {} does not validate (Invalid configuration:)"
+      }
+    },
+    {
+      "id": "privacy",
+      "since": "10.8.0",
+      "hook": "privacy",
+      "failurePolicy": "closed",
+      "import": {
+        "ms": 5.237,
+        "heapKb": 82
+      },
+      "call": {
+        "status": "measured",
+        "section": "privacy",
+        "addedP50Ms": 0.026,
+        "addedP99Ms": 2.403,
+        "addedAllocKbPerCall": 10.449,
+        "p50Ms": 1.543,
+        "p99Ms": 17.046,
+        "errors": 0
+      }
+    },
+    {
+      "id": "pq-identity",
+      "since": "10.8.0",
+      "hook": "pq-identity",
+      "failurePolicy": "degrade",
+      "import": {
+        "ms": 30.863,
+        "heapKb": 642
+      },
+      "call": {
+        "status": "not-activated",
+        "section": "pqIdentity",
+        "note": "features.pqIdentity: {} does not validate (Invalid configuration:)"
+      }
+    },
+    {
+      "id": "kernel",
+      "since": "10.0.0",
+      "hook": null,
+      "failurePolicy": null,
+      "import": {
+        "ms": 6.163,
+        "heapKb": 18
+      },
+      "call": {
+        "status": "not-on-call-path"
+      }
+    }
+  ]
+}

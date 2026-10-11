@@ -251,6 +251,8 @@ export interface GatewayConfig {
   regions?: import('../features/schemas/regions.js').RegionsConfig;
   /** Zero-trust upstream mTLS (SPIFFE, certificate rotation) (4.5). */
   mtls?: import('../security/mtls.js').MtlsConfig;
+  /** Load protection: adaptive concurrency limit, per-tenant weighted fair queue, 503 + Retry-After (13.8.0). */
+  overload?: import('../gateway/overload.js').OverloadConfig;
   /** Streaming tool results: SSE backpressure limits (4.4). */
   streaming?: import('../gateway/stream.js').StreamLimits;
   /** Cost accounting per LLM call and budget alerts (4.3). */

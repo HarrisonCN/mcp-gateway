@@ -1095,6 +1095,49 @@ servers:
     maxQueue: 50               # load shedding: the 51st waiting call gets 503 + Retry-After (-32014 on /mcp)
 ```
 
+## Load protection and fair scheduling (13.8)
+
+`overload:` puts admission control in front of every tool call — `POST /api/v1/tools/call`, `/tools/stream` and the
+MCP endpoint's POSTs — after authentication and the rate limit. It is off unless `enabled: true`; without it nothing
+changes. Per-server `maxConcurrency` / `maxQueue` (above) protect one upstream; `overload` protects the gateway as a
+whole and shares it fairly between tenants.
+
+```yaml
+overload:
+  enabled: true
+  concurrency:
+    initial: 64            # calls running at once to start with
+    min: 4
+    max: 512
+    adaptive: true         # follow latency: shrink x0.9 when a window is >tolerance x slower than usual, +1 when healthy and full
+    tolerance: 1.5
+    targetLatencyMs: 250   # optional hard ceiling: windows slower than this shrink the limit too
+  queue:
+    maxSize: 256           # requests waiting for a slot, all tenants together
+    perTenant: 64          # optional cap per tenant
+    timeoutMs: 1000        # longest wait before the request is shed
+  fairness:
+    defaultWeight: 1
+    weights:               # tenant id -> share of capacity while the gateway is saturated
+      acme: 3
+  retryAfterSeconds: 1     # floor for Retry-After (the value grows with the queue ahead)
+```
+
+- **Shedding**: a request that finds the queue (or its tenant's share of it) full, or waits longer than
+  `queue.timeoutMs`, gets **HTTP 503** with `Retry-After`. REST body: `{ error, message, reason, retryAfterSeconds }`
+  (`reason`: `queue-full`, `tenant-queue-full`, `queue-timeout`); MCP: JSON-RPC error **-32030** with the same `data`.
+- **Fair queue**: waiting requests are served by weighted fair queuing across tenants (a client without a tenant is
+  its own flow), so a tenant that floods the gateway gets its weighted share and the others keep being served.
+- **Metrics** (Prometheus, while enabled): `mcp_gateway_overload_limit`, `mcp_gateway_overload_inflight`,
+  `mcp_gateway_overload_queue_depth{tenant}`, `mcp_gateway_overload_admitted_total`,
+  `mcp_gateway_overload_shed_total{reason}`, `mcp_gateway_overload_queue_wait_ms{quantile}`.
+- **Hot reload**: changing `overload` applies to the next request; queued requests keep waiting.
+
+Per-stage latency is always recorded (a few array writes per call): `GET /api/v1/metrics?view=stages` (same access as `/api/v1/metrics`) returns
+p50 / p95 / p99 / max per stage — `queue`, `auth`, `authz`, `policy`, `hooks`, `routing`, `cache`, `upstream`,
+`finish`, `total` — plus the load-protection state, and Prometheus exports `mcp_gateway_stage_duration_ms{stage,quantile}`.
+See [docs/perf/p99-analysis.md](perf/p99-analysis.md).
+
 ## Zero-trust upstream mTLS (4.5)
 
 Present the gateway's X.509 identity to HTTPS upstreams and verify theirs by **SPIFFE ID** instead of hostname.

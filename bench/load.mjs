@@ -154,6 +154,7 @@ async function main() {
   }
   const conn0 = { h: H.stats().connections, h2: H2.stats().connections };
   const tele0 = telemetrySnapshot(gw);
+  gw.stages?.reset?.(); // 13.8.0: per-stage latency of the measured requests only
   gc();
   gc();
   const mem0 = process.memoryUsage();
@@ -284,6 +285,8 @@ async function main() {
     },
     eventLoopDelayP99Ms: r2(eld.percentile(99) / 1e6),
     pool: { upstreamConnections: H.stats().connections - conn0.h + (H2.stats().connections - conn0.h2), openSockets: H.stats().openSockets + H2.stats().openSockets, sessions: H.stats().sessions + H2.stats().sessions },
+    // 13.8.0: where the time goes, per pipeline stage (gateway-side; `total` excludes HTTP parsing / socket time)
+    stages: gw.stages?.report?.().stages ?? null,
     retries: { failovers: tele1.failovers - tele0.failovers, resends: tele1.resends - tele0.resends, recycles: tele1.recycles - tele0.recycles },
     ...(withFaults ? { faultWindows: windows.map((w) => ({ name: w.name, server: w.server, calls: w.calls, errors: w.errors, recoveredMs: w.recoveredMs, afterRecovery: { calls: w.afterCalls, errors: w.afterErrors } })) } : {}),
   };
@@ -378,6 +381,10 @@ if (out) {
   writeFileSync(p, JSON.stringify(file, null, 2) + '\n');
 }
 if (flag('--json') || !cmp) console.log(JSON.stringify(report, null, 2));
+if (report.stages) {
+  lines.push('stages (gateway-side, ms)      p50      p95      p99     mean   count');
+  for (const [k, v] of Object.entries(report.stages)) lines.push(`  ${k.padEnd(26)} ${String(v.p50).padStart(8)} ${String(v.p95).padStart(8)} ${String(v.p99).padStart(8)} ${String(v.mean).padStart(8)} ${String(v.count).padStart(7)}`);
+}
 if (lines.length) console.log(lines.join('\n'));
 if (failed) {
   console.error('Load benchmark: regression against the recorded baseline (see table).');
