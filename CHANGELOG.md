@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [12.0.12] - 2026-10-11
+
+**Security backport (12.x).** Backports the MGW-2026-016 fix from 14.3.0 (the fix only — the 14.3 plugin security
+runtime is not backported); no other changes. The config schema is unchanged.
+
+### Security
+- **MGW-2026-016 (Medium): plugin signature verification checked different bytes than the gateway loaded.** With
+  `pluginTrust`, the gateway verified a plugin file and then imported it again from disk (following its relative
+  imports, which no signature covered; WASM components were read a second time too), so a file swapped between
+  verification and load — or a changed helper module — ran unsigned code despite `requireSigned`. Signed plugins now
+  run exactly the verified bytes (module plugins as a `data:` module, components from the verified buffer); a plugin
+  whose file changed after verification is refused; signed module plugins must be self-contained bundles (they may
+  import `node:` built-ins only).
+
 ## [12.0.11] - 2026-10-11
 
 **Security backport (12.x).** Backports the MGW-2026-015 fix from 14.2.0 (minimal fix only — the optional

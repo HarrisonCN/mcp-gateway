@@ -328,10 +328,11 @@ export class WasmPlugin implements GatewayPlugin {
 
 /** Load a `wasm:` plugin entry (path relative to `baseDir`). */
 export async function loadWasmPlugin(
-  cfg: { wasm: string; name?: string; isolation?: WasmIsolation; limits?: WasmPluginLimits; abi?: WasmAbi },
+  cfg: { wasm: string; name?: string; isolation?: WasmIsolation; limits?: WasmPluginLimits; abi?: WasmAbi; bytes?: Uint8Array },
   baseDir = process.cwd(),
 ): Promise<WasmPlugin> {
   const path = isAbsolute(cfg.wasm) ? cfg.wasm : resolve(baseDir, cfg.wasm);
-  const bytes = new Uint8Array(await readFile(path));
+  // MGW-2026-016: a signed component runs the verified bytes, not a second read of the file
+  const bytes = cfg.bytes ? new Uint8Array(cfg.bytes) : new Uint8Array(await readFile(path));
   return new WasmPlugin({ name: cfg.name ?? cfg.wasm.replace(/^.*[\\/]/, '').replace(/\.wasm$/, ''), bytes, isolation: cfg.isolation, limits: cfg.limits, abi: cfg.abi });
 }
