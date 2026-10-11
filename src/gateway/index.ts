@@ -115,6 +115,8 @@ export class Gateway {
   private live?: LiveRouter;
   /** Data-plane config sync (7.0, `controlPlane.role: data`). */
   dataPlane?: DataPlaneSync;
+  /** 14.1.0: control-plane router (its `rollout` coordinator feeds the cluster metrics). */
+  controlPlaneRouter?: ReturnType<typeof createControlPlaneRouter>;
   private cors: express.RequestHandler;
   private ipFilter?: express.RequestHandler;
   private jsonParser: express.RequestHandler;
@@ -408,11 +410,14 @@ export class Gateway {
       const cp = this.config.controlPlane!;
       this.dataPlane = new DataPlaneSync({
         config: cp,
-        apply: (raw) => this.applyPulledConfig(raw),
-        servers: () => {
-          const all = this.registry.getAllServers();
-          return { total: all.length, online: all.filter((s) => this.registry.getHealth(s.id)?.status === 'online').length };
+        apply: async (raw) => {
+          this.preApplyOnline = this.serverCounts().online;
+          await this.applyPulledConfig(raw);
         },
+        servers: () => this.serverCounts(),
+        // 14.1.0: post-apply health check — a config that leaves every upstream offline (when some were online before
+        // it was applied) is rolled back locally and reported to the control plane as a failed generation
+        healthCheck: () => this.postApplyHealthy(Math.min(5_000, Math.floor((cp.pullIntervalMs ?? 10_000) / 2))),
       });
       const dp = this.dataPlane;
       this.app.use((req, res, next) => {
@@ -485,12 +490,12 @@ export class Gateway {
     // 7.0: control plane — data-plane list, config distribution (role: control) and heartbeats.
     this.app.use(
       '/api/v1',
-      createControlPlaneRouter({
+      (this.controlPlaneRouter = createControlPlaneRouter({
         config: () => this.config,
         portable: () => portableConfig(this.config),
         authenticate: this.router.authenticate,
         isOperator: (req) => this.router!.isOperator(req),
-      }),
+      })),
     );
     this.app.get('/api/v1/data-plane', this.router.authenticate, (req, res) => {
       if (!this.router!.isOperator(req)) return void res.status(403).json({ error: 'Forbidden', message: 'Operator access required' });
@@ -704,6 +709,28 @@ export class Gateway {
   }
 
   /** Data plane (7.0): validate a config pulled from the control plane and hot-apply it (own controlPlane/port/host kept). */
+  private serverCounts(): { online: number; total: number } {
+    const all = this.registry.getAllServers();
+    return { total: all.length, online: all.filter((s) => this.registry.getHealth(s.id)?.status === 'online').length };
+  }
+
+  /** Upstreams online just before the last pulled config was applied (14.1.0 data-plane health check). */
+  private preApplyOnline = 0;
+
+  /**
+   * 14.1.0: healthy unless the applied config has servers, none of them comes online within `graceMs`, and at least
+   * one was online before the apply (an upstream outage that predates the change does not block a new generation).
+   */
+  private async postApplyHealthy(graceMs: number): Promise<boolean> {
+    const deadline = Date.now() + graceMs;
+    for (;;) {
+      const { online, total } = this.serverCounts();
+      if (total === 0 || online > 0 || this.preApplyOnline === 0) return true;
+      if (Date.now() >= deadline) return false;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+
   private async applyPulledConfig(raw: Record<string, unknown>): Promise<void> {
     const { controlPlane: _c, port: _p, host: _h, ...rest } = raw;
     const next = validateConfig({ ...rest, controlPlane: this.config.controlPlane });
@@ -826,6 +853,44 @@ export class Gateway {
         const h = this.stateStore?.health?.();
         return this.stateStore && this.stateStore.kind !== 'memory' ? [{ labels: { backend: this.stateStore.kind }, value: h && h.state !== 'closed' ? 0 : 1 }] : [];
       },
+    });
+    // 14.1.0 cluster rollout: generation this node distributes (control) or runs (data), rollout state, divergence
+    const clusterRole = () => (roleOf(this.config) === 'control' ? 'control' : roleOf(this.config) === 'data' ? 'data' : undefined);
+    t.gauge({
+      name: 'mcp_gateway_cluster_config_generation',
+      help: 'Cluster config generation: the newest one on a control plane, the one running on a data plane (14.1)',
+      read: () => {
+        const role = clusterRole();
+        const g = role === 'control' ? this.controlPlaneRouter?.rollout.current()?.generation : role === 'data' ? this.dataPlane?.status().generation : undefined;
+        return role && g !== undefined ? [{ labels: { role }, value: g }] : [];
+      },
+    });
+    t.gauge({
+      name: 'mcp_gateway_cluster_rollout_state',
+      help: 'Config rollout state on a control plane (1 for the current state) (14.1)',
+      read: () => {
+        const r = clusterRole() === 'control' ? this.controlPlaneRouter?.rollout : undefined;
+        if (!r) return [];
+        const cur = r.status().state;
+        return (['idle', 'canary', 'complete', 'failed', 'rolled-back'] as const).map((state) => ({ labels: { state }, value: state === cur ? 1 : 0 }));
+      },
+    });
+    t.gauge({
+      name: 'mcp_gateway_cluster_diverged_nodes',
+      help: 'Data planes off their target generation for longer than controlPlane.rollout.maxDivergenceMs (14.1)',
+      read: () => {
+        const r = clusterRole() === 'control' ? this.controlPlaneRouter?.rollout : undefined;
+        return r ? [{ labels: {}, value: r.status().diverged.length }] : [];
+      },
+    });
+    t.onCollect(() => {
+      const role = clusterRole();
+      const r = role === 'control' ? this.controlPlaneRouter?.rollout : undefined;
+      if (r) {
+        Telemetry.set(t.clusterRollbacks, { role: 'control', trigger: 'automatic' }, r.rollbacks.automatic);
+        Telemetry.set(t.clusterRollbacks, { role: 'control', trigger: 'manual' }, r.rollbacks.manual);
+      }
+      if (role === 'data' && this.dataPlane) Telemetry.set(t.clusterRollbacks, { role: 'data', trigger: 'health_check' }, this.dataPlane.status().rollbacks);
     });
     t.onCollect(() => {
       const h = this.stateStore?.health?.();

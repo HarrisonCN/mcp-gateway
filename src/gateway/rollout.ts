@@ -1,5 +1,5 @@
 /**
- * Cluster config rollout coordination (14.1.0 "集群协调") — PLACEHOLDER (tests-first).
+ * Cluster config rollout coordination (14.1.0 "集群协调").
  *
  * The control plane numbers every distributed config as a generation, decides which generation each data plane
  * should run (all-at-once or canary → promote), rolls back automatically when data planes fail to apply or fail
@@ -96,6 +96,9 @@ export class RolloutCoordinator {
   private nodes = new Map<string, NodeState>();
   private failures: Array<{ nodeId: string; generation: number; error: string }> = [];
   private lastRollback?: { from: number; to: number; restored: number; reason: string; at: string };
+  private refused?: { etag: string; badGeneration: number; at: string };
+  /** Rollbacks so far (automatic + manual), for `mcp_gateway_cluster_rollbacks_total`. */
+  readonly rollbacks = { automatic: 0, manual: 0 };
 
   constructor(policy: Partial<RolloutPolicy> = {}, opts: { now?: () => number } = {}) {
     this.policy = { ...DEFAULTS, ...policy };
@@ -125,9 +128,12 @@ export class RolloutCoordinator {
   publish(config: Record<string, unknown>, opts: { force?: boolean } = {}): Generation {
     const etag = configEtag(config);
     const cur = this.latest();
+    this.refused = undefined;
     if (cur && cur.etag === etag) return cur;
-    if (!opts.force && this.gens.some((g) => g.bad && g.etag === etag)) {
-      throw new RolloutError(`this config is generation ${this.gens.find((g) => g.bad && g.etag === etag)!.generation}, which failed and was rolled back; publish with force to retry it`);
+    const bad = this.gens.find((g) => g.bad && g.etag === etag);
+    if (!opts.force && bad) {
+      this.refused = { etag, badGeneration: bad.generation, at: new Date(this.now()).toISOString() };
+      throw new RolloutError(`this config is generation ${bad.generation}, which failed and was rolled back; publish with force to retry it`);
     }
     const prev = this.current();
     const gen = this.push({ etag, config, source: 'publish' });
@@ -189,7 +195,7 @@ export class RolloutCoordinator {
       if (this.failures.length >= this.policy.failureThreshold) {
         if (this.policy.autoRollback && this.lastGood(cur.generation)) {
           const reason = `generation ${cur.generation} failed on ${this.failures.map((f) => `${f.nodeId} (${f.error})`).join(', ')}`;
-          this.rollback(undefined, reason);
+          this.rollback(undefined, reason, true);
         } else this.state = 'failed';
       }
     }
@@ -219,7 +225,7 @@ export class RolloutCoordinator {
   }
 
   /** Roll back to `to` (default: the last good generation before the current one) as a new generation. */
-  rollback(to?: number, reason = 'manual rollback'): Generation {
+  rollback(to?: number, reason = 'manual rollback', automatic = false): Generation {
     const cur = this.latest();
     if (!cur) throw new RolloutError('nothing has been published yet');
     const target = to === undefined ? this.lastGood(cur.generation) : this.gens.find((g) => g.generation === to);
@@ -228,6 +234,7 @@ export class RolloutCoordinator {
     const gen = this.push({ etag: target.etag, config: target.config, source: 'rollback', rollbackOf: cur.generation });
     this.lastRollback = { from: cur.generation, to: gen.generation, restored: target.generation, reason, at: new Date(this.now()).toISOString() };
     this.state = 'rolled-back';
+    this.rollbacks[automatic ? 'automatic' : 'manual']++;
     this.stable = undefined;
     this.canary = [];
     this.retarget();
@@ -262,6 +269,7 @@ export class RolloutCoordinator {
       diverged: nodes.filter((n) => n.diverged).map((n) => n.nodeId),
       failures: this.failures.map((f) => ({ ...f })),
       ...(this.lastRollback ? { lastRollback: { ...this.lastRollback } } : {}),
+      ...(this.refused ? { refused: { ...this.refused } } : {}),
       history: this.gens.map((g) => ({ generation: g.generation, etag: g.etag, publishedAt: g.publishedAt, source: g.source, ...(g.rollbackOf ? { rollbackOf: g.rollbackOf } : {}), bad: !!g.bad })),
     };
   }

@@ -18,6 +18,7 @@ import type { RequestMetric, AggregatedMetrics, MonitorConfig } from '../utils/t
 import { matchesQuery, type AuditPage, type AuditQuery, type AuditStore } from './audit.js';
 import { logger } from '../utils/logger.js';
 import { redactString } from '../security/redact.js';
+import { currentScope, processScope } from '../kernel/instance.js';
 
 export interface MetricsOptions {
   /** Hard cap on retained request records (oldest dropped first). Default 100k. */
@@ -51,9 +52,20 @@ interface ServerCounters {
 export const LATENCY_BUCKETS_SECONDS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30];
 
 /** Extra Prometheus lines from feature modules (11.2), keyed by source id (re-registering replaces). */
-const metricSources = new Map<string, () => string[]>();
+/**
+ * Extra Prometheus line sources. 14.1.0: kept per gateway instance — a source registered while a gateway starts
+ * (its telemetry, stages, authz counters) is rendered only by that gateway; sources registered outside any gateway
+ * (feature modules at import time) are shared by every gateway in the process. Before, the last gateway started in a
+ * process overwrote the gateway-level sources of every other one.
+ */
+const sourcesOf = (scope = currentScope()) => scope.get('monitor', 'metric-sources', () => new Map<string, () => string[]>());
 export function registerMetricSource(id: string, fn: () => string[]): void {
-  metricSources.set(id, fn);
+  sourcesOf().set(id, fn);
+}
+function metricSourceList(): Array<() => string[]> {
+  const merged = new Map(sourcesOf(processScope));
+  if (currentScope() !== processScope) for (const [id, fn] of sourcesOf()) merged.set(id, fn);
+  return [...merged.values()];
 }
 
 export class MetricsCollector extends EventEmitter {
@@ -341,7 +353,7 @@ export class MetricsCollector extends EventEmitter {
     }
     lines.push('');
 
-    for (const src of metricSources.values()) {
+    for (const src of metricSourceList()) {
       try {
         lines.push(...src());
       } catch {

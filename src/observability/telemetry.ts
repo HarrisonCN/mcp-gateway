@@ -90,8 +90,9 @@ export class Telemetry {
   readonly resends = new Counter('mcp_gateway_upstream_resends_total', 'Calls resent once after the upstream refused them unprocessed (session expired) (13.3)');
   readonly recycles = new Counter('mcp_gateway_upstream_recycles_total', 'Upstream sessions recycled after failing consecutive health pings (13.3)');
   readonly storeFailures = new Counter('mcp_gateway_state_store_failures_total', 'Shared state store operations that failed (13.3)');
+  readonly clusterRollbacks = new Counter('mcp_gateway_cluster_rollbacks_total', 'Cluster config rollbacks: control plane (automatic / manual) and data-plane local rollbacks after a failed health check (14.1)');
   private readonly gauges: GaugeDef[] = [];
-  private readonly counters: Counter[] = [this.routeFinal, this.principals, this.denials, this.moduleFailures, this.reloads, this.failovers, this.resends, this.recycles, this.storeFailures];
+  private readonly counters: Counter[] = [this.routeFinal, this.principals, this.denials, this.moduleFailures, this.reloads, this.failovers, this.resends, this.recycles, this.storeFailures, this.clusterRollbacks];
   private readonly hashKey: Buffer;
   private readonly mode: PrincipalAttributeMode;
   private exportTimer?: NodeJS.Timeout;

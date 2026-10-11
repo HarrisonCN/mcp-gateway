@@ -176,12 +176,26 @@ export function createControlPlaneRouter(
     res.json({ version: VERSION, etag, generation, config });
   });
 
-  router.get('/admin/cluster/rollout', ...guard, controlOnly, (_req, res) => {
+  // 14.1.0: rollout status and actions live on a sub-router mounted behind the same guard (the feature-router pattern)
+  const cluster = express.Router();
+  cluster.get('/rollout', (_req, res) => {
     current();
     res.set('Cache-Control', 'no-store').json(rollout.status());
   });
 
-  router.post('/admin/cluster/rollback', ...guard, controlOnly, (req, res) => {
+  // force-publish the control plane's running config: the only way to retry a generation that failed and was rolled back
+  cluster.post('/rollout', (req, res) => {
+    const b = (req.body ?? {}) as { force?: unknown };
+    if (b.force !== true) return void res.status(400).json({ error: 'Bad Request', message: 'Body must be { "force": true } (re-publishes the running config, even a generation that was rolled back)' });
+    current();
+    const config = distributedConfig(deps.portable());
+    const g = rollout.publish(config, { force: true });
+    publishedFrom = configEtag(config);
+    logger.warn(`Config rollout: generation ${g.generation} (${g.etag}) force-published by an operator`);
+    res.json({ generation: g.generation, etag: g.etag, status: rollout.status() });
+  });
+
+  cluster.post('/rollback', (req, res) => {
     const b = (req.body ?? {}) as { to?: unknown; reason?: unknown };
     if ((b.to !== undefined && (typeof b.to !== 'number' || !Number.isInteger(b.to))) || (b.reason !== undefined && typeof b.reason !== 'string')) {
       return void res.status(400).json({ error: 'Bad Request', message: 'Body must be { "to"?: <generation>, "reason"?: "<text>" }' });
@@ -196,6 +210,7 @@ export function createControlPlaneRouter(
       throw err;
     }
   });
+  router.use('/admin/cluster', ...guard, controlOnly, cluster);
 
   router.post('/admin/data-planes/heartbeat', ...guard, controlOnly, (req, res) => {
     const b = req.body as Record<string, unknown> | undefined;
