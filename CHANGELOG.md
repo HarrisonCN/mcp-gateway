@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [15.0.0-rc.3] - 2026-10-12
+
+**Prerelease** (npm dist-tag `next`, image `:15.0.0-rc.3` only — `latest`, `:latest` and `:14` stay on 14.9.x). Third 15.0 release candidate: rc.2 plus the 14.9.2 memory fix. No change to the frozen surface (REST / admin API, `/mcp`, CLI, plugin API v5, config schema v12, metrics, state formats) and no change to the four 15.0 migration changes of rc.1.
+
+### Fixed
+
+- **Durable task-graph run ids stayed in memory until retention deleted the run** (same fix as [14.9.2](#1492---2026-10-12)): about 0.2 KB per retained run on every instance — about +4 MB/h at 6 runs/s, about 680 MB at the default 168 h. Each instance now keeps at most 50 000 recent run ids in memory; older ids are read back from the store's run index (unchanged format) by full listings, and the frequent sweep pass visits the recent ids plus the runs it knows are still open. In-process harness (one instance + Redis, 60 000 runs): heap 30 → 46 MB on rc.2, flat 29–33 MB with the fix. The rest of the growth the 90-minute soak showed is the request log filling up to its fixed 100 000-entry cap (flat once capped — verified in-process with a lowered cap). Gate A (72-hour soak) still has to be run.
+
+### Tests
+
+- `test/durable-memory-14-9-2.test.ts`.
+
 ## [15.0.0-rc.2] - 2026-10-11
 
 **Prerelease** (npm dist-tag `next`, image `:15.0.0-rc.2` only — `latest`, `:latest` and `:14` stay on 14.9.x). Second 15.0 release candidate: rc.1 plus the 14.9.1 P0 fix. No change to the frozen surface (REST / admin API, `/mcp`, CLI, plugin API v5, config schema v12, metrics, state formats) and no change to the four 15.0 migration changes of rc.1.
