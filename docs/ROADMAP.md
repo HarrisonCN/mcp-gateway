@@ -30,7 +30,7 @@
 
 | 闸门 | 要求 | 状态 | 证据 / 说明 |
 |---|---|---|---|
-| A | 72 小时负载 + 故障注入，至少两个实例共享 Redis；无跨租户访问、无非幂等调用重复执行 | ⬜ 未关闭 | 仅有 30 分钟本地 soak（`scripts/soak.mjs`，非固定硬件）：无跨租户访问、无重复执行，14.9.0 / rc.1 内存增长约 600 MB/h（13.3.0 约 30 MB/h），根因为 durable sweep 全量读取，14.9.1 / rc.2 已修复（+97 MB/h，30 分钟）；72 小时运行需要 self-hosted `soak` runner：harness `scripts/gate-a.sh` / workflow `gate-a.yml`，说明见 [v15 gates](v15/gates.md)（尚未运行） |
+| A | 72 小时负载 + 故障注入，至少两个实例共享 Redis；无跨租户访问、无非幂等调用重复执行 | ⬜ 未关闭 | 仅有本地 soak（`scripts/soak.mjs`，2 实例 + Redis，非固定硬件）：无跨租户访问、无重复执行。14.9.0 / rc.1 内存增长约 600 MB/h（13.3.0 约 30 MB/h），根因为 durable sweep 全量读取，14.9.1 / rc.2 已修复。rc.2 90 分钟 soak（2026-10-12，pass，0 违规）：堆在请求日志达到 10 万条上限（约 64 分钟）后持平（60–90 分钟堆底 −2.4 MB/h、RSS −13.5 MB/h）；进程内 harness 测得剩余增长为每个保留的 durable run id 约 196 B（6 runs/s 约 4 MB/h，168 h 保留期约 680 MB），14.9.2 / rc.3 已限制（每实例最多 5 万个 id，60 000 runs 堆持平）。72 小时运行需要 self-hosted `soak` runner：harness `scripts/gate-a.sh` / workflow `gate-a.yml`，说明见 [v15 gates](v15/gates.md)（尚未运行） |
 | B | 在固定硬件、等价负载下与 v13.3 基线比较 p95 / p99 / 吞吐 / 内存增长 / 恢复时间 | ⬜ 未关闭 | 本地 30 分钟对比仅供参考（共享沙箱、负载不固定，不是基准）；需在固定硬件上用同一 harness（`--impl` 指向 13.3.0）重跑 |
 | C | 独立安全审计，或至少一位外部专家评审，范围内高危问题全部关闭 | ⬜ 未关闭 | 尚未安排 |
 | D | 13.x / 14.x → 15 的迁移与回滚验证 | ⏳ | `test/upgrade-14-9-0.test.ts`、`test/rc-migration-14-9-0.test.ts`、`test/upgrade-15-0-0-rc.test.ts` |
