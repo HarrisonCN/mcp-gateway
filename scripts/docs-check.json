@@ -11,8 +11,8 @@
   ],
   "prerelease": {
     "tag": "next",
-    "version": "15.0.0-rc.2",
-    "stable": "14.9.1"
+    "version": "15.0.0-rc.3",
+    "stable": "14.9.2"
   },
   "historical": [
     "docs/ROADMAP.md",

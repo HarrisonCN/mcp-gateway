@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [15.0.0-rc.3] - 2026-10-12
+
+**Prerelease** (npm dist-tag `next`, image `:15.0.0-rc.3` only — `latest`, `:latest` and `:14` stay on 14.9.x). Third 15.0 release candidate: rc.2 plus the 14.9.2 memory fix. No change to the frozen surface (REST / admin API, `/mcp`, CLI, plugin API v5, config schema v12, metrics, state formats) and no change to the four 15.0 migration changes of rc.1.
+
+### Fixed
+
+- **Durable task-graph run ids stayed in memory until retention deleted the run** (same fix as [14.9.2](#1492---2026-10-12)): about 0.2 KB per retained run on every instance — about +4 MB/h at 6 runs/s, about 680 MB at the default 168 h. Each instance now keeps at most 50 000 recent run ids in memory; older ids are read back from the store's run index (unchanged format) by full listings, and the frequent sweep pass visits the recent ids plus the runs it knows are still open. In-process harness (one instance + Redis, 60 000 runs): heap 30 → 46 MB on rc.2, flat 29–33 MB with the fix. The rest of the growth the 90-minute soak showed is the request log filling up to its fixed 100 000-entry cap (flat once capped — verified in-process with a lowered cap). Gate A (72-hour soak) still has to be run.
+
+### Tests
+
+- `test/durable-memory-14-9-2.test.ts`.
+
 ## [15.0.0-rc.2] - 2026-10-11
 
 **Prerelease** (npm dist-tag `next`, image `:15.0.0-rc.2` only — `latest`, `:latest` and `:14` stay on 14.9.x). Second 15.0 release candidate: rc.1 plus the 14.9.1 P0 fix. No change to the frozen surface (REST / admin API, `/mcp`, CLI, plugin API v5, config schema v12, metrics, state formats) and no change to the four 15.0 migration changes of rc.1.
@@ -47,6 +59,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `test/v15-changes-15-0-0.test.ts` (C1–C5; replaces `test/v15-deprecations-14-9-0.test.ts`); tests that used schema v11 input now use v12 (or the migration path where v11 is the subject); plugin tests that rely on in-process state say `runtime: inline`.
 - Upgrade / rollback on real SQLite and Redis from 13.9.5, 14.8.0 and 14.9.0 to the candidate (`test/upgrade-14-9-0.test.ts` via `scripts/upgrade-test.sh`).
+
+## [14.9.2] - 2026-10-12
+
+Memory fix found by the 90-minute soak of 15.0.0-rc.2 / 14.9.1. No API, configuration, schema, metrics or state-format change; the 15.0 freeze is untouched.
+
+### Fixed
+
+- **Durable task-graph run ids stayed in memory until retention deleted the run** — about 0.2 KB per retained run on every instance (the run index listing cache and the set of finished runs), so memory rose with the durable-run rate times `retentionHours`: about +4 MB/h at 6 runs/s, about 680 MB at the default 168 h. An in-process harness (one instance, Redis, request log capped) measured 196 bytes per run on 14.9.1 / 15.0.0-rc.2 (heap 30 → 46 MB over 60 000 runs) and a flat heap (29–32 MB) with this fix. Each instance now keeps at most 50 000 recent run ids in memory (`STORE_KV_MAX_IDS`); older ids are read back from the store's run index (`task-graphs:runs:<n>`, unchanged) by full listings — the API run list and the sweep's full pass — and the frequent sweep pass visits the recent ids plus the runs the instance knows are still open, so takeovers and approval timeouts of old open runs are as prompt as before. The set of finished runs is bounded the same way.
+
+### Notes
+
+- The other growth the soak showed is the request log filling up to its fixed cap (100 000 entries, as in 13.3); it stops at the cap. Verified in-process: 100 000 calls with the cap lowered to 2 000 leave the heap flat (+0.03 MB per 10 000 calls).
+- Deployments below 50 000 retained runs per instance behave exactly as in 14.9.1 (no extra store reads).
 
 ## [14.9.1] - 2026-10-11
 
