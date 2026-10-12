@@ -4,7 +4,11 @@
 # avoids Docker Hub's unauthenticated pull rate limit in CI / release builds. Override with --build-arg NODE_IMAGE=...
 ARG NODE_IMAGE=public.ecr.aws/docker/library/node:22-alpine
 
-FROM ${NODE_IMAGE} AS builder
+# Builder runs on the build host's platform ($BUILDPLATFORM, set by BuildKit): its output (dist/, tsc-compiled JS)
+# is architecture-independent and only dist/ is copied into the runner. Multi-arch release builds therefore no
+# longer run the dev-dependency `npm ci` + tsc under QEMU arm64 emulation, which crashed (qemu SIGILL) and hung
+# the v14.9.2 image build until the 30-min job timeout. The runner stage still installs per target platform.
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS builder
 
 WORKDIR /app
 
