@@ -91,13 +91,27 @@ export interface DurableKv {
 
 const LONG = 400 * 86_400_000;
 
+/**
+ * 14.9.2: ids a {@link StoreKv} keeps in memory per index. The 90-minute soak of 15.0.0-rc.2 / 14.9.1 still grew by
+ * ~0.2 KB per run (listing cache + the manager's finished set) until `retentionHours` deleted the run — ~4 MB/h at
+ * 6 runs/s, ~680 MB at the default 168 h. Beyond this many ids, the oldest leave memory and a full listing reads them
+ * back from the store's index; the sweep's frequent pass only needs the recent ids plus the runs it knows are open.
+ */
+export const STORE_KV_MAX_IDS = 50_000;
+/** 14.9.2: index slots a full listing reads from the store at a time once ids left memory. */
+const SLOT_READ_CHUNK = 256;
+
 /** Over the gateway's StateStore (memory / redis / sqlite / eventlog). Keys are prefixed `task-graphs:`. */
 export class StoreKv implements DurableKv {
   // 14.9.1: id → index slot of every id still listed, plus how many slots were read. 14.9.0 kept every id ever added in
   // an array (expired runs included) and copied it on every listing — process memory grew with the number of runs.
+  // 14.9.2: bounded to `maxIds` (the most recent slots); slots up to `floor` are only in the store.
   private readonly cache = { runs: new Map<string, number>(), dlq: new Map<string, number>() };
   private readonly scanned = { runs: 0, dlq: 0 };
-  constructor(private readonly store: StateStore, private readonly prefix = 'task-graphs:') {}
+  private readonly floor = { runs: 0, dlq: 0 };
+  /** 14.9.2: ids forgotten while their slot was out of memory; the next full listing deletes the slot. */
+  private readonly forgotten = { runs: new Set<string>(), dlq: new Set<string>() };
+  constructor(private readonly store: StateStore, private readonly prefix = 'task-graphs:', readonly maxIds = STORE_KV_MAX_IDS) {}
   get kind() {
     return this.store.kind;
   }
@@ -120,7 +134,8 @@ export class StoreKv implements DurableKv {
     const n = await this.store.incr(`${this.prefix}${list}:seq`, LONG);
     await this.store.set(`${this.prefix}${list}:${n}`, id);
   }
-  async list(list: 'runs' | 'dlq') {
+  /** Read index slots written since the last listing into memory; the oldest ids beyond `maxIds` leave memory. */
+  private async scan(list: 'runs' | 'dlq'): Promise<Map<string, number>> {
     const seq = Number((await this.store.get(`${this.prefix}${list}:seq`)) ?? 0);
     const known = this.cache[list];
     for (let i = this.scanned[list] + 1; i <= seq; i++) {
@@ -134,14 +149,50 @@ export class StoreKv implements DurableKv {
       if (!known.has(id)) known.set(id, i);
       this.scanned[list] = i;
     }
-    return [...known.keys()];
+    while (known.size > this.maxIds) {
+      const [id, slot] = known.entries().next().value as [string, number];
+      known.delete(id);
+      if (slot > this.floor[list]) this.floor[list] = slot;
+    }
+    return known;
+  }
+  /** Every listed id, in index order (ids out of memory are read back from the store). */
+  async list(list: 'runs' | 'dlq') {
+    const known = await this.scan(list);
+    const floor = this.floor[list];
+    if (!floor) return [...known.keys()];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const gone = this.forgotten[list];
+    for (let from = 1; from <= floor; from += SLOT_READ_CHUNK) {
+      const slots = Array.from({ length: Math.min(SLOT_READ_CHUNK, floor - from + 1) }, (_, j) => from + j);
+      const ids = await Promise.all(slots.map((i) => this.store.get(`${this.prefix}${list}:${i}`)));
+      for (let j = 0; j < slots.length; j++) {
+        const id = ids[j];
+        if (id === undefined || known.has(id) || seen.has(id)) continue;
+        if (gone.has(id)) {
+          await this.store.del(`${this.prefix}${list}:${slots[j]}`);
+          continue;
+        }
+        seen.add(id);
+        out.push(id);
+      }
+    }
+    gone.clear(); // every out-of-memory slot was read: what was not found has no slot left
+    for (const id of known.keys()) out.push(id);
+    return out;
+  }
+  /** 14.9.2: only the ids still in memory (the most recent `maxIds` slots) — no store reads beyond new slots. */
+  async recent(list: 'runs' | 'dlq') {
+    return [...(await this.scan(list)).keys()];
   }
   async forget(list: 'runs' | 'dlq', id: string) {
     const slot = this.cache[list].get(id);
     this.cache[list].delete(id);
     if (slot !== undefined) await this.store.del(`${this.prefix}${list}:${slot}`);
+    else if (this.floor[list]) this.forgotten[list].add(id);
   }
-  /** Ids held in memory per index (tests: bounded by retention, not by the number of runs ever started). */
+  /** Ids held in memory per index (tests: bounded by retention and by `maxIds`, not by the number of runs ever started). */
   get cachedIds(): number {
     return this.cache.runs.size + this.cache.dlq.size;
   }
@@ -376,6 +427,12 @@ export class DurableTasks {
   private sweeping = false;
   private sweeps = 0;
   private readonly terminal = new Set<string>();
+  /**
+   * 14.9.2: runs this instance saw unfinished (running, compensating, awaiting approval, …). With a store that keeps
+   * only recent ids in memory ({@link StoreKv.recent}), the frequent sweep pass visits the recent ids plus these, so an
+   * old open run is still taken over / timed out at once, and the finished set only needs to cover the recent ids.
+   */
+  private readonly open = new Set<string>();
 
   constructor(readonly kv: DurableKv, readonly cfg: DurableCfg, private readonly deps: DurableDeps, metrics?: DurableMetrics) {
     this.metrics = metrics ?? new DurableMetrics();
@@ -554,7 +611,19 @@ export class DurableTasks {
       await this.kv.del(`hb:${r.id}`);
       await this.kv.del(`cancel:${r.id}`);
     }
-    if (TERMINAL.includes(r.status)) this.terminal.add(r.id);
+    if (TERMINAL.includes(r.status)) this.markFinished(r.id);
+  }
+
+  /** 14.9.2: remember a finished run (bounded like the store's listing cache when the store is windowed). */
+  private markFinished(id: string): void {
+    this.open.delete(id);
+    this.terminal.delete(id);
+    this.terminal.add(id);
+    if (this.windowed() && this.terminal.size > ((this.kv as { maxIds?: number }).maxIds ?? STORE_KV_MAX_IDS)) this.terminal.delete(this.terminal.values().next().value as string);
+  }
+
+  private windowed(): this is { kv: DurableKv & { recent(list: 'runs'): Promise<string[]> } } {
+    return typeof (this.kv as { recent?: unknown }).recent === 'function';
   }
 
   private guard(run: TaskRun, a: Active): CallGuard {
@@ -663,7 +732,9 @@ export class DurableTasks {
       const full = first || this.sweeps % 30 === 0;
       // 14.9.0: load only what this pass needs — runs executing here and runs known to be finished are skipped before
       // their records are read (the 14.4 sweep read every record ever written on every pass)
-      const ids = (await this.kv.list('runs')).filter((id) => !this.active.has(id) && (full || !this.terminal.has(id)));
+      // 14.9.2: a windowed store lists only its recent ids on the frequent pass (+ the open runs this instance knows)
+      const listed = !full && this.windowed() ? [...new Set([...(await this.kv.recent('runs')), ...this.open])] : await this.kv.list('runs');
+      const ids = listed.filter((id) => !this.active.has(id) && (full || !this.terminal.has(id)));
       let awaiting = 0;
       // 14.9.1: bounded working set — at most SWEEP_CHUNK records are loaded and alive at a time
       for (let i = 0; i < ids.length; i += SWEEP_CHUNK) {
@@ -674,14 +745,16 @@ export class DurableTasks {
           const r = loaded[j];
           if (!r) {
             // deleted (retention, possibly by a peer): stop listing it
+            this.open.delete(chunk[j]!);
             if (full && (await this.kv.get(`run:${chunk[j]}`)) === undefined) await this.drop(chunk[j]!);
             continue;
           }
           if (TERMINAL.includes(r.status)) {
-            this.terminal.add(r.id);
+            this.markFinished(r.id);
             if (full) await this.expire(r);
             continue;
           }
+          this.open.add(r.id);
           if (r.status === 'running' || r.status === 'compensating') await this.maybeTakeOver(r);
           else if (r.status === 'awaiting_approval') {
             awaiting++;
@@ -717,6 +790,7 @@ export class DurableTasks {
   /** 14.9.1: forget a deleted run everywhere this instance tracks it (index slot, listing cache, finished set). */
   private async drop(id: string): Promise<void> {
     this.terminal.delete(id);
+    this.open.delete(id);
     await this.kv.forget?.('runs', id);
   }
 
