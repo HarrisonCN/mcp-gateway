@@ -7,6 +7,9 @@
  * - `GET  /admin/ops/traces/:requestId` — one call end to end: auth → tenant → policy → plugins → route → upstream →
  *   cache → response, each step with its time and status, the W3C trace id of the gateway span (the OTel span the
  *   invoker already emits) and, for a refused call, the denial explanation.
+ * - `GET  /admin/ops/lineage/:requestId`, `GET /admin/ops/lineage?correlationId=` (15.1.0) — one call's lineage: subject
+ *   and delegation chain, acting tenant, config generation, decision (layer / rule / config path of a refusal), target,
+ *   upstream answer, cost, and the client's correlation id (`X-Request-Id` / `X-Correlation-Id`).
  * - `POST /admin/ops/explain` — `{ client, server, tool, arguments? }`: would this call be allowed, and if not which
  *   layer / rule / tenant / permission refuses it and where that lives in the config (`configPath`).
  * - `GET  /admin/ops/timeline[?kind&since&until&subject&limit]` — incident timeline: restarts, config applies, GitOps
@@ -39,6 +42,7 @@ import { TIMELINE_KINDS, emitOpsEvent, opsListeners, opsSources, type OpsEvent, 
 import { onRevocation } from './revocations.js';
 import { simulateDecision } from '../config/gitops.js';
 import { VERSION } from '../utils/version.js';
+import { isCorrelationId } from '../middleware/request-id.js';
 
 // ─── config ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -129,6 +133,12 @@ export interface TraceInput {
   notes: ReadonlyMap<string, string>;
   totalMs: number;
   authMs?: number;
+  /** 15.1.0 lineage: the client's correlation id, acting tenant, config generation, principal chain, cost. */
+  correlationId?: string;
+  tenant?: string;
+  generation?: number;
+  chain?: string[];
+  cost?: number;
 }
 
 export interface CallTrace {
@@ -149,6 +159,55 @@ export interface CallTrace {
   totalMs: number;
   steps: Array<{ step: TraceStep; status: 'ok' | 'denied' | 'error' | 'skipped'; ms: number | null; note?: string }>;
   explain?: DenialExplanation;
+  /** 15.1.0 (additions): lineage of the call — see {@link lineageOf}. */
+  correlationId?: string;
+  tenant?: string;
+  generation?: number;
+  chain?: string[];
+  cost?: number;
+}
+
+/** 15.1.0: one call's lineage — who, which tenant, which config generation, which decision, which target, the upstream answer, the cost. */
+export interface CallLineage {
+  requestId: string;
+  correlationId: string | null;
+  at: string;
+  identity: { subject: string | null; chain: string[] };
+  tenant: string | null;
+  generation: number | null;
+  target: { serverId: string; tool: string; kind: string; via: string };
+  decision: { outcome: 'ok' | 'denied' | 'error'; decision?: string; layer?: string; rule?: string; policy?: string; configPath?: string };
+  upstream: { status: 'ok' | 'denied' | 'error' | 'skipped'; ms: number | null; errorCode?: number };
+  cost: number | null;
+  traceId: string | null;
+  totalMs: number;
+}
+
+/** 15.1.0: the lineage view of a call trace. Pure; carries no arguments, results or key material. */
+export function lineageOf(t: CallTrace): CallLineage {
+  const up = t.steps.find((s) => s.step === 'upstream');
+  const e = t.explain;
+  return {
+    requestId: t.requestId,
+    correlationId: t.correlationId ?? null,
+    at: t.at,
+    identity: { subject: t.clientId ?? null, chain: t.chain ?? (t.clientId ? [t.clientId] : []) },
+    tenant: t.tenant ?? null,
+    generation: t.generation ?? null,
+    target: { serverId: t.serverId, tool: t.tool, kind: t.kind, via: t.via },
+    decision: {
+      outcome: t.outcome,
+      ...(t.decision ? { decision: t.decision } : {}),
+      ...(e?.layer ? { layer: e.layer } : {}),
+      ...(e?.rule ? { rule: e.rule } : {}),
+      ...(e?.policy ? { policy: e.policy } : {}),
+      ...(e?.configPath ? { configPath: e.configPath } : {}),
+    },
+    upstream: { status: up?.status ?? 'skipped', ms: up?.ms ?? null, ...(t.outcome === 'error' && t.errorCode !== undefined ? { errorCode: t.errorCode } : {}) },
+    cost: t.cost ?? null,
+    traceId: t.traceId ?? null,
+    totalMs: t.totalMs,
+  };
 }
 
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
@@ -186,19 +245,43 @@ function stepOfDecision(decision: string | undefined, data: Record<string, unkno
 
 export class TraceStore {
   private readonly traces = new Map<string, CallTrace>();
+  /** 15.1.0: correlation id → request ids of the kept traces (bounded with the traces themselves). */
+  private readonly byCorrelation = new Map<string, Set<string>>();
   constructor(private readonly size: () => number) {}
 
   add(t: CallTrace): void {
+    this.drop(t.requestId);
     this.traces.set(t.requestId, t);
+    if (t.correlationId) {
+      const s = this.byCorrelation.get(t.correlationId) ?? new Set<string>();
+      s.add(t.requestId);
+      this.byCorrelation.set(t.correlationId, s);
+    }
     const max = this.size();
     while (this.traces.size > max) {
       const first = this.traces.keys().next().value;
       if (first === undefined) break;
-      this.traces.delete(first);
+      this.drop(first);
+    }
+  }
+  private drop(id: string): void {
+    const old = this.traces.get(id);
+    if (!old) return;
+    this.traces.delete(id);
+    if (old.correlationId) {
+      const s = this.byCorrelation.get(old.correlationId);
+      s?.delete(id);
+      if (s && s.size === 0) this.byCorrelation.delete(old.correlationId);
     }
   }
   get(id: string): CallTrace | undefined {
     return this.traces.get(id);
+  }
+  /** 15.1.0: kept traces carrying this client correlation id, newest first. */
+  byCorrelationId(id: string): CallTrace[] {
+    const s = this.byCorrelation.get(id);
+    if (!s) return [];
+    return [...s].map((r) => this.traces.get(r)).filter((x): x is CallTrace => !!x).reverse();
   }
   list(): CallTrace[] {
     return [...this.traces.values()].reverse();
@@ -241,6 +324,12 @@ export function buildTrace(i: TraceInput, cfg: GatewayConfig): CallTrace {
     totalMs: r3(i.totalMs),
     steps,
     ...(refused ? { explain: explainDenial({ clientId: i.clientId, serverId: i.serverId, tool: i.tool }, decision, i.data ?? {}, i.errorMessage ?? '', cfg) } : {}),
+    // 15.1.0 lineage (additions)
+    ...(i.correlationId ? { correlationId: i.correlationId } : {}),
+    ...(i.tenant ? { tenant: i.tenant } : {}),
+    ...(i.generation !== undefined ? { generation: i.generation } : {}),
+    ...(i.chain && i.chain.length ? { chain: [...i.chain] } : {}),
+    ...(i.cost !== undefined ? { cost: i.cost } : {}),
   };
 }
 
@@ -514,6 +603,22 @@ export function createOpsConsoleRouter(deps: OpsDeps): express.Router {
     const t = deps.traces.get(req.params.id);
     if (!t) return void res.status(404).json({ error: 'Not Found', message: 'No trace with this request id (traces are kept in memory: controlPlane.console.traceBuffer)' });
     res.json(t);
+  });
+
+  // 15.1.0: call lineage — by the gateway request id (unique) or by the client's correlation id (may repeat)
+  ops.get('/lineage', (req, res) => {
+    const cid = req.query.correlationId;
+    if (cid === undefined) return void res.status(400).json({ error: 'Bad Request', message: 'Give a request id (/lineage/<requestId>) or ?correlationId=' });
+    if (!isCorrelationId(cid)) return void res.status(400).json({ error: 'Bad Request', message: 'correlationId must be 1–128 characters of A–Z a–z 0–9 . _ : -' });
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+    const list = deps.traces.byCorrelationId(cid).slice(0, limit).map(lineageOf);
+    res.json({ lineage: list, total: list.length });
+  });
+
+  ops.get('/lineage/:id', (req, res) => {
+    const t = deps.traces.get(req.params.id);
+    if (!t) return void res.status(404).json({ error: 'Not Found', message: 'No call with this request id (lineage is kept with the call traces: controlPlane.console.traceBuffer)' });
+    res.json(lineageOf(t));
   });
 
   const parseCall = (req: Request, res: Response) => {

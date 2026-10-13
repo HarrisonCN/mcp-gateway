@@ -416,6 +416,8 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `GET` | `/admin/ops/cluster` | Operations console (14.8): role, config generation, data planes (diverged), regions (freshness, lag), edges (queued calls), plugin circuits, DLQ, servers, failed modules. Operators and `controlPlane.console.viewers` |
 | `GET` | `/admin/ops/traces` | Recent call traces (`client`, `server`, `tool`, `outcome=ok\|denied\|error`, `limit`), newest first (14.8) |
 | `GET` | `/admin/ops/traces/:requestId` | One call: steps auth → tenant → policy → plugins → route → upstream → cache → response with times and status, `traceId`, and `explain` for a refusal (14.8) |
+| `GET` | `/admin/ops/lineage/:requestId` | One call's lineage: `correlationId` (client `X-Request-Id` / `X-Correlation-Id`), `identity` (subject, chain), `tenant`, config `generation`, `target`, `decision` (layer / rule / `configPath` of a refusal), `upstream`, `cost`, `traceId` (15.1) |
+| `GET` | `/admin/ops/lineage?correlationId=` | Lineage of every kept call that carried this client correlation id, newest first (`limit`) (15.1) |
 | `POST` | `/admin/ops/explain` | `{ client, server, tool, arguments? }`: allowed, or the refusing layer / rule / tenant / permission and its `configPath` (14.8) |
 | `GET` | `/admin/ops/timeline` | Incident timeline (`kind`, `since`, `until`, `subject`, `limit`): restarts, config applies, GitOps releases, revocations, circuit opens, region staleness, refusals (14.8) |
 | `POST` | `/admin/ops/troubleshoot` | Operators: `{ client, server, tool, arguments? }` → redacted report of guided checks (upstream, auth, tenancy, policy simulation, rate limits, plugins); 30 runs / minute per client, then `429` (14.8) |

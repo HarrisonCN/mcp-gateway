@@ -113,6 +113,13 @@ export interface InvokeContext {
   injected?: { target: string; arguments: readonly string[] };
   /** 14.8.0: time the HTTP layer spent authenticating this request (ms), for the call trace. */
   authMs?: number;
+  /**
+   * 15.1.0: the correlation id the client sent with the request (`X-Request-Id` / `X-Correlation-Id`), kept in the
+   * call lineage of the operations console. Never used for authorization.
+   */
+  correlationId?: string;
+  /** Set by the invoker (15.1.0) on top-level calls — callers must not set it: lineage values found while the call runs. */
+  lineageSink?: { cost?: number };
 }
 
 export interface InvokeResult extends ProxyResponse {
@@ -493,6 +500,9 @@ export class ToolInvoker {
     // 13.8.0: stage timings of top-level calls only (a nested feature call is part of its parent's stages)
     const clock = new CallClock(running ? undefined : this.deps.stages);
     const pin = running ? undefined : this.deps.generations?.acquire();
+    // 15.1.0: lineage values that only appear while the call runs (its cost) — top-level calls only, like the trace
+    const sink: { cost?: number } | undefined = running || !this.deps.onTrace ? undefined : {};
+    if (sink) ctx = { ...ctx, lineageSink: sink };
     let out: InvokeResult | undefined;
     try {
       if (!pin) return (out = await this.invokePinned(ctx, clock));
@@ -520,6 +530,12 @@ export class ToolInvoker {
             notes: clock.notes,
             totalMs: v.totalMs + (ctx.authMs ?? 0),
             authMs: ctx.authMs,
+            // 15.1.0: lineage
+            ...(ctx.correlationId ? { correlationId: ctx.correlationId } : {}),
+            tenant: this.tenantOf({ clientId: identityOf(ctx.principal, ctx.clientId).subject, serverId: ctx.serverId }),
+            ...(pin ? { generation: pin.generation.id } : {}),
+            chain: principalChain(ctx.principal),
+            ...(sink?.cost !== undefined ? { cost: sink.cost } : {}),
           });
         } catch {
           /* tracing never fails a call */
@@ -987,6 +1003,7 @@ export class ToolInvoker {
       if (result.success && this.deps.costs?.enabled) {
         const c = this.deps.costs.record({ clientId: ctx.clientId, tenants: this.tenantList(ctx), serverId: ctx.serverId, tool: ctx.name, result: result.result });
         if (c.cost) span.setAttribute('mcp.cost', c.cost);
+        if (ctx.lineageSink) ctx.lineageSink.cost = c.cost;
         if (c.usage) span.setAttribute('gen_ai.usage.input_tokens', c.usage.inputTokens), span.setAttribute('gen_ai.usage.output_tokens', c.usage.outputTokens);
       }
     }

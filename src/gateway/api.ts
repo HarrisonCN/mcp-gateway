@@ -50,6 +50,7 @@ import { jsonDiff } from './replay.js';
 import { FEDERATION_HEADER, verifyFederation } from './federation.js';
 import { buildReport, reportMarkdown, PII_CATEGORIES } from '../policy/compliance.js';
 import { PortalError, exampleArgs, publicKey, toolSnippets, type PortalStore } from '../portal/index.js';
+import { clientCorrelationId } from '../middleware/request-id.js';
 
 
 /** 6.0: the compliance view of PII handling comes from `dlp` (compliance.pii was removed). */
@@ -744,6 +745,7 @@ export function createApiRouter(
       principal: clientPrincipal((req as AuthedRequest).clientId, scopeOf(req)),
       via: 'rest',
       traceparent: traceparentOf(req),
+      ...(clientCorrelationId(req) ? { correlationId: clientCorrelationId(req) } : {}),
       ...(typeof req.res?.locals?.mgwAuthMs === 'number' ? { authMs: req.res.locals.mgwAuthMs as number } : {}),
       ...(opts.replayOf ? { replayOf: opts.replayOf } : {}),
       ...(opts.fromPeer ? { fromPeer: opts.fromPeer } : {}),
@@ -912,6 +914,7 @@ export function createApiRouter(
       principal: clientPrincipal((req as AuthedRequest).clientId, scopeOf(req)),
       via: 'rest',
       traceparent: traceparentOf(req),
+      ...(clientCorrelationId(req) ? { correlationId: clientCorrelationId(req) } : {}),
     });
     if (result.traceparent && !res.headersSent) res.set('traceparent', result.traceparent);
     if (res.headersSent) return;

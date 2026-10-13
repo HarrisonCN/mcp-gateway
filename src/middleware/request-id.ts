@@ -33,6 +33,20 @@ function pick(value: string | string[] | undefined): string | undefined {
   return v && SAFE_ID.test(v) ? v : undefined;
 }
 
+/**
+ * 15.1.0: the correlation id the client sent (`X-Request-Id`, else `X-Correlation-Id`), when it passes the same
+ * charset / length rule — undefined when the gateway generated the request id itself. Kept in the call lineage so
+ * another system can join its own records (`GET /api/v1/admin/ops/lineage?correlationId=`).
+ */
+export function clientCorrelationId(req: { headers: Record<string, string | string[] | undefined> }): string | undefined {
+  return pick(req.headers['x-request-id']) || pick(req.headers['x-correlation-id']);
+}
+
+/** 15.1.0: whether a value is an acceptable correlation id (same rule as the `X-Request-Id` header). */
+export function isCorrelationId(v: unknown): v is string {
+  return typeof v === 'string' && SAFE_ID.test(v);
+}
+
 export function requestIdMiddleware(
   req: Request,
   res: Response,

@@ -45,6 +45,8 @@ interface Settings {
   /** 14.9.0: a published pre-release of the next major (npm dist-tag + version, e.g. `next` / `15.0.0-rc.1`). */
   /** 15.0.0-rc.1: while package.json carries a prerelease, docs are checked against `stable` (the npm `latest` release). */
   prerelease?: { tag: string; version: string; stable?: string };
+  /** 15.1.0-canary: other published prereleases the docs may name (e.g. the 15.0 rc on `next` while main is on `canary`). */
+  otherPrereleases?: Array<{ tag: string; version: string }>;
 }
 
 const args = process.argv.slice(2);
@@ -121,6 +123,7 @@ async function check(root: string, opts: { external?: boolean }) {
     ltsAliases.add(latest);
   }
   const pre = settings.prerelease ? [settings.prerelease.tag, settings.prerelease.version] : [];
+  for (const o of settings.otherPrereleases ?? []) pre.push(o.tag, o.version);
   const okVersion = (x: string) => ['latest', MAJ, `${MAJ}.${MIN}`, V, ...settings.distTags, ...pre].includes(x) || ltsAliases.has(x);
   const cli = cliSpec(root);
   const findings: Finding[] = [];
