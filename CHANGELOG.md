@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [15.1.0-canary.0] - 2026-10-13
+
+**Development prerelease** (npm dist-tag `canary`, image `:15.1.0-canary.0` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). First build of the 15.1 line from `main`: everything in 15.0.0-rc.4 plus call lineage. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — so no 15.1 release can become stable before it.
+
+### Added
+
+- **Call lineage** (`GET /api/v1/admin/ops/lineage/:requestId`, `GET /api/v1/admin/ops/lineage?correlationId=`): one record per call with the caller (`identity.subject`, delegation `chain`), acting `tenant`, the config `generation` the call was pinned to, the `target`, the `decision` (for a refusal: layer, rule / policy, `configPath`), the `upstream` step, the priced `cost` (with `costs` configured) and the W3C `traceId`. Same access as the call traces (operators and `controlPlane.console.viewers`); no arguments, results or key material. Guide: [operations console → call lineage](docs/guides/operations-console.md#call-lineage-151).
+- **Client correlation id**: the `X-Request-Id` (else `X-Correlation-Id`) a client sends on REST or `/mcp` — same rule as before, 1–128 characters of `A–Z a–z 0–9 . _ : -` — is kept with the call and searchable, so another system (for example an editor that sends one id per AI edit) can find the gateway calls behind its own records. It is never used for authorization.
+
+### Additions after the freeze
+
+Additive only, as allowed by the [freeze list](docs/v15/freeze.md): two new admin routes (above); new optional fields on the 14.8 call trace (`correlationId`, `tenant`, `generation`, `chain`, `cost` on `GET /admin/ops/traces[/:requestId]`); a new optional `correlationId` on the exported `InvokeContext` type (plus the invoker-internal `lineageSink`). Reason: 15.1 control-plane lineage (roadmap), and Motionary's AI edit provenance joins on it. No existing route, field, status code, config key or CLI flag changed; the REST response of a call is unchanged.
+
+### Docs
+
+- `docs/versions.md`: release lines `latest` (14.9.x, `maint/14.9.x`), `next` (15.0 RC, `release/15.0.x`), `canary` (15.1+, `main`).
+- `scripts/docs-check.json` / docs-check: `otherPrereleases` (the 15.0 rc on `next` stays a valid reference while `main` is on `canary`).
+
+### Tests
+
+- `test/lineage-15-1-0.test.ts` (L1–L6: lineage fields, correlation lookup and charset, refusal layer / rule / config path, tenant + cost, access and prototype keys, 14.8 trace and REST response unchanged); docs-check `otherPrereleases` case.
+
 ## [15.0.0-rc.4] - 2026-10-13
 
 **Prerelease** (npm dist-tag `next`, image `:15.0.0-rc.4` only — `latest`, `:latest` and `:14` stay on 14.9.x). Fourth 15.0 release candidate: rc.3 plus a change to how the container image is built. No change to the package contents, the frozen surface (REST / admin API, `/mcp`, CLI, plugin API v5, config schema v12, metrics, state formats) or the four 15.0 migration changes of rc.1. The v15 gates A / B / C are still open (see [v15 gates](docs/v15/gates.md)).
