@@ -7,7 +7,9 @@ How releases are tagged and how long each line is maintained. The supported-vers
 
 | Line | Role | npm dist-tag | Image tags | Branch | Fixes |
 |---|---|---|---|---|---|
-| 14.x | current | `latest` | `latest`, `14`, `14.<minor>`, `<version>` | `main` | features, bug and security fixes |
+| 14.9.x | current | `latest` | `latest`, `14`, `14.9`, `<version>` | `maint/14.9.x` | bug and security fixes until 15.0.0 ships (features go to 15.x) |
+| 15.0 release candidates | pre-release, not for production | `next` | `<version>` only | `release/15.0.x` | fixes for 15.0.0 blockers; becomes `latest` only when the [v15 gates](v15/gates.md) are closed |
+| 15.1+ development | pre-release (`15.1.0-canary.<n>`, later `16.0.0-alpha.<n>`), not for production | `canary` | `<version>` only | `main` | new features; additions to the frozen 15.0 surface only (see the [freeze list](v15/freeze.md)) |
 | 13.9.x | maintained (previous major) | `v13-lts` | `13`, `13.9`, `<version>` | `lts/13.x` | security and critical bug fixes, at least until 15.0.0 ships and no earlier than 2027-04-30 |
 | 12.0.x | superseded, security backports | `v12-0` | `12`, `12.0`, `<version>` | `lts/12.x` | security fixes while 13.9.x is maintained |
 | 10.x | long-term support | `v10-lts` | `10`, `10.9`, `<version>` | `lts/10.x` | bug and security fixes until 2027-10-31, then security fixes only until 2028-10-31 |

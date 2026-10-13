@@ -84,6 +84,31 @@ history / audit record (`GET /api/v1/requests/<id>` when the replay recorder is 
 
 Traces are kept in memory per gateway (`traceBuffer`, newest wins) and are not replicated.
 
+## Call lineage (15.1)
+
+`GET /api/v1/admin/ops/lineage/<requestId>` answers "who made this call, under which config, and what happened" in one
+record, read from the call trace (so it is kept as long as the trace: `traceBuffer`):
+
+| Field | Meaning |
+|---|---|
+| `requestId` | the gateway's id of the call (`requestId` in the REST response, the audit record id) — unique |
+| `correlationId` | the `X-Request-Id` (else `X-Correlation-Id`) the client sent, when it sent one (1–128 characters of `A–Z a–z 0–9 . _ : -`); `null` otherwise |
+| `identity` | `subject` (the caller every module sees) and `chain` (the subject followed by the agents acting for it) |
+| `tenant` | the acting tenant of the call, `null` without tenants |
+| `generation` | the config generation the call was pinned to (compare with `GET /api/v1/admin/ops/cluster`) |
+| `target` | `serverId`, `tool`, `kind`, `via` (`rest`, `mcp`, …) |
+| `decision` | `outcome` (`ok` / `denied` / `error`); for a refusal also `decision`, `layer`, `rule` / `policy` and `configPath` |
+| `upstream` | the upstream step's status (`skipped` when the call was refused before it) and time in ms |
+| `cost` | the priced cost of the call when `costs` is configured, else `null` |
+| `traceId` | the W3C trace id of the gateway span, when tracing is on |
+
+`GET /api/v1/admin/ops/lineage?correlationId=<id>` lists every kept call that carried that correlation id, newest first
+(a correlation id is the client's and may repeat; the request id does not). This is how another system joins its own
+records — for example an editor that sends one `X-Request-Id` per AI edit can find the gateway calls behind that edit.
+
+Same access as the traces (operators and console viewers). Nothing in a lineage record contains call arguments,
+results or key material.
+
 ## Policy denial explanations
 
 A refused call's trace carries an `explain` object:

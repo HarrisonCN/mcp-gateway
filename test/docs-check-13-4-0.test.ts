@@ -109,7 +109,7 @@ describe('docs-check', () => {
   });
 
   it('the package version is the one the docs are checked against', () => {
-    expect(version).toMatch(/^15\.0\.0-rc\.\d+$/);
+    expect(version).toMatch(/^15\.\d+\.\d+(-(rc|canary)\.\d+)?$/);
   });
 
   it('15.0.0-rc.1: a prerelease package checks docs against prerelease.stable (npm latest)', async () => {
@@ -120,5 +120,16 @@ describe('docs-check', () => {
     expect((await runDocsCheck(d)).findings).toEqual([]);
     writeFileSync(join(d, 'README.md'), 'Current release: **14.0.0** (npm `latest`).\n');
     expect((await runDocsCheck(d)).findings.map((f) => f.rule)).toEqual(['version']);
+  });
+
+  it('15.1.0-canary: other published prereleases (the 15.0 rc on `next`) are valid version references too', async () => {
+    const d = repo(fence('bash', 'npm i @winstonsayno/mcp-gateway@next\ndocker run ghcr.io/harrisoncn/mcp-gateway:14.0.0-rc.4\nnpm i @winstonsayno/mcp-gateway@canary\ndocker run ghcr.io/harrisoncn/mcp-gateway:14.1.0-canary.0') + '\nCurrent release: **13.4.0** (npm `latest`).\n');
+    writeFileSync(join(d, 'package.json'), JSON.stringify({ name: '@winstonsayno/mcp-gateway', version: '14.1.0-canary.0' }));
+    writeFileSync(join(d, 'package-lock.json'), JSON.stringify({ version: '14.1.0-canary.0' }));
+    const s = { lts: {}, distTags: [], historical: [], prerelease: { tag: 'canary', version: '14.1.0-canary.0', stable: '13.4.0' } };
+    writeFileSync(join(d, 'scripts/docs-check.json'), JSON.stringify(s));
+    expect((await runDocsCheck(d)).findings.map((f) => f.rule).sort()).toEqual(['image', 'version']);
+    writeFileSync(join(d, 'scripts/docs-check.json'), JSON.stringify({ ...s, otherPrereleases: [{ tag: 'next', version: '14.0.0-rc.4' }] }));
+    expect((await runDocsCheck(d)).findings).toEqual([]);
   });
 });

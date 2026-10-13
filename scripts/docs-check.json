@@ -10,8 +10,8 @@
     "v10-lts"
   ],
   "prerelease": {
-    "tag": "next",
-    "version": "15.0.0-rc.4",
+    "tag": "canary",
+    "version": "15.1.0-canary.0",
     "stable": "14.9.2"
   },
   "historical": [
@@ -29,5 +29,11 @@
     "docs/guides/migrating-to-v12.md",
     "docs/guides/migrating-to-v13.md",
     "docs/guides/plugins-v5.md"
+  ],
+  "otherPrereleases": [
+    {
+      "tag": "next",
+      "version": "15.0.0-rc.4"
+    }
   ]
 }
