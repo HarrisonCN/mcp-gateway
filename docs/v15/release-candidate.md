@@ -1,17 +1,21 @@
 # 15.0.0 release candidate
 
-> **15.0.0-rc.3 is a pre-release.** It is published under the npm dist-tag `next` (not `latest`) and as the image tag
-> `ghcr.io/harrisoncn/mcp-gateway:15.0.0-rc.3` only (not `latest`, not `15`). Production deployments stay on 14.x
-> (`latest`, currently 14.9.1) until 15.0.0 ships.
+> **15.0.0-rc.4 is a pre-release.** It is published under the npm dist-tag `next` (not `latest`) and as the image tag
+> `ghcr.io/harrisoncn/mcp-gateway:15.0.0-rc.4` only (not `latest`, not `15`). Production deployments stay on 14.x
+> (`latest`, currently 14.9.2) until 15.0.0 ships.
 
 ```bash
-npm i @winstonsayno/mcp-gateway@next          # 15.0.0-rc.3
-docker pull ghcr.io/harrisoncn/mcp-gateway:15.0.0-rc.3
+npm i @winstonsayno/mcp-gateway@next          # 15.0.0-rc.4
+docker pull ghcr.io/harrisoncn/mcp-gateway:15.0.0-rc.4
 ```
 
-What the candidate contains: everything in 14.9.1 plus the 15.0 changes from the [freeze list](freeze.md) —
+What the candidate contains: everything in 14.9.2 plus the 15.0 changes from the [freeze list](freeze.md) —
 schema v11 files refused, module plugins in a `worker` by default, unknown top-level keys refused, `schema/v12-draft`
 removed. Upgrade steps: [migrating to v15](../migrating-to-v15.md).
+
+rc.4 changes only how the image is built: the Dockerfile's builder stage (dev `npm ci` + tsc, architecture-independent
+output) runs on the build host instead of under QEMU emulation for arm64, which crashed and hung the 14.9.2 image build.
+The runner stage is still built per platform. No change to the package contents or the frozen surface.
 
 ## What is not done yet (15.0.0 gates)
 
