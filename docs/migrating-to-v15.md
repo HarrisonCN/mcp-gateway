@@ -6,8 +6,8 @@ else breaks. Every change below is reported by **14.9.0** at run time, so the sa
 1. Upgrade to **14.9.2** or later 14.9.x (`npm i @winstonsayno/mcp-gateway@14.9.2`, image `:14.9.2`; 14.9.1 fixes the 14.9.0 memory growth, 14.9.2 bounds the durable run ids kept in memory).
 2. Run `mcp-gateway validate -c mcp-gateway.yml` and check `GET /api/v1/admin/deprecations` on every instance.
 3. Fix each reported id (table below) until both are empty.
-4. Try the release candidate in staging: `npm i @winstonsayno/mcp-gateway@next` (`15.0.0-rc.3`), image
-   `ghcr.io/harrisoncn/mcp-gateway:15.0.0-rc.3` (prerelease — `latest`, `:14` and `:latest` stay on 14.9).
+4. Try the release candidate in staging: `npm i @winstonsayno/mcp-gateway@next` (`15.0.0-rc.4`), image
+   `ghcr.io/harrisoncn/mcp-gateway:15.0.0-rc.4` (prerelease — `latest`, `:14` and `:latest` stay on 14.9).
 5. Upgrade production to 15.0.0 when it ships.
 
 ## Changes

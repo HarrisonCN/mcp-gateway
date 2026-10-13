@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [15.0.0-rc.4] - 2026-10-13
+
+**Prerelease** (npm dist-tag `next`, image `:15.0.0-rc.4` only — `latest`, `:latest` and `:14` stay on 14.9.x). Fourth 15.0 release candidate: rc.3 plus a change to how the container image is built. No change to the package contents, the frozen surface (REST / admin API, `/mcp`, CLI, plugin API v5, config schema v12, metrics, state formats) or the four 15.0 migration changes of rc.1. The v15 gates A / B / C are still open (see [v15 gates](docs/v15/gates.md)).
+
+### Fixed
+
+- **Multi-arch image build could hang on arm64** (forward-port of the 14.9.x fix, #224 / #225): the builder stage (dev `npm ci` + tsc) ran under QEMU arm64 emulation, which crashed with `qemu: uncaught target signal 4 (Illegal instruction)` and hung the 14.9.2 image build until the 30-minute job timeout. The builder now runs on the build host (`FROM --platform=$BUILDPLATFORM`) — its output, `dist/`, is architecture-independent — and only the runner stage (production `npm ci --omit=dev`) is built per target platform. rc.4 is the first release image built this way; gate A should run on this candidate or a later one.
+
+### CI
+
+- Supply-chain job: when ECR Public rate-limits the BuildKit image (`toomanyrequests: Rate exceeded`, which failed this job on #219, #224 and #226), `setup-buildx` falls back to Docker Hub instead of failing the PR (the release image workflow already did this).
+
+### Docs
+
+- Roadmap to 17.0: release channels (`latest` 14.9.x, `next` 15.0 RC, `canary` 15.1+ development), how the v15 gates are handled (unchanged, still open) and what the maintainer has to provide to close them (#226).
+- `docs/v15/release-candidate.md`: rc.4; the stable line is 14.9.2.
+
+### Tests
+
+- `test/dockerfile-buildplatform.test.ts` (builder on `$BUILDPLATFORM`, runner per platform, only `dist/` copied from the builder).
+
 ## [15.0.0-rc.3] - 2026-10-12
 
 **Prerelease** (npm dist-tag `next`, image `:15.0.0-rc.3` only — `latest`, `:latest` and `:14` stay on 14.9.x). Third 15.0 release candidate: rc.2 plus the 14.9.2 memory fix. No change to the frozen surface (REST / admin API, `/mcp`, CLI, plugin API v5, config schema v12, metrics, state formats) and no change to the four 15.0 migration changes of rc.1.
