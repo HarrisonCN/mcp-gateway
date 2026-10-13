@@ -1,8 +1,8 @@
 # Roadmap
 
-版本 / 状态 / 验收追踪表（2026-10-11 更新）。已发布版本的详细内容见 [CHANGELOG](../CHANGELOG.md)；10.x 之前与 10.x – 13.0 的历史计划保留在文末“历史计划”。
+版本 / 状态 / 验收追踪表（2026-10-13 更新：15.0 之后到 17.0 的计划）。已发布版本的详细内容见 [CHANGELOG](../CHANGELOG.md)；10.x 之前与 10.x – 13.0 的历史计划保留在文末“历史计划”。
 
-状态：✅ 已发布 · 🧪 预发布（npm `next`） · ⏳ 进行中 · ⬜ 未开始 · ✖ 取消
+状态：✅ 已发布 · 🧪 预发布（npm `next` / `canary`） · ⏳ 进行中 · ⬜ 未开始 · ⛔ 需要维护者提供的资源 · ✖ 取消 · [条件] 只在需要时发布
 
 ## 当前版本线
 
@@ -21,8 +21,45 @@
 | 14.9 | v15 候选线：15.0 API / 配置冻结、15.0 变更提前告警、升级 / 回滚 / 安全回归 / 模糊 / soak 验证 | ✅ 14.9.2（`latest`） | [冻结清单](v15/freeze.md)；soak 发现 durable 状态无界增长：14.9.0 修复 sweep 开销与保留期（`retentionHours`），内存增长在 14.9.1 修复（sweep 分块读取、索引清理；30 分钟 soak +97 MB/h），14.9.2 限制内存中的 run id（每实例最多 5 万，其余从存储索引读取） |
 | 14.10 – 14.13 | — | ✖ 取消 | 后续工作改为 GA 之后的 15.1 / 15.2 |
 | 15.0.0-rc.1 | 15.0 候选：只包含 14.9 公告的四项变更（拒绝 v11 配置、模块插件默认 `worker`（`runtime: inline` 显式保留）、拒绝未知顶层键、移除 `schema/v12-draft`） | 🧪 rc.3 在 npm `next`，GHCR `:15.0.0-rc.3`（rc.2 `:15.0.0-rc.2`，rc.1 `:15.0.0-rc.1`） | 13.9.x / 14.8 / 14.9 → rc.1 的迁移与回滚（SQLite + Redis）；冻结面无其他 API 变化 |
-| 15.0.0 | Governed AI Infrastructure（GA） | ⬜ | 需要下列 v15 发布闸门 A / B / C 全部关闭 |
-| 15.1 / 15.2 | GA 之后的后续工作（原 14.10 – 14.13 范围） | ⬜ | 在 15.0.0 GA 后规划 |
+| 14.9.3+ | 稳定线维护（`latest`，分支 `maint/14.9.x`） | ⬜ [条件] | 只修安全 / 回归 / 数据正确性；冻结面不变；#224 的 Docker 构建修复随下一个 14.9.x 发布 |
+| 15.0.0-rc.4 | 发布产物候选：#225 的 `$BUILDPLATFORM` 构建阶段进入 release 镜像（arm64 不再在 QEMU 下 `npm ci` / tsc） | ⬜ | 冻结面不变；只在 `next` / `:15.0.0-rc.4`；闸门 A 应在这个（或之后的）候选产物上运行 |
+| 15.0.0 | Governed AI Infrastructure（GA） | ⛔ | 需要下列 v15 发布闸门 A / B / C 全部关闭并由维护者签字；见下方“闸门的处理” |
+| 15.1 | 调用因果追踪：`GET /api/v1/admin/ops/lineage/:requestId`（身份、租户、配置代次、策略决定、目标、上游状态、费用），接受客户端关联 id；租户成本汇总；控制台 lineage 视图 | ⬜ npm `canary` | 每次调用唯一可追溯；租户运维者只看本租户；冻结面零变化（只做新增） |
+| 15.2 | 插件生态与 SDK：`plugin init` 模板、`plugin doctor` 权限自检、可复现签名校验、兼容矩阵、插件测试工具 | ⬜ npm `canary` | 第三方示例插件在 worker / process 沙箱中完成安装、更新、撤销、崩溃恢复；不新增顶层 CLI 命令 |
+| 15.3 | AI 生成治理：上游工具 `outputSchema` 校验（可选）、工具 schema 版本固定、按租户生成预算、审批与 lineage 关联 | ⬜ npm `canary` | 未授权工具不执行；schema 违规不透传；Motionary interop 通过 |
+| 15.4 | 闸门 / RC 反馈修复 | ⬜ [条件] | 只在需要新增内容时发布 |
+| 15.9 | v16 准备：16.0 删除项运行时告警、`config migrate --to v13`、`docs/migrating-to-v16.md`、16.0 冻结清单；`16.0.0-alpha.1` | ⬜ npm `canary` | 每个删除项都有告警 + codemod + 文档 + 升级 / 回滚测试 |
+| 16.0 | （破坏性，提案）配置 schema v13：去掉 `isolation` 别名、模块插件 `runtime: inline` 需显式允许；`/mcp` 不再接受协议修订 `2024-11-05`；Node ≥ 24 | ⬜ 预发布 / ⛔ 稳定版 | v12 文件在 16.x 内存迁移并告警；稳定版需要 v16 闸门（A / B 对比 15.0，C 外部增量复核） |
+| 16.1 | 下一版 MCP 协议修订 + 工具 schema 协商（以官方规范为准） | ⬜ [条件] | MCP compat matrix 全绿 |
+| 16.2 | 多区域控制面 2.0：lineage / 成本跨区域汇总、吊销延迟告警 | ⬜ npm `canary` | 区域新鲜度测试；lineage 跨区域唯一 |
+| 16.9 | v17 准备：plugin API v5 → v6 告警与 codemod、`docs/migrating-to-v17.md`；`17.0.0-alpha.1` | ⬜ npm `canary` | 同 15.9 |
+| 17.0 | （破坏性，提案）plugin API v6（模块插件只在 worker / process / wasm 运行）、拒绝 `version: 12`、SDK 冻结；15.x 成为 LTS | ⬜ 预发布 / ⛔ 稳定版 | 稳定版需要 v17 闸门 A / B / C |
+
+## 发布通道
+
+| 通道 | npm dist-tag | 镜像标签 | 分支 | 内容 |
+|---|---|---|---|---|
+| 稳定 | `latest` | `<version>`、`14.9`、`14`、`latest` | `maint/14.9.x` | 14.9.x（15.0.0 GA 后改为 15.x） |
+| GA 候选 | `next` | 只有 `15.0.0-rc.N` | `main`，rc.4 之后 `release/15.0.x` | 15.0.0 候选，冻结面不变 |
+| 开发线 | `canary` | 只有 `<version>` | `main` | 15.1 → 15.9、16.0.0-alpha、17.0.0-alpha |
+| LTS | `v13-lts`、`v12-0`、`v10-lts` | `13`、`12`、`10` | `lts/*` | 不变 |
+
+任何预发布都不会发布到 `latest` 或 `:latest` / `:15` / `:15.0`。15.1 及以后的稳定版排在 15.0.0 GA 之后。
+
+## 闸门的处理（2026-10-13）
+
+闸门 A / B / C 的定义不变，也不放宽：
+
+- A 要求一次连续 72 小时的运行，B 要求固定专用硬件上的同机基线，C 要求独立的外部评审；开发用的共享环境做不到这三项，那里的 30 – 90 分钟 soak、2 小时演练和内部安全回归只作为辅助证据，**不算闸门证据**。
+- 闸门未关闭之前，15.0 保持 RC（`next`），稳定线保持 14.9.x（`latest`），15.1 起的开发以 `canary` 预发布推进。
+- 16.0 / 17.0 的稳定版同样需要闸门：A / B（同一 harness，对比上一稳定 major）和 C（至少针对该 major 变更面的外部增量复核）。
+
+关闭 15.0 闸门需要维护者提供：
+
+1. **A + B**：一台专用 Linux 机器（≥ 4 核、8 GB 内存、SSD），约 80 小时只运行闸门（6 h 基线 + 72 h soak），不休眠、不自动更新或重启；Node.js 22、git、`redis-server`；注册为仓库的 self-hosted runner（labels `self-hosted`、`linux`、`soak`），或提供一个可运行 `scripts/gate-a.sh` 的 shell。
+2. **B 的阈值**：确认或修改 [v15 gates](v15/gates.md#gate-b--comparison-with-the-v133-baseline-on-fixed-hardware) 中的提案（p95 / p99 ≤ +10 %，吞吐 ≥ −5 %，恢复时间 ≤ +20 %）。
+3. **C**：一位独立于代码作者的外部安全评审人或机构，以及范围与时间约定（范围 = [冻结清单](v15/freeze.md)）。
+4. **签字**：查看证据后在本页关闭 A / B / C。
 
 ## v15 发布闸门
 
