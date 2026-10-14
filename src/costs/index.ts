@@ -12,6 +12,11 @@
  * period (logged, listed in `GET /api/v1/costs`, optionally POSTed to `webhook`), and `action: block` refuses further
  * calls (`-32013`) until the period resets.
  *
+ * 15.3.0-canary.1 (AI generation governance): a budget may be scoped to some tools (`tools`: `server/tool` globs — only
+ * those calls count and only those calls are refused), give every acting tenant its own budget (`perTenant`, no ids
+ * to list; callers without a tenant share `tenant:(none)`) and count calls instead of cost (`measure: calls`, e.g.
+ * "20 image generations per tenant per day").
+ *
  * @module costs
  */
 
@@ -43,6 +48,12 @@ export interface BudgetConfig {
   /** `alert` (default) only notifies; `block` also refuses calls once the limit is reached. */
   action?: 'alert' | 'block';
   webhook?: string;
+  /** 15.3.0-canary.1: every acting tenant gets its own budget (subject `tenant:<id>`; no tenant: `tenant:(none)`). */
+  perTenant?: boolean;
+  /** 15.3.0-canary.1: `server/tool` globs — only matching calls count against (and are refused by) this budget. */
+  tools?: string[];
+  /** 15.3.0-canary.1: `cost` (default) sums prices; `calls` counts calls (also unpriced ones). */
+  measure?: 'cost' | 'calls';
 }
 
 export interface CostsConfig {
@@ -132,9 +143,18 @@ export class CostLedger {
     return !!c && !!(c.tools?.length || Object.keys(c.models ?? {}).length || c.budgets?.length);
   }
 
+  /** 15.3.0-canary.1: whether a budget covers a call of `serverId/tool` (budgets without `tools` cover every call). */
+  private covers(b: BudgetConfig, serverId: string | undefined, tool: string | undefined): boolean {
+    if (!b.tools?.length) return true;
+    if (serverId === undefined || tool === undefined) return false;
+    const key = `${serverId}/${tool}`;
+    return b.tools.some((g) => globToRegExp(g).test(key));
+  }
+
   /** Subjects of a budget a call belongs to (empty: the budget does not apply). */
   private subjects(b: BudgetConfig, clientId: string | undefined, tenants: string[] | undefined): string[] {
     const id = clientId ?? 'anonymous';
+    if (b.perTenant) return tenants?.length ? tenants.map((t) => `tenant:${t}`) : ['tenant:(none)'];
     if (b.tenants?.length) return (tenants ?? []).filter((t) => b.tenants!.includes(t)).map((t) => `tenant:${t}`);
     if (b.clients?.length && !b.clients.some((p) => globToRegExp(p).test(id))) return [];
     return [b.perClient ? id : '*'];
@@ -143,18 +163,18 @@ export class CostLedger {
   private spent(b: BudgetConfig, subject: string, since: number): number {
     let total = 0;
     for (const e of this.entries) {
-      if (e.at < since) continue;
+      if (e.at < since || !this.covers(b, e.serverId, e.tool)) continue;
       const s = this.subjects(b, e.clientId, e.tenants);
-      if (s.includes(subject)) total += e.cost;
+      if (s.includes(subject)) total += b.measure === 'calls' ? 1 : e.cost;
     }
     return Math.round(total * 1e6) / 1e6;
   }
 
   /** A blocking budget that is used up for this caller, if any. */
-  blocked(clientId: string | undefined, tenants: string[] | undefined): { budget: string; subject: string; limit: number; spent: number; resetsAt: string } | undefined {
+  blocked(clientId: string | undefined, tenants: string[] | undefined, serverId?: string, tool?: string): { budget: string; subject: string; limit: number; spent: number; resetsAt: string } | undefined {
     const now = this.now();
     for (const b of this.config()?.budgets ?? []) {
-      if (b.action !== 'block') continue;
+      if (b.action !== 'block' || !this.covers(b, serverId, tool)) continue;
       const since = periodStart(now, b.period);
       for (const subject of this.subjects(b, clientId, tenants)) {
         const spent = this.spent(b, subject, since);
@@ -172,7 +192,8 @@ export class CostLedger {
   record(e: Omit<CostEntry, 'at' | 'cost' | 'usage'> & { result?: unknown }): CostEntry {
     const usage = usageOf(e.result);
     const entry: CostEntry = { at: this.now(), clientId: e.clientId, tenants: e.tenants, serverId: e.serverId, tool: e.tool, usage, cost: priceCall(this.config(), e.serverId, e.tool, usage) };
-    if (entry.cost === 0 && !usage) return entry;
+    // 15.3.0-canary.1: an unpriced call is still kept when a `measure: calls` budget counts it
+    if (entry.cost === 0 && !usage && !(this.config()?.budgets ?? []).some((b) => b.measure === 'calls' && this.covers(b, entry.serverId, entry.tool))) return entry;
     this.entries.push(entry);
     const max = this.opts.maxEntries ?? 100_000;
     if (this.entries.length > max) this.entries.splice(0, this.entries.length - max);
@@ -183,6 +204,7 @@ export class CostLedger {
   private checkBudgets(entry: CostEntry): void {
     const now = entry.at;
     for (const b of this.config()?.budgets ?? []) {
+      if (!this.covers(b, entry.serverId, entry.tool)) continue;
       const since = periodStart(now, b.period);
       for (const subject of this.subjects(b, entry.clientId, entry.tenants)) {
         const spent = this.spent(b, subject, since);
@@ -193,7 +215,7 @@ export class CostLedger {
           const alert: BudgetAlert = { budget: b.name, subject, threshold: th, spent, limit: b.limit, at: new Date(now).toISOString(), period: new Date(since).toISOString().slice(0, b.period === 'day' ? 10 : 7) };
           this.alerts.unshift(alert);
           this.alerts.length = Math.min(this.alerts.length, 200);
-          logger.warn(`Budget "${b.name}" for ${subject}: ${Math.round(th * 100)}% reached (${spent} of ${b.limit} ${this.config()?.currency ?? 'USD'})`);
+          logger.warn(`Budget "${b.name}" for ${subject}: ${Math.round(th * 100)}% reached (${spent} of ${b.limit} ${b.measure === 'calls' ? 'calls' : (this.config()?.currency ?? 'USD')})`);
           if (b.webhook) {
             const f = this.opts.fetch ?? ((u: string, i: RequestInit) => fetch(u, i));
             Promise.resolve(f(b.webhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'budget.alert', ...alert }) })).catch((err: unknown) =>
@@ -257,17 +279,17 @@ export class CostLedger {
   }
 
   /** Budget status for every subject seen in the current periods. */
-  budgets(): Array<{ name: string; subject: string; period: string; limit: number; spent: number; used: number; action: string }> {
+  budgets(): Array<{ name: string; subject: string; period: string; limit: number; spent: number; used: number; action: string; measure: 'cost' | 'calls' }> {
     const now = this.now();
-    const out: Array<{ name: string; subject: string; period: string; limit: number; spent: number; used: number; action: string }> = [];
+    const out: Array<{ name: string; subject: string; period: string; limit: number; spent: number; used: number; action: string; measure: 'cost' | 'calls' }> = [];
     for (const b of this.config()?.budgets ?? []) {
       const since = periodStart(now, b.period);
       const subjects = new Set<string>();
-      for (const e of this.entries) if (e.at >= since) for (const s of this.subjects(b, e.clientId, e.tenants)) subjects.add(s);
-      if (!subjects.size && !b.perClient && !b.tenants?.length) subjects.add('*');
+      for (const e of this.entries) if (e.at >= since && this.covers(b, e.serverId, e.tool)) for (const s of this.subjects(b, e.clientId, e.tenants)) subjects.add(s);
+      if (!subjects.size && !b.perClient && !b.perTenant && !b.tenants?.length) subjects.add('*');
       for (const subject of subjects) {
         const spent = this.spent(b, subject, since);
-        out.push({ name: b.name, subject, period: b.period, limit: b.limit, spent, used: b.limit ? Math.round((spent / b.limit) * 1000) / 1000 : 0, action: b.action ?? 'alert' });
+        out.push({ name: b.name, subject, period: b.period, limit: b.limit, spent, used: b.limit ? Math.round((spent / b.limit) * 1000) / 1000 : 0, action: b.action ?? 'alert', measure: b.measure ?? 'cost' });
       }
     }
     return out;

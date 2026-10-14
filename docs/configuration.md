@@ -1320,7 +1320,18 @@ costs:
       tenants: [acme]             # per tenant
       period: month
       limit: 200
+    - name: image-generations     # 15.3.0-canary.1: AI generation governance
+      perTenant: true             # every acting tenant gets its own budget (no tenant: "tenant:(none)", pooled)
+      tools: ["*/generate_*"]     # only these calls count, and only these calls are refused
+      measure: calls              # count calls (also unpriced ones) instead of summing cost
+      period: day
+      limit: 20
+      action: block
 ```
+
+15.3.0-canary.1: `perTenant`, `tools` and `measure` are optional and additive — a budget without them behaves as in
+4.3 (every call, cost). `perTenant` cannot be combined with `tenants`, `clients` or `perClient`. `GET /api/v1/costs`
+lists each budget subject with its `measure`.
 
 Spans carry `mcp.cost` and `gen_ai.usage.input_tokens` / `output_tokens`. Report: `GET /api/v1/costs`.
 

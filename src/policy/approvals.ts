@@ -29,6 +29,10 @@ export interface ApprovalRequest {
   decidedAt?: string;
   decidedBy?: string;
   reason?: string;
+  /** 15.3.0-canary.1: the client's correlation id of the held call (`X-Request-Id` / `X-Correlation-Id` / MCP `_meta`). */
+  correlationId?: string;
+  /** 15.3.0-canary.1: the history / lineage record of the held call, set once the call has finished. */
+  requestId?: string;
 }
 
 export interface ApprovalOptions {
@@ -70,8 +74,9 @@ export class ApprovalQueue extends EventEmitter {
 
   /** Hold a call until it is decided. Resolves with the final status. */
   request(
-    input: { clientId?: string; serverId: string; tool: string; args: unknown; rule?: string; message?: string; via: 'rest' | 'mcp' },
+    input: { clientId?: string; serverId: string; tool: string; args: unknown; rule?: string; message?: string; via: 'rest' | 'mcp'; correlationId?: string },
     signal?: AbortSignal,
+    onCreated?: (req: ApprovalRequest) => void,
   ): Promise<ApprovalStatus> {
     const now = Date.now();
     const req: ApprovalRequest = {
@@ -86,7 +91,9 @@ export class ApprovalQueue extends EventEmitter {
       via: input.via,
       createdAt: new Date(now).toISOString(),
       expiresAt: new Date(now + this.options.timeoutSeconds * 1000).toISOString(),
+      ...(input.correlationId ? { correlationId: input.correlationId } : {}),
     };
+    onCreated?.(req);
     return new Promise<ApprovalStatus>((resolve) => {
       const timer = setTimeout(() => this.finish(req.id, 'expired'), this.options.timeoutSeconds * 1000);
       timer.unref();
@@ -130,6 +137,12 @@ export class ApprovalQueue extends EventEmitter {
 
   list(): { pending: ApprovalRequest[]; recent: ApprovalRequest[] } {
     return { pending: [...this.pending.values()].map((p) => p.req), recent: [...this.history] };
+  }
+
+  /** 15.3.0-canary.1: link a (decided) approval to the history / lineage record of its call. First link wins. */
+  link(id: string, requestId: string): void {
+    const a = this.get(id);
+    if (a && !a.requestId) a.requestId = requestId;
   }
 
   get(id: string): ApprovalRequest | undefined {

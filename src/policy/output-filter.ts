@@ -113,7 +113,19 @@ export class OutputFilter {
         }
       }
     }
-    if (findings.length === 0) return { result, findings, blocked: false };
+    if (findings.length === 0) {
+      // 15.3.0-canary.1: `mcp-gateway/flags` is this gateway's verdict — an upstream cannot forge it
+      const m = r._meta as Record<string, unknown> | undefined;
+      if (m && typeof m === 'object' && 'mcp-gateway/flags' in m) {
+        const { ['mcp-gateway/flags']: _forged, ...rest } = m;
+        void _forged;
+        const out: Record<string, unknown> = { ...(result as Record<string, unknown>) };
+        if (Object.keys(rest).length) out._meta = rest;
+        else delete out._meta;
+        return { result: out, findings, blocked: false };
+      }
+      return { result, findings, blocked: false };
+    }
     if (this.action === 'block') {
       return {
         result: {

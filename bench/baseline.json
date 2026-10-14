@@ -70,8 +70,8 @@
           "rssMb": 89.0,
           "heapMb": 18.1,
           "featureModules": 0,
-          "modules": 287,
-          "moduleKb": 1995.2,
+          "modules": 298,
+          "moduleKb": 2202.4,
           "lazyDeps": 0
         },
         "all": {
@@ -81,8 +81,8 @@
           "rssMb": 105.8,
           "heapMb": 21.9,
           "featureModules": 31,
-          "modules": 413,
-          "moduleKb": 2697.8,
+          "modules": 424,
+          "moduleKb": 2906.4,
           "lazyDeps": 2
         }
       },
@@ -115,7 +115,21 @@
           }
         }
       },
-      "justification": "all.startMs 74.7 dated from the 13.0.0 CI run (2026-10-09) and was stale: the same Performance job measured 144.3 ms for 13.9.0 and 156.8 ms for 14.0.0 (110.5 / 144.5 / 156.8 ms across the three 14.0.0 jobs), so the cold-start time had grown over the 13.x feature releases without tripping the > 2x + 50 ms gate (199 ms). Re-recorded from CI so the gate measures drift from the current kernel. modules / moduleKb +1 % / +3 % (v12 config runtime + instance scope); minimal lazyDeps stays 0."
+      "justification": "all.startMs 74.7 dated from the 13.0.0 CI run (2026-10-09) and was stale: the same Performance job measured 144.3 ms for 13.9.0 and 156.8 ms for 14.0.0 (110.5 / 144.5 / 156.8 ms across the three 14.0.0 jobs), so the cold-start time had grown over the 13.x feature releases without tripping the > 2x + 50 ms gate (199 ms). Re-recorded from CI so the gate measures drift from the current kernel. modules / moduleKb +1 % / +3 % (v12 config runtime + instance scope); minimal lazyDeps stays 0.",
+      "moduleSizes": {
+        "recordedAt": "2026-10-14",
+        "previous": {
+          "minimal": {
+            "modules": 287,
+            "moduleKb": 1995.2
+          },
+          "all": {
+            "modules": 413,
+            "moduleKb": 2697.8
+          }
+        },
+        "justification": "15.3.0-canary.1: only modules / moduleKb re-recorded (deterministic: identical on linux-arm64 and the CI linux-x64 runners, e.g. 2213.4 KB in both for the first 15.3.0-canary.0 build); timings and memory unchanged (still the 14.0.0 CI medians). The lean graph grew +4 % modules / +10.4 % bytes over 14.1-15.3 (cluster rollout, tenancy, plugin runtimes, durable tasks, regions, edge, gitops, ops console, lineage, plugin SDK, tool schemas, generation budgets) and reached the 10 % guard. Before re-recording, the one eager addition the guard caught (15.3.0-canary.0 tool-schema governor + JSON Schema validator in the minimal graph, +16.5 KB) was made lazy; minimal lazyDeps stays 0 and featureModules stays 0 / 31."
+      }
     }
   },
   "before": {
