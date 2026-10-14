@@ -654,7 +654,7 @@ program
 
 // ─── plugin signing (5.4) ─────────────────────────────────────────────────────
 
-const pluginCmd = program.command('plugin').description('Plugins: init, doctor (15.2), keygen, sign, verify');
+const pluginCmd = program.command('plugin').description('Plugins: init, doctor (15.2), keygen, sign, verify (--rebuilt: reproducible check, 15.2)');
 // 15.2.0: plugin developer kit
 pluginCmd
   .command('init <name>')
@@ -723,18 +723,30 @@ pluginCmd
   });
 pluginCmd
   .command('verify <file>')
-  .description('Verify a plugin file against its .sig and a public key')
+  .description('Verify a plugin file against its .sig and a public key (15.2: --rebuilt checks that independent rebuilds have the signed digest)')
   .requiredOption('-p, --pub <file>', 'Public key PEM')
   .requiredOption('--key-id <id>', 'Key id of that public key')
   .option('-s, --sig <file>', 'Signature file (default <file>.sig)')
+  .option('--rebuilt <file>', 'A rebuild of the plugin from the same source (repeatable): must have exactly the signed sha256', (v: string, prev: string[] = []) => [...prev, v])
   .action(async (file: string, options) => {
-    const { verifyArtifact } = await import('./plugins/trust.js');
+    const { verifyArtifact, verifyReproducible } = await import('./plugins/trust.js');
     const { readFileSync } = await import('fs');
     let sig: unknown;
     try { sig = JSON.parse(readFileSync(options.sig ?? `${file}.sig`, 'utf8')); } catch (e) { logger.error(`Cannot read signature: ${(e as Error).message}`); process.exit(1); }
-    const r = verifyArtifact(readFileSync(file), sig, [{ id: options.keyId, publicKey: readFileSync(options.pub, 'utf8') }]);
-    if (!r.ok) { logger.error(`✗ ${file}: ${r.reason}`); process.exit(1); }
-    console.log(`✓ ${file} signed by ${r.keyId}`);
+    const keys = [{ id: options.keyId, publicKey: readFileSync(options.pub, 'utf8') }];
+    const rebuilt: string[] = options.rebuilt ?? [];
+    if (!rebuilt.length) {
+      const r = verifyArtifact(readFileSync(file), sig, keys);
+      if (!r.ok) { logger.error(`✗ ${file}: ${r.reason}`); process.exit(1); }
+      console.log(`✓ ${file} signed by ${r.keyId}`);
+      return;
+    }
+    const r = verifyReproducible(readFileSync(file), sig, rebuilt.map((f) => readFileSync(f)), keys);
+    if (!r.reproducible && !r.rebuilds.length) { logger.error(`✗ ${file}: ${r.reason}`); process.exit(1); }
+    console.log(`✓ ${file} signed by ${r.keyId} (sha256 ${r.sha256})`);
+    r.rebuilds.forEach((c, i) => console.log(`${c.matches ? '✓' : '✗'} ${rebuilt[i]}: sha256 ${c.sha256}${c.matches ? ' — matches' : ' — differs from the signed digest'}`));
+    if (!r.ok) { console.log(`✗ not reproducible: ${r.rebuilds.filter((c) => !c.matches).length} of ${r.rebuilds.length} rebuild(s) differ`); process.exit(1); }
+    console.log(`✓ reproducible: ${r.rebuilds.length} rebuild(s) match the signed digest`);
   });
 
 // ─── post-quantum keys (10.8, EXPERIMENTAL) ──────────────────────────────────

@@ -54,7 +54,10 @@ import {
 } from './catalog.js';
 import { isServerInScope } from '../auth/scopes.js';
 import { matchesUriTemplate } from './catalog.js';
-import { clientCorrelationId } from '../middleware/request-id.js';
+import { clientCorrelationId, metaCorrelationId } from '../middleware/request-id.js';
+
+/** 15.2.0-canary.1: `params._meta.correlationId` of the message, else the X-Request-Id / X-Correlation-Id header. */
+const correlationOf = (req: Request, msg: JsonRpcMessage): string | undefined => metaCorrelationId(msg.params) ?? clientCorrelationId(req);
 
 /** MCP logging levels (RFC 5424 severities), least severe first. */
 export const LOG_LEVELS = ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'] as const;
@@ -1031,7 +1034,7 @@ export class McpEndpoint {
       via: 'mcp',
       signal,
       traceparent: traceparentOf(req),
-      ...(clientCorrelationId(req) ? { correlationId: clientCorrelationId(req) } : {}),
+      ...(correlationOf(req, msg) ? { correlationId: correlationOf(req, msg) } : {}),
     });
     if (result.success) return { jsonrpc: '2.0', id, result: result.result ?? {} };
     const err = result.error ?? { code: JSONRPC_INTERNAL_ERROR, message: 'Unknown error' };
@@ -1213,7 +1216,7 @@ export class McpEndpoint {
       onProgress,
       caller: ({ key: session.id, sessionId: session.id, stream } satisfies CallerRef) as RelayCaller,
       traceparent: traceparentOf(req),
-      ...(clientCorrelationId(req) ? { correlationId: clientCorrelationId(req) } : {}),
+      ...(correlationOf(req, msg) ? { correlationId: correlationOf(req, msg) } : {}),
     });
     if (single && result.traceparent && !res.headersSent) res.set('traceparent', result.traceparent);
 

@@ -74,3 +74,46 @@ export function verifyArtifact(bytes: Uint8Array | string, sig: unknown, keys: R
     return { ok: false, reason: `invalid key "${key.id}": ${(e as Error).message}` };
   }
 }
+
+/** 15.2.0-canary.1: one independent rebuild compared with the signed digest. */
+export interface RebuildCheck {
+  sha256: string;
+  matches: boolean;
+}
+export type ReproducibleResult =
+  | { ok: true; keyId: string; sha256: string; reproducible: true; rebuilds: RebuildCheck[] }
+  | { ok: false; reason: string; keyId?: string; sha256?: string; reproducible: boolean; rebuilds: RebuildCheck[] };
+
+/**
+ * 15.2.0-canary.1 reproducible signature check: the shipped artifact verifies against `keys` (exactly like
+ * {@link verifyArtifact}) AND every independent rebuild from the same source has the signed digest — so the signature
+ * provably covers the source the verifier built, not just bytes the signer handed out. Needs at least one rebuild.
+ */
+export function verifyReproducible(
+  bytes: Uint8Array | string,
+  sig: unknown,
+  rebuilds: ReadonlyArray<Uint8Array | string>,
+  keys: ReadonlyArray<{ id: string; publicKey: string; mldsa?: MlDsaPublicKey }>,
+  opts: { requirePostQuantum?: boolean } = {},
+): ReproducibleResult {
+  if (!rebuilds.length) return { ok: false, reason: 'a reproducible check needs at least one rebuild', reproducible: false, rebuilds: [] };
+  const v = verifyArtifact(bytes, sig, keys, opts);
+  if (!v.ok) return { ok: false, reason: v.reason, reproducible: false, rebuilds: [] };
+  const signed = (sig as PluginSignature).sha256;
+  const checks = rebuilds.map((b) => {
+    const d = sha256Hex(b);
+    return { sha256: d, matches: d === signed };
+  });
+  const bad = checks.findIndex((c) => !c.matches);
+  if (bad >= 0) {
+    return {
+      ok: false,
+      reason: `not reproducible: rebuild ${bad + 1} has sha256 ${checks[bad]!.sha256.slice(0, 12)}…, the signature covers ${signed.slice(0, 12)}…`,
+      keyId: v.keyId,
+      sha256: signed,
+      reproducible: false,
+      rebuilds: checks,
+    };
+  }
+  return { ok: true, keyId: v.keyId, sha256: signed, reproducible: true, rebuilds: checks };
+}

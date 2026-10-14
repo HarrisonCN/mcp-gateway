@@ -76,6 +76,54 @@ mcp-gateway plugin doctor -c gateway.yaml             # load every module plugin
 It exits `1` when any check fails. The doctor runs the plugin's code (in the configured runtime), so run it on
 plugins you are about to deploy, not on unknown files.
 
+## Test, verify and ship (15.2.0-canary.1)
+
+**Testing harness — `@winstonsayno/mcp-gateway/testing`.** A new package export (additive) for plugin tests, usable
+from `node:test`, vitest, jest or mocha. `startPluginHarness(entry, { baseDir, trust })` loads one `plugins[]` entry
+exactly like the gateway — signature check against `pluginTrust`, `worker` / `process` runtime, permissions, limits,
+failure mode — and returns a harness:
+
+| Method | What it does |
+|---|---|
+| `callTool(name, args?, over?)` | runs the `onToolCall` hooks → `{ action: 'continue', arguments }`, `{ action: 'deny', reason }`, `{ action: 'respond', result }` or `{ action: 'refused', error }` (a failing hook with `failure: closed`) |
+| `respond(call, response)` | runs `onResponse` / `onError`, returns what the client would get |
+| `status()` | the gateway's view: circuit, failures, restarts, alive (as `GET /api/v1/plugins`) |
+| `update({ entry?, trust? })` | a hot reload: re-reads and re-verifies the module; on failure it throws and the running plugin keeps serving |
+| `unload()` | removes the plugin (as removing its entry does); its runtime is closed |
+| `crash()` | kills the isolated runtime as an OOM kill would; the next call starts a fresh one |
+| `close()` | stops everything (the harness keeps the event loop alive until then) |
+
+Also exported: `toolCall()` / `toolResponse()` (hook inputs), `createTestSigningKey()` / `signPluginFile()` (a
+throwaway key, `<file>.sig` and the matching `pluginTrust`), `verifyArtifact` / `verifyReproducible`, and the
+[compatibility matrix](plugin-compatibility.md) (`pluginApiSupport`, `isPluginApiSupported`).
+
+```js
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { startPluginHarness } from '@winstonsayno/mcp-gateway/testing';
+
+test('blocks rm', async () => {
+  const h = await startPluginHarness({ module: './my-plugin.mjs', runtime: 'worker' }, { baseDir: import.meta.dirname });
+  try {
+    assert.equal((await h.callTool('rm')).action, 'deny');
+  } finally {
+    await h.close();
+  }
+});
+```
+
+**Reproducible signature check.** `mcp-gateway plugin verify <file> -p <pub> --key-id <id> --rebuilt <rebuild>`
+(repeatable) verifies the signature and then checks that each independent rebuild from the same source has exactly the
+signed sha256 — so the signature provably covers the source you built, not only the bytes the vendor published. Exit
+`0` only when every rebuild matches; a differing rebuild is named with its digest. Without `--rebuilt` the command
+behaves as before. Library: `verifyReproducible(bytes, sig, rebuilds, keys)`.
+
+**A third-party plugin, end to end.** [`examples/plugins/tool-quota`](../../examples/plugins/tool-quota/README.md) is a
+signed per-client tool quota running in a worker, with its operator config and a `node --test` file. Its README walks
+through install, update, revoke and crash recovery — including that a reload which only drops the vendor key is
+refused (the plugin keeps running until its entry is removed in the same reload) and that in-memory state starts over
+after a crash.
+
 ## What a plugin gets
 
 | | |

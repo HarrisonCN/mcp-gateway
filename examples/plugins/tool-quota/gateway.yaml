@@ -1,0 +1,30 @@
+# Example: the tool-quota plugin, signed by its vendor, in a worker runtime.
+# 1. vendor:   mcp-gateway plugin keygen -o vendor && mcp-gateway plugin sign tool-quota.mjs -k vendor.key --key-id vendor-2026
+# 2. operator: put vendor.pub below, then  mcp-gateway plugin doctor -c gateway.yaml
+version: 12
+servers: []
+pluginTrust:
+  requireSigned: true
+  keys:
+    - id: vendor-2026
+      publicKey: |
+        -----BEGIN PUBLIC KEY-----
+        (contents of vendor.pub)
+        -----END PUBLIC KEY-----
+plugins:
+  - module: ./tool-quota.mjs
+    runtime: worker
+    failure: closed
+    options:
+      limit: 100
+      windowMs: 60000
+    limits:
+      timeoutMs: 500
+      memoryMb: 64
+      maxConcurrent: 16
+    permissions:
+      args: read
+      response: read
+      hooks: [onToolCall]
+      network: false
+      env: []

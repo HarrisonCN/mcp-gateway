@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [15.2.0-canary.1] - 2026-10-14
+
+**Development prerelease** (npm dist-tag `canary`, image `:15.2.0-canary.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). Second build of the 15.2 line (plugin ecosystem and SDK): everything in 15.2.0-canary.0 plus plugin testing, reproducible verification, the compatibility matrix and MCP `_meta` correlation ids. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — so no 15.x release after it can become stable before it.
+
+### Added
+
+- **`@winstonsayno/mcp-gateway/testing`** — a new package export for plugin tests (framework-free: `node:test`, vitest, jest, mocha). `startPluginHarness(entry, { baseDir, trust })` loads one `plugins[]` entry exactly like the gateway (signature check, `worker` / `process` runtime, permissions, limits, failure mode) with `callTool`, `respond`, `status`, `update` (hot-reload semantics: a failed update throws and the running plugin keeps serving), `unload`, `crash` (kills the isolated runtime as an OOM kill would) and `close`; plus `toolCall` / `toolResponse`, `createTestSigningKey` / `signPluginFile`, `verifyArtifact` / `verifyReproducible` and the compatibility matrix. Guide: [plugin SDK → test, verify and ship](docs/guides/plugin-sdk.md#test-verify-and-ship-1520-canary1).
+- **Reproducible signature check** — `mcp-gateway plugin verify <file> … --rebuilt <file>` (repeatable): the signature must verify and every independent rebuild from the same source must have exactly the signed sha256 (exit `1` naming the differing rebuild). Library `verifyReproducible()` in `plugins/trust`. Without `--rebuilt` the command is unchanged.
+- **Plugin compatibility matrix** — [docs/guides/plugin-compatibility.md](docs/guides/plugin-compatibility.md): plugin API v1–v5 × gateway 2.0 → 15.x (plus the 16.0 / 17.0 roadmap proposals, marked as such) and the plugin API v5 capabilities by release; the same data as `PLUGIN_COMPATIBILITY` / `pluginApiSupport()` / `isPluginApiSupported()` (a test keeps page and data identical).
+- **Example third-party plugin** — [`examples/plugins/tool-quota`](examples/plugins/tool-quota/README.md): a signed per-client tool quota in a worker runtime, its operator config and a `node --test` file; install → update → revoke → crash recovery documented and tested in the worker and the process runtime.
+- **MCP `_meta.correlationId`** — on `/mcp`, a request's `params._meta.correlationId` (same 1–128 character `A–Z a–z 0–9 . _ : -` rule as `X-Request-Id`) becomes the call's lineage `correlationId` and wins over the `X-Request-Id` / `X-Correlation-Id` headers, so each message of a batch can carry its own; an invalid value is ignored. (Planned for 15.1, delivered now.)
+
+### Additions after the freeze
+
+Additive only, as allowed by the [freeze list](docs/v15/freeze.md): one new package export (`./testing`; the package root, `./gateway` and `./edge` are unchanged), one new option of `plugin verify` (`--rebuilt`), one new optional `_meta` key read on `/mcp` (requests without it behave as before), new internal modules `plugins/compat` and `testing`. No existing route, response field, config key, CLI flag, exit code or plugin API changed.
+
+### Fixed (found while writing the example)
+
+- The testing harness keeps the event loop alive while it is open: isolated runtimes are `unref`'d (they never hold a gateway process open), so a plain `node --test` file waiting on a hook reply after a runtime restart could end with "Promise resolution is still pending but the event loop has already resolved". (Only the new harness was affected; the gateway always has its HTTP server open.)
+
+### Tests
+
+- `test/plugin-sdk-15-2-1.test.ts` (written first; failing-before: modules missing → `sdk1521-failing-before`; T4 failing-before without the keep-alive: exit 13 "unsettled top-level await" after `crash()`): S1–S3 reproducible verification (library + CLI), C1–C3 matrix (ranges, running version, page = data), T1–T4 testing export (package exports, harness, refused outcome, plain-node event loop), L1–L4 example lifecycle × worker / process (install with `requireSigned`, unsigned update refused / signed update replaces and closes the old runtime, key-only revoke refused / key + entry unloads / restart refuses, crash → fresh runtime with reset state), M1–M3 `_meta.correlationId` (rule, precedence over the header, invalid value ignored).
+
 ## [15.2.0-canary.0] - 2026-10-14
 
 **Development prerelease** (npm dist-tag `canary`, image `:15.2.0-canary.0` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). First build of the 15.2 line (plugin ecosystem and SDK) from `main`: everything in 15.1.0-canary.1 plus the plugin developer kit. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — so no 15.x release after it can become stable before it.
