@@ -25,7 +25,7 @@ Migration: [migrating to v16](../migrating-to-v16.md).
 
 | Surface | 15.x | 16.0.0 (proposal) | `config migrate --to v13` (15.9 → 16.x) |
 |---|---|---|---|
-| Config file | schema v12 (`version: 12`) | schema v13 (`version: 13`); v12 files are read through an in-memory migration with a warning in 16.x and refused by 17.0 | — |
+| Config file | schema v12 (`version: 12`) | schema v13 (`version: 13`, JSON Schema `schema/v13/config.schema.json`); v12 files are read through an in-memory migration with a warning in 16.x and refused by 17.0; a file without `version:` is v12 in 16.x (no warning, its `v16.*` uses reported) and v13 in 17.0 | `config rollback` restores the `.pre-v13.bak` (16.0.0-alpha.2) |
 | Module plugin `isolation: worker \| process \| inline` | alias of `runtime` | removed — only `runtime` | rewritten to `runtime:` |
 | Inline module plugins | `runtime: inline` | need `allowInline: true` on the plugin entry (`plugins` is a list, so the opt-in is per plugin) | 15.9: pending; 16.x: `allowInline: true` added |
 | `/mcp` protocol revision `2024-11-05` | accepted from downstream clients | refused; `2025-11-25`, `2025-06-18`, `2025-03-26` stay; upstream HTTP+SSE servers stay supported | 15.9: pending; 16.x: dropped from the list (already ignored) |

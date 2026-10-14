@@ -6,7 +6,7 @@
  *  S3 v13 runs an inline module plugin only with `allowInline: true` on its entry; `allowInline` elsewhere is an error.
  *  S4 v13 refuses `mcp.protocolVersions` naming 2024-11-05; a v12 file naming it still loads (the revision is ignored, reported).
  *  S5 an explicit `version: 12` file loads (in-memory migration) and reports `schema.v12` (removed in 17.0.0); an
- *     unversioned file is read as v12 without that notice (alpha.1 decision, revisit by rc.1).
+ *     unversioned file is read as v12 without that notice (decided in alpha.2: v12 in 16.x, v13 in 17.0 — test/v13-tooling-16-0-2.test.ts J6).
  *  S6 /mcp no longer negotiates 2024-11-05 (a client asking for it gets the newest revision); 2025-03-26 is still
  *     honoured; the upstream side (adapting results for 2024-11-05 servers) is unchanged.
  *  S7 `config migrate --to v13` writes `version: 13`: `isolation` → `runtime`, `allowInline: true` on inline module

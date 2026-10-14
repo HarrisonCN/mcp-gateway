@@ -45,8 +45,13 @@ listed as pending.
 
 Without `--in-place` or `-o` it writes `<name>.v13.<ext>` (15.9: `<name>.v13-ready.<ext>`) next to the file. It is
 idempotent. It refuses files that are not schema v12 / v13 (run `config migrate --to v12` first for v11) and
-`isolation` / `runtime` pairs that disagree. Undo `--in-place` by copying the `.pre-v13.bak` file back (15.x reads
-only that v12 file).
+`isolation` / `runtime` pairs that disagree. Undo `--in-place` with `mcp-gateway config rollback -c <file>`
+(16.0.0-alpha.2; it restores `<file>.pre-v13.bak` and keeps the v13 file as `<file>.v13.bak` — 15.x reads only the v12
+file). When an older `<file>.v11.bak` from `--to v12` is there too, pass `--to v12` (or `--to v11`).
+
+Editors and CI can validate v13 files against the JSON Schema `schema/v13/config.schema.json` (16.0.0-alpha.2, shipped
+in the npm package; generated from the code like `schema/v12/`). The loader stays the authority for what the schema
+leaves to the runtime (feature section bodies).
 
 ## What 16.0.0-alpha.1 does
 
@@ -54,8 +59,12 @@ only that v12 file).
   `allowInline: true`, `allowInline` anywhere else, and `2024-11-05` in `mcp.protocolVersions` are configuration errors.
 - Reads `version: 12` files as 15.x did and reports `schema.v12` (removed in 17.0.0) — the v12-only uses keep working and
   stay reported (`v16.plugins.<i>.isolation`, `v16.plugins.<i>.inline`, now marked removed in 17.0.0; `2024-11-05` in
-  `mcp.protocolVersions` is ignored). A file without `version:` is read as v12 without the `schema.v12` notice
-  (alpha decision, revisited by 16.0.0-rc.1).
+  `mcp.protocolVersions` is ignored).
+- A file **without** `version:` is read as schema v12 in all of 16.x, without the `schema.v12` notice — that is how
+  the 14.x / 15.x docs write configs, and the docs stay on v12 while npm `latest` cannot read v13. Every 16.0 removal
+  in it is still reported (`v16.*`). **17.0.0 reads an unversioned file as schema v13**, so a file with no `v16.*`
+  notices keeps working unchanged; one with notices needs the codemod first (decision in 16.0.0-alpha.2, replaces the
+  alpha.1 "revisit").
 - `/mcp` no longer negotiates 2024-11-05: a client that asks for it gets the newest revision (2025-11-25) and decides
   whether to continue; the request is reported once as `v16.mcp.protocol-2024-11-05`. Upstream servers on 2024-11-05
   (including HTTP+SSE) are still adapted as before.
