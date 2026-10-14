@@ -543,6 +543,7 @@ tbody tr:hover { background: var(--surface-2); }
     <div class="ops-tabs" role="tablist" aria-label="Operations views" id="opsTabs">
       <button type="button" role="tab" id="ops-tab-cluster" aria-controls="ops-panel-cluster" aria-selected="true" tabindex="0" data-ops="cluster" data-i18n="opCluster">Cluster</button>
       <button type="button" role="tab" id="ops-tab-traces" aria-controls="ops-panel-traces" aria-selected="false" tabindex="-1" data-ops="traces" data-i18n="opTraces">Call traces</button>
+      <button type="button" role="tab" id="ops-tab-lineage" aria-controls="ops-panel-lineage" aria-selected="false" tabindex="-1" data-ops="lineage" data-i18n="opLineage">Lineage &amp; costs</button>
       <button type="button" role="tab" id="ops-tab-timeline" aria-controls="ops-panel-timeline" aria-selected="false" tabindex="-1" data-ops="timeline" data-i18n="opTimeline">Incident timeline</button>
       <button type="button" role="tab" id="ops-tab-troubleshoot" aria-controls="ops-panel-troubleshoot" aria-selected="false" tabindex="-1" data-ops="troubleshoot" data-i18n="opTroubleshoot">Troubleshoot</button>
     </div>
@@ -555,6 +556,20 @@ tbody tr:hover { background: var(--surface-2); }
       </form></div>
       <div class="card" style="margin-top:14px"><div class="table-wrap"><table><caption class="sr-only" data-i18n="opTraces">Call traces</caption><thead><tr><th scope="col" data-i18n="time">Time</th><th scope="col" data-i18n="tool">Tool</th><th scope="col" data-i18n="client">Client</th><th scope="col" data-i18n="result">Result</th><th scope="col" data-i18n="duration">Duration</th><th scope="col"><span class="sr-only" data-i18n="opOpen">Open</span></th></tr></thead><tbody id="opsTraceBody"></tbody></table></div></div>
       <div class="card" style="margin-top:14px" id="opsTraceDetail" hidden tabindex="-1"></div>
+    </div>
+    <div class="ops-panel" role="tabpanel" id="ops-panel-lineage" aria-labelledby="ops-tab-lineage" tabindex="0" hidden>
+      <div class="card"><form class="ops-form" id="opsLineageForm">
+        <div class="field"><label for="ops-ln-id" data-i18n="opRequestId">Request id</label><input class="input mono" id="ops-ln-id" name="id" autocomplete="off" maxlength="200" /></div>
+        <div class="field"><label for="ops-ln-cid" data-i18n="opCorrelationId">Correlation id (X-Request-Id)</label><input class="input mono" id="ops-ln-cid" name="correlationId" autocomplete="off" maxlength="128" /></div>
+        <div class="row"><button class="btn primary" type="submit" data-i18n="opLookup">Look up</button></div>
+      </form><p class="muted" data-i18n="opLnHint">One call end to end: who, which tenant, which config generation, which decision, which target, the upstream answer and the cost. Tenant members see only their own tenant's calls.</p></div>
+      <div class="card" style="margin-top:14px" id="opsLineageResult" hidden tabindex="-1" aria-live="polite"></div>
+      <div class="card" style="margin-top:14px"><form class="ops-form" id="opsCostForm">
+        <div class="field"><label for="ops-cost-by" data-i18n="opCostBy">Group costs by</label><select class="input" id="ops-cost-by" name="by"><option value="tenant">tenant</option><option value="client">client</option><option value="tool">tool</option><option value="day">day</option></select></div>
+        <div class="field"><label for="ops-cost-since" data-i18n="opSince">Since</label><input class="input" id="ops-cost-since" name="since" type="date" /></div>
+        <div class="row"><button class="btn primary" type="submit" data-i18n="apply">Apply</button></div>
+      </form>
+      <div class="table-wrap"><table><caption class="sr-only" data-i18n="opCosts">Costs</caption><thead><tr><th scope="col" data-i18n="opKey">Key</th><th scope="col" data-i18n="opCost">Cost</th><th scope="col" data-i18n="opCalls">Calls</th></tr></thead><tbody id="opsCostBody"></tbody></table></div></div>
     </div>
     <div class="ops-panel" role="tabpanel" id="ops-panel-timeline" aria-labelledby="ops-tab-timeline" tabindex="0" hidden>
       <div class="card"><form class="ops-form" id="opsTimelineForm">
@@ -680,7 +695,7 @@ const I18N = {
     skip: 'Skip to content', guide: 'Guide', apiKey: 'API key', theme: 'Toggle theme', keyPh: 'API key or JWT',
     remember: 'Remember on this device', saveConnect: 'Save & connect', clear: 'Clear', close: 'Close',
     tabOverview: 'Overview', tabServers: 'Servers', tabPlayground: 'Playground', tabHistory: 'History', tabConfig: 'Config', tabConnect: 'Connect',
-    tabOps: 'Operations', opTitle: 'Operations', opSub: 'Cluster status, call traces, incident timeline and troubleshooting (operators and console viewers)', opRefresh: 'Refresh', opCluster: 'Cluster', opTraces: 'Call traces', opTimeline: 'Incident timeline', opTroubleshoot: 'Troubleshoot', opSince: 'Since', opRunChecks: 'Run checks', opExplain: 'Explain only', opOpen: 'Open', opTsHint: 'Checks upstream reachability, the key, tenancy, policy (simulated), rate limits and plugin health. Reports are redacted and can be shared by id.', opLoading: 'Loading…', opLoaded: 'Updated', opForbidden: 'The operations console needs an operator key or a console viewer (controlPlane.console.viewers).', opNone: 'Nothing to show', opGen: 'Config generation', opDataPlanes: 'Data planes', opRegions: 'Regions', opEdges: 'Edge gateways', opPlugins: 'Plugin circuits', opDlq: 'Dead-letter queue', opServers: 'Servers', opModules: 'Failed modules', opDiverged: 'Diverged', opWhy: 'Why it was refused', opReport: 'Report', opVerdict: 'Verdict', opAllowed: 'Allowed',
+    tabOps: 'Operations', opTitle: 'Operations', opSub: 'Cluster status, call traces, incident timeline and troubleshooting (operators and console viewers)', opRefresh: 'Refresh', opCluster: 'Cluster', opTraces: 'Call traces', opLineage: 'Lineage & costs', opRequestId: 'Request id', opCorrelationId: 'Correlation id (X-Request-Id)', opLookup: 'Look up', opLnHint: "One call end to end: who, which tenant, which config generation, which decision, which target, the upstream answer and the cost. Tenant members see only their own tenant's calls.", opLnNeedId: 'Enter a request id or a correlation id', opCostBy: 'Group costs by', opCosts: 'Costs', opKey: 'Key', opCost: 'Cost', opCalls: 'Calls', opTotal: 'Total', opTimeline: 'Incident timeline', opTroubleshoot: 'Troubleshoot', opSince: 'Since', opRunChecks: 'Run checks', opExplain: 'Explain only', opOpen: 'Open', opTsHint: 'Checks upstream reachability, the key, tenancy, policy (simulated), rate limits and plugin health. Reports are redacted and can be shared by id.', opLoading: 'Loading…', opLoaded: 'Updated', opForbidden: 'The operations console needs an operator key or a console viewer (controlPlane.console.viewers).', opNone: 'Nothing to show', opGen: 'Config generation', opDataPlanes: 'Data planes', opRegions: 'Regions', opEdges: 'Edge gateways', opPlugins: 'Plugin circuits', opDlq: 'Dead-letter queue', opServers: 'Servers', opModules: 'Failed modules', opDiverged: 'Diverged', opWhy: 'Why it was refused', opReport: 'Report', opVerdict: 'Verdict', opAllowed: 'Allowed',
     cfTitle: 'Configuration', cfSub: 'Edit the running config — validated, diffed and hot-reloaded', cfGeneral: 'General', cfServers: 'Servers', cfRaw: 'Raw JSON (schema v10)', cfValidate: 'Validate', cfDiff: 'Preview changes', cfApply: 'Apply', cfAddServer: 'Add server', cfRemove: 'Remove', cfValid: 'Configuration is valid', cfNoChanges: 'No changes', cfApplied: 'Applied — hot reloaded', cfLocked: 'Read-only: set controlPlane.configApi: true to apply changes from the dashboard', cfBadJson: 'Invalid JSON', cfUseJson: 'Use JSON', cfConfirm: 'Apply these changes to the running gateway?', cfRate: 'Rate limit (requests / window s)', cfNaming: 'Tool naming', cfLog: 'Log level', cfEnabled: 'Enabled',
     ovTitle: 'Overview', ovSub: 'Live traffic through the gateway', window: 'Time window',
     reqRate: 'Request rate', requests: 'Requests', errors: 'Errors', latency: 'Latency', topTools: 'Top tools', perKey: 'Usage per key', perServer: 'Calls per server', approvals: 'Pending approvals', tenants: 'Workspaces', rpTitle: 'Request details', replay: 'Replay', replayOf: 'replay of', rpArgs: 'Arguments', rpResult: 'Result', rpReplayed: 'Replay', rpSame: 'identical', rpDifferent: 'different', rpBadJson: 'Arguments must be valid JSON', rpHint: 'Edit the arguments and replay through the gateway', rpTruncated: 'Payload too large to capture; pass arguments to replay', rpOff: 'Not captured. Turn on replay.enabled to inspect and replay calls.', quotas: 'Quotas', lb: 'Load balancing', cache: 'Result cache', purge: 'Purge', purged: 'Purged {n} cache entries', rules: 'rules', noUsage: 'No usage in the current period', ejected: 'ejected', entries: 'Entries', hitRate: 'Hit rate', hits: 'Hits', misses: 'Misses', deduped: 'Deduplicated', evictions: 'Evictions', edgeNodes: 'Edge nodes', pushConfig: 'Push config', pushed: 'Pushed to {n} edge(s), {f} failed', noEdges: 'No edge nodes yet', catalog: 'Add a server', add: 'Add', added: 'Server added', installOff: 'read-only (catalog.install is off)', installedAs: 'installed as', role: 'Role', members: 'members', roleSaved: 'Role updated', approve: 'Approve', deny: 'Deny', approved: 'Approved', denied: 'Denied', expires: 'expires',
@@ -727,7 +742,7 @@ const I18N = {
     skip: '跳到内容', guide: '新手引导', apiKey: 'API 密钥', theme: '切换主题', keyPh: 'API 密钥或 JWT',
     remember: '在此设备上记住', saveConnect: '保存并连接', clear: '清除', close: '关闭',
     tabOverview: '总览', tabServers: '服务器', tabPlayground: '调试台', tabHistory: '历史', tabConfig: '配置', tabConnect: '接入',
-    tabOps: '运维', opTitle: '运维控制台', opSub: '集群状态、调用链、故障时间线与排障向导（运维人员与只读查看者）', opRefresh: '刷新', opCluster: '集群', opTraces: '调用链', opTimeline: '故障时间线', opTroubleshoot: '排障向导', opSince: '起始时间', opRunChecks: '运行检查', opExplain: '仅解释', opOpen: '打开', opTsHint: '检查上游可达性、密钥、租户、策略（模拟）、限流和插件健康。报告已脱敏，可按 ID 分享。', opLoading: '加载中…', opLoaded: '已更新', opForbidden: '运维控制台需要运维密钥或只读查看者身份（controlPlane.console.viewers）。', opNone: '暂无数据', opGen: '配置代次', opDataPlanes: '数据面', opRegions: '区域', opEdges: '边缘网关', opPlugins: '插件熔断', opDlq: '死信队列', opServers: '服务器', opModules: '失败模块', opDiverged: '未同步', opWhy: '拒绝原因', opReport: '报告', opVerdict: '结论', opAllowed: '允许',
+    tabOps: '运维', opTitle: '运维控制台', opSub: '集群状态、调用链、故障时间线与排障向导（运维人员与只读查看者）', opRefresh: '刷新', opCluster: '集群', opTraces: '调用链', opLineage: '调用溯源与成本', opRequestId: '请求 ID', opCorrelationId: '关联 ID（X-Request-Id）', opLookup: '查询', opLnHint: '一次调用的完整来龙去脉：谁、哪个租户、哪一代配置、什么决定、目标是什么、上游如何应答、花了多少。租户成员只能看到本租户的调用。', opLnNeedId: '请输入请求 ID 或关联 ID', opCostBy: '成本分组', opCosts: '成本', opKey: '键', opCost: '成本', opCalls: '调用数', opTotal: '合计', opTimeline: '故障时间线', opTroubleshoot: '排障向导', opSince: '起始时间', opRunChecks: '运行检查', opExplain: '仅解释', opOpen: '打开', opTsHint: '检查上游可达性、密钥、租户、策略（模拟）、限流和插件健康。报告已脱敏，可按 ID 分享。', opLoading: '加载中…', opLoaded: '已更新', opForbidden: '运维控制台需要运维密钥或只读查看者身份（controlPlane.console.viewers）。', opNone: '暂无数据', opGen: '配置代次', opDataPlanes: '数据面', opRegions: '区域', opEdges: '边缘网关', opPlugins: '插件熔断', opDlq: '死信队列', opServers: '服务器', opModules: '失败模块', opDiverged: '未同步', opWhy: '拒绝原因', opReport: '报告', opVerdict: '结论', opAllowed: '允许',
     cfTitle: '配置', cfSub: '编辑运行中的配置——校验、对比差异并热加载', cfGeneral: '常规', cfServers: '服务器', cfRaw: '原始 JSON（schema v4）', cfValidate: '校验', cfDiff: '预览变更', cfApply: '应用', cfAddServer: '添加服务器', cfRemove: '移除', cfValid: '配置有效', cfNoChanges: '没有变更', cfApplied: '已应用（热加载）', cfLocked: '只读：设置 controlPlane.configApi: true 后才能在仪表盘中应用变更', cfBadJson: 'JSON 无效', cfUseJson: '使用 JSON', cfConfirm: '将这些变更应用到运行中的网关？', cfRate: '限流（请求数 / 窗口秒）', cfNaming: '工具命名', cfLog: '日志级别', cfEnabled: '启用',
     ovTitle: '总览', ovSub: '网关实时流量', window: '时间范围',
     reqRate: '请求速率', requests: '请求', errors: '错误', latency: '延迟', topTools: '热门工具', perKey: '各密钥用量', perServer: '各服务器调用', approvals: '待审批调用', tenants: '工作区', rpTitle: '请求详情', replay: '重放', replayOf: '重放自', rpArgs: '参数', rpResult: '结果', rpReplayed: '重放结果', rpSame: '一致', rpDifferent: '不一致', rpBadJson: '参数必须是合法 JSON', rpHint: '可修改参数后经网关重放', rpTruncated: '负载过大未被捕获；重放需手动填写参数', rpOff: '未捕获。开启 replay.enabled 后可查看并重放调用。', quotas: '配额', lb: '负载均衡', cache: '结果缓存', purge: '清空', purged: '已清除 {n} 条缓存', rules: '条规则', noUsage: '当前周期暂无用量', ejected: '已摘除', entries: '条目', hitRate: '命中率', hits: '命中', misses: '未命中', deduped: '合并请求', evictions: '淘汰', edgeNodes: '边缘节点', pushConfig: '推送配置', pushed: '已推送到 {n} 个边缘节点，失败 {f} 个', noEdges: '暂无边缘节点', catalog: '添加服务器', add: '添加', added: '已添加服务器', installOff: '只读（未开启 catalog.install）', installedAs: '已安装为', role: '角色', members: '成员', roleSaved: '角色已更新', approve: '批准', deny: '拒绝', approved: '已批准', denied: '已拒绝', expires: '到期',
@@ -967,7 +982,7 @@ function go(view, push = true) {
 }
 // ─── Operations console (14.8.0) ─────────────────────────────────────────────
 const opsState = { tab: 'cluster' };
-const OPS_TABS = ['cluster', 'traces', 'timeline', 'troubleshoot'];
+const OPS_TABS = ['cluster', 'traces', 'lineage', 'timeline', 'troubleshoot'];
 function opsStatus(msg) { const el = $('#ops-status'); if (el) el.textContent = msg; }
 function opsTab(tab, focus = false) {
   opsState.tab = tab;
@@ -1012,6 +1027,16 @@ async function loadOpsConsole() {
         ? r.traces.map((x) => `<tr><td>${esc(new Date(x.at).toLocaleTimeString())}</td><td class="mono">${esc(x.serverId)}/${esc(x.tool)}</td><td class="mono">${esc(x.clientId || '—')}</td><td class="ops-st-${esc(x.outcome)}">${esc(x.outcome)}${x.decision ? ` (${esc(x.decision)})` : ''}</td><td>${esc(x.totalMs)} ms</td><td><button class="btn sm" type="button" data-trace="${esc(x.requestId)}">${esc(t('opOpen'))}</button></td></tr>`).join('')
         : `<tr><td colspan="6" class="muted">${esc(t('opNone'))}</td></tr>`;
       $$('#opsTraceBody [data-trace]').forEach((b) => b.addEventListener('click', () => openTrace(b.dataset.trace)));
+    } else if (opsState.tab === 'lineage') {
+      // 15.1.0: cost rollup (the lineage lookup runs on submit of its own form)
+      const f = new FormData($('#opsCostForm'));
+      const q = new URLSearchParams({ by: String(f.get('by') || 'tenant') });
+      if (f.get('since')) q.set('since', String(f.get('since')));
+      const r = await api(`/admin/ops/costs?${q}`);
+      const money = (v) => `${Number(v).toFixed(4)} ${r.currency}`;
+      $('#opsCostBody').innerHTML = r.totals.length
+        ? r.totals.map((x) => `<tr><td class="mono">${esc(x.key)}</td><td>${esc(money(x.cost))}</td><td>${esc(x.calls)}</td></tr>`).join('') + `<tr><th scope="row">${esc(t('opTotal'))}</th><td><b>${esc(money(r.total.cost))}</b></td><td><b>${esc(r.total.calls)}</b></td></tr>`
+        : `<tr><td colspan="3" class="muted">${esc(t('opNone'))}</td></tr>`;
     } else if (opsState.tab === 'timeline') {
       const f = new FormData($('#opsTimelineForm'));
       const q = new URLSearchParams();
@@ -1029,11 +1054,28 @@ async function openTrace(id) {
   try {
     const x = await api(`/admin/ops/traces/${encodeURIComponent(id)}`);
     const el = $('#opsTraceDetail');
-    el.innerHTML = `<h2 class="mono">${esc(x.serverId)}/${esc(x.tool)}</h2>${kv([['request', x.requestId], ['trace id', x.traceId || '—'], ['client', x.clientId || '—'], ['total', `${x.totalMs} ms`]])}
+    el.innerHTML = `<h2 class="mono">${esc(x.serverId)}/${esc(x.tool)}</h2>${kv([['request', x.requestId], ['trace id', x.traceId || '—'], ['client', x.clientId || '—'], ['tenant', x.tenant || '—'], ['total', `${x.totalMs} ms`]])}
       <ol class="ops-steps" aria-label="Call pipeline">${x.steps.map((s) => `<li><b>${esc(s.step)}</b><span class="ops-st-${esc(s.status)}">${esc(s.status)}</span><span>${s.ms === null ? '—' : `${esc(s.ms)} ms`}${s.note ? ` · ${esc(s.note)}` : ''}</span></li>`).join('')}</ol>
       ${x.explain ? `<h3>${esc(t('opWhy'))}</h3>${kv([['layer', x.explain.layer], ['rule', x.explain.rule || '—'], ['tenant', x.explain.tenant || '—'], ['permission', x.explain.permission || '—'], ['config', x.explain.configPath || '—'], ['reason', x.explain.reason]])}` : ''}`;
     el.hidden = false;
     el.focus();
+  } catch (e) { opsError(e); }
+}
+// 15.1.0: one call's lineage, by gateway request id or by the client's correlation id
+const lineageCard = (l) => `<h2 class="mono">${esc(l.target.serverId)}/${esc(l.target.tool)}</h2>${kv([['request', l.requestId], ['correlation', l.correlationId || '—'], ['time', new Date(l.at).toLocaleString()], ['subject', l.identity.subject || '—'], ['chain', (l.identity.chain || []).join(' → ') || '—'], ['tenant', l.tenant || '—'], ['generation', l.generation ?? '—'], ['via', l.target.via || '—'], ['outcome', l.decision.outcome + (l.decision.decision ? ` (${l.decision.decision})` : '')], ['rule', l.decision.rule || '—'], ['config', l.decision.configPath || '—'], ['upstream', l.upstream.status + (l.upstream.ms != null ? ` · ${l.upstream.ms} ms` : '')], ['cost', l.cost ?? '—']])}`;
+async function lookupLineage(id, cid) {
+  const el = $('#opsLineageResult');
+  if (!id && !cid) { opsStatus(t('opLnNeedId')); return; }
+  opsStatus(t('opLoading'));
+  try {
+    if (id) el.innerHTML = lineageCard(await api(`/admin/ops/lineage/${encodeURIComponent(id)}`));
+    else {
+      const r = await api(`/admin/ops/lineage?correlationId=${encodeURIComponent(cid)}`);
+      el.innerHTML = r.lineage.length ? r.lineage.map(lineageCard).join('<hr />') : `<p class="muted">${esc(t('opNone'))}</p>`;
+    }
+    el.hidden = false;
+    el.focus();
+    opsStatus(t('opLoaded'));
   } catch (e) { opsError(e); }
 }
 function opsCall() {
@@ -1075,6 +1117,8 @@ function initOps() {
   $('#opsRefresh').addEventListener('click', () => loadOpsConsole());
   $('#opsTraceForm').addEventListener('submit', (e) => { e.preventDefault(); loadOpsConsole(); });
   $('#opsTimelineForm').addEventListener('submit', (e) => { e.preventDefault(); loadOpsConsole(); });
+  $('#opsCostForm').addEventListener('submit', (e) => { e.preventDefault(); loadOpsConsole(); });
+  $('#opsLineageForm').addEventListener('submit', (e) => { e.preventDefault(); const f = new FormData(e.target); lookupLineage(String(f.get('id') || '').trim(), String(f.get('correlationId') || '').trim()); });
   $('#opsTsForm').addEventListener('submit', (e) => { e.preventDefault(); runTroubleshoot(false); });
   $('#opsExplain').addEventListener('click', () => { if ($('#opsTsForm').reportValidity()) runTroubleshoot(true); });
 }

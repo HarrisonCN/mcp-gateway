@@ -106,8 +106,47 @@ record, read from the call trace (so it is kept as long as the trace: `traceBuff
 (a correlation id is the client's and may repeat; the request id does not). This is how another system joins its own
 records — for example an editor that sends one `X-Request-Id` per AI edit can find the gateway calls behind that edit.
 
-Same access as the traces (operators and console viewers). Nothing in a lineage record contains call arguments,
-results or key material.
+Same access as the traces (operators, console viewers and — with `tenantViewers` — tenant viewers). Nothing in a
+lineage record contains call arguments, results or key material. The same lookups work for calls made over `/mcp`
+(send `X-Request-Id` on the `tools/call` POST; the lineage says `via: mcp`).
+
+## Tenant viewers (15.1)
+
+```yaml
+controlPlane:
+  console:
+    tenantViewers: true   # default false
+```
+
+With `tenantViewers: true`, every member of a tenant with role `owner`, `admin` or `viewer` (`tenants[].members`) can read,
+for **their own tenants only**:
+
+- `GET /api/v1/admin/ops/traces` and `/traces/<requestId>`,
+- `GET /api/v1/admin/ops/lineage/<requestId>` and `/lineage?correlationId=`,
+- `GET /api/v1/admin/ops/costs`.
+
+A call is theirs when its acting tenant (the lineage `tenant`) is one of their tenants. Another tenant's call — and a call
+without a tenant — answers `404` as if it did not exist, and a correlation id lookup lists only their own calls. Every
+other console route (cluster, timeline, explain, troubleshooting, reports) stays `403` for them. Operators and
+`viewers` keep the full view. Without the key nothing changes: tenant members get `403` on the console, as before.
+
+## Cost rollup (15.1)
+
+`GET /api/v1/admin/ops/costs?by=<tenant|client|tool|day>&since=<ISO 8601>` sums the cost ledger (`costs`):
+
+```json
+{ "currency": "EUR", "by": "tenant", "since": null,
+  "totals": [{ "key": "labs", "cost": 2, "calls": 1, "inputTokens": 0, "outputTokens": 0 }, { "key": "acme", "cost": 1.5, "calls": 3, "inputTokens": 0, "outputTokens": 0 }],
+  "total": { "cost": 3.5, "calls": 4, "inputTokens": 0, "outputTokens": 0 } }
+```
+
+`by` defaults to `tenant` (a call without a tenant is `(none)`); `tool` keys are `server/tool`; `day` keys are UTC days,
+oldest first (other rollups are sorted by cost). `since` is a date (`2026-10-01`) or a date-time; without it every kept
+ledger entry counts. `total` counts each call once. Tenant viewers see only calls charged to their tenants (and only their
+tenants in a `tenant` rollup). The 4.3 `GET /api/v1/costs` (operators, with budgets and alerts) is unchanged.
+
+The dashboard's **Operations → Lineage & costs** tab looks up a call by request id or correlation id and shows the
+rollup.
 
 ## Policy denial explanations
 
