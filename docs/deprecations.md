@@ -49,6 +49,9 @@ exactly as before; each use below is reported as `DEPRECATED (removed in 16.0.0)
 | `v16.mcp.protocol-2024-11-05` | `mcp.protocolVersions` naming `2024-11-05`, or a downstream `/mcp` session that negotiates it (runtime) | a client on 2025-03-26 or newer (upstream HTTP+SSE servers stay supported) | 15.9.0-canary.0 |
 | `v16.node.<major>` | running on Node.js older than 24 (runtime) | Node.js 24 LTS (`engines.node >= 24` in 16.0) | 15.9.0-canary.0 |
 
+`mcp-gateway config migrate --to v13` (15.9.0-canary.1) rewrites the `isolation` alias and lists the rest
+([migrating to v16](migrating-to-v16.md#the-codemod-config-migrate---to-v13-1590-canary1)); the 16.0 freeze list is in [v16 freeze](v16/freeze.md).
+
 ## Removed in 15.0.0 (announced 14.9.0)
 
 14.9.0 lists these for every config it loads (log warning once per id, `mcp-gateway validate`,
