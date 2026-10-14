@@ -1,14 +1,15 @@
-# Migrating to 16.0 (draft)
+# Migrating to 16.0
 
-> **Status: proposal.** 16.0.0 has not shipped; its alphas (16.0.0-alpha.1 and later) go to npm `canary` only. The list below may still change
-> until 16.0.0-rc.1. Stable 16.0.0 also needs the v16 release gates (A/B against the 15.0 baseline, an incremental
-> external security review) — see [release gates](release-gates.md) and [v15 gates](v15/gates.md).
+> **Status: frozen from 16.0.0-rc.1.** The list below no longer changes ([16.0 freeze](v16/freeze.md)). 16.0.0 has
+> not shipped: its alphas and release candidates go to npm `canary` only. Stable 16.0.0 also needs the v16 release
+> gates (A/B against the 15.0 baseline, an incremental external security review) — see
+> [release gates](release-gates.md) and [v15 gates](v15/gates.md).
 
 15.9 announces every 16.0 removal one minor ahead. Run `mcp-gateway validate -c <file>` on 15.9 and check
 `GET /api/v1/admin/deprecations` on a running gateway: every line marked `removed in 16.0.0` needs a change before
 upgrading. The ids are listed in [deprecations](deprecations.md#planned-removals-in-1600-announced-1590-canary0).
 
-## What changes in 16.0 (proposal)
+## What changes in 16.0
 
 | Area | 15.x | 16.0 | What to do on 15.9 |
 |---|---|---|---|
@@ -71,7 +72,16 @@ leaves to the runtime (feature section bodies).
 - `engines.node` is `>=24.0.0`. npm only warns on older Node.js; 16.x is not tested there and reports `v16.node.<major>`.
 - Docs and examples stay on schema v12 while npm `latest` is a release that cannot read v13.
 
-The 16.0 freeze list is in [v16 freeze](v16/freeze.md).
+## What 16.0.0-rc.1 changes
+
+- The 16.0 list above is **frozen** ([v16 freeze](v16/freeze.md)): no more removals or renamed keys before 16.0.0;
+  later release candidates only fix blocking problems. `schema/v13/frozen-surface.json` (shipped in the package)
+  records every key path and enum value of schema v13 at rc.1; the schema may only add to it.
+- The [plugin compatibility](guides/plugin-compatibility.md) row for 16.0 reads **frozen (prerelease)** — plugin API v5
+  as in 15.x, inline module plugins need `allowInline: true`. It becomes *shipped* only with a 16.0.0 GA.
+- CI tests the 16.x line on Node.js 24 only (`engines.node >= 24`); the 15.x and 14.x branches keep Node 22 and 24.
+- Like the alphas, rc.N is a prerelease on npm `canary` and the GHCR exact tag only; npm `next` stays 15.0.0-rc.N until
+  15.0.0 is stable, and the v15 / v16 release gates are still open.
 
 ## Rollback
 

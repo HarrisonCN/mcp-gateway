@@ -12,7 +12,7 @@ Prerelease versions count as their release: `15.2.0-canary.1` is in the `8.0.0 �
 | Gateway | Loads plugin API | Status | Notes |
 |---|---|---|---|
 | 17.0.0 + | v6 | proposal | plugin API v6: module plugins only in worker / process / wasm (inline removed); codemod in 16.9 |
-| 16.0.0 – <17.0.0 | v5 | proposal | v5; a module plugin with runtime: inline needs allowInline: true on its entry (config schema v13) |
+| 16.0.0 – <17.0.0 | v5 | frozen (prerelease) | v5; a module plugin with runtime: inline needs allowInline: true on its entry (config schema v13) |
 | 8.0.0 – <16.0.0 | v5 | shipped | v5 only (v4 refused); the current contract |
 | 7.9.0 – <8.0.0 | v4 – v5 | shipped | v5 preview: one contract for JS and WASM (WIT world mcp-gateway:plugin@5.0.0) |
 | 6.0.0 – <7.9.0 | v4 | shipped | v3 refused |
@@ -36,9 +36,13 @@ Plugin API v5 capabilities by gateway release (8.0.0 – <16.0.0):
 - reproducible verify (15.2)
 - /testing export (15.2)
 
-Rows marked **proposal** are roadmap plans for the 16.0 and 17.0 majors (plugin API v6 in 17.0: module plugins run
-only in `worker` / `process` / WASM, `inline` removed). They can change until the 15.9 / 16.9 preparation releases,
-which add the deprecation warnings, a codemod and the migration guide one minor ahead of each major.
+Rows marked **proposal** are roadmap plans for the 17.0 major (plugin API v6: module plugins run only in `worker` /
+`process` / WASM, `inline` removed). They can change until the 16.9 preparation release, which adds the deprecation
+warnings, a codemod and the migration guide one minor ahead of the major.
+
+**frozen (prerelease)** (16.0, since 16.0.0-rc.1): the range is fixed by a release candidate
+([16.0 freeze](../v16/freeze.md)) but only prereleases exist on npm `canary`. It becomes **shipped** only with a
+16.0.0 GA, which needs the v16 release gates.
 
 ## Checking a plugin against the matrix
 

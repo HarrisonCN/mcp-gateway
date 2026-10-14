@@ -21,8 +21,7 @@ Must exist on the release commit and conclude `success`:
 
 | Check | Workflow | What it covers |
 |---|---|---|
-| `Node 22` | CI | audit, typecheck, full test suite with coverage thresholds, build, CLI smoke test, example validation, kernel benchmark guard |
-| `Node 24` | CI | the same on Node 24 |
+| `Node 24` | CI | audit, typecheck, full test suite with coverage thresholds, build, CLI smoke test, example validation, kernel benchmark guard (16.x: Node 24 only, `engines.node >= 24`; the 15.x / 14.x branches keep `Node 22` + `Node 24`) |
 | `Supply chain (Trivy, SBOM)` | CI | Trivy on dependencies and the container image, image smoke test, SBOM |
 | `Docs check` | CI | [`scripts/docs-check.ts`](../scripts/docs-check.ts): config snippets validated against schema v11, CLI commands and flags, links and anchors, image tags and version numbers (fails on stale versions) |
 | `JS client (Node 20)` | CI | `@winstonsayno/mcp-gateway-client` tests and build |
@@ -41,7 +40,7 @@ conclude `success` (or `skipped`):
 | Check | Workflow | Runs when |
 |---|---|---|
 | `Lint and render chart` | Helm | `deploy/**` changes |
-| `Load + faults (Node 22)` | Performance | gateway sources change |
+| `Load + faults (Node 24)` | Performance | gateway sources change (Node 22 on the 15.x / 14.x branches) |
 | `Compose example boots` | Deployment examples | examples, deployment docs, chart, Dockerfile or sources change |
 | `Kubernetes and Helm examples boot (kind)` | Deployment examples | idem |
 | `Upgrade + security regressions (real Redis)` | CI | every CI run (14.9.0; conditional until it has run green on `main`, then required) |

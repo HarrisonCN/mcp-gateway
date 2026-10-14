@@ -26,7 +26,7 @@ type Obj = Record<string, any>; // eslint-disable-line @typescript-eslint/no-exp
 export function buildV13ConfigSchema(): Record<string, unknown> {
   const s = JSON.parse(JSON.stringify(buildV12ConfigSchema())) as Obj;
   s.$id = V13_BASE + 'config.schema.json';
-  s.title = 'MCP Gateway config schema v13 (16.0, proposal until 16.0.0-rc.1)';
+  s.title = 'MCP Gateway config schema v13 (16.0, frozen from 16.0.0-rc.1)';
   s.description =
     'Config schema v13 = schema v12 with the 16.0 rules: module plugins take only `runtime`, an inline module plugin needs `allowInline: true`, `/mcp` no longer accepts revision 2024-11-05. 16.x also reads v12 files (in-memory, reported as `schema.v12`); 14.x / 15.x refuse v13. See docs/migrating-to-v16.md.';
   s.properties.version = { const: 13 };
