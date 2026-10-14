@@ -11,9 +11,35 @@ job **MCP compat matrix** (`test/compat-matrix-13-6-0.test.ts`, `test/motionary-
 | Downstream (clients → gateway `/mcp`) | Streamable HTTP (`POST` / `GET` stream / `DELETE`) | `2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05` (restrict with `mcp.protocolVersions`) |
 | Upstream (gateway → your servers) | stdio, Streamable HTTP, legacy HTTP+SSE, WebSocket | whatever the server answers in `initialize` |
 
-The `2026-07-28` revision (stateless per-request envelope, `server/discover`) is not served yet. Clients that probe
-with `server/discover` (the official Python SDK `mcp` 2.x in its default `mode="auto"`) get JSON-RPC `-32601` and fall
-back to the `initialize` handshake on `2025-11-25`.
+Up to 16.0 the `2026-07-28` revision (stateless per-request envelope, `server/discover`) is not served: clients that
+probe with `server/discover` (the official Python SDK `mcp` 2.x in its default `mode="auto"`) get JSON-RPC `-32601`
+and fall back to the `initialize` handshake on `2025-11-25`. **From 16.1.0-canary.0** (npm `canary`) `/mcp` is
+dual-era and serves `2026-07-28` statelessly as well — see [MCP 2026-07-28](#mcp-2026-07-28-1610-canary0).
+
+## MCP 2026-07-28 (16.1.0-canary.0)
+
+Spec: [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28) ([key changes](https://modelcontextprotocol.io/specification/2026-07-28/changelog)).
+`/mcp` serves both eras on the same path: an `initialize` request opens a session on a handshake revision exactly as
+before; a request without `Mcp-Session-Id` that carries `params._meta["io.modelcontextprotocol/protocolVersion"]` is
+served statelessly.
+
+| | 16.1.0-canary.0 |
+| --- | --- |
+| `server/discover` | `supportedVersions` = `2026-07-28` + the handshake revisions, `capabilities` (tools, resources, prompts, completions), `_meta` serverInfo, `instructions`, `ttlMs` / `cacheScope`; also answers a bare probe without `_meta` |
+| Stateless methods | `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`, `prompts/list`, `prompts/get`, `completion/complete` — same authentication, scopes, policy, rate limits, audit and lineage as a session |
+| Results | `resultType: "complete"`, `_meta["io.modelcontextprotocol/serverInfo"]`; list / read results carry `ttlMs` (30 s) and `cacheScope: "private"` (lists depend on the caller's scope) |
+| Header validation | `MCP-Protocol-Version` (= `_meta` version), `Mcp-Method` (= `method`), `Mcp-Name` (= `params.name` / `params.uri`, Base64 sentinel `=?base64?…?=` decoded) required → otherwise `400` + `-32020` HeaderMismatch |
+| Versions | a version the endpoint does not serve statelessly → `400` + `-32022` with `data.supported` / `data.requested` |
+| Removed in 2026-07-28 | `ping`, `logging/setLevel`, `resources/subscribe` / `unsubscribe`, `initialize` with modern `_meta`, any unknown method → `404` + `-32601`; an upstream's own `-32601` stays HTTP 200 |
+| Errors | resource not found is `-32602` (was `-32002`) |
+| Not yet | `subscriptions/listen`, Multi Round-Trip Requests (`input_required` — upstream sampling / elicitation / roots are unavailable to stateless callers), the tasks extension, per-request `logLevel`, `x-mcp-header` parameters, speaking 2026-07-28 to upstream servers |
+
+`mcp.protocolVersions` controls it: without the key everything is served; a list without `2026-07-28` turns the
+stateless core off (modern requests get `-32022`, a bare `server/discover` keeps the old `-32601` so dual-era clients
+use `initialize`); a list naming only `2026-07-28` makes `/mcp` modern-only (`initialize` → `400` + `-32022`).
+
+Tested: `test/mcp-modern-16-1-0.test.ts` (raw HTTP) and the CI compat job's Python SDK (`mcp` 2.3.0), whose
+`mode="auto"` now stays on `2026-07-28` and calls a tool statelessly.
 
 ## Tested clients
 

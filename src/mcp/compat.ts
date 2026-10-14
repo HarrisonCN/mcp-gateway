@@ -43,9 +43,12 @@ export function negotiateVersion(requested: unknown, allowed: readonly string[] 
   return [...list].sort().reverse()[0]!;
 }
 
-/** Validate a configured `mcp.protocolVersions` list (unknown revisions are refused). */
+/** 16.1.0-canary.0: the stateless revision `/mcp` serves next to the handshake revisions (mcp/modern.ts). */
+const MODERN_REVISION = '2026-07-28';
+
+/** Validate a configured `mcp.protocolVersions` list (unknown revisions are refused; 16.1: 2026-07-28 is known). */
 export function unknownVersions(list: readonly string[] | undefined): string[] {
-  return (list ?? []).filter((v) => !(PROTOCOL_VERSIONS as readonly string[]).includes(v));
+  return (list ?? []).filter((v) => v !== MODERN_REVISION && !(PROTOCOL_VERSIONS as readonly string[]).includes(v));
 }
 
 /** Shape an MCP `Tool` object for a session's revision. */

@@ -23,7 +23,7 @@ import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/typ
 import { Gateway } from '../src/gateway/index.js';
 import type { GatewayConfig } from '../src/utils/types.js';
 import { PROTOCOL_VERSIONS } from '../src/mcp/compat.js';
-import { DOWNSTREAM_PROTOCOL_VERSIONS } from '../src/mcp/endpoint.js';
+import { DOWNSTREAM_PROTOCOL_VERSIONS, MODERN_PROTOCOL_VERSION } from '../src/mcp/endpoint.js';
 import { logger } from '../src/utils/logger.js';
 import { fakeServer } from './helpers/feature-gw.js';
 import { startSseServer, startStreamableHttpServer, stats, type RemoteServer } from './fixtures/remote-servers.js';
@@ -277,14 +277,19 @@ describe('version negotiation edge cases', () => {
     expect(body.result?.protocolVersion).toBe(PROTOCOL_VERSIONS[0]);
   });
 
-  it('server/discover (2026-07-28 probe) is refused so modern clients fall back to initialize', async () => {
-    const r = await post({ jsonrpc: '2.0', id: 1, method: 'server/discover', params: {} }, { 'mcp-protocol-version': '2026-07-28' });
+  // 16.1.0-canary.0: /mcp serves MCP 2026-07-28 — the probe gets a DiscoverResult (13.6–16.0 answered -32601 so
+  // dual-era clients fell back to initialize); a header without the matching `_meta` is a modern -32020 error.
+  it('server/discover (2026-07-28) answers without a session; a header-only probe is a modern HeaderMismatch', async () => {
+    const meta = { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' };
+    const r = await post({ jsonrpc: '2.0', id: 1, method: 'server/discover', params: { _meta: meta } }, { 'mcp-protocol-version': '2026-07-28', 'mcp-method': 'server/discover' });
     const body = await r.json().catch(() => ({}));
-    // Not a session, and a JSON-RPC error the SDK treats as "legacy server": method-not-found or unsupported-version.
     expect(r.headers.get('mcp-session-id')).toBeNull();
-    const ok = body.error?.code === -32601 || body.error?.code === -32022;
-    mark('raw', 'server/discover fallback', ok);
+    const ok = r.status === 200 && body.result?.supportedVersions?.[0] === '2026-07-28' && body.result?.resultType === 'complete';
+    mark('raw', 'server/discover (2026-07-28)', ok);
     expect(ok).toBe(true);
+    const h = await post({ jsonrpc: '2.0', id: 2, method: 'server/discover', params: {} }, { 'mcp-protocol-version': '2026-07-28' });
+    expect(h.status).toBe(400);
+    expect((await h.json()).error.code).toBe(-32020);
   });
 });
 
@@ -341,9 +346,10 @@ describe.skipIf(!PY)('Python SDK client (official "mcp" package)', () => {
     expect(out.call).toBe('echo:py');
     expect(out.progress).toEqual([1, 2, 3]);
     if (out.auto !== undefined) {
-      expect(PROTOCOL_VERSIONS as readonly string[]).toContain(out.auto);
+      // 16.1.0-canary.0: auto mode may now stay modern (2026-07-28, stateless) instead of falling back
+      expect([MODERN_PROTOCOL_VERSION, ...PROTOCOL_VERSIONS]).toContain(out.auto);
       expect(out.auto_call).toBe('echo:auto');
-      mark(`py-sdk@${out.auto}`, 'auto mode (server/discover fallback)', true);
+      mark(`py-sdk@${out.auto}`, out.auto === MODERN_PROTOCOL_VERSION ? 'auto mode (stateless 2026-07-28)' : 'auto mode (server/discover fallback)', true);
     }
     mark(`py-sdk@${out.version}`, 'session+tools+progress', true);
   }, 70_000);
