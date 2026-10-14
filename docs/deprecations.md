@@ -49,7 +49,11 @@ exactly as before; each use below is reported as `DEPRECATED (removed in 16.0.0)
 | `v16.mcp.protocol-2024-11-05` | `mcp.protocolVersions` naming `2024-11-05`, or a downstream `/mcp` session that negotiates it (runtime) | a client on 2025-03-26 or newer (upstream HTTP+SSE servers stay supported) | 15.9.0-canary.0 |
 | `v16.node.<major>` | running on Node.js older than 24 (runtime) | Node.js 24 LTS (`engines.node >= 24` in 16.0) | 15.9.0-canary.0 |
 
-`mcp-gateway config migrate --to v13` (15.9.0-canary.1) rewrites the `isolation` alias and lists the rest
+16.0.0-alpha.1 reads config schema v13, which refuses the two plugin uses above (they keep working in `version: 12`
+files, read until 17.0.0, so their ids are marked removed in 17.0.0 from 16.0.0-alpha.1 on), and reports explicit
+`version: 12` files as `schema.v12` (removed in 17.0.0; `mcp-gateway config migrate --to v13 --in-place`).
+
+`mcp-gateway config migrate --to v13` (15.9.0-canary.1; writes `version: 13` from 16.0.0-alpha.1 on) rewrites the `isolation` alias and lists the rest
 ([migrating to v16](migrating-to-v16.md#the-codemod-config-migrate---to-v13-1590-canary1)); the 16.0 freeze list is in [v16 freeze](v16/freeze.md).
 
 ## Removed in 15.0.0 (announced 14.9.0)

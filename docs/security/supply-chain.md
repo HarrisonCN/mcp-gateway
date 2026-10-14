@@ -45,7 +45,7 @@ commit; if a checksum ever differs, compare the file lists (`tar tzf`) and repor
   - `npm audit --audit-level=high` (blocking);
   - **Trivy** filesystem scan of every lockfile in the repository — blocking on fixable HIGH / CRITICAL;
   - the container image is built and **Trivy**-scanned — blocking on fixable CRITICAL; fixable HIGH findings are
-    printed (they currently come from the npm CLI bundled in the official `node:22-alpine` base image, which the image
+    printed (they currently come from the npm CLI bundled in the official `node:24-alpine` base image (16.x; `node:22-alpine` on 15.x and older), which the image
     keeps so stdio servers can run through `npx`);
   - image smoke test: the container must refuse to start without auth and serve with `MCP_GATEWAY_API_KEYS`;
   - CycloneDX / SPDX SBOM generation.

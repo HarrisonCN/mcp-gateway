@@ -158,7 +158,7 @@ export interface GatewayConfig {
   /** Config schema version of the file (14.0: 12; 11 is read and migrated in memory until 15.0). */
   version?: 11 | 12;
   /** Schema the config file was written in (set by the loader, 14.0.0); 11 = migrated in memory. */
-  schemaVersion?: 11 | 12;
+  schemaVersion?: 11 | 12 | 13;
   /**
    * Module lifecycle bounds and capability denials (14.0.0, schema v12 `modules.lifecycle` / `modules.capabilities`).
    * Schema v12's `modules.activation` / `modules.failurePolicy` are held internally in {@link kernel}.

@@ -69,6 +69,7 @@ import { validateChains, type ChainsConfig } from '../orchestration/chains.js';
 import { normalizeSchemaVersion, MODULE_CAPABILITIES } from './v12-deprecations.js';
 import { v15ConfigErrors } from './v15-deprecations.js';
 import { v16DeprecationsIn } from './v16-deprecations.js';
+import { fromV13, SCHEMA_V12_NOTICE } from './v13.js';
 import { configDeprecations, normalizeApiKeyScopes, normalizeFeaturesV10, normalizeSchemaV5, normalizeStoreV9, removedConfigKeys } from '../utils/deprecations.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
@@ -1347,6 +1348,11 @@ export function validateV11ForMigration(raw: unknown): GatewayConfig {
 }
 
 function validate(raw: unknown, allowV11: boolean): GatewayConfig {
+  // 16.0.0-alpha.1: schema v13 = schema v12 + the 16.0 rules (config/v13.ts); an explicit v12 file is reported once
+  const declared = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as { version?: unknown }).version : undefined;
+  const v13 = declared === 13 ? fromV13(raw as Record<string, unknown>) : undefined;
+  if (v13?.errors.length) throw new Error(`Invalid configuration:\n${v13.errors.map((m) => `  - ${m}`).join('\n')}`);
+  if (v13) raw = v13.raw;
   const removed = removedConfigKeys(raw);
   // 14.0.0: schema v12 is the runtime schema; v11 files are migrated in memory (internal form keeps the v11 names)
   const sv = removed.length ? { raw, errors: [] as string[], schemaVersion: undefined } : normalizeSchemaVersion(raw);
@@ -1371,8 +1377,9 @@ function validate(raw: unknown, allowV11: boolean): GatewayConfig {
   if (sv.schemaVersion) config.schemaVersion = sv.schemaVersion;
   // a v11 file reaches here only through the migration tooling (validateV11ForMigration): list its v11 fields
   // 15.9.0-canary.0: the 16.0.0 removals are listed for every file
-  const deprecations = [...(sv.schemaVersion === 11 ? configDeprecations(raw) : []), ...v16DeprecationsIn(raw)];
+  const deprecations = [...(sv.schemaVersion === 11 ? configDeprecations(raw) : []), ...(v13 ? [] : v16DeprecationsIn(raw)), ...(declared === 12 ? [SCHEMA_V12_NOTICE] : [])];
   if (deprecations.length > 0) config.deprecations = deprecations;
+  if (v13) config.schemaVersion = 13;
 
   return config;
 }

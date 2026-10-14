@@ -20,13 +20,15 @@ import type { Deprecation } from '../utils/deprecations.js';
 export const V16_DEPRECATION_IDS = ['v16.plugins.<i>.isolation', 'v16.plugins.<i>.inline', 'v16.mcp.protocol-2024-11-05', 'v16.node.<major>'] as const;
 
 const R = '16.0.0';
+/** 16.0.0-alpha.1: what config schema v13 refuses still works in a v12 file (read until 17.0.0). */
+const R17 = '17.0.0';
 const GUIDE = 'docs/migrating-to-v16.md';
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
 /** Runtime announcement for a downstream `/mcp` session on revision 2024-11-05. */
 export const MCP_2024_11_05: Deprecation = {
   id: 'v16.mcp.protocol-2024-11-05',
-  message: `MCP protocol revision 2024-11-05 on /mcp: 16.0.0 no longer accepts it from downstream clients (${GUIDE})`,
+  message: `MCP protocol revision 2024-11-05 requested on /mcp: 16.0.0 no longer accepts it from downstream clients and answers with a newer revision (${GUIDE})`,
   removedIn: R,
   replacement: 'use a client that speaks 2025-03-26 or newer; upstream servers on HTTP+SSE stay supported',
 };
@@ -40,15 +42,15 @@ export function v16DeprecationsIn(raw: unknown): Deprecation[] {
     const name = String(p.name ?? p.module);
     const iso = p.isolation;
     if (iso === 'worker' || iso === 'process' || iso === 'inline') {
-      out.push({ id: `v16.plugins.${i}.isolation`, message: `plugins[${i}] (${name}) uses \`isolation: ${iso}\`, the 14.3 alias of \`runtime\`; 16.0.0 reads only \`runtime\` (${GUIDE})`, removedIn: R, replacement: iso === 'inline' ? 'runtime: worker (recommended) or runtime: process' : `runtime: ${iso}` });
+      out.push({ id: `v16.plugins.${i}.isolation`, message: `plugins[${i}] (${name}) uses \`isolation: ${iso}\`, the 14.3 alias of \`runtime\`; config schema v13 reads only \`runtime\` — schema v12 files are read until 17.0.0 (${GUIDE})`, removedIn: R17, replacement: iso === 'inline' ? 'runtime: worker (recommended) or runtime: process' : `runtime: ${iso}` });
     }
     if ((p.runtime ?? (iso === 'inline' ? 'inline' : undefined)) === 'inline') {
-      out.push({ id: `v16.plugins.${i}.inline`, message: `plugins[${i}] (${name}) runs inline, in the gateway process; 16.0.0 (config schema v13) runs inline module plugins only with an explicit opt-in (${GUIDE})`, removedIn: R, replacement: 'runtime: worker or runtime: process (isolation, limits, permissions)' });
+      out.push({ id: `v16.plugins.${i}.inline`, message: `plugins[${i}] (${name}) runs inline, in the gateway process; config schema v13 runs inline module plugins only with \`allowInline: true\` on the entry — schema v12 files are read until 17.0.0 (${GUIDE})`, removedIn: R17, replacement: 'runtime: worker or runtime: process (isolation, limits, permissions)' });
     }
   });
   const mcp = isObj(raw.mcp) ? raw.mcp : undefined;
   if (Array.isArray(mcp?.protocolVersions) && mcp.protocolVersions.includes('2024-11-05')) {
-    out.push({ ...MCP_2024_11_05, message: `mcp.protocolVersions names 2024-11-05: 16.0.0 no longer accepts that revision on /mcp (${GUIDE})`, replacement: 'drop it from mcp.protocolVersions' });
+    out.push({ ...MCP_2024_11_05, message: `mcp.protocolVersions names 2024-11-05: 16.0.0 no longer accepts that revision on /mcp — it is ignored (${GUIDE})`, replacement: 'drop it from mcp.protocolVersions' });
   }
   return out;
 }
