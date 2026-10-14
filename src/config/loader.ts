@@ -68,6 +68,7 @@ import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
 import { validateChains, type ChainsConfig } from '../orchestration/chains.js';
 import { normalizeSchemaVersion, MODULE_CAPABILITIES } from './v12-deprecations.js';
 import { v15ConfigErrors } from './v15-deprecations.js';
+import { v16DeprecationsIn } from './v16-deprecations.js';
 import { configDeprecations, normalizeApiKeyScopes, normalizeFeaturesV10, normalizeSchemaV5, normalizeStoreV9, removedConfigKeys } from '../utils/deprecations.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
@@ -1369,10 +1370,9 @@ function validate(raw: unknown, allowV11: boolean): GatewayConfig {
   const config = result.data as GatewayConfig;
   if (sv.schemaVersion) config.schemaVersion = sv.schemaVersion;
   // a v11 file reaches here only through the migration tooling (validateV11ForMigration): list its v11 fields
-  if (sv.schemaVersion === 11) {
-    const deprecations = configDeprecations(raw);
-    if (deprecations.length > 0) config.deprecations = deprecations;
-  }
+  // 15.9.0-canary.0: the 16.0.0 removals are listed for every file
+  const deprecations = [...(sv.schemaVersion === 11 ? configDeprecations(raw) : []), ...v16DeprecationsIn(raw)];
+  if (deprecations.length > 0) config.deprecations = deprecations;
 
   return config;
 }

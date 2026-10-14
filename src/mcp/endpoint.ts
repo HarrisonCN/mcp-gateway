@@ -44,6 +44,8 @@ import { logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
 import { buildToolIndex, toMcpTool, type ToolIndex } from './naming.js';
 import { PROTOCOL_VERSIONS, adaptTool, adaptToolResult, negotiateVersion } from './compat.js';
+import { deprecate } from '../utils/deprecations.js';
+import { MCP_2024_11_05 } from '../config/v16-deprecations.js';
 import {
   buildPromptIndex,
   dedupeResources,
@@ -558,6 +560,7 @@ export class McpEndpoint {
     const params = isObject(msg.params) ? msg.params : {};
     const requested = typeof params.protocolVersion === 'string' ? params.protocolVersion : undefined;
     const protocolVersion = negotiateVersion(requested, this.allowedVersions());
+    if (protocolVersion === '2024-11-05') deprecate(MCP_2024_11_05); // 15.9.0-canary.0: removed from /mcp in 16.0.0
 
     if (this.sessions.size >= this.cfg.maxSessions && !this.evictOne()) {
       res.status(503).json(rpcError(msg.id, { code: JSONRPC_INTERNAL_ERROR, message: 'Too many sessions' }));

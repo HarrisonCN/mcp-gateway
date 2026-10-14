@@ -37,6 +37,18 @@ mcp-gateway config diff --to v12 -c mcp-gateway.yml                 # preview on
 Exit codes: `config migrate` 1 when the compatibility report has errors; `config diff` 3 when the file would change,
 1 on errors. Comments and layout of YAML files are kept.
 
+## Planned removals in 16.0.0 (announced 15.9.0-canary.0)
+
+The 16.0 list is a **proposal** until 16.0.0-rc.1 ([migrating to v16](migrating-to-v16.md)). 15.x keeps working
+exactly as before; each use below is reported as `DEPRECATED (removed in 16.0.0)`:
+
+| Id | What | Instead | Since |
+|---|---|---|---|
+| `v16.plugins.<i>.isolation` | `isolation: worker \| process \| inline` on a module plugin (the 14.3 alias of `runtime`) | `runtime: worker` / `runtime: process` (WASM components keep `isolation: tenant \| client \| shared`) | 15.9.0-canary.0 |
+| `v16.plugins.<i>.inline` | a module plugin running inline, in the gateway process | `runtime: worker` or `runtime: process`; 16.0 (config schema v13) runs inline module plugins only with an explicit opt-in | 15.9.0-canary.0 |
+| `v16.mcp.protocol-2024-11-05` | `mcp.protocolVersions` naming `2024-11-05`, or a downstream `/mcp` session that negotiates it (runtime) | a client on 2025-03-26 or newer (upstream HTTP+SSE servers stay supported) | 15.9.0-canary.0 |
+| `v16.node.<major>` | running on Node.js older than 24 (runtime) | Node.js 24 LTS (`engines.node >= 24` in 16.0) | 15.9.0-canary.0 |
+
 ## Removed in 15.0.0 (announced 14.9.0)
 
 14.9.0 lists these for every config it loads (log warning once per id, `mcp-gateway validate`,
