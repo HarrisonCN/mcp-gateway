@@ -654,7 +654,42 @@ program
 
 // ─── plugin signing (5.4) ─────────────────────────────────────────────────────
 
-const pluginCmd = program.command('plugin').description('Signed plugins: keygen, sign, verify');
+const pluginCmd = program.command('plugin').description('Plugins: init, doctor (15.2), keygen, sign, verify');
+// 15.2.0: plugin developer kit
+pluginCmd
+  .command('init <name>')
+  .description('Create a plugin from the template: <name>.mjs, a plugins[] entry (<name>.config.yaml, worker runtime) and <name>.test.mjs')
+  .option('-d, --dir <dir>', 'Target directory', '.')
+  .option('--runtime <runtime>', 'worker | process', 'worker')
+  .option('-f, --force', 'Overwrite existing files')
+  .action(async (name: string, options) => {
+    const { scaffoldPlugin } = await import('./plugins/devkit.js');
+    const { writeFileSync, existsSync, mkdirSync } = await import('fs');
+    const { join } = await import('path');
+    let s;
+    try { s = scaffoldPlugin(name, { runtime: options.runtime }); } catch (e) { logger.error((e as Error).message); process.exit(1); }
+    mkdirSync(options.dir, { recursive: true });
+    const clash = Object.keys(s.files).filter((f) => existsSync(join(options.dir, f)));
+    if (clash.length && !options.force) { logger.error(`${clash.join(', ')} already exist${clash.length === 1 ? 's' : ''} in ${options.dir} (use --force to overwrite)`); process.exit(1); }
+    for (const [f, body] of Object.entries(s.files)) writeFileSync(join(options.dir, f), body);
+    console.log(`Wrote ${Object.keys(s.files).map((f) => join(options.dir, f)).join(', ')}`);
+    console.log(`Next: node --test ${join(options.dir, `${name}.test.mjs`)}; add the entry from ${name}.config.yaml to your config; then mcp-gateway plugin doctor -c <config>`);
+  });
+pluginCmd
+  .command('doctor')
+  .description('Load every module plugin of a config like the gateway does and check runtime, permissions, limits, hooks, options and signature')
+  .option('-c, --config <path>', 'Path to config file')
+  .option('--json', 'Print JSON')
+  .action(async (options) => {
+    const { doctorPlugins, formatDoctor } = await import('./plugins/devkit.js');
+    const { resolveConfigPath } = await import('./config/loader.js');
+    const file = resolveConfigPath(options.config);
+    if (!file) { logger.error('No config file found (use -c <path>)'); process.exit(1); }
+    logger.setLevel('error');
+    const r = await doctorPlugins(file);
+    console.log(options.json ? JSON.stringify(r, null, 2) : formatDoctor(r));
+    process.exit(r.ok ? 0 : 1);
+  });
 pluginCmd
   .command('keygen')
   .description('Generate an Ed25519 signing key pair (PEM files)')
