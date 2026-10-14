@@ -295,7 +295,9 @@ describe('/mcp protocol details (raw HTTP)', () => {
   });
 
   it('applies the gateway rate limit to tools/call as a JSON-RPC error', async () => {
-    const url = await start({ ...base, rateLimit: { limit: 1, windowSeconds: 60 }, servers: [stdio('one')] });
+    // 16.0.0-alpha.2: a 1 h window — with limit 1 and the sliding window (minute-aligned buckets), two calls that
+    // straddle a 60 s boundary were both allowed (estimated 0.99 < 1): a flake seen in the alpha.2 full run
+    const url = await start({ ...base, rateLimit: { limit: 1, windowSeconds: 3600 }, servers: [stdio('one')] });
     const { sid } = await openSession(url);
     const S = { 'mcp-session-id': sid };
     const first = await post(url, rpc(1, 'tools/call', { name: 'echo', arguments: {} }), S);

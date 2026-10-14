@@ -1,0 +1,1509 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/HarrisonCN/mcp-gateway/blob/main/schema/v13/config.schema.json",
+  "title": "MCP Gateway config schema v13 (16.0, proposal until 16.0.0-rc.1)",
+  "description": "Config schema v13 = schema v12 with the 16.0 rules: module plugins take only `runtime`, an inline module plugin needs `allowInline: true`, `/mcp` no longer accepts revision 2024-11-05. 16.x also reads v12 files (in-memory, reported as `schema.v12`); 14.x / 15.x refuse v13. See docs/migrating-to-v16.md.",
+  "type": "object",
+  "required": [
+    "version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 13
+    },
+    "modules": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "features": {
+      "type": "object",
+      "description": "Feature module sections, each named after its module id (camelCase).",
+      "additionalProperties": false,
+      "properties": {
+        "a2aFederation": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "adaptive": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "agentIdentity": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "anomaly": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "apiUpstreams": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "approvalFlows": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "billing": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "blueGreen": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "chaos": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "complianceReports": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "confidential": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "configAssistant": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "console": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "costAdvisor": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "dataLineage": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "debugSessions": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "dlp": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "ecosystem": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "edgeAutonomy": {
+          "type": "object",
+          "description": "Edge autonomy (10.7; GA in 14.6): local decisions while an upstream is unreachable, offline permission boundaries (high-risk calls denied offline by default), sealed queue with expiry, fenced reconcile honouring revocations. See docs/guides/edge-autonomy.md.",
+          "additionalProperties": false,
+          "required": [
+            "rules"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "dir": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Persist the sealed queue, last-good cache and intent log here (0700; files 0600). Relative to the config file."
+            },
+            "rules": {
+              "type": "array",
+              "minItems": 1,
+              "description": "First match on \"server/tool\" decides what a call does while its server is disconnected.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "match",
+                  "action"
+                ],
+                "properties": {
+                  "match": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "action": {
+                    "enum": [
+                      "cache",
+                      "wasm",
+                      "queue",
+                      "deny"
+                    ]
+                  },
+                  "maxAgeSeconds": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 31536000,
+                    "default": 86400
+                  },
+                  "wasmTool": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "policies": {
+              "type": "array",
+              "default": [],
+              "description": "NEW in 14.6: declared offline policy per server / tool (first match on \"server/tool\").",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "match"
+                ],
+                "properties": {
+                  "match": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "offline": {
+                    "enum": [
+                      "allow",
+                      "deny"
+                    ],
+                    "description": "allow: may be answered / queued offline whatever its risk; deny: never; unset: by risk (highRisk)."
+                  },
+                  "risk": {
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high",
+                      "critical"
+                    ],
+                    "description": "Declared risk; replaces the classifier (annotations, tool-name heuristics)."
+                  },
+                  "idempotent": {
+                    "type": "boolean",
+                    "description": "Safe to repeat: an in-doubt replay is resent with the same idempotency key."
+                  },
+                  "conflictKey": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": "Argument names identifying the record written; concurrent offline writes by different clients go to review."
+                  },
+                  "ttlSeconds": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 31536000,
+                    "description": "Queue TTL for matching calls."
+                  }
+                }
+              }
+            },
+            "highRisk": {
+              "enum": [
+                "deny",
+                "allow"
+              ],
+              "default": "deny",
+              "description": "NEW in 14.6 (behaviour change): offline handling of high / critical risk calls (writes, deletes, payments, non-idempotent) that no policy allows."
+            },
+            "cacheEntries": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000,
+              "default": 1000
+            },
+            "outboxLimit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000,
+              "default": 10000,
+              "description": "Maximum queued calls (queue.maxItems wins)."
+            },
+            "queue": {
+              "type": "object",
+              "additionalProperties": false,
+              "default": {},
+              "description": "NEW in 14.6: queue expiry.",
+              "properties": {
+                "ttlSeconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 31536000,
+                  "default": 86400
+                },
+                "maxItems": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100000
+                },
+                "onExpiry": {
+                  "enum": [
+                    "review",
+                    "drop"
+                  ],
+                  "default": "review",
+                  "description": "An expired call is never replayed: parked for review, or dropped."
+                }
+              }
+            },
+            "reconcile": {
+              "type": "object",
+              "additionalProperties": false,
+              "default": {},
+              "properties": {
+                "intervalMs": {
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 3600000,
+                  "default": 5000
+                },
+                "maxAttempts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "default": 5
+                },
+                "idempotencyArg": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Argument carrying the idempotency key (the client's own, else the outbox id)."
+                },
+                "leaseMs": {
+                  "type": "integer",
+                  "minimum": 500,
+                  "maximum": 3600000,
+                  "default": 30000,
+                  "description": "NEW in 14.6: reconcile lease; a crashed reconciler is taken over after this (fencing epoch)."
+                },
+                "requireFreshRevocations": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "NEW in 14.6: replay only after revocation authorities (multi-region) are confirmed fresh since reconnect."
+                }
+              }
+            },
+            "seal": {
+              "type": "object",
+              "additionalProperties": false,
+              "default": {},
+              "description": "NEW in 14.6: AES-256-GCM sealing of the persisted queue / cache.",
+              "properties": {
+                "keyEnv": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Environment variable holding a 32-byte key (base64 or hex); default: a generated <dir>/.seal.key (0600)."
+                }
+              }
+            }
+          }
+        },
+        "edgeFleet": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "edgeRuntime": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "genaiOtel": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "identity": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "marketplace": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "multimodal": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "offline": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "pluginTrust": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "policyEngine": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "policySim": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "pqIdentity": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "pqTls": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "privacy": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "realtimeBudgets": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "regions": {
+          "type": "object",
+          "description": "Multi-region active-active (5.2). 14.5 adds explicit consistency boundaries: replicated revocations, bounded staleness (fail closed), version vectors, clock-skew bounds. See docs/guides/multi-region.md.",
+          "additionalProperties": false,
+          "required": [
+            "self"
+          ],
+          "properties": {
+            "self": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]*$",
+              "description": "this region id"
+            },
+            "syncIntervalMs": {
+              "type": "integer",
+              "minimum": 250,
+              "default": 5000
+            },
+            "downAfter": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 3,
+              "description": "consecutive failed syncs before a peer is down"
+            },
+            "peers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "url"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "apiKey": {
+                    "type": "string",
+                    "description": "operator (unscoped) key on the peer"
+                  },
+                  "priority": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 100
+                  }
+                }
+              }
+            },
+            "consistency": {
+              "type": "object",
+              "description": "NEW in 14.5: bounded staleness and clock-skew bounds",
+              "additionalProperties": false,
+              "properties": {
+                "maxStalenessMs": {
+                  "type": "integer",
+                  "minimum": 500,
+                  "description": "a region is fresh while every peer synced within this window (default max(30000, 3 × syncIntervalMs); at least 2 × syncIntervalMs)"
+                },
+                "maxClockSkewMs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "default": 30000,
+                  "description": "replicated writes stamped further ahead are rejected"
+                },
+                "onStale": {
+                  "enum": [
+                    "deny",
+                    "allow"
+                  ],
+                  "default": "deny",
+                  "description": "deny = refuse tool calls while not fresh (fail closed, -32027)"
+                }
+              }
+            }
+          }
+        },
+        "rollouts": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "sanitize": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "selfHealing": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "semanticCache": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "sessions": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "sla": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "taskGraphs": {
+          "type": "object",
+          "description": "Task graphs (10.7). 14.4 adds durable execution: resume after restart, idempotency keys, DLQ, approval resume. See docs/guides/durable-tasks.md.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "dir": {
+              "type": "string",
+              "minLength": 1,
+              "description": "checkpoint directory (relative to the config file)"
+            },
+            "maxRuns": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000,
+              "default": 500
+            },
+            "durable": {
+              "type": "object",
+              "description": "NEW in 14.4: durable execution (absent = 10.7 checkpoints)",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "backend": {
+                  "enum": [
+                    "auto",
+                    "store",
+                    "dir",
+                    "memory"
+                  ],
+                  "default": "auto",
+                  "description": "auto: the gateway store when it is not memory, else dir, else memory"
+                },
+                "resumeOnStart": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "continue runs left in flight (lease lapsed) from their last committed step"
+                },
+                "leaseMs": {
+                  "type": "integer",
+                  "minimum": 1000,
+                  "maximum": 600000,
+                  "default": 15000,
+                  "description": "heartbeat lease of an executing gateway"
+                },
+                "sweepIntervalMs": {
+                  "type": "integer",
+                  "minimum": 50,
+                  "maximum": 600000,
+                  "default": 2000
+                },
+                "idempotencyTtlSeconds": {
+                  "type": "integer",
+                  "minimum": 60,
+                  "maximum": 7776000,
+                  "default": 86400,
+                  "description": "how long a submission idempotency key is remembered"
+                },
+                "retentionHours": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 876000,
+                  "default": 168,
+                  "description": "NEW in 14.9: delete finished runs (succeeded, failed, cancelled, compensated) this long after they ended; 0 = keep forever"
+                },
+                "dlq": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "retry": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "attempts": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 100,
+                          "default": 3
+                        },
+                        "backoffMs": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 86400000,
+                          "default": 30000
+                        },
+                        "factor": {
+                          "type": "number",
+                          "minimum": 1,
+                          "maximum": 10,
+                          "default": 2
+                        },
+                        "maxBackoffMs": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 604800000,
+                          "default": 3600000
+                        },
+                        "jitter": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "graphs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "clients": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "NEW in 14.4 (durable): any authenticated client may start it under /api/v1/features/task-graphs"
+                  },
+                  "nodes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "idempotent": {
+                          "type": "boolean",
+                          "default": false,
+                          "description": "NEW in 14.4: safe to execute again after a crash between call and commit"
+                        },
+                        "idempotencyArg": {
+                          "type": "string",
+                          "description": "NEW in 14.4: argument that receives the stable per-call key <runId>:<node> (implies repeat-safe)"
+                        },
+                        "approval": {
+                          "type": "object",
+                          "description": "NEW in 14.4 (durable): wait for human approval before the node runs",
+                          "additionalProperties": false,
+                          "required": [
+                            "approvers"
+                          ],
+                          "properties": {
+                            "approvers": {
+                              "type": "array",
+                              "minItems": 1,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "description": "client id globs"
+                            },
+                            "required": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 20,
+                              "default": 1
+                            },
+                            "timeoutSeconds": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 2592000,
+                              "default": 86400
+                            },
+                            "reason": {
+                              "type": "string",
+                              "maxLength": 500
+                            }
+                          }
+                        },
+                        "compensate": {
+                          "type": "object",
+                          "properties": {
+                            "tool": {
+                              "type": "string"
+                            },
+                            "args": {
+                              "type": "object"
+                            },
+                            "idempotencyArg": {
+                              "type": "string",
+                              "description": "NEW in 14.4"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "timeTravel": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        },
+        "toolRegistry": {
+          "$comment": "unchanged from schema v11 (validated by the runtime schema)",
+          "type": [
+            "object",
+            "array"
+          ]
+        }
+      }
+    },
+    "a2a": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "audit": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "auth": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "cache": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "catalog": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "chains": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "compliance": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "controlPlane": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema) except the optional `rollout` (14.1), `gitops` (14.7) and `console` (14.8)",
+      "type": "object",
+      "properties": {
+        "console": {
+          "type": "object",
+          "description": "NEW in 14.8 (optional): operations console — /api/v1/admin/ops/* and the dashboard Operations page. See docs/guides/operations-console.md.",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Serve /api/v1/admin/ops/* and record call traces."
+            },
+            "viewers": {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "description": "Client id globs (key:oncall) with read-only console access."
+            },
+            "traceBuffer": {
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 100000,
+              "default": 500,
+              "description": "Call traces kept in memory."
+            },
+            "timelineBuffer": {
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 100000,
+              "default": 1000,
+              "description": "Incidents kept in memory."
+            },
+            "explainDenials": {
+              "type": "boolean",
+              "default": false,
+              "description": "Add the denial explanation (with the config path) to refused REST tool calls made by operators; other clients never get it."
+            },
+            "tenantViewers": {
+              "type": "boolean",
+              "default": false,
+              "description": "NEW in 15.1 (optional): tenant members (role owner / admin / viewer) read the call traces, lineage and cost rollup (GET /admin/ops/costs) of their own tenants, and nothing else on the console."
+            }
+          }
+        },
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Data plane: an operator API key of the control plane. ${VAR} references are expanded; an unset variable is a config error (14.7, MGW-2026-019)."
+        },
+        "gitops": {
+          "type": "object",
+          "description": "NEW in 14.7 (optional; control plane or role all): GitOps — signed release manifests (ed25519), required approvals per environment, enforcement, drift detection. See docs/guides/gitops.md.",
+          "additionalProperties": false,
+          "required": [
+            "environment"
+          ],
+          "properties": {
+            "environment": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+              "description": "the environment this gateway runs (bundles and manifests for another environment are refused)"
+            },
+            "enforce": {
+              "type": "boolean",
+              "default": false,
+              "description": "only signed, sufficiently approved releases may change the config; PUT /admin/config and /admin/reload answer 409"
+            },
+            "trustedKeys": {
+              "type": "array",
+              "maxItems": 100,
+              "default": [],
+              "description": "release signing keys (enforce: true needs at least one)",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "name",
+                  "publicKey"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "description": "key id named in manifests (--key-id)"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "description": "the person or bot holding the key; approvals count once per name and never for the author"
+                  },
+                  "publicKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "ed25519:<base64 raw key> (mcp-gateway gitops keygen) or an SPKI PEM"
+                  },
+                  "roles": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "enum": [
+                        "author",
+                        "approver"
+                      ]
+                    },
+                    "default": [
+                      "author",
+                      "approver"
+                    ]
+                  }
+                }
+              }
+            },
+            "requiredApprovals": {
+              "description": "approvals a release needs: a number, or per environment with \"*\" as fallback (default: 2 for prod / production, else 0)",
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 20
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 20
+                  }
+                }
+              ]
+            },
+            "maxManifestAgeSeconds": {
+              "type": "integer",
+              "minimum": 60,
+              "maximum": 31536000,
+              "default": 2592000,
+              "description": "manifests older than this are refused"
+            },
+            "driftCheckIntervalMs": {
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 86400000,
+              "default": 60000
+            },
+            "recordFile": {
+              "type": "string",
+              "minLength": 1,
+              "description": "persist the applied release (replay protection and drift baseline across restarts); relative to the config file"
+            }
+          }
+        },
+        "rollout": {
+          "type": "object",
+          "description": "NEW in 14.1 (optional; control plane only): how config generations roll out to data planes. See docs/guides/cluster-rollout.md.",
+          "additionalProperties": false,
+          "properties": {
+            "strategy": {
+              "enum": [
+                "all-at-once",
+                "canary"
+              ],
+              "default": "all-at-once"
+            },
+            "canary": {
+              "type": "object",
+              "description": "canary size: a data-plane count or a percentage of the known data planes (strategy canary needs one)",
+              "additionalProperties": false,
+              "properties": {
+                "nodes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                },
+                "percent": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              }
+            },
+            "bakeMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 86400000,
+              "default": 30000
+            },
+            "failureThreshold": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 1
+            },
+            "autoRollback": {
+              "type": "boolean",
+              "default": true
+            },
+            "maxDivergenceMs": {
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 86400000,
+              "default": 60000
+            },
+            "history": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 100,
+              "default": 10
+            }
+          }
+        }
+      }
+    },
+    "cors": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "costs": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "federation": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "health": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "host": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "logLevel": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "mcp": {
+      "$comment": "unchanged from schema v12 except protocolVersions (validated by the runtime schema)",
+      "type": "object",
+      "properties": {
+        "protocolVersions": {
+          "type": "array",
+          "description": "v13: 2024-11-05 is not accepted on /mcp by 16.0",
+          "items": {
+            "type": "string",
+            "not": {
+              "const": "2024-11-05"
+            }
+          }
+        }
+      }
+    },
+    "monitor": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "mtls": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "observability": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "openai": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "overload": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "plugins": {
+      "type": "array",
+      "description": "Plugins in configuration order (schema v13: `runtime` only for module plugins; inline needs `allowInline: true`). See docs/guides/plugin-security.md.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "module": {
+            "type": "string",
+            "minLength": 1,
+            "description": "ES module path (relative to the config file) or package name"
+          },
+          "component": {
+            "type": "string",
+            "minLength": 1,
+            "description": "plugin API v5 WASM component"
+          },
+          "signature": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "options": {
+            "type": "object"
+          },
+          "secrets": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^secret://[A-Za-z0-9_-]+/\\S+$"
+            }
+          },
+          "isolation": {
+            "enum": [
+              "tenant",
+              "client",
+              "shared"
+            ],
+            "description": "WASM components only: sandbox per tenant | client | shared (v13: module plugins use `runtime`)"
+          },
+          "runtime": {
+            "enum": [
+              "inline",
+              "worker",
+              "process"
+            ],
+            "default": "worker",
+            "description": "module plugins: where the plugin runs (worker is the default since 15.0); inline needs `allowInline: true`"
+          },
+          "failure": {
+            "description": "NEW in 14.3 (module plugins): what a failed hook does",
+            "oneOf": [
+              {
+                "enum": [
+                  "open",
+                  "closed"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "default": {
+                    "enum": [
+                      "open",
+                      "closed"
+                    ]
+                  },
+                  "onToolCall": {
+                    "enum": [
+                      "open",
+                      "closed"
+                    ]
+                  },
+                  "onResponse": {
+                    "enum": [
+                      "open",
+                      "closed"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60000,
+            "description": "inline module plugins: per hook call"
+          },
+          "limits": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "timeoutMs": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 60000
+              },
+              "memoryMb": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4096
+              },
+              "maxInstances": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000,
+                "description": "components only"
+              },
+              "maxFailures": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000,
+                "description": "NEW in 14.3 (module plugins): circuit breaker threshold"
+              },
+              "cooldownMs": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3600000,
+                "description": "NEW in 14.3 (module plugins)"
+              },
+              "maxConcurrent": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000,
+                "description": "NEW in 14.3 (isolated module plugins)"
+              }
+            }
+          },
+          "permissions": {
+            "type": "object",
+            "description": "NEW in 14.3 (module plugins): declared capabilities; network / env / fs need runtime worker or process",
+            "additionalProperties": false,
+            "properties": {
+              "args": {
+                "enum": [
+                  "read",
+                  "write"
+                ],
+                "default": "write"
+              },
+              "response": {
+                "enum": [
+                  "read",
+                  "write"
+                ],
+                "default": "write"
+              },
+              "secrets": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "servers": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "hooks": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "onToolCall",
+                    "onResponse",
+                    "onError",
+                    "onConfigChange"
+                  ]
+                }
+              },
+              "network": {
+                "oneOf": [
+                  {
+                    "const": false
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 255
+                    }
+                  }
+                ]
+              },
+              "env": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                }
+              },
+              "fs": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "read": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "write": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allowInline": {
+            "type": "boolean",
+            "description": "NEW in v13: explicit opt-in for a module plugin with `runtime: inline` (runs in the gateway process)"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "module"
+            ]
+          },
+          {
+            "required": [
+              "component"
+            ]
+          }
+        ],
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "isolation"
+              ]
+            },
+            "then": {
+              "required": [
+                "component"
+              ]
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "module",
+                "runtime"
+              ],
+              "properties": {
+                "runtime": {
+                  "const": "inline"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "allowInline"
+              ],
+              "properties": {
+                "allowInline": {
+                  "const": true
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "allowInline"
+              ]
+            },
+            "then": {
+              "required": [
+                "module",
+                "runtime"
+              ],
+              "properties": {
+                "runtime": {
+                  "const": "inline"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "policy": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "port": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "portal": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "quotas": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "rateLimit": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "reconnect": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "replay": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "routing": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "secrets": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "security": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "servers": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "store": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "streaming": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    },
+    "tenancy": {
+      "type": "object",
+      "description": "NEW in 14.2 (optional): centralized tenant isolation. Absent = pre-14.2 behaviour. See docs/guides/tenant-isolation.md.",
+      "additionalProperties": false,
+      "properties": {
+        "isolation": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "With isolation on, each server belongs to the first tenant (config order) whose `servers` globs match it; other tenants reach it only through a grant.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "crossTenant": {
+              "enum": [
+                "deny",
+                "audit"
+              ],
+              "default": "deny",
+              "description": "deny: cross-tenant access only through grants; audit: allowed as before, every crossing recorded"
+            },
+            "grants": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "owner",
+                  "tenants",
+                  "servers"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "owner": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "tenant owning the servers"
+                  },
+                  "tenants": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": "tenants whose members may use them (their own role applies)"
+                  },
+                  "servers": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": "server id globs owned by `owner`"
+                  },
+                  "access": {
+                    "enum": [
+                      "call",
+                      "read"
+                    ],
+                    "default": "call"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "tenants": {
+      "$comment": "unchanged from schema v11 (validated by the runtime schema)"
+    }
+  }
+}

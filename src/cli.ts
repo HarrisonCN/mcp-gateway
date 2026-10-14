@@ -552,7 +552,7 @@ async function v13Migrate(options: { config?: string; dryRun?: boolean; inPlace?
     const tmp = `${path}.tmp-${process.pid}`;
     await writeFile(tmp, r.text);
     await rename(tmp, path);
-    say(`Migrated ${path} to schema v13 in place (backup: ${bak}; undo: copy it back — 15.x reads only the v12 backup)`);
+    say(`Migrated ${path} to schema v13 in place (backup: ${bak}; undo: mcp-gateway config rollback -c ${path} — 14.x / 15.x read only the v12 backup)`);
     return;
   }
   const target = options.output ?? (/\.(ya?ml|json)$/i.test(path) ? path.replace(/\.(ya?ml|json)$/i, '.v13.$1') : `${path}.v13.yml`);
@@ -652,19 +652,33 @@ configCmd
 
 configCmd
   .command('rollback')
-  .description('Undo `config migrate --in-place`: restore <file>.v11.bak over the config file (the v12 file is kept as <file>.v12.bak)')
+  .description('Undo `config migrate --in-place`: restore <file>.pre-v13.bak (after --to v13; the v13 file is kept as <file>.v13.bak) or <file>.v11.bak (after --to v12; the v12 file is kept as <file>.v12.bak). With both backups present pass --to v12 or --to v11')
   .option('-c, --config <path>', 'Config file (default: the usual search paths)')
+  .option('--to <version>', 'Schema to go back to: v12 (undo --to v13) or v11 (undo --to v12); default: the only backup there is')
   .action(async (options) => {
     try {
       const path = resolveConfigPath(options.config);
       if (!path) throw new Error('No config file found (use -c <path>)');
-      const bak = v11BackupPath(path);
       const { existsSync } = await import('fs');
       const { copyFile } = await import('fs/promises');
-      if (!existsSync(bak)) throw new Error(`no backup ${bak} — nothing to roll back`);
-      await copyFile(path, `${path}.v12.bak`);
-      await copyFile(bak, path);
-      console.log(`Restored ${path} from ${bak} (the v12 file is kept as ${path}.v12.bak). 14.x reads it as schema v11 (migrated in memory); 13.9.x reads it as it is.`);
+      // 16.0.0-alpha.2: `config migrate --to v13 --in-place` keeps <file>.pre-v13.bak
+      const backups = { v12: { bak: `${path}.pre-v13.bak`, keep: `${path}.v13.bak`, from: 'v13' }, v11: { bak: v11BackupPath(path), keep: `${path}.v12.bak`, from: 'v12' } };
+      let to: 'v12' | 'v11';
+      if (options.to !== undefined) {
+        const t = `v${String(options.to).replace(/^v/i, '')}`;
+        if (t !== 'v12' && t !== 'v11') throw new Error(`config rollback --to takes v12 or v11 (got ${options.to})`);
+        to = t;
+      } else {
+        const have = (['v12', 'v11'] as const).filter((k) => existsSync(backups[k].bak));
+        if (have.length > 1) throw new Error(`both ${backups.v12.bak} and ${backups.v11.bak} exist — pass --to v12 (undo the v13 migration) or --to v11 (undo the v12 migration)`);
+        to = have[0] ?? 'v11';
+      }
+      const b = backups[to];
+      if (!existsSync(b.bak)) throw new Error(`no backup ${b.bak} — nothing to roll back`);
+      await copyFile(path, b.keep);
+      await copyFile(b.bak, path);
+      if (to === 'v12') console.log(`Restored ${path} from ${b.bak} (the v13 file is kept as ${b.keep}). 14.x, 15.x and 16.x read it as schema v12.`);
+      else console.log(`Restored ${path} from ${b.bak} (the v12 file is kept as ${b.keep}). 14.x reads it as schema v11 (migrated in memory); 13.9.x reads it as it is.`);
     } catch (err) {
       logger.error(`Rollback failed: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);

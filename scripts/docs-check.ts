@@ -7,8 +7,10 @@
  * reports, with file:line:
  *
  *   config     YAML snippets that are gateway configs (or the `mcp-gateway.yml` of a Kubernetes ConfigMap / Helm
- *              `config:` value) are validated against config schema v12 (`validateConfig`); `version:` must be 12 (11 only in historical docs);
- *              unknown top-level keys are reported.
+ *              `config:` value) are validated against config schema v12 (`validateConfig`); `version:` must be 12 or 13 (11 only in
+ *              historical docs); unknown top-level keys are reported. 16.0.0-alpha.2: every current config is also checked in its
+ *              schema v13 form (`version: 13` as written; v12 / unversioned after the `config migrate --to v13` codemod) against
+ *              schema/v13/config.schema.json, so the docs can switch to v13 mechanically when 16.0 becomes `latest`.
  *   syntax     JSON fences must parse; TypeScript / JavaScript fences must compile (esbuild); YAML fences must parse.
  *   cli        `mcp-gateway <command> --flag` in shell fences: the command and every flag must exist in src/cli.ts.
  *   link       relative links / images must point at existing files, `#anchors` at existing headings
@@ -30,6 +32,10 @@ import { parse as parseYaml, parseAllDocuments } from 'yaml';
 import { transformSync } from 'esbuild';
 import { validateConfig, CONFIG_FILE_KEYS } from '../src/config/loader.js';
 import { listEnvironments, renderConfigDir } from '../src/config/gitops.js';
+import { stringify as stringifyYaml } from 'yaml';
+import Ajv from 'ajv';
+import { planV13 } from '../src/config/v13-prep.js';
+import { buildV13ConfigSchema } from '../src/config/v13-schema.js';
 
 export interface Finding {
   file: string;
@@ -127,7 +133,24 @@ async function check(root: string, opts: { external?: boolean }) {
   const okVersion = (x: string) => ['latest', MAJ, `${MAJ}.${MIN}`, V, ...settings.distTags, ...pre].includes(x) || ltsAliases.has(x);
   const cli = cliSpec(root);
   const findings: Finding[] = [];
-  const stats: Record<string, number> = { files: 0, fences: 0, configs: 0, skipped: 0, links: 0, cli: 0, images: 0 };
+  const stats: Record<string, number> = { files: 0, fences: 0, configs: 0, v13Checked: 0, skipped: 0, links: 0, cli: 0, images: 0 };
+  // 16.0.0-alpha.2: the v13 form of every current config is validated against the generated JSON Schema
+  let v13Validate: ReturnType<Ajv['compile']> | undefined;
+  const v13Findings = (filled: Record<string, unknown>): string[] => {
+    stats.v13Checked++;
+    let form: unknown = filled;
+    if (filled.version !== 13) {
+      const r = planV13(stringifyYaml(filled), 'yaml');
+      if (!r.ok) return [`not convertible to schema v13: ${r.report.errors.join('; ')}`];
+      form = parseYaml(r.text);
+    }
+    v13Validate ??= new Ajv({ allErrors: true, strict: false, validateFormats: false }).compile(buildV13ConfigSchema());
+    if (v13Validate(form)) return [];
+    const at = (p: string) => p.split('/').slice(1).reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), form);
+    const text = (v: unknown) => (typeof v === 'string' ? v : v && typeof v === 'object' ? JSON.stringify(v) : '');
+    const errs = (v13Validate.errors ?? []).filter((e) => !['if', 'oneOf', 'allOf'].includes(e.keyword) && !PLACEHOLDER.test(text(at(e.instancePath))));
+    return [...new Set(errs.map((e) => `schema v13${e.instancePath ? ' ' + e.instancePath.slice(1).replace(/\//g, '.') : ''}: ${e.message}`))];
+  };
   const add = (file: string, line: number, rule: Finding['rule'], message: string) => findings.push({ file, line, rule, message });
 
   const files = [
@@ -165,8 +188,8 @@ async function check(root: string, opts: { external?: boolean }) {
     const unknown = Object.keys(doc).filter((k) => !CONFIG_FILE_KEYS.includes(k));
     if (unknown.length) add(rel, line, 'config', `unknown top-level key(s): ${unknown.join(', ')}`);
     // 14.0.0: the current schema is v12; v11 is still read (migrated in memory) but current docs show v12
-    if (doc.version !== undefined && doc.version !== 12 && doc.version !== 11) {
-      if (!hist) add(rel, line, 'config', `config "version: ${String(doc.version)}" — the current schema is version 12`);
+    if (doc.version !== undefined && doc.version !== 12 && doc.version !== 11 && doc.version !== 13) {
+      if (!hist) add(rel, line, 'config', `config "version: ${String(doc.version)}" — the current schemas are version 12 and 13`);
       return;
     }
     if (doc.version === 11 && !hist) add(rel, line, 'config', 'config "version: 11" — current docs use schema v12 (`version: 12`; v11 files are only read until 15.0)');
@@ -178,6 +201,7 @@ async function check(root: string, opts: { external?: boolean }) {
       // 16.0.0-alpha.1: docs and examples stay on schema v12 while npm `latest` is 14.9.x / 15.x (which cannot read
       // v13), so the 16.x `schema.v12` notice is not a docs finding; switch the examples when 16.0 becomes `latest`
       if (!hist) for (const d of (c.deprecations ?? []).filter((x) => x.id !== 'schema.v12')) add(rel, line, 'config', `${d.id.startsWith('v15.') ? 'removed / changed in 15.0.0' : 'schema v11 field'} in current docs: ${(d as { path?: string }).path ?? d.id} — use ${(d as { replacement?: string }).replacement ?? 'the v12 form'}`);
+      if (!hist && doc.version !== 11) for (const m of v13Findings(filled)) add(rel, line, 'config', m);
     } catch (e) {
       const issues = (e as Error).message.replace(/^Invalid configuration:\s*/, '').split(/\n\s*-\s*/).map((x) => x.replace(/^\s*-\s*/, '').trim()).filter(Boolean);
       const real = issues.filter((iss) => {
@@ -445,7 +469,7 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith
   if (flag('--json')) console.log(JSON.stringify({ findings, stats }, null, 2));
   else {
     for (const f of findings) console.log(`${f.file}:${f.line}: [${f.rule}] ${f.message}`);
-    console.log(`docs-check: ${findings.length} finding(s) — ${stats.files} files, ${stats.fences} code blocks (${stats.configs} configs validated against schema v12, ${stats.skipped} skipped), ${stats.cli} CLI invocations, ${stats.links} links, ${stats.images} image references`);
+    console.log(`docs-check: ${findings.length} finding(s) — ${stats.files} files, ${stats.fences} code blocks (${stats.configs} configs validated against schema v12, ${stats.v13Checked} in their v13 form, ${stats.skipped} skipped), ${stats.cli} CLI invocations, ${stats.links} links, ${stats.images} image references`);
   }
   process.exit(findings.length ? 1 : 0);
 }
