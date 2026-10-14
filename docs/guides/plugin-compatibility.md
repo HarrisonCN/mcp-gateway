@@ -12,7 +12,7 @@ Prerelease versions count as their release: `15.2.0-canary.1` is in the `8.0.0 �
 | Gateway | Loads plugin API | Status | Notes |
 |---|---|---|---|
 | 17.0.0 + | v6 | proposal | plugin API v6: module plugins only in worker / process / wasm (inline removed); codemod in 16.9 |
-| 16.0.0 – <17.0.0 | v5 | proposal | v5; runtime: inline needs plugins.allowInline: true (config schema v13) |
+| 16.0.0 – <17.0.0 | v5 | proposal | v5; a module plugin with runtime: inline needs allowInline: true on its entry (config schema v13) |
 | 8.0.0 – <16.0.0 | v5 | shipped | v5 only (v4 refused); the current contract |
 | 7.9.0 – <8.0.0 | v4 – v5 | shipped | v5 preview: one contract for JS and WASM (WIT world mcp-gateway:plugin@5.0.0) |
 | 6.0.0 – <7.9.0 | v4 | shipped | v3 refused |

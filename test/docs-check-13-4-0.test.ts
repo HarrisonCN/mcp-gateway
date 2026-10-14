@@ -109,7 +109,8 @@ describe('docs-check', () => {
   });
 
   it('the package version is the one the docs are checked against', () => {
-    expect(version).toMatch(/^15\.\d+\.\d+(-(rc|canary)\.\d+)?$/);
+    // 16.0.0-alpha.1: the 16.x development prereleases are on npm `canary`
+    expect(version).toMatch(/^1[56]\.\d+\.\d+(-(rc|canary|alpha|beta)\.\d+)?$/);
   });
 
   it('15.0.0-rc.1: a prerelease package checks docs against prerelease.stable (npm latest)', async () => {
