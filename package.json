@@ -94,6 +94,10 @@
     "./edge": {
       "types": "./dist/edge/entry.d.ts",
       "import": "./dist/edge/entry.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
     }
   },
   "publishConfig": {

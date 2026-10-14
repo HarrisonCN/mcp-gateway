@@ -92,7 +92,7 @@ record, read from the call trace (so it is kept as long as the trace: `traceBuff
 | Field | Meaning |
 |---|---|
 | `requestId` | the gateway's id of the call (`requestId` in the REST response, the audit record id) — unique |
-| `correlationId` | the `X-Request-Id` (else `X-Correlation-Id`) the client sent, when it sent one (1–128 characters of `A–Z a–z 0–9 . _ : -`); `null` otherwise |
+| `correlationId` | on `/mcp`, the request's `params._meta.correlationId` (15.2.0-canary.1; each message of a batch can carry its own), else the `X-Request-Id` (else `X-Correlation-Id`) the client sent, when it sent one (1–128 characters of `A–Z a–z 0–9 . _ : -`); `null` otherwise |
 | `identity` | `subject` (the caller every module sees) and `chain` (the subject followed by the agents acting for it) |
 | `tenant` | the acting tenant of the call, `null` without tenants |
 | `generation` | the config generation the call was pinned to (compare with `GET /api/v1/admin/ops/cluster`) |

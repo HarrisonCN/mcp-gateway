@@ -42,6 +42,18 @@ export function clientCorrelationId(req: { headers: Record<string, string | stri
   return pick(req.headers['x-request-id']) || pick(req.headers['x-correlation-id']);
 }
 
+/**
+ * 15.2.0-canary.1: the correlation id an MCP client put in a request's `params._meta.correlationId` (same charset /
+ * length rule as `X-Request-Id`). On `/mcp` it wins over the headers, so each message of a batch can carry its own.
+ */
+export function metaCorrelationId(params: unknown): string | undefined {
+  if (!params || typeof params !== 'object') return undefined;
+  const meta = (params as { _meta?: unknown })._meta;
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return undefined;
+  const v = (meta as { correlationId?: unknown }).correlationId;
+  return typeof v === 'string' && SAFE_ID.test(v) ? v : undefined;
+}
+
 /** 15.1.0: whether a value is an acceptable correlation id (same rule as the `X-Request-Id` header). */
 export function isCorrelationId(v: unknown): v is string {
   return typeof v === 'string' && SAFE_ID.test(v);

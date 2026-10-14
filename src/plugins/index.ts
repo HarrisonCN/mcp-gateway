@@ -50,7 +50,7 @@ import { logger, type Logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
 import { createHash } from 'crypto';
 import { isDeepStrictEqual } from 'util';
-import { IsolatedRuntimeHandle, PluginBusy, PluginCrash, RUNTIME, type HookName, type IsolatedRuntime, type ModulePluginLimits, type PluginPermissions } from './runtime.js';
+import { IsolatedRuntimeHandle, PluginBusy, PluginCrash, RUNTIME, RUNTIME_KILL, type HookName, type IsolatedRuntime, type ModulePluginLimits, type PluginPermissions } from './runtime.js';
 
 export { PluginCrash, PluginBusy, PluginTimeout, type PluginPermissions, type ModulePluginLimits } from './runtime.js';
 
@@ -507,10 +507,11 @@ async function loadIsolated(cfg: PluginConfig, runtime: IsolatedRuntime, url: st
     throw err;
   }
   const name = cfg.name ?? meta.name;
-  const plugin: GatewayPlugin & { [RUNTIME]: IsolatedRuntime; runtimeStats: () => ReturnType<IsolatedRuntimeHandle['stats']> } = {
+  const plugin: GatewayPlugin & { [RUNTIME]: IsolatedRuntime; [RUNTIME_KILL]: () => Promise<void>; runtimeStats: () => ReturnType<IsolatedRuntimeHandle['stats']> } = {
     name,
     apiVersion: meta.apiVersion,
     [RUNTIME]: runtime,
+    [RUNTIME_KILL]: () => handle.kill(),
     runtimeStats: () => handle.stats(),
     close: () => handle.close(),
   };

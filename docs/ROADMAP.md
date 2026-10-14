@@ -25,7 +25,7 @@
 | 15.0.0-rc.4 | 发布产物候选：#225 的 `$BUILDPLATFORM` 构建阶段进入 release 镜像（arm64 不再在 QEMU 下 `npm ci` / tsc） | 🧪 npm `next` | 冻结面不变；只在 `next` / `:15.0.0-rc.4`；闸门 A 应在这个（或之后的）候选产物上运行 |
 | 15.0.0 | Governed AI Infrastructure（GA） | ⛔ | 需要下列 v15 发布闸门 A / B / C 全部关闭并由维护者签字；见下方“闸门的处理” |
 | 15.1 | 调用因果追踪：`GET /api/v1/admin/ops/lineage/:requestId`（身份、租户、配置代次、策略决定、目标、上游状态、费用），接受客户端关联 id；租户成本汇总；控制台 lineage 视图 | 🧪 15.1.0-canary.0（npm `canary`）：`/admin/ops/lineage` + 客户端关联 id；🧪 15.1.0-canary.1：租户范围的查看者（`controlPlane.console.tenantViewers`）、成本汇总 `GET /admin/ops/costs`、/mcp lineage 测试、控制台 Lineage & costs 视图 | 每次调用唯一可追溯；租户运维者只看本租户；冻结面零变化（只做新增） |
-| 15.2 | 插件生态与 SDK：`plugin init` 模板、`plugin doctor` 权限自检、可复现签名校验、兼容矩阵、插件测试工具 | 🧪 15.2.0-canary.0（npm `canary`）：`plugin init` + `plugin doctor`；⬜ 可复现签名校验、兼容矩阵、`/testing` 导出 | 第三方示例插件在 worker / process 沙箱中完成安装、更新、撤销、崩溃恢复；不新增顶层 CLI 命令 |
+| 15.2 | 插件生态与 SDK：`plugin init` 模板、`plugin doctor` 权限自检、可复现签名校验、兼容矩阵、插件测试工具 | 🧪 15.2.0-canary.0（npm `canary`）：`plugin init` + `plugin doctor`；🧪 15.2.0-canary.1：可复现签名校验（`plugin verify --rebuilt`）、兼容矩阵（[guide](guides/plugin-compatibility.md)）、`/testing` 导出、第三方示例插件 `examples/plugins/tool-quota`（安装 → 更新 → 撤销 → 崩溃恢复，worker + process）、`/mcp` 的 `_meta.correlationId` | 第三方示例插件在 worker / process 沙箱中完成安装、更新、撤销、崩溃恢复；不新增顶层 CLI 命令 |
 | 15.3 | AI 生成治理：上游工具 `outputSchema` 校验（可选）、工具 schema 版本固定、按租户生成预算、审批与 lineage 关联 | ⬜ npm `canary` | 未授权工具不执行；schema 违规不透传；Motionary interop 通过 |
 | 15.4 | 闸门 / RC 反馈修复 | ⬜ [条件] | 只在需要新增内容时发布 |
 | 15.9 | v16 准备：16.0 删除项运行时告警、`config migrate --to v13`、`docs/migrating-to-v16.md`、16.0 冻结清单；`16.0.0-alpha.1` | ⬜ npm `canary` | 每个删除项都有告警 + codemod + 文档 + 升级 / 回滚测试 |

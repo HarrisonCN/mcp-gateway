@@ -87,6 +87,8 @@ export class PluginTimeout extends Error {
 }
 
 export const RUNTIME = Symbol.for('mcp-gateway.plugin.runtime');
+/** 15.2.0-canary.1: internal handle used by the testing harness to simulate a runtime crash. */
+export const RUNTIME_KILL = Symbol.for('mcp-gateway.plugin.runtime.kill');
 
 // ─── code running inside the worker / child process ─────────────────────────
 // Plain JS (eval'd Worker / `node -e`), so it works the same from the TypeScript sources and the built package.
@@ -491,6 +493,17 @@ export class IsolatedRuntimeHandle {
       f.reject(new PluginCrash(why));
     }
     ch.kill();
+  }
+
+  /**
+   * 15.2.0-canary.1 (`@winstonsayno/mcp-gateway/testing`): kill the running runtime from outside, as an OOM kill or a
+   * segfault would — counted as a crash and a restart; the next call starts a fresh runtime. Resolves once it is gone.
+   */
+  async kill(): Promise<void> {
+    const ch = this.ch;
+    if (!ch) return;
+    ch.kill();
+    for (let i = 0; i < 250 && this.ch === ch; i++) await sleep(20);
   }
 
   stats(): { runtime: IsolatedRuntime; alive: boolean; inFlight: number; restarts: number; lastCrash?: string } {
