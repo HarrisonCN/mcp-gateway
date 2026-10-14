@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [15.3.0-canary.0] - 2026-10-14
+
+**Development prerelease** (npm dist-tag `canary`, image `:15.3.0-canary.0` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). First build of the 15.3 line (AI generation governance) from `main`: everything in 15.2.0-canary.1 plus tool schema governance. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — so no 15.x release after it can become stable before it.
+
+### Added
+
+- **`policy.toolSchemas.validateOutput`** (`off` default · `audit` · `enforce`, optional `tools` globs): a successful tool result of a tool that declares an `outputSchema` (MCP 2025-06-18) is checked — its `structuredContent` must match, and must be present. `audit` passes it through, counts and logs it; `enforce` refuses the call with `-32005` "Tool output blocked: structuredContent does not match the tool's outputSchema" (`data.decision: output-schema`, the first errors as JSON Pointer + message; REST `502` like the output filter, an error on `/mcp`) so nothing of the invalid result reaches the client. `isError` results and tools without an `outputSchema` are not checked. Built-in, dependency-free JSON Schema validator for the vocabulary tool schemas use (`policy/json-schema`).
+- **`policy.toolSchemas.pins`** (`server/tool` → sha256 of the canonical `{ inputSchema, outputSchema }`) and **`onDrift`** (`block` default · `audit`): a call to a pinned tool whose schema changed (or that is no longer listed) is refused before the upstream call (`403` / `-32003`, `data.decision: schema-drift` with the pinned and current digest) or, with `audit`, passed and counted.
+- **`GET /api/v1/admin/ops/tool-schemas`** (operators and console viewers): every listed tool's `sha256`, `inputSchema` / `outputSchema` present, `pinned`, `drift`, counters since start (`violations`, `driftCalls`, `driftRefusals`) and `missing` pins. Guide: [Tool schema governance](docs/guides/tool-schemas.md).
+
+### Additions after the freeze
+
+Additive only, as allowed by the [freeze list](docs/v15/freeze.md): one new optional config section `policy.toolSchemas` (nested under the existing `policy` key; no new top-level key; without it nothing changes), one new read-only console route, new internal modules `policy/json-schema` and `policy/tool-schemas`. No existing route, response field, error code, HTTP status mapping, CLI flag or plugin API changed.
+
+### CI
+
+- `deploy-examples.yml`: the image build retries once and then falls back to the same official Node image on Docker Hub (`--build-arg NODE_IMAGE=docker.io/library/node:22-alpine`) when public.ecr.aws answers `429 Data limit exceeded` (it failed the 15.2.0-canary.1 merge-commit gate twice).
+
+### Tests
+
+- `test/tool-schemas-15-3-0.test.ts` (written first; failing-before: modules missing → `schemas153-failing-before`): J1–J3 validator and digest, O1–O5 output validation (default unchanged, enforce over REST and `/mcp` without leaking the invalid result, missing `structuredContent`, `isError` / no-schema tools untouched, audit counts, `tools` scoping), P1–P4 pins (digest listing and operator-only access, matching pin, drift refused before the upstream with other tools unaffected, `onDrift: audit`, missing pins), V1 config validation. Fixture: `fake-mcp-server.mjs` gains `SCHEMA_TOOLS=1` (a `weather` tool with an `outputSchema`).
+
 ## [15.2.0-canary.1] - 2026-10-14
 
 **Development prerelease** (npm dist-tag `canary`, image `:15.2.0-canary.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). Second build of the 15.2 line (plugin ecosystem and SDK): everything in 15.2.0-canary.0 plus plugin testing, reproducible verification, the compatibility matrix and MCP `_meta` correlation ids. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — so no 15.x release after it can become stable before it.
