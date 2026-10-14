@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [16.0.0-alpha.2] - 2026-10-14
+
+**Development prerelease — second alpha of 16.0** (npm dist-tag `canary`, image `:16.0.0-alpha.2` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). It completes the schema v13 tooling planned for alpha.2 in [migrating to v16](docs/migrating-to-v16.md); the 16.0 list stays a proposal until 16.0.0-rc.1. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — and stable 16.0.0 needs its own gates.
+
+### Added
+
+- **`schema/v13/config.schema.json`** (JSON Schema draft-07, shipped in the npm package): generated from the code (`buildV13ConfigSchema` in `src/config/v13-schema.ts`, `npx tsx scripts/gen-schema-v13.ts [--check]`) from the v12 schema plus the v13 rules — `version: 13`; module plugins take only `runtime` (`isolation` is for WASM components: `tenant | client | shared`); `runtime: inline` needs `allowInline: true`, and `allowInline` is allowed only there; no `2024-11-05` in `mcp.protocolVersions`. The loader stays the authority for what the schema leaves to the runtime (feature section bodies); the module declaration schema is unchanged (`schema/v12/module.schema.json`). The builder is outside the loader's import graph (startup bench unchanged).
+- **`mcp-gateway config rollback` for v13**: undoes `config migrate --to v13 --in-place` by restoring `<file>.pre-v13.bak` (the v13 file is kept as `<file>.v13.bak`). New `--to v12 | v11`: required when both a pre-v13 and a v11 backup exist; without it the command uses the only backup there is (v11 as before). `config migrate --to v13 --in-place` now names the rollback command.
+- **`docs-check` checks every current config in its v13 form**: `version: 13` fences are accepted and validated (loader + `schema/v13`); v12 / unversioned configs are run through the `--to v13` codemod and the result is validated against `schema/v13/config.schema.json`, so the docs can switch to v13 mechanically when 16.0 becomes `latest` (126 configs checked, 0 findings). The summary line reports the count.
+
+### Decided
+
+- **A config file without `version:`** is read as schema v12 in all of 16.x, without the `schema.v12` notice (the 14.x / 15.x docs write configs that way, and the docs stay on v12 while `latest` cannot read v13); every 16.0 removal in it is still reported (`v16.*`). 17.0.0 will read an unversioned file as schema v13, so a file without `v16.*` notices keeps working unchanged. Replaces the alpha.1 "revisit by rc.1" note; documented in docs/migrating-to-v16.md and docs/v16/freeze.md.
+
+### Tests
+
+- `test/v13-tooling-16-0-2.test.ts` (written first; failing-before: module missing → `v13tooling-failing-before`): J1 schema file generated / compiles / ships, J2 the JSON Schema states the v13 rules, J3 loader ⇔ schema agree on the rule cases, J4 docs-check validates v13 fences and the v13 form of v12 fences, J5 `config rollback` after `--to v13 --in-place` (and `--to` with both backups), J6 the unversioned-file decision. After the failing-before run: J4's count expectation corrected (a fence the loader refuses is not checked in its v13 form), J5 given a 120 s timeout (seven CLI runs) and the J4 fixture copies `README.md`.
+- `test/mcp-endpoint.test.ts` "applies the gateway rate limit to tools/call": the alpha.2 full run failed it once — with `limit: 1` and the sliding window's minute-aligned buckets, two calls that straddle a 60 s boundary are both allowed (estimated 0.99 < 1). The test now uses a 1 h window (test-only change; the limiter is unchanged).
+
 ## [16.0.0-alpha.1] - 2026-10-14
 
 **Development prerelease — first alpha of 16.0** (npm dist-tag `canary`, image `:16.0.0-alpha.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). It implements the 16.0 changes announced in 15.9 ([migrating to v16](docs/migrating-to-v16.md), [v16 freeze](docs/v16/freeze.md)); the list stays a proposal until 16.0.0-rc.1. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — and stable 16.0.0 needs its own gates (A/B against the 15.0 baseline, an incremental external security review).
