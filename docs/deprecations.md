@@ -39,7 +39,7 @@ Exit codes: `config migrate` 1 when the compatibility report has errors; `config
 
 ## Planned removals in 16.0.0 (announced 15.9.0-canary.0)
 
-The 16.0 list is a **proposal** until 16.0.0-rc.1 ([migrating to v16](migrating-to-v16.md)). 15.x keeps working
+The 16.0 list is **frozen** from 16.0.0-rc.1 ([16.0 freeze](v16/freeze.md), [migrating to v16](migrating-to-v16.md)). 15.x keeps working
 exactly as before; each use below is reported as `DEPRECATED (removed in 16.0.0)`:
 
 | Id | What | Instead | Since |

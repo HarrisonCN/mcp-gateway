@@ -1,6 +1,6 @@
 /**
  * 15.9.0-canary.0: the removals planned for 16.0.0, announced one minor ahead (docs/migrating-to-v16.md — the 16.0
- * list is a proposal until 16.0.0-rc.1). Nothing here changes behaviour; each use is a `DEPRECATED (removed in 16.0.0)`
+ * list is frozen from 16.0.0-rc.1). Nothing here changes behaviour; each use is a `DEPRECATED (removed in 16.0.0)`
  * warning, listed by `mcp-gateway validate` and `GET /api/v1/admin/deprecations`.
  *
  * - `v16.plugins.<i>.isolation` — `isolation: worker|process|inline` on a module plugin (alias of `runtime` since

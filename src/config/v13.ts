@@ -1,5 +1,5 @@
 /**
- * 16.0.0-alpha.1: config schema v13 (proposal until 16.0.0-rc.1; docs/v16/freeze.md, docs/migrating-to-v16.md).
+ * 16.0.0-alpha.1: config schema v13 (frozen from 16.0.0-rc.1; docs/v16/freeze.md, docs/migrating-to-v16.md).
  *
  * v13 is schema v12 with the 16.0 changes enforced:
  * - module plugins take only `runtime` (the 14.3 `isolation: worker | process | inline` alias is refused; WASM

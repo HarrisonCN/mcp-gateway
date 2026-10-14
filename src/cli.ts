@@ -515,7 +515,7 @@ async function v13Preview(options: { config?: string }) {
 }
 
 function printV13Plan(r: { changes: string[]; pending: Array<{ id: string; path: string; now: string; v13: string }>; report: { errors: string[]; warnings: string[] } }) {
-  console.log('Schema v12 → v13 (16.0, proposal)');
+  console.log('Schema v12 → v13 (16.0, frozen from 16.0.0-rc.1)');
   console.log(`  changes: ${r.changes.length}`);
   for (const c of r.changes) console.log(`    ~ ${c}`);
   for (const e of r.report.errors) console.log(`  ✗ error: ${e}`);

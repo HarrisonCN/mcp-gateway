@@ -1,6 +1,6 @@
 /**
  * `mcp-gateway config migrate --to v13` — the codemod for the 16.0 config changes (docs/migrating-to-v16.md; the 16.0
- * list is a proposal until 16.0.0-rc.1).
+ * list is frozen from 16.0.0-rc.1).
  *
  * 15.9.0-canary.1 applied only the schema-v12-compatible part. 16.0.0-alpha.1 reads schema v13 (config/v13.ts), so the
  * codemod now writes `version: 13`: `isolation: worker|process|inline` on a module plugin becomes `runtime:`, inline

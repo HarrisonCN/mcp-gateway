@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [16.0.0-rc.1] - 2026-10-14
+
+**Release candidate prerelease — first 16.0 release candidate** (npm dist-tag `canary`, image `:16.0.0-rc.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate until 15.0.0 is stable). From this release the [16.0 freeze list](docs/v16/freeze.md) is **frozen**. A frozen list is not a passed gate: 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)) and stable 16.0.0 needs its own gates (A / B against the 15.0 baseline, an incremental external security review).
+
+### Changed
+
+- **The 16.0 list is frozen** (docs/v16/freeze.md, docs/migrating-to-v16.md, docs/deprecations.md, the schema v13 title and code headers): the "proposal until 16.0.0-rc.1" wording is gone; until 16.0.0 ships there are no further removals, renames or changed meanings, additions that cannot break a client stay allowed (CHANGELOG "Additions after the freeze"), and later release candidates only fix blocking problems. `config migrate --to v13 --dry-run` prints "Schema v12 → v13 (16.0, frozen from 16.0.0-rc.1)".
+- **Plugin compatibility**: the 16.0 row (plugin API v5; inline module plugins need `allowInline: true`) is **frozen (prerelease)**, not *shipped* — it becomes shipped only with a 16.0.0 GA. New row status `frozen` in `PLUGIN_COMPATIBILITY`; `pluginApiSupport()` returns `frozen: true` for it (additive; `proposal: true` stays for 17.0). docs/guides/plugin-compatibility.md regenerated and explains the status.
+- **CI for the 16.x line runs the gateway on Node.js 24 only** (`engines.node >= 24` since 16.0.0-alpha.1): the `Node ${{ matrix.node }}` matrix is `[24]`; Docs check, Supply chain, MCP compat matrix, Multi-instance reliability, Upgrade + security regressions, Performance (`Load + faults (Node 24)`, module cost report) and Release assets use Node 24; the Deployment examples' Docker Hub fallback builds on `node:24-alpine` (it still named `node:22-alpine`, unlike the Dockerfile). The release gate's required checks drop `Node 22` (scripts/required-checks.json, docs/release-gates.md). The JS client jobs keep Node 20 / 22 / 24 (separately versioned package); maint/14.9.x and release/15.0.x keep their own Node 22 + 24 CI.
+
+### Added
+
+- **Frozen-surface guard for config schema v13**: `schema/v13/frozen-surface.json` (shipped in the package) records every key path and enum / const value of schema v13 at 16.0.0-rc.1 (284 entries); `scripts/v13-surface.ts` (`npx tsx scripts/v13-surface.ts` exits 1 on a break; `--record --at <version>` only at a freeze point) and the test fail when an entry disappears or an enum narrows, while new keys pass. if / then / else conditions are cross-key constraints and not counted as surface. Outside the loader's import graph (startup bench unchanged).
+
+### Tests
+
+- `test/v16-freeze-16-0-0-rc1.test.ts` (written first; failing-before 6/6 → `v16rc1-failing-before`): R1 freeze doc frozen + gates still required, R2 migration guide / deprecations without "proposal", R3 schema title and headers, R4 compat 16.0 "frozen (prerelease)" / 17.0 proposal, R5 frozen surface (and the guard catches a removed key and a narrowed enum), R6 CI Node 24 only + release gate. After the failing-before run, R5 showed that conditional `if/then` branches kept a deleted key on the surface → the surface walk skips conditions.
+- `test/plugin-sdk-15-2-1.test.ts` C2 expects `frozen: true` for 16.x; `test/release-gate-13-4-0.test.ts` uses `Kotlin client` as its pending example (no `Node 22` check on 16.x).
+
 ## [16.0.0-alpha.2] - 2026-10-14
 
 **Development prerelease — second alpha of 16.0** (npm dist-tag `canary`, image `:16.0.0-alpha.2` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). It completes the schema v13 tooling planned for alpha.2 in [migrating to v16](docs/migrating-to-v16.md); the 16.0 list stays a proposal until 16.0.0-rc.1. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — and stable 16.0.0 needs its own gates.

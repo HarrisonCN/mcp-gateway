@@ -20,7 +20,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [22, 24]
+        # 16.0.0-rc.1: engines.node >= 24 on the 16.x line — the gateway runs on Node 24 only (maint/14.9.x and
+        # release/15.0.x keep their own Node 22 + 24 matrix)
+        node: [24]
     services:
       redis:
         # Mirror of Docker Hub's official image (same tag): unauthenticated Docker Hub pulls hit 429 rate limits
@@ -76,7 +78,7 @@ jobs:
           set -o pipefail
           node bench/kernel.mjs --runs 5 --compare bench/baseline.json | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload coverage report
-        if: matrix.node == 22 && always()
+        if: matrix.node == 24 && always()
         uses: actions/upload-artifact@v6
         with:
           name: coverage
@@ -92,7 +94,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
       - name: Docs auto-check (config snippets vs schema v11, CLI flags, links, image tags, versions)
@@ -162,7 +164,7 @@ jobs:
           docker rm -f gw
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - name: SBOM (CycloneDX + SPDX) for the npm package
         run: |
@@ -185,7 +187,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - uses: actions/setup-python@v7
         with:
@@ -231,7 +233,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
       - name: redis-server
@@ -256,7 +258,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
       - name: redis-server

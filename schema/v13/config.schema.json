@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/HarrisonCN/mcp-gateway/blob/main/schema/v13/config.schema.json",
-  "title": "MCP Gateway config schema v13 (16.0, proposal until 16.0.0-rc.1)",
+  "title": "MCP Gateway config schema v13 (16.0, frozen from 16.0.0-rc.1)",
   "description": "Config schema v13 = schema v12 with the 16.0 rules: module plugins take only `runtime`, an inline module plugin needs `allowInline: true`, `/mcp` no longer accepts revision 2024-11-05. 16.x also reads v12 files (in-memory, reported as `schema.v12`); 14.x / 15.x refuse v13. See docs/migrating-to-v16.md.",
   "type": "object",
   "required": [

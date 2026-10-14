@@ -21,8 +21,8 @@ describe('release gate', () => {
     expect(evaluateGate(failed, policy).problems).toEqual(['required check "Node 24" concluded failure']);
     const cancelled = allGreen().map((r: { name: string }) => (r.name === 'Supply chain (Trivy, SBOM)' ? { ...r, conclusion: 'cancelled' } : r));
     expect(evaluateGate(cancelled, policy).open).toBe(false);
-    const running = allGreen().map((r: { name: string }) => (r.name === 'Node 22' ? { ...r, status: 'in_progress', conclusion: null } : r));
-    expect(evaluateGate(running, policy)).toMatchObject({ open: false, problems: [], pending: ['Node 22'] });
+    const running = allGreen().map((r: { name: string }) => (r.name === 'Kotlin client' ? { ...r, status: 'in_progress', conclusion: null } : r));
+    expect(evaluateGate(running, policy)).toMatchObject({ open: false, problems: [], pending: ['Kotlin client'] });
   });
 
   it('a re-run that succeeded replaces the failed attempt', () => {
