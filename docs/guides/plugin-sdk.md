@@ -41,6 +41,41 @@ plugins:
     timeoutMs: 200        # per onToolCall / onResponse call; a timeout fails the call closed (-32006)
 ```
 
+## Start from the template: `plugin init` and `plugin doctor` (15.2)
+
+```bash
+mcp-gateway plugin init pii-guard -d ./plugins       # pii-guard.mjs, pii-guard.config.yaml, pii-guard.test.mjs
+node --test ./plugins/pii-guard.test.mjs              # unit-test the hook logic without a gateway
+mcp-gateway plugin doctor -c gateway.yaml             # load every module plugin like the gateway does and check it
+```
+
+`plugin init <name>` (`--runtime worker|process`, default `worker`; `--force` to overwrite) writes:
+
+- `<name>.mjs` — a plugin API v5 module that imports nothing but `node:` built-ins (so one `plugin sign` signature
+  covers the whole plugin), with an options check (`configSchema`) and an `onToolCall` hook;
+- `<name>.config.yaml` — the `plugins[]` entry for it: `runtime: worker`, `failure: closed`, explicit `limits`
+  (`timeoutMs`, `memoryMb`, `maxConcurrent`) and narrow `permissions` (`args: read`, `response: read`,
+  `hooks: [onToolCall]`, `network: false`, `env: []`);
+- `<name>.test.mjs` — `node --test` unit tests.
+
+`plugin doctor` (`-c <config>`, `--json`) loads each module plugin of the config through the same path as the gateway
+(signature check, runtime, options validation) and reports one line per check — `pass`, `warn` or `fail`:
+
+| Check | Fails when | Warns when |
+|---|---|---|
+| `config` | the config file is invalid | — |
+| `load` | the plugin does not load (import error, invalid options, refused signature) | — |
+| `runtime` | — | `runtime: inline` (shared heap; no network / env / fs permissions) |
+| `api` | `apiVersion` outside the supported range | no `apiVersion` |
+| `hooks` | — | `permissions.hooks` missing, or it names hooks the plugin lacks / omits hooks it implements |
+| `network` | — | `permissions.network` undeclared (unrestricted egress) or `['*']` |
+| `limits` | — | `limits.timeoutMs` / `memoryMb` not set |
+| `secrets` | `permissions.secrets` names a secret not granted in `plugins[].secrets` | — |
+| `signature` | `features.pluginTrust` requires a signature that is missing or invalid | the plugin is unsigned and signatures are not required |
+
+It exits `1` when any check fails. The doctor runs the plugin's code (in the configured runtime), so run it on
+plugins you are about to deploy, not on unknown files.
+
 ## What a plugin gets
 
 | | |
