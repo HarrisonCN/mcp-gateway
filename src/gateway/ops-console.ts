@@ -144,6 +144,8 @@ export interface TraceInput {
   generation?: number;
   chain?: string[];
   cost?: number;
+  /** 15.3.0-canary.1: the approval that held the call. */
+  approval?: { id: string; status?: string; decidedBy?: string };
 }
 
 export interface CallTrace {
@@ -170,6 +172,8 @@ export interface CallTrace {
   generation?: number;
   chain?: string[];
   cost?: number;
+  /** 15.3.0-canary.1: the approval that held the call. */
+  approval?: { id: string; status?: string; decidedBy?: string };
 }
 
 /** 15.1.0: one call's lineage — who, which tenant, which config generation, which decision, which target, the upstream answer, the cost. */
@@ -186,6 +190,8 @@ export interface CallLineage {
   cost: number | null;
   traceId: string | null;
   totalMs: number;
+  /** 15.3.0-canary.1: the approval that held the call (only on calls that were held). */
+  approval?: { id: string; status: string | null; decidedBy: string | null };
 }
 
 /** 15.1.0: the lineage view of a call trace. Pure; carries no arguments, results or key material. */
@@ -212,6 +218,7 @@ export function lineageOf(t: CallTrace): CallLineage {
     cost: t.cost ?? null,
     traceId: t.traceId ?? null,
     totalMs: t.totalMs,
+    ...(t.approval ? { approval: { id: t.approval.id, status: t.approval.status ?? null, decidedBy: t.approval.decidedBy ?? null } } : {}),
   };
 }
 
@@ -335,6 +342,7 @@ export function buildTrace(i: TraceInput, cfg: GatewayConfig): CallTrace {
     ...(i.generation !== undefined ? { generation: i.generation } : {}),
     ...(i.chain && i.chain.length ? { chain: [...i.chain] } : {}),
     ...(i.cost !== undefined ? { cost: i.cost } : {}),
+    ...(i.approval ? { approval: { ...i.approval } } : {}),
   };
 }
 

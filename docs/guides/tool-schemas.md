@@ -59,5 +59,18 @@ Other tools of the server are not affected.
 - Pins are checked per call against the tool list the gateway holds; a server that changes its schema without sending
   `notifications/tools/list_changed` is noticed only when the gateway lists its tools again (reconnect, or a later
   `list_changed`).
-- Per-tenant generation budgets, approval ↔ lineage linking and a prompt-injection regression corpus are the next 15.3
-  steps (see the [roadmap](../ROADMAP.md)).
+- MCP 3.0 tool schema negotiation (Motionary 16 / motionary-mcp 3.0) is planned for 16.1; the interop check today
+  (`test/motionary-schemas-15-3-1.test.ts`, CI job "MCP compat matrix") runs Motionary 14.8's MCP 2.x tools under
+  `validateOutput: enforce` with every tool pinned.
+
+## Related AI generation governance (15.3.0-canary.1)
+
+- **Per-tenant generation budgets** — `costs.budgets[]` with `perTenant: true`, `tools: ["*/generate_*"]` and
+  `measure: calls` (see [Costs and budgets](../configuration.md#costs-and-budgets-43)).
+- **Approval ↔ lineage** — an approval request carries the held call's `correlationId` and, once the call finished, its
+  `requestId`; the call's lineage carries `approval` ([Call lineage](operations-console.md#call-lineage-151)).
+- **Tool output is data** — `test/generation-governance-15-3-1.test.ts` keeps a prompt-injection regression corpus:
+  injection phrasings in text, `structuredContent` and resource text are caught by the built-in detectors, and nothing
+  a tool returns (including `_meta` that claims approval, scopes or a tenant) changes what the caller may do. With
+  `policy.outputFilter` on, `_meta["mcp-gateway/flags"]` is always this gateway's own verdict: an upstream's value is
+  dropped when there is no finding and replaced when there is one.

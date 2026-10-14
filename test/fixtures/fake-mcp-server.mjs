@@ -111,6 +111,10 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         setTimeout(() => process.stdout.write(buf.subarray(buf.indexOf(0xe4) + 1)), 20);
         return;
       }
+      if (name === 'raw') {
+        // 15.3.0-canary.1: returns args.result verbatim as the tool result (prompt-injection corpus; list it with EXTRA_TOOLS=raw)
+        return send({ jsonrpc: '2.0', id: msg.id, result: args?.result ?? { content: [] } });
+      }
       if (name === 'weather') {
         // 15.3.0: returns args.out as structuredContent (or none with omit), as an error result with isError
         const out = args?.out ?? { tempC: 21 };

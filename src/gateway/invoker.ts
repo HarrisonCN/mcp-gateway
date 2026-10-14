@@ -120,7 +120,13 @@ export interface InvokeContext {
    */
   correlationId?: string;
   /** Set by the invoker (15.1.0) on top-level calls — callers must not set it: lineage values found while the call runs. */
-  lineageSink?: { cost?: number };
+  lineageSink?: LineageSink;
+}
+
+/** 15.1.0: lineage values found while a top-level call runs (15.3.0-canary.1: the approval that held it). */
+export interface LineageSink {
+  cost?: number;
+  approval?: { id: string; status?: string; decidedBy?: string };
 }
 
 export interface InvokeResult extends ProxyResponse {
@@ -370,10 +376,17 @@ export class ToolInvoker {
       return undefined;
     }
     logger.info(`${ctx.name} → ${ctx.serverId} held for approval (rule ${decision.rule ?? 'default'})`);
+    const sink = ctx.lineageSink;
     const status = await this.approvals.request(
-      { clientId: ctx.clientId, serverId: ctx.serverId, tool: ctx.name, args: ctx.params, rule: decision.rule, message: decision.message, via: ctx.via },
+      { clientId: ctx.clientId, serverId: ctx.serverId, tool: ctx.name, args: ctx.params, rule: decision.rule, message: decision.message, via: ctx.via, ...(ctx.correlationId ? { correlationId: ctx.correlationId } : {}) },
       ctx.signal,
+      // 15.3.0-canary.1: approval ↔ lineage link (the last hold of a call wins, e.g. a re-check after a rewrite)
+      sink ? (req) => void (sink.approval = { id: req.id }) : undefined,
     );
+    if (sink?.approval) {
+      const a = this.approvals.get(sink.approval.id);
+      sink.approval = { id: sink.approval.id, status, ...(a?.decidedBy ? { decidedBy: a.decidedBy } : {}) };
+    }
     span.setAttribute('mcp.approval.status', status);
     if (status === 'approved') return undefined;
     const message =
@@ -524,7 +537,7 @@ export class ToolInvoker {
     const clock = new CallClock(running ? undefined : this.deps.stages);
     const pin = running ? undefined : this.deps.generations?.acquire();
     // 15.1.0: lineage values that only appear while the call runs (its cost) — top-level calls only, like the trace
-    const sink: { cost?: number } | undefined = running || !this.deps.onTrace ? undefined : {};
+    const sink: LineageSink | undefined = running || !this.deps.onTrace ? undefined : {};
     if (sink) ctx = { ...ctx, lineageSink: sink };
     let out: InvokeResult | undefined;
     try {
@@ -532,6 +545,8 @@ export class ToolInvoker {
       return (out = await callGeneration.run(pin.generation, () => this.invokePinned(ctx, clock)));
     } finally {
       pin?.release();
+      // 15.3.0-canary.1: the approval that held this call points at its history / lineage record
+      if (sink?.approval && out?.requestId) this.approvals.link(sink.approval.id, out.requestId);
       // 14.8.0: the call trace of the operations console (top-level calls only, like the stage timings)
       if (!running && out?.requestId && this.deps.onTrace) {
         const v = clock.view();
@@ -559,6 +574,7 @@ export class ToolInvoker {
             ...(pin ? { generation: pin.generation.id } : {}),
             chain: principalChain(ctx.principal),
             ...(sink?.cost !== undefined ? { cost: sink.cost } : {}),
+            ...(sink?.approval ? { approval: { ...sink.approval } } : {}),
           });
         } catch {
           /* tracing never fails a call */
@@ -727,7 +743,7 @@ export class ToolInvoker {
     }
     const costs = this.deps.costs;
     if (costs && ctx.kind === 'tool') {
-      const over = costs.blocked(ctx.clientId, this.tenantList(ctx));
+      const over = costs.blocked(ctx.clientId, this.tenantList(ctx), ctx.serverId, ctx.name);
       if (over) {
         const message = `Budget "${over.budget}" exhausted for ${over.subject} (${over.spent} of ${over.limit}); resets ${over.resetsAt}`;
         return this.refuse(ctx, ERR_BUDGET_EXCEEDED, message, { decision: 'budget', budget: over.budget, limit: over.limit, spent: over.spent, resetsAt: over.resetsAt }, span);
@@ -794,6 +810,9 @@ export class ToolInvoker {
               error: { code: ERR_OUTPUT_BLOCKED, message: 'Tool output blocked: possible prompt injection', data: { patterns: ids, result: out.result } },
             }
           : { ...result, result: out.result };
+      } else if (out.result !== result.result) {
+        // 15.3.0-canary.1: no finding, but the upstream's forged `mcp-gateway/flags` was dropped
+        result = { ...result, result: out.result };
       }
     }
     // 15.3.0-canary.0: structuredContent against the tool's outputSchema (policy.toolSchemas.validateOutput).

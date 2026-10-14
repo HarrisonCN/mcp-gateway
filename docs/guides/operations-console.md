@@ -101,6 +101,7 @@ record, read from the call trace (so it is kept as long as the trace: `traceBuff
 | `upstream` | the upstream step's status (`skipped` when the call was refused before it) and time in ms |
 | `cost` | the priced cost of the call when `costs` is configured, else `null` |
 | `traceId` | the W3C trace id of the gateway span, when tracing is on |
+| `approval` | 15.3.0-canary.1, only on calls that were held for approval: `id` (the approval request), `status` (`approved`, `denied`, `expired`, `cancelled`) and `decidedBy` (`null` when it expired or was cancelled) |
 
 `GET /api/v1/admin/ops/lineage?correlationId=<id>` lists every kept call that carried that correlation id, newest first
 (a correlation id is the client's and may repeat; the request id does not). This is how another system joins its own
@@ -109,6 +110,10 @@ records — for example an editor that sends one `X-Request-Id` per AI edit can 
 Same access as the traces (operators, console viewers and — with `tenantViewers` — tenant viewers). Nothing in a
 lineage record contains call arguments, results or key material. The same lookups work for calls made over `/mcp`
 (send `X-Request-Id` on the `tools/call` POST; the lineage says `via: mcp`).
+
+The link also goes the other way (15.3.0-canary.1): an approval request (`GET /api/v1/approvals/<id>`) carries the
+held call's `correlationId` while it is pending and, once the call has finished (approved and run, denied, expired),
+its `requestId` — the key of its lineage record.
 
 ## Tenant viewers (15.1)
 

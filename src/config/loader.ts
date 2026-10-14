@@ -1066,8 +1066,16 @@ const GatewayConfigSchema = z.object({
               alertAt: z.array(z.number().gt(0).max(10)).optional(),
               action: z.enum(['alert', 'block']).optional(),
               webhook: z.string().url().optional(),
+              // 15.3.0-canary.1: AI generation governance (per-tenant, tool-scoped, call-counting budgets)
+              perTenant: z.boolean().optional(),
+              tools: z.array(z.string().min(1)).min(1).optional(),
+              measure: z.enum(['cost', 'calls']).optional(),
             })
-            .strict(),
+            .strict()
+            .superRefine((b, ctx) => {
+              if (b.perTenant && (b.tenants?.length || b.perClient || b.clients?.length))
+                ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'perTenant gives every tenant its own budget: it cannot be combined with tenants, clients or perClient' });
+            }),
         )
         .optional(),
     })
