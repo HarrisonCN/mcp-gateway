@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [15.3.0-canary.1] - 2026-10-14
+
+**Development prerelease** (npm dist-tag `canary`, image `:15.3.0-canary.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). Second build of the 15.3 line (AI generation governance): everything in 15.3.0-canary.0 plus per-tenant generation budgets, the approval ↔ lineage link, a prompt-injection regression corpus and the Motionary interop check under tool schema governance. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — so no 15.x release after it can become stable before it.
+
+### Added
+
+- **Per-tenant generation budgets** — `costs.budgets[]` gains three optional keys: `perTenant: true` (every acting tenant gets its own budget, subject `tenant:<id>`, without listing tenant ids; callers without a tenant share `tenant:(none)`), `tools` (`server/tool` globs — only matching calls count, and only matching calls are refused) and `measure: calls` (count calls, also unpriced ones, instead of summing cost — "20 image generations per tenant per day"). Refusals are the 4.3 ones (`-32013`, REST `429` + `Retry-After`); `GET /api/v1/costs` lists each subject with its `measure`. `perTenant` cannot be combined with `tenants`, `clients` or `perClient` (configuration error).
+- **Approval ↔ lineage link** — an approval request carries the held call's `correlationId` (from `X-Request-Id` / `X-Correlation-Id` / MCP `_meta.correlationId`) and, once the call has finished (approved and run, denied, expired, cancelled), its `requestId`; the call's lineage (`GET /api/v1/admin/ops/lineage/:requestId`, `?correlationId=`) carries `approval: { id, status, decidedBy }`. Calls that were not held have no `approval` field.
+- **Motionary interop under tool schema governance** — `test/motionary-schemas-15-3-1.test.ts` (CI job "MCP compat matrix", now pinned to Motionary **14.8.0**): every Motionary MCP tool is digested and pinned, the structured tools (`check_compatibility`, `suggest_fix`, `list_templates`) pass `validateOutput: enforce` with 0 violations, and a stale pin refuses the call before it reaches Motionary. MCP 3.0 (Motionary 16) is not published yet; this covers MCP 2.x tool schemas.
+
+### Security hardening
+
+- With `policy.outputFilter` applied to a tool, `_meta["mcp-gateway/flags"]` is always this gateway's own verdict: an upstream's value is dropped when there is no finding (before, it passed through unchanged) and, as before, replaced when there is one. Other upstream `_meta` keys are untouched. Not a vulnerability (the forged key could only add a false flag, never hide a finding), so no advisory and no LTS backport.
+
+### Additions after the freeze
+
+Additive only, as allowed by the [freeze list](docs/v15/freeze.md): three optional keys on the existing `costs.budgets[]` entries (without them nothing changes), a `measure` field on `GET /api/v1/costs` budget rows, `correlationId` / `requestId` fields on approval requests, an `approval` field on lineage records of held calls, and `CostLedger.blocked()` taking the call's server and tool (optional arguments). No existing route, response field, error code, HTTP status mapping, CLI flag or plugin API changed.
+
+### Benchmark baseline
+
+- `bench/baseline.json` linux-x64: only the deterministic `modules` / `moduleKb` re-recorded (minimal 287 → 298 modules, 1995.2 → 2202.4 KB; all 413 → 424, 2697.8 → 2906.4 KB) — the lean graph had grown 10.4 % in bytes across 14.1–15.3 and reached the 10 % guard. The one eager addition the guard caught (the 15.3.0-canary.0 tool-schema governor and validator) was made lazy first; timings, memory, `featureModules` and `lazyDeps` limits are unchanged. Justification recorded in the file (`moduleSizes`).
+
+### Tests
+
+- `test/generation-governance-15-3-1.test.ts` (written first; failing-before 8/10 → `gen1531-failing-before`): G1–G4 per-tenant generation budgets (REST end to end with two tenants, ledger rules, 4.3 shape unchanged, config validation), A1–A3 approval ↔ lineage (approved, denied, not held), I1–I3 prompt-injection regression corpus (13 hostile results: every phrasing caught by the built-in detectors; denied tools stay denied, held tools stay held, other tenants' servers stay forbidden after each; forged `mcp-gateway/flags` dropped). Two assertions were corrected after the failing-before run to the frozen REST error shape (`code` + `budget` / `policy` at the top level, not `error.data`). Fixture: `fake-mcp-server.mjs` gains a `raw` tool (returns `arguments.result` verbatim).
+- `test/motionary-schemas-15-3-1.test.ts` (M1–M3, runs with `MGW_MOTIONARY_BIN`; verified locally against motionary@14.8.0 from npm).
+
 ## [15.3.0-canary.0] - 2026-10-14
 
 **Development prerelease** (npm dist-tag `canary`, image `:15.3.0-canary.0` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). First build of the 15.3 line (AI generation governance) from `main`: everything in 15.2.0-canary.1 plus tool schema governance. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — so no 15.x release after it can become stable before it.
