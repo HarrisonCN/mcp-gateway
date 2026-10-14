@@ -73,6 +73,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       if (features) for (const name of ['progress', 'log', 'touch', 'crash']) tools.push({ name, description: name });
       // 13.7.0: EXTRA_TOOLS=slow,... lists more of the built-in behaviours (e.g. `slow`, which waits SLOW_MS)
       for (const name of (process.env.EXTRA_TOOLS ?? '').split(',').filter(Boolean)) tools.push({ name, description: name });
+      // 15.3.0: SCHEMA_TOOLS=1 lists `weather` with an outputSchema (structured output, MCP 2025-06-18)
+      if (process.env.SCHEMA_TOOLS) tools.push({ name: 'weather', description: 'weather', inputSchema: { type: 'object', properties: { out: { type: 'object' }, omit: { type: 'boolean' }, isError: { type: 'boolean' } } }, outputSchema: { type: 'object', properties: { tempC: { type: 'number' }, city: { type: 'string' } }, required: ['tempC'], additionalProperties: false } });
       return send({ jsonrpc: '2.0', id: msg.id, result: { tools, ...(next ? { nextCursor: next } : {}) } });
     }
     case 'ping':
@@ -108,6 +110,11 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         process.stdout.write(buf.subarray(0, buf.indexOf(0xe4) + 1));
         setTimeout(() => process.stdout.write(buf.subarray(buf.indexOf(0xe4) + 1)), 20);
         return;
+      }
+      if (name === 'weather') {
+        // 15.3.0: returns args.out as structuredContent (or none with omit), as an error result with isError
+        const out = args?.out ?? { tempC: 21 };
+        return send({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: JSON.stringify(out) }], ...(args?.omit ? {} : { structuredContent: out }), ...(args?.isError ? { isError: true } : {}) } });
       }
       const delay = name === 'slow' ? slowMs : 0;
       // also send a server->client ping that reuses the same id

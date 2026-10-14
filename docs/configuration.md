@@ -793,6 +793,12 @@ policy:
     builtins: true             # built-in prompt-injection detectors
     patterns: ["BEGIN PRIVATE KEY"]
     tools: ["web/*", "fetch"]  # default: every tool
+  toolSchemas:                 # 15.3.0-canary.0 — tool schema governance
+    validateOutput: enforce    # off (default) | audit | enforce
+    tools: ["motionary/*"]     # default: every tool with an outputSchema
+    pins:                      # server/tool → sha256 from GET /api/v1/admin/ops/tool-schemas
+      motionary/render: "3f9a6c0d2b8e4f1a7c5d9e0b1a2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e"
+    onDrift: block             # block (default) | audit
 ```
 
 **Rule conditions** (all must hold): `clients` (globs on client ids: `key:<name>`, `jwt:<sub>`, `oauth:<sub>`,
@@ -820,6 +826,15 @@ hijacking, markdown-image exfiltration URLs, hidden Unicode). `redact` replaces 
 the text; both add `_meta["mcp-gateway/flags"]`. `block` replaces the result with an error (`502` on REST,
 `isError: true` result on `/mcp`). `GET /api/v1/policy` shows findings per detector. These are heuristics: they
 lower, not remove, injection risk.
+
+**Tool schemas (15.3.0-canary.0):** `validateOutput` checks a tool result's `structuredContent` against the tool's
+`outputSchema` (MCP 2025-06-18). `audit` passes it through and counts it; `enforce` refuses the call (`-32005`; `502`
+on REST, an error result on `/mcp`) so nothing of the invalid result reaches the client. Results with `isError: true`
+and tools without an `outputSchema` are not checked; a tool with an `outputSchema` that returns no `structuredContent`
+is a violation. `pins` fixes a tool's `{ inputSchema, outputSchema }` by sha256: when the upstream changes the
+schema, calls to that tool are refused before they reach it (`403` / `-32003`, `decision: schema-drift`), or with
+`onDrift: audit` passed and reported. `GET /api/v1/admin/ops/tool-schemas` lists every tool's digest, pin state and
+counters — see [Tool schema governance](guides/tool-schemas.md).
 
 Policy rules can also live in version-controlled files (`policy.files`) with unit tests run by
 `mcp-gateway policy test` — see [Policy as code](guides/policy-as-code.md).

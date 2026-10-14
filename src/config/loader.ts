@@ -733,6 +733,16 @@ const GatewayConfigSchema = z.object({
         })
         .strict()
         .optional(),
+      // 15.3.0-canary.0: tool schema governance (outputSchema validation, schema pins)
+      toolSchemas: z
+        .object({
+          validateOutput: z.enum(['off', 'audit', 'enforce']).optional(),
+          tools: z.array(z.string().min(1)).optional(),
+          pins: z.record(z.string().regex(/^[^/\s]+\/[^\s]+$/, 'pin keys are "server/tool"'), z.string().regex(/^[0-9a-f]{64}$/, 'a pin is a lowercase hex sha256 (GET /api/v1/admin/ops/tool-schemas)')).optional(),
+          onDrift: z.enum(['block', 'audit']).optional(),
+        })
+        .strict()
+        .optional(),
     })
     .strict()
     .superRefine((pol, ctx) => {

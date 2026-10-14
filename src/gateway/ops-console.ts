@@ -457,6 +457,8 @@ export interface OpsDeps {
   exposed: (serverId: string, tool: string) => boolean;
   failedModules: () => string[];
   portable: () => Record<string, unknown>;
+  /** 15.3.0-canary.0: `GET /admin/ops/tool-schemas` — digests, pin state and violation counters of every listed tool. */
+  toolSchemas?: () => unknown | Promise<unknown>;
   /** 15.1.0: cost ledger rollup for `GET /admin/ops/costs` (absent: the route answers with empty totals). */
   costs?: {
     currency: () => string;
@@ -681,6 +683,14 @@ export function createOpsConsoleRouter(deps: OpsDeps): express.Router {
     const scope = res.locals.tenantScope as Set<string> | undefined;
     const r = deps.costs?.rollup(by as CostRollupBy, since, scope) ?? { totals: [], total: { cost: 0, calls: 0, inputTokens: 0, outputTokens: 0 } };
     res.json({ currency: deps.costs?.currency() ?? cfg().costs?.currency ?? 'USD', by, since: since ? new Date(since).toISOString() : null, totals: r.totals, total: r.total });
+  });
+
+  // 15.3.0-canary.0: tool schema governance — what to pin (sha256 per tool), drift and outputSchema violations
+  ops.get('/tool-schemas', (_req, res, next) => {
+    // the governor is loaded on first use (15.3.0-canary.0), so the report may be a promise
+    Promise.resolve(deps.toolSchemas?.())
+      .then((r) => res.json(r ?? { validateOutput: 'off', onDrift: 'block', tools: [], missing: [] }))
+      .catch(next);
   });
 
   const parseCall = (req: Request, res: Response) => {

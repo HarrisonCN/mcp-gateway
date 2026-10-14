@@ -332,6 +332,7 @@ export class Gateway {
       policy: () => this.cfgNow().policy,
       plugins: this.plugins,
       pluginList: () => callGeneration.getStore()?.plugins ?? this.plugins.list(),
+      toolInfo: (serverId, tool) => this.registry.getTools(serverId).find((t) => t.name === tool),
       generations: { acquire: () => this.gens.acquire() },
       cache: new ToolCache(() => this.cfgNow().cache),
       recorder: new ReplayRecorder(() => this.cfgNow().replay),
@@ -576,6 +577,7 @@ export class Gateway {
         failedModules: () => this.moduleFailures.ids(),
         portable: () => portableConfig(this.config),
         costs: { currency: () => this.cfgNow().costs?.currency ?? 'USD', rollup: (by, since, tenants) => this.costs.rollup(by, since, tenants) },
+        toolSchemas: async () => (await this.invoker!.loadToolSchemas()).report(this.cfgNow().policy?.toolSchemas, this.registry.getAllTools()),
       }),
     );
     // 5.1: feature modules under /api/v1/admin/<id> (src/features).
