@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [15.2.0-canary.0] - 2026-10-14
+
+**Development prerelease** (npm dist-tag `canary`, image `:15.2.0-canary.0` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). First build of the 15.2 line (plugin ecosystem and SDK) from `main`: everything in 15.1.0-canary.1 plus the plugin developer kit. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — so no 15.x release after it can become stable before it.
+
+### Added
+
+- **`mcp-gateway plugin init <name>`** (`-d <dir>`, `--runtime worker|process`, `--force`): a plugin API v5 module that imports only `node:` built-ins (one signature covers it), its `plugins[]` entry (`runtime: worker`, `failure: closed`, explicit `limits`, `permissions` with `args: read`, `response: read`, `hooks: [onToolCall]`, `network: false`, `env: []`) and a `node --test` file. Refuses to overwrite without `--force` and refuses names that are not `[a-z0-9][a-z0-9_-]{0,63}`.
+- **`mcp-gateway plugin doctor`** (`-c <config>`, `--json`): loads every module plugin of a config exactly like the gateway (signature check, runtime, options validation) and checks `config`, `load`, `runtime`, `api`, `hooks`, `network`, `limits`, `secrets`, `signature` — pass / warn / fail, exit `1` on any failure. Guide: [plugin SDK → plugin init and plugin doctor](docs/guides/plugin-sdk.md#start-from-the-template-plugin-init-and-plugin-doctor-152).
+
+### Additions after the freeze
+
+Additive only, as allowed by the [freeze list](docs/v15/freeze.md): two new subcommands of the existing `plugin` command (no new top-level command; the `plugin` description now lists them) and a new internal module `plugins/devkit` (not a package export). No existing command, flag, exit code, config key or plugin API changed.
+
+### Tests
+
+- `test/plugin-devkit-15-2-0.test.ts` (written first; failing-before: module missing): P1–P4 template (self-contained module, entry validates against the config schema, worker load and hook behaviour, CLI write / no-overwrite / bad name), D1–D6 doctor (clean scaffold passes, hook / network / load / options / inline mismatches, `features.pluginTrust.requireSigned`, invalid config, CLI exit codes and `--json`, no new top-level command).
+
 ## [15.1.0-canary.1] - 2026-10-14
 
 **Development prerelease** (npm dist-tag `canary`, image `:15.1.0-canary.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). Completes the 15.1 control-plane slice on `main`: tenant-scoped console viewers, the cost rollup, lineage over `/mcp`, and the dashboard lineage view. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — so no 15.1 release can become stable before it.
