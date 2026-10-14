@@ -23,6 +23,7 @@ import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/typ
 import { Gateway } from '../src/gateway/index.js';
 import type { GatewayConfig } from '../src/utils/types.js';
 import { PROTOCOL_VERSIONS } from '../src/mcp/compat.js';
+import { DOWNSTREAM_PROTOCOL_VERSIONS } from '../src/mcp/endpoint.js';
 import { logger } from '../src/utils/logger.js';
 import { fakeServer } from './helpers/feature-gw.js';
 import { startSseServer, startStreamableHttpServer, stats, type RemoteServer } from './fixtures/remote-servers.js';
@@ -30,7 +31,8 @@ import { startSseServer, startStreamableHttpServer, stats, type RemoteServer } f
 logger.setLevel('error');
 
 /** Revisions under test: everything the gateway speaks downstream (newest first). */
-export const MATRIX_VERSIONS = [...PROTOCOL_VERSIONS];
+// 16.0.0-alpha.1: the downstream matrix covers what /mcp accepts (2024-11-05 is upstream-only now)
+export const MATRIX_VERSIONS = [...DOWNSTREAM_PROTOCOL_VERSIONS];
 const report: Record<string, Record<string, 'pass' | 'fail'>> = {};
 const mark = (client: string, check: string, ok: boolean) => ((report[client] ??= {})[check] = ok ? 'pass' : 'fail');
 

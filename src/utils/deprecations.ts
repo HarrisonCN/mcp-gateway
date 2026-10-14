@@ -65,7 +65,7 @@ export function removedConfigKeys(raw: unknown): string[] {
   else if (r.version === 8) out.push(`version: config schema v8 was removed in 9.0 — use \`version: 11\`; ${GUIDE11}`);
   else if (r.version === 9) out.push(`version: config schema v9 was removed in 10.0 — use \`version: 11\`; ${GUIDE11}`);
   else if (r.version === 10) out.push(`version: config schema v10 was removed in 11.0 — use \`version: 11\`; ${GUIDE11}`);
-  else if (r.version !== undefined && r.version !== 11 && r.version !== 12) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 14.0 reads \`version: 12\` (and \`version: 11\`, migrated in memory until 15.0.0; see docs/migration/v13-to-v14.md)`);
+  else if (r.version !== undefined && r.version !== 11 && r.version !== 12 && r.version !== 13) out.push(`version: config version ${JSON.stringify(r.version)} is not supported — 16.0 reads \`version: 13\` and \`version: 12\` (read until 17.0.0); \`version: 11\` files need \`mcp-gateway config migrate --to v12\` first`);
   // 11.0: the 6.2 workflow engine was removed (task graphs replace it).
   if ((r.features as { workflows?: unknown } | undefined)?.workflows !== undefined || r.workflows !== undefined) out.push(`features.workflows: removed in 11.0 — use \`features.taskGraphs\`; ${GUIDE11}`);
   // 10.0: feature modules live under `features`; top-level feature sections were removed.

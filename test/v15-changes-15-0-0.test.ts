@@ -40,7 +40,7 @@ describe('15.0.0 changes (announced in 14.9.0)', () => {
     // limits / permissions need an isolated runtime: valid by default now, refused for explicit inline
     expect(() => validateConfig({ ...base, plugins: [{ module: './a.mjs', permissions: { network: false } }] })).not.toThrow();
     expect(() => validateConfig({ ...base, plugins: [{ module: './a.mjs', runtime: 'inline', permissions: { network: false } }] })).toThrow(/isolated runtime/);
-    expect(validateConfig({ ...base, plugins: [{ module: './a.mjs' }, { component: './e.wasm' }] }).deprecations ?? []).toEqual([]);
+    expect((validateConfig({ ...base, plugins: [{ module: './a.mjs' }, { component: './e.wasm' }] }).deprecations ?? []).filter((d) => d.id !== 'schema.v12')).toEqual([]); // 16.0.0-alpha.1: + schema.v12
   });
 
   it('C3 unknown top-level keys of a v12 file are refused; $schema is allowed', () => {

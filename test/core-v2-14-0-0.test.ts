@@ -43,7 +43,8 @@ describe('14.0 config: schema v12 is the runtime schema', () => {
     expect(moduleMode(cfg)).toBe('eager');
     expect(cfg.modules.lifecycle).toMatchObject({ initTimeoutMs: 5000, unloadTimeoutMs: 2000 });
     expect(cfg.modules.capabilities['genai-otel'].deny).toEqual(['outbound-network']);
-    expect(cfg.deprecations ?? []).toEqual([]);
+    // 16.0.0-alpha.1: an explicit v12 file is reported as `schema.v12` (read until 17.0.0); nothing else
+    expect((cfg.deprecations ?? []).map((d: any) => d.id)).toEqual(['schema.v12']);
     expect(schemaNotice(cfg)).toBeUndefined();
   });
 
@@ -60,7 +61,7 @@ describe('14.0 config: schema v12 is the runtime schema', () => {
     expect(() => validateConfig({ version: 12, servers: [], modules: { capabilities: { nope: { deny: ['filesystem'] } } } })).toThrow(/unknown module "nope"/);
     expect(() => validateConfig({ version: 12, servers: [], modules: { capabilities: { billing: { deny: ['teleport'] } } } })).toThrow();
     expect(() => validateConfig({ version: 12, servers: [], modules: { failurePolicy: { dlp: 'open' } } })).toThrow(/failure policy of "dlp" is fixed/);
-    expect(() => validateConfig({ version: 13, servers: [] })).toThrow(/version/);
+    expect(() => validateConfig({ version: 14, servers: [] })).toThrow(/version/); // 16.0.0-alpha.1: v13 is read
   });
 
   it('15.0.0: a v11 file is refused with the migrate command; the migration tooling still reads it (same runtime config as v12)', () => {
