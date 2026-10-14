@@ -1,6 +1,6 @@
 # Migrating to 16.0 (draft)
 
-> **Status: proposal.** 16.0.0 has not shipped; its alphas go to npm `canary` only. The list below may still change
+> **Status: proposal.** 16.0.0 has not shipped; its alphas (16.0.0-alpha.1 and later) go to npm `canary` only. The list below may still change
 > until 16.0.0-rc.1. Stable 16.0.0 also needs the v16 release gates (A/B against the 15.0 baseline, an incremental
 > external security review) — see [release gates](release-gates.md) and [v15 gates](v15/gates.md).
 
@@ -22,8 +22,8 @@ Upstream servers are not affected by the protocol change: the HTTP+SSE upstream 
 
 ## The codemod: `config migrate --to v13` (15.9.0-canary.1)
 
-Config schema v13 is read from 16.0.0-alpha.1 on, so on 15.9 the codemod applies only the rewrites that are valid
-schema v12 and mean the same thing on 15.x, and lists the rest:
+**On 16.0.0-alpha.1 and later** the codemod writes a schema v13 file. **On 15.9** (15.9.0-canary.1), which cannot
+read v13, it applies only the rewrites that are valid schema v12 and lists the rest.
 
 ```bash
 mcp-gateway config migrate --to v13 --dry-run -c mcp-gateway.yml   # plan + diff, writes nothing
@@ -31,13 +31,36 @@ mcp-gateway config diff --to v13 -c mcp-gateway.yml                # exit 3 when
 mcp-gateway config migrate --to v13 --in-place -c mcp-gateway.yml  # backup: mcp-gateway.yml.pre-v13.bak
 ```
 
-- **Applied:** `isolation: worker | process | inline` on a module plugin becomes `runtime:` (comments and layout are
-  kept; WASM component `isolation` is untouched). The file keeps `version: 12` and loads on 15.x as before.
-- **Pending (listed, never written):** inline module plugins (16.0 needs `allowInline: true` on the entry, or move
-  them to `runtime: worker`), `mcp.protocolVersions` naming 2024-11-05, Node.js 24.
-- Without `--in-place` or `-o` it writes `<name>.v13-ready.<ext>` next to the file. It is idempotent: a second run
-  has nothing to change. It refuses files that are not schema v12 (run `config migrate --to v12` first) and
-  `isolation` / `runtime` pairs that disagree. Undo `--in-place` by copying the `.pre-v13.bak` file back.
+16.x (writes `version: 13`):
+
+- `isolation: worker | process | inline` on a module plugin becomes `runtime:` (comments and layout are kept; WASM
+  component `isolation` is untouched).
+- Inline module plugins get `allowInline: true` — the same behaviour, now explicit. Consider `runtime: worker` instead.
+- `2024-11-05` is dropped from `mcp.protocolVersions` (16.0's `/mcp` ignores it already); a list that named only it is
+  removed, so every supported revision is accepted.
+- Pending (outside the file): Node.js 24.
+
+15.9 (keeps `version: 12`): only the `isolation` → `runtime` rewrite; inline plugins, 2024-11-05 and Node.js 24 are
+listed as pending.
+
+Without `--in-place` or `-o` it writes `<name>.v13.<ext>` (15.9: `<name>.v13-ready.<ext>`) next to the file. It is
+idempotent. It refuses files that are not schema v12 / v13 (run `config migrate --to v12` first for v11) and
+`isolation` / `runtime` pairs that disagree. Undo `--in-place` by copying the `.pre-v13.bak` file back (15.x reads
+only that v12 file).
+
+## What 16.0.0-alpha.1 does
+
+- Reads `version: 13` files with the v13 rules: the module-plugin `isolation` alias, an inline module plugin without
+  `allowInline: true`, `allowInline` anywhere else, and `2024-11-05` in `mcp.protocolVersions` are configuration errors.
+- Reads `version: 12` files as 15.x did and reports `schema.v12` (removed in 17.0.0) — the v12-only uses keep working and
+  stay reported (`v16.plugins.<i>.isolation`, `v16.plugins.<i>.inline`, now marked removed in 17.0.0; `2024-11-05` in
+  `mcp.protocolVersions` is ignored). A file without `version:` is read as v12 without the `schema.v12` notice
+  (alpha decision, revisited by 16.0.0-rc.1).
+- `/mcp` no longer negotiates 2024-11-05: a client that asks for it gets the newest revision (2025-11-25) and decides
+  whether to continue; the request is reported once as `v16.mcp.protocol-2024-11-05`. Upstream servers on 2024-11-05
+  (including HTTP+SSE) are still adapted as before.
+- `engines.node` is `>=24.0.0`. npm only warns on older Node.js; 16.x is not tested there and reports `v16.node.<major>`.
+- Docs and examples stay on schema v12 while npm `latest` is a release that cannot read v13.
 
 The 16.0 freeze list is in [v16 freeze](v16/freeze.md).
 

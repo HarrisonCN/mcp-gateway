@@ -36,7 +36,7 @@ describe('8.0: schema v8, plugin API v5', () => {
     expect(removedConfigKeys({ version: 7, plugins: [{ wasm: 'a' }, { module: 'b' }] })).toHaveLength(2);
     expect(() => validateConfig({ servers: [], plugins: [{ module: './a.mjs', component: './b.wasm' }] })).toThrow(/exactly one of "module" or "component"/);
     expect(() => validateConfig({ servers: [], plugins: [{ module: './a.mjs', runtime: 'inline', limits: { timeoutMs: 5 } }] })).toThrow(/apply to WASM component plugins only/); // 15.0: inline must be explicit
-    expect(() => validateConfig({ version: 13, servers: [] })).toThrow(/14.0 reads `version: 12`/);
+    expect(() => validateConfig({ version: 14, servers: [] })).toThrow(/16\.0 reads `version: 13`/); // 16.0.0-alpha.1: v13 is read
     expect(removedConfigKeys({ version: 11 })).toEqual([]);
     expect(PLUGIN_API_VERSION).toBe(5);
     expect(PLUGIN_API_MIN_VERSION).toBe(5);

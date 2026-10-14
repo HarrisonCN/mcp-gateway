@@ -1,4 +1,4 @@
-# 16.0 freeze list (draft, 15.9.0-canary.1)
+# 16.0 freeze list (draft, 15.9.0-canary.1; implemented in 16.0.0-alpha.1)
 
 > **Status: proposal.** 16.0.0 has not shipped; its alphas go to npm `canary` only and the list below may still change
 > until 16.0.0-rc.1. 15.0.0 itself is not stable yet (its gates are open, see [v15 gates](../v15/gates.md)); stable
@@ -23,12 +23,12 @@ Each change is reported by 15.9 as `DEPRECATED (removed in 16.0.0)` — a log wa
 and `GET /api/v1/admin/deprecations`. Ids: [deprecations](../deprecations.md#planned-removals-in-1600-announced-1590-canary0).
 Migration: [migrating to v16](../migrating-to-v16.md).
 
-| Surface | 15.x | 16.0.0 (proposal) | 15.9 codemod (`config migrate --to v13`) |
+| Surface | 15.x | 16.0.0 (proposal) | `config migrate --to v13` (15.9 → 16.x) |
 |---|---|---|---|
 | Config file | schema v12 (`version: 12`) | schema v13 (`version: 13`); v12 files are read through an in-memory migration with a warning in 16.x and refused by 17.0 | — |
-| Module plugin `isolation: worker \| process \| inline` | alias of `runtime` | removed — only `runtime` | rewritten to `runtime:` (stays valid v12) |
-| Inline module plugins | `runtime: inline` | need `allowInline: true` on the plugin entry (`plugins` is a list, so the opt-in is per plugin) | reported as pending, not written (v13-only key) |
-| `/mcp` protocol revision `2024-11-05` | accepted from downstream clients | refused; `2025-11-25`, `2025-06-18`, `2025-03-26` stay; upstream HTTP+SSE servers stay supported | reported as pending (dropping it changes which clients can connect) |
+| Module plugin `isolation: worker \| process \| inline` | alias of `runtime` | removed — only `runtime` | rewritten to `runtime:` |
+| Inline module plugins | `runtime: inline` | need `allowInline: true` on the plugin entry (`plugins` is a list, so the opt-in is per plugin) | 15.9: pending; 16.x: `allowInline: true` added |
+| `/mcp` protocol revision `2024-11-05` | accepted from downstream clients | refused; `2025-11-25`, `2025-06-18`, `2025-03-26` stay; upstream HTTP+SSE servers stay supported | 15.9: pending; 16.x: dropped from the list (already ignored) |
 | Node.js | `>= 22` | `>= 24` (Node 22 maintenance ends 2027-04-30) | reported as pending |
 
 WASM components keep `isolation: tenant | client | shared` — a different setting, not part of the alias removal.

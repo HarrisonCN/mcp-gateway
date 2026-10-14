@@ -25,7 +25,7 @@ describe('10.0: schema v10, unified kernel, LTS', () => {
     expect(() => validateConfig({ version: 9, servers: [] })).toThrow(/config schema v9 was removed in 10.0 — use `version: 11`; run `mcp-gateway migrate --to 11`/);
     expect(() => validateConfig({ version: 8, servers: [] })).toThrow(/use `version: 11`/);
     expect(() => validateConfig({ servers: [], chaos })).toThrow(/chaos: removed in 10.0 — move under `features: \{ … \}`/);
-    expect(() => validateConfig({ version: 13, servers: [] })).toThrow(/14.0 reads `version: 12`/);
+    expect(() => validateConfig({ version: 14, servers: [] })).toThrow(/16\.0 reads `version: 13`/); // 16.0.0-alpha.1: v13 is read
     expect(() => validateConfig({ version: 11, servers: [], features: { nope: {} } })).toThrow(/unknown feature section\(s\) nope/);
     const cfg = validateConfig({ version: 11, servers: [], features: { chaos } });
     expect(cfg.chaos).toBeDefined();

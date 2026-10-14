@@ -67,8 +67,9 @@ export type McpLogLevel = (typeof LOG_LEVELS)[number];
 const levelIndex = (l: unknown) => LOG_LEVELS.indexOf(l as McpLogLevel);
 
 /** Protocol versions the endpoint speaks, newest first. */
-/** Revisions accepted on `/mcp`, newest first (4.1: 2025-11-25 added, 2024-11-05 accepted). */
-export const DOWNSTREAM_PROTOCOL_VERSIONS: string[] = [...PROTOCOL_VERSIONS];
+/** Revisions accepted on `/mcp`, newest first (4.1: 2025-11-25 added; 16.0.0-alpha.1: 2024-11-05 no longer accepted downstream —
+ * upstream servers on it, incl. HTTP+SSE, stay supported through PROTOCOL_VERSIONS). */
+export const DOWNSTREAM_PROTOCOL_VERSIONS: string[] = PROTOCOL_VERSIONS.filter((v) => v !== '2024-11-05');
 export const LATEST_PROTOCOL_VERSION = DOWNSTREAM_PROTOCOL_VERSIONS[0]!;
 
 // JSON-RPC error codes
@@ -552,7 +553,7 @@ export class McpEndpoint {
 
   /** Revisions this endpoint accepts (`mcp.protocolVersions`, default all). */
   private allowedVersions(): string[] {
-    const pinned = this.cfg.protocolVersions?.filter((v) => (PROTOCOL_VERSIONS as readonly string[]).includes(v));
+    const pinned = this.cfg.protocolVersions?.filter((v) => DOWNSTREAM_PROTOCOL_VERSIONS.includes(v));
     return pinned?.length ? pinned : DOWNSTREAM_PROTOCOL_VERSIONS;
   }
 
@@ -560,7 +561,7 @@ export class McpEndpoint {
     const params = isObject(msg.params) ? msg.params : {};
     const requested = typeof params.protocolVersion === 'string' ? params.protocolVersion : undefined;
     const protocolVersion = negotiateVersion(requested, this.allowedVersions());
-    if (protocolVersion === '2024-11-05') deprecate(MCP_2024_11_05); // 15.9.0-canary.0: removed from /mcp in 16.0.0
+    if (requested === '2024-11-05') deprecate(MCP_2024_11_05); // 16.0.0-alpha.1: asked for, answered with a newer revision
 
     if (this.sessions.size >= this.cfg.maxSessions && !this.evictOne()) {
       res.status(503).json(rpcError(msg.id, { code: JSONRPC_INTERNAL_ERROR, message: 'Too many sessions' }));

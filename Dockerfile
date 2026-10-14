@@ -1,8 +1,8 @@
 # package-lock.json is required by `npm ci`
-# Node 22: needed for the optional audit log (built-in node:sqlite)
+# Node 24 (16.0: engines.node >= 24; node:sqlite for the optional audit log since Node 22)
 # Base image from the Docker Official Images mirror on Amazon ECR Public (same tags/digests as docker.io/library/node):
 # avoids Docker Hub's unauthenticated pull rate limit in CI / release builds. Override with --build-arg NODE_IMAGE=...
-ARG NODE_IMAGE=public.ecr.aws/docker/library/node:22-alpine
+ARG NODE_IMAGE=public.ecr.aws/docker/library/node:24-alpine
 
 # Builder runs on the build host's platform ($BUILDPLATFORM, set by BuildKit): its output (dist/, tsc-compiled JS)
 # is architecture-independent and only dist/ is copied into the runner. Multi-arch release builds therefore no

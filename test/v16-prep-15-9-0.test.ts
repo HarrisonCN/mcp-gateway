@@ -39,7 +39,7 @@ describe('16.0 removals announced in 15.9 (15.9.0-canary.0)', () => {
     const d = v16DeprecationsIn(raw);
     expect(ids(d)).toEqual(['v16.plugins.0.isolation', 'v16.plugins.1.isolation']);
     for (const x of d) {
-      expect(x.removedIn).toBe('16.0.0');
+      expect(x.removedIn).toBe('17.0.0'); // 16.0.0-alpha.1: schema v13 refuses it; v12 files (read until 17.0.0) still work
       expect(x.replacement).toMatch(/runtime: (worker|process)/);
     }
   });
@@ -66,9 +66,10 @@ describe('16.0 removals announced in 15.9 (15.9.0-canary.0)', () => {
 
   it('D5 validateConfig lists the config deprecations (what `mcp-gateway validate` prints); behaviour unchanged', () => {
     const cfg = validateConfig({ version: 12, servers: [], mcp: { protocolVersions: ['2024-11-05', '2025-06-18'] }, plugins: [{ name: 'a', module: './a.mjs', isolation: 'worker' }] });
-    expect(ids(cfg.deprecations ?? [])).toEqual(['v16.mcp.protocol-2024-11-05', 'v16.plugins.0.isolation']);
+    // 16.0.0-alpha.1: an explicit `version: 12` file also reports `schema.v12`
+    expect(ids(cfg.deprecations ?? [])).toEqual(['schema.v12', 'v16.mcp.protocol-2024-11-05', 'v16.plugins.0.isolation']);
     expect(cfg.mcp?.protocolVersions).toEqual(['2024-11-05', '2025-06-18']);
-    expect(validateConfig({ version: 12, servers: [] }).deprecations).toBeUndefined();
+    expect(validateConfig({ servers: [] }).deprecations).toBeUndefined();
     // every id family is documented
     expect([...V16_DEPRECATION_IDS].sort()).toEqual(['v16.mcp.protocol-2024-11-05', 'v16.node.<major>', 'v16.plugins.<i>.inline', 'v16.plugins.<i>.isolation'].sort());
   });

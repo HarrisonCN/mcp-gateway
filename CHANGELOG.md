@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [16.0.0-alpha.1] - 2026-10-14
+
+**Development prerelease — first alpha of 16.0** (npm dist-tag `canary`, image `:16.0.0-alpha.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). It implements the 16.0 changes announced in 15.9 ([migrating to v16](docs/migrating-to-v16.md), [v16 freeze](docs/v16/freeze.md)); the list stays a proposal until 16.0.0-rc.1. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — and stable 16.0.0 needs its own gates (A/B against the 15.0 baseline, an incremental external security review).
+
+### Breaking (proposal)
+
+- **Config schema v13** (`version: 13`): schema v12 with the 16.0 rules enforced — a module plugin takes only `runtime` (the 14.3 `isolation: worker | process | inline` alias is a configuration error; WASM components keep `isolation: tenant | client | shared`); an inline module plugin (`runtime: inline`) needs `allowInline: true` on its entry, and `allowInline` anywhere else is an error; `mcp.protocolVersions` must not name `2024-11-05`.
+- **Schema v12 files** are read as in 15.x; an explicit `version: 12` file is reported once as `schema.v12` (removed in 17.0.0). The v12-only uses keep working and stay reported — `v16.plugins.<i>.isolation` / `v16.plugins.<i>.inline` are now marked removed in 17.0.0, and `2024-11-05` in a v12 `mcp.protocolVersions` is ignored. A file without `version:` is read as v12 without the `schema.v12` notice (alpha decision, revisited by 16.0.0-rc.1).
+- **`/mcp` no longer negotiates MCP revision 2024-11-05**: a client that asks for it gets the newest revision (2025-11-25) and decides whether to continue, as the spec says; the request is reported once (`v16.mcp.protocol-2024-11-05`). `2025-11-25`, `2025-06-18` and `2025-03-26` are unchanged. Upstream servers on 2024-11-05 (including HTTP+SSE) are still adapted as before.
+- **Node.js 24**: `engines.node` is `>=24.0.0` and the container image is built on `node:24-alpine`. npm only warns on older Node.js; 16.x is not supported there and keeps reporting `v16.node.<major>`.
+
+### Changed
+
+- `mcp-gateway config migrate --to v13` now writes a schema v13 file: `isolation` → `runtime`, `allowInline: true` on inline module plugins, `2024-11-05` dropped from `mcp.protocolVersions` (a list that named only it is removed), `version: 13`; the result is validated as v13 before anything is written; a v13 file is checked and left as it is. Default output `<name>.v13.<ext>`; `--in-place` keeps `<file>.pre-v13.bak` (the file 15.x can read).
+- Docs and examples stay on schema v12 while npm `latest` is a release that cannot read v13 (`docs-check` does not report the `schema.v12` notice).
+
+### Not in this alpha
+
+- A generated `schema/v13/config.schema.json` (editors keep `schema/v12`), and a `config rollback` for v13 (copy the `.pre-v13.bak` file back). Planned before 16.0.0-rc.1.
+
+### Tests
+
+- `test/v13-schema-16-0-0.test.ts` (written first; failing-before 8/8 → `v13schema-failing-before`): S1 v13 loads, S2 alias refused (WASM isolation kept), S3 `allowInline`, S4 2024-11-05 refused in v13 / ignored + reported in v12, S5 `schema.v12` notice, S6 `/mcp` negotiation (2024-11-05 → 2025-11-25; upstream adaptation unchanged), S7 codemod writes v13 that loads and is idempotent, S8 `engines.node`. The S6 fixture was corrected after the failing-before run to the test helper's `base` URL and operator header.
+- Updated for 16.0 behaviour: `test/v13-codemod-15-9-1.test.ts` (the codemod now writes v13), `test/v16-prep-15-9-0.test.ts` (plugin ids removed in 17.0.0; explicit v12 files also report `schema.v12`), `test/mcp-endpoint.test.ts` (a 2024-11-05 request negotiates 2025-11-25).
+- Also updated: the "unsupported future version" probes in `test/v5`, `v8`, `v9`, `v10`, `v11`, `migrate-bench` and `core-v2-14-0-0` use `version: 14` (13 is read now; the message names `version: 13` and `version: 12`); `core-v2-14-0-0` and `v15-changes-15-0-0` expect the `schema.v12` notice on explicit v12 files; the downstream compatibility matrix (`test/compat-matrix-13-6-0.test.ts`) runs the SDK client on the revisions `/mcp` accepts (2025-11-25, 2025-06-18, 2025-03-26).
+
 ## [15.9.0-canary.1] - 2026-10-14
 
 **Development prerelease** (npm dist-tag `canary`, image `:15.9.0-canary.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). Second build of the 15.9 line (v16 preparation): everything in 15.9.0-canary.0 plus the `config migrate --to v13` codemod and the draft 16.0 freeze list. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — and the 16.0 list stays a proposal until 16.0.0-rc.1.

@@ -30,7 +30,7 @@ describe('9.0: schema v9', () => {
     expect(() => validateConfig({ version: 8, servers: [] })).toThrow(/version: config schema v8 was removed in 9.0 — use `version: 11`; run `mcp-gateway migrate --to 11`/);
     expect(() => validateConfig({ version: 11, servers: [], state: { store: 'memory' } })).toThrow(/state: removed in 9.0 — use `store: \{ backend, … \}` \(`state.store` → `store.backend`\)/);
     expect(() => validateConfig({ servers: [], state: {} })).toThrow(/state: removed in 9.0/);
-    expect(() => validateConfig({ version: 13, servers: [] })).toThrow(/14.0 reads `version: 12`/);
+    expect(() => validateConfig({ version: 14, servers: [] })).toThrow(/16\.0 reads `version: 13`/); // 16.0.0-alpha.1: v13 is read
     const v9 = validateConfig({ version: 11, servers: [], store: { backend: 'redis', redis: { url: 'redis://r:6379' }, failureMode: 'closed' } });
     expect(v9.state).toEqual({ store: 'redis', redis: { url: 'redis://r:6379' }, failureMode: 'closed' });
     expect(v9.deprecations?.map((d) => d.id)).toBeUndefined(); // 11.0: nothing deprecated

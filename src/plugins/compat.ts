@@ -57,7 +57,7 @@ export const PLUGIN_COMPATIBILITY: readonly PluginCompatRow[] = [
       '/testing export (15.2)',
     ],
   },
-  { from: '16.0.0', until: '17.0.0', min: 5, max: 5, status: 'proposal', notes: 'v5; runtime: inline needs plugins.allowInline: true (config schema v13)' },
+  { from: '16.0.0', until: '17.0.0', min: 5, max: 5, status: 'proposal', notes: 'v5; a module plugin with runtime: inline needs allowInline: true on its entry (config schema v13)' },
   { from: '17.0.0', min: 6, max: 6, status: 'proposal', notes: 'plugin API v6: module plugins only in worker / process / wasm (inline removed); codemod in 16.9' },
 ];
 

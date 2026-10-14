@@ -188,7 +188,7 @@ describe('/mcp protocol details (raw HTTP)', () => {
     const url = await start({ ...base });
     expect((await openSession(url, {}, '2025-03-26')).init.result.protocolVersion).toBe('2025-03-26');
     expect((await openSession(url, {}, '2099-01-01')).init.result.protocolVersion).toBe('2025-11-25');
-    expect((await openSession(url, {}, '2024-11-05')).init.result.protocolVersion).toBe('2024-11-05');
+    expect((await openSession(url, {}, '2024-11-05')).init.result.protocolVersion).toBe('2025-11-25'); // 16.0.0-alpha.1: no longer accepted on /mcp
   });
 
   it('honours mcp.protocolVersions (4.1)', async () => {

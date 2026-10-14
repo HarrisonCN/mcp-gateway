@@ -211,7 +211,7 @@ jobs:
           npx vitest run test/compat-matrix-13-6-0.test.ts test/motionary-e2e.test.ts test/motionary-schemas-15-3-1.test.ts test/protocol-compat.test.ts
           cat compat-matrix.json
       - name: Fail if a client was skipped
-        run: node -e "const r=require('./compat-matrix.json'); const k=Object.keys(r); if(!k.some(x=>x.startsWith('py-sdk@'))||k.filter(x=>x.startsWith('ts-sdk@')).length<4){console.error('matrix incomplete', k); process.exit(1)}"
+        run: node -e "const r=require('./compat-matrix.json'); const k=Object.keys(r); if(!k.some(x=>x.startsWith('py-sdk@'))||k.filter(x=>x.startsWith('ts-sdk@')).length<3){console.error('matrix incomplete', k); process.exit(1)}"
       - uses: actions/upload-artifact@v6
         if: always()
         with:

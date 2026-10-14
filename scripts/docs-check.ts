@@ -175,7 +175,9 @@ async function check(root: string, opts: { external?: boolean }) {
     const filled = JSON.parse(JSON.stringify({ servers: [], ...doc }).replace(/\$\{([A-Z0-9_]+)(?::-[^}]*)?\}/g, (_m, n: string) => `docs-check-env-${n.toLowerCase()}-0123456789abcdef0123`)) as Record<string, unknown>;
     try {
       const c = validateConfig(filled);
-      if (!hist) for (const d of c.deprecations ?? []) add(rel, line, 'config', `${d.id.startsWith('v15.') ? 'removed / changed in 15.0.0' : 'schema v11 field'} in current docs: ${(d as { path?: string }).path ?? d.id} — use ${(d as { replacement?: string }).replacement ?? 'the v12 form'}`);
+      // 16.0.0-alpha.1: docs and examples stay on schema v12 while npm `latest` is 14.9.x / 15.x (which cannot read
+      // v13), so the 16.x `schema.v12` notice is not a docs finding; switch the examples when 16.0 becomes `latest`
+      if (!hist) for (const d of (c.deprecations ?? []).filter((x) => x.id !== 'schema.v12')) add(rel, line, 'config', `${d.id.startsWith('v15.') ? 'removed / changed in 15.0.0' : 'schema v11 field'} in current docs: ${(d as { path?: string }).path ?? d.id} — use ${(d as { replacement?: string }).replacement ?? 'the v12 form'}`);
     } catch (e) {
       const issues = (e as Error).message.replace(/^Invalid configuration:\s*/, '').split(/\n\s*-\s*/).map((x) => x.replace(/^\s*-\s*/, '').trim()).filter(Boolean);
       const real = issues.filter((iss) => {

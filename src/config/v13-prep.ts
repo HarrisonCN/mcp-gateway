@@ -1,12 +1,12 @@
 /**
- * 15.9.0-canary.1: `mcp-gateway config migrate --to v13` — the codemod for the 16.0 config changes
- * (docs/migrating-to-v16.md; the 16.0 list is a proposal until 16.0.0-rc.1).
+ * `mcp-gateway config migrate --to v13` — the codemod for the 16.0 config changes (docs/migrating-to-v16.md; the 16.0
+ * list is a proposal until 16.0.0-rc.1).
  *
- * Config schema v13 itself lands in 16.0.0-alpha.1, so on 15.x this applies only the rewrites that are valid schema v12
- * and mean exactly the same thing on 15.x — `isolation: worker|process|inline` on a module plugin becomes `runtime:` —
- * and keeps `version: 12`. The v13-only changes (the per-plugin `allowInline: true` opt-in for inline module plugins,
- * dropping `/mcp` revision 2024-11-05, Node.js 24) are returned as `pending` and never written. Idempotent: running it
- * on its own output changes nothing. Loaded on demand by the CLI only (not part of the gateway's start-up graph).
+ * 15.9.0-canary.1 applied only the schema-v12-compatible part. 16.0.0-alpha.1 reads schema v13 (config/v13.ts), so the
+ * codemod now writes `version: 13`: `isolation: worker|process|inline` on a module plugin becomes `runtime:`, inline
+ * module plugins get `allowInline: true` (keeping today's behaviour explicitly), and `2024-11-05` is dropped from
+ * `mcp.protocolVersions` (16.0's `/mcp` ignores it already; a list that named only it is removed). `pending` keeps what
+ * a file cannot say (Node.js 24). Idempotent: a v13 file is checked and left as it is. Loaded on demand by the CLI only.
  *
  * @module config/v13-prep
  */
@@ -28,7 +28,7 @@ export interface V13Pending {
 }
 
 export interface V13Plan {
-  /** The rewritten file (still schema v12); the input when nothing changes or on errors. */
+  /** The rewritten file (schema v13); the input when nothing changes or on errors. */
   text: string;
   changes: string[];
   pending: V13Pending[];
@@ -39,6 +39,7 @@ export interface V13Plan {
 
 const keyOf = (p: Pair): unknown => (isScalar(p.key) ? (p.key as Scalar).value : p.key);
 const ALIAS = new Set(['worker', 'process', 'inline']);
+const NODE24: V13Pending = { id: 'v16.node', path: '(runtime)', now: 'run on Node.js 24 LTS', v13: '16.0 needs Node.js 24 or newer' };
 
 /** Plan (and apply the v12-compatible part of) the move of a schema v12 config to schema v13. */
 export function planV13(text: string, format?: 'yaml' | 'json', names: { from?: string; to?: string } = {}): V13Plan {
@@ -64,10 +65,16 @@ export function planV13(text: string, format?: 'yaml' | 'json', names: { from?: 
   }
   const version = doc.get('version');
   if (version === 13) {
-    report.errors.push('the file already says `version: 13`: config schema v13 is read from 16.0.0-alpha.1 on — 15.x cannot load it');
-    return done(false);
+    try {
+      validateConfig(doc.toJS());
+    } catch (e) {
+      report.errors.push(`the v13 file is not valid:\n${(e as Error).message.replace(/^Invalid configuration:\n?/, '')}`);
+      return done(false);
+    }
+    pending.push(NODE24);
+    return done(true);
   }
-  if (version !== 12) {
+  if (version !== 12 && version !== undefined) {
     report.errors.push(`the config is on schema ${version === undefined ? '(no version)' : `v${String(version)}`}: run \`mcp-gateway config migrate --to v12\` first, then \`--to v13\``);
     return done(false);
   }
@@ -99,36 +106,35 @@ export function planV13(text: string, format?: 'yaml' | 'json', names: { from?: 
           report.errors.push(`plugins[${i}] says \`isolation: ${iso}\` and \`runtime: ${String(rt)}\`: keep one (\`runtime\` is what 16.0 reads)`);
         }
       }
-      if ((m.get('runtime') ?? m.get('isolation')) === 'inline') {
-        pending.push({
-          id: `v16.plugins.${i}.inline`,
-          path: `plugins[${i}]`,
-          now: 'move it to `runtime: worker` (or `process`) if it does not need HTTP hooks',
-          v13: 'an inline module plugin needs `allowInline: true` on its entry in schema v13',
-        });
+      if (m.get('runtime') === 'inline' && m.get('allowInline') !== true) {
+        m.set('allowInline', true);
+        changes.push(`plugins[${i}]: runtime: inline → allowInline: true (schema v13 opt-in; consider runtime: worker)`);
       }
     });
   }
   const pv = doc.getIn(['mcp', 'protocolVersions']);
   if (isSeq(pv) && pv.items.some((x) => (isScalar(x) ? x.value : x) === '2024-11-05')) {
-    pending.push({
-      id: 'v16.mcp.protocol-2024-11-05',
-      path: 'mcp.protocolVersions',
-      now: 'upgrade the clients that still initialize /mcp with 2024-11-05, then drop it from the list',
-      v13: '16.0 does not accept 2024-11-05 on /mcp (upstream HTTP+SSE servers stay supported)',
-    });
+    pv.items = pv.items.filter((x) => (isScalar(x) ? x.value : x) !== '2024-11-05');
+    if (pv.items.length === 0) {
+      const mcp = doc.get('mcp') as YAMLMap;
+      mcp.delete('protocolVersions');
+      if (mcp.items.length === 0) (doc.contents as YAMLMap).delete('mcp');
+      changes.push('mcp.protocolVersions: [2024-11-05] removed (16.0 accepts every supported revision again)');
+    } else changes.push('mcp.protocolVersions: 2024-11-05 dropped (16.0 no longer accepts it on /mcp)');
   }
-  pending.push({ id: 'v16.node', path: '(runtime)', now: 'run on Node.js 24 LTS', v13: '16.0 needs Node.js 24 or newer' });
+  pending.push(NODE24);
   if (report.errors.length) return done(false);
-  if (!changes.length) return done(true);
+  if (version === undefined) (doc.contents as YAMLMap).items.unshift(doc.createPair('version', 13) as never);
+  else doc.set('version', 13);
+  changes.unshift(`version: ${version === undefined ? '(none, read as 12)' : '12'} → 13`);
 
   const out = fmt === 'json' ? JSON.stringify(doc.toJS(), null, 2) + '\n' : doc.toString({ lineWidth: 0, flowCollectionPadding: false });
   try {
-    if ((validateConfig(doc.toJS()) as { schemaVersion?: number }).schemaVersion !== 12) throw new Error('not read as schema v12');
+    if ((validateConfig(doc.toJS()) as { schemaVersion?: number }).schemaVersion !== 13) throw new Error('not read as schema v13');
   } catch (e) {
-    report.errors.push(`internal: the rewritten file does not load on 15.x (${(e as Error).message}) — nothing written`);
+    report.errors.push(`internal: the rewritten file does not load as schema v13 (${(e as Error).message}) — nothing written`);
     return done(false);
   }
   const input = fmt === 'json' ? JSON.stringify(JSON.parse(text), null, 2) + '\n' : text;
-  return done(true, out, unifiedDiff(input, out, names.from ?? 'v12', names.to ?? 'v12 (v13-ready)'));
+  return done(true, out, unifiedDiff(input, out, names.from ?? 'v12', names.to ?? 'v13'));
 }
