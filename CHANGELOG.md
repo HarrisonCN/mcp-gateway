@@ -30,6 +30,7 @@ Additive only, as allowed by the [freeze list](docs/v15/freeze.md): one new opti
 ### Tests
 
 - `test/tool-schemas-15-3-0.test.ts` (written first; failing-before: modules missing → `schemas153-failing-before`): J1–J3 validator and digest, O1–O5 output validation (default unchanged, enforce over REST and `/mcp` without leaking the invalid result, missing `structuredContent`, `isError` / no-schema tools untouched, audit counts, `tools` scoping), P1–P4 pins (digest listing and operator-only access, matching pin, drift refused before the upstream with other tools unaffected, `onDrift: audit`, missing pins), V1 config validation. Fixture: `fake-mcp-server.mjs` gains `SCHEMA_TOOLS=1` (a `weather` tool with an `outputSchema`).
+- `test/tool-schemas-lazy-15-3-0.test.ts` (written first; failing-before 2/2 → `schemas153-lazy-failing-before`): the governor and validator are loaded on first use, so a gateway without `policy.toolSchemas` never evaluates them — the first PR build failed the kernel bench module guard (`minimal` moduleKb 2213.4 > 1.1 × baseline 1995.2 + 5 on linux-x64); with the lazy import it is 2198.2.
 
 ## [15.2.0-canary.1] - 2026-10-14
 

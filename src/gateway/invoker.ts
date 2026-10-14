@@ -18,7 +18,7 @@ import type { McpServerConfig, ProxyResponse, ToolInfo, ToolPolicyConfig } from 
 import { evaluateActorPolicy, evaluatePolicy } from '../policy/tool-policy.js';
 import { ApprovalQueue } from '../policy/approvals.js';
 import { OutputFilter } from '../policy/output-filter.js';
-import { ToolSchemaGovernor } from '../policy/tool-schemas.js';
+import type { ToolSchemaGovernor } from '../policy/tool-schemas.js';
 
 /** Call refused by `policy.rules` (also used for forbidden scopes). */
 export const ERR_POLICY_DENIED = -32003;
@@ -228,8 +228,12 @@ const MAX_FINAL_ROUNDS = 3;
 export class ToolInvoker {
   readonly approvals: ApprovalQueue;
   private filter?: { config: unknown; filter: OutputFilter };
-  /** 15.3.0-canary.0: `policy.toolSchemas` (output validation, schema pins) and its counters. */
-  readonly toolSchemas = new ToolSchemaGovernor();
+  /**
+   * 15.3.0-canary.0: `policy.toolSchemas` (output validation, schema pins) and its counters — loaded on first use
+   * (13.3.0 cold-start rule: a gateway without `policy.toolSchemas` never evaluates the governor or the validator).
+   */
+  private toolSchemaGov?: Promise<ToolSchemaGovernor>;
+  private toolSchemaReady = false;
   /** Prompt-injection findings since start (per pattern). */
   readonly filterFindings = new Map<string, number>();
   /** Calls refused by the central authorizer since start (11.1). */
@@ -240,6 +244,20 @@ export class ToolInvoker {
   moduleFailureDenials = 0;
   /** Calls answered while a `degrade` feature module was failed (13.1). */
   degradedCalls = 0;
+
+  /** Whether the `policy.toolSchemas` governor has been loaded (15.3.0-canary.0). */
+  get toolSchemasLoaded(): boolean {
+    return this.toolSchemaReady;
+  }
+
+  /** The `policy.toolSchemas` governor, imported and created once on first use (15.3.0-canary.0). */
+  loadToolSchemas(): Promise<ToolSchemaGovernor> {
+    this.toolSchemaGov ??= import('../policy/tool-schemas.js').then((m) => {
+      this.toolSchemaReady = true;
+      return new m.ToolSchemaGovernor();
+    });
+    return this.toolSchemaGov;
+  }
 
   constructor(private readonly deps: InvokerDeps) {
     this.approvals = deps.approvals ?? new ApprovalQueue(deps.policy?.()?.approval);
@@ -717,8 +735,9 @@ export class ToolInvoker {
     }
     // 15.3.0-canary.0: schema pin — refused before the upstream call when the tool's schema drifted.
     const schemaCfg = ctx.kind === 'tool' ? this.deps.policy?.()?.toolSchemas : undefined;
-    if (schemaCfg?.pins) {
-      const drift = this.toolSchemas.checkPin(schemaCfg, snapshot.serverId, snapshot.tool, this.deps.toolInfo?.(snapshot.serverId, snapshot.tool));
+    const schemaGov = schemaCfg ? await this.loadToolSchemas() : undefined;
+    if (schemaGov && schemaCfg?.pins) {
+      const drift = schemaGov.checkPin(schemaCfg, snapshot.serverId, snapshot.tool, this.deps.toolInfo?.(snapshot.serverId, snapshot.tool));
       if (drift) {
         span.setAttribute('mcp.tool_schema.drift', drift.key);
         const message = `Tool ${drift.key} no longer matches its pinned schema (pinned ${drift.expected.slice(0, 12)}…, now ${drift.actual ? `${drift.actual.slice(0, 12)}…` : 'not listed'})`;
@@ -778,8 +797,8 @@ export class ToolInvoker {
       }
     }
     // 15.3.0-canary.0: structuredContent against the tool's outputSchema (policy.toolSchemas.validateOutput).
-    if (schemaCfg && result.success) {
-      const bad = this.toolSchemas.checkOutput(schemaCfg, snapshot.serverId, snapshot.tool, this.deps.toolInfo?.(snapshot.serverId, snapshot.tool), result.result);
+    if (schemaGov && schemaCfg && result.success) {
+      const bad = schemaGov.checkOutput(schemaCfg, snapshot.serverId, snapshot.tool, this.deps.toolInfo?.(snapshot.serverId, snapshot.tool), result.result);
       if (bad) {
         const where = bad.errors.slice(0, 3).map((e) => `${e.path || '(root)'}: ${e.message}`).join('; ');
         span.setAttribute('mcp.tool_schema.violation', bad.key);
