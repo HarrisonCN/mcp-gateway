@@ -494,11 +494,72 @@ program
 /** `--to v12` / `12` → 12; anything else is refused (other targets: `mcp-gateway migrate --to <n>`). */
 function v12Target(to: string): number {
   const n = Number(String(to).replace(/^v/i, ''));
-  if (n !== 12) {
-    logger.error(`config migrate / config diff target schema v12 only (got --to ${to}); for v4 – v11 use \`mcp-gateway migrate --to <n>\``);
+  if (n !== 12 && n !== 13) {
+    logger.error(`config migrate / config diff target schema v12 or v13 (got --to ${to}); for v4 – v11 use \`mcp-gateway migrate --to <n>\``);
     process.exit(1);
   }
   return n;
+}
+
+// 15.9.0-canary.1: `--to v13` — applies the v12-compatible part of the 16.0 config changes, lists the rest (config/v13-prep.ts)
+async function v13Preview(options: { config?: string }) {
+  const { readFile } = await import('fs/promises');
+  const { planV13 } = await import('./config/v13-prep.js');
+  const path = resolveConfigPath(options.config);
+  if (!path) {
+    logger.error('No config file found (use -c <path>)');
+    process.exit(1);
+  }
+  const text = await readFile(path, 'utf8');
+  return { path, text, r: planV13(text, /\.json$/i.test(path) ? 'json' : 'yaml', { from: `${path} (v12)`, to: `${path} (v12, v13-ready)` }) };
+}
+
+function printV13Plan(r: { changes: string[]; pending: Array<{ id: string; path: string; now: string; v13: string }>; report: { errors: string[]; warnings: string[] } }) {
+  console.log('Schema v13 plan (16.0, proposal): 15.x applies only the changes that stay schema v12 (the file keeps `version: 12`)');
+  console.log(`  changes: ${r.changes.length}`);
+  for (const c of r.changes) console.log(`    ~ ${c}`);
+  for (const e of r.report.errors) console.log(`  ✗ error: ${e}`);
+  for (const w of r.report.warnings) console.log(`  ! warning: ${w}`);
+  console.log(`  pending (schema v13, 16.0): ${r.pending.length}`);
+  for (const p of r.pending) console.log(`    → ${p.path} [${p.id}]: ${p.v13} — now: ${p.now}`);
+}
+
+/** `config migrate --to v13` (15.9.0-canary.1). */
+async function v13Migrate(options: { config?: string; dryRun?: boolean; inPlace?: boolean; output?: string; force?: boolean; json?: boolean }): Promise<void> {
+  const { path, r } = await v13Preview(options);
+  const say = (m: string) => { if (!options.json) console.log(m); };
+  if (options.json) console.log(JSON.stringify({ file: path, to: 13, writes: 12, ok: r.ok, text: r.text, diff: r.diff, changes: r.changes, pending: r.pending, report: r.report }, null, 2));
+  else printV13Plan(r);
+  if (!r.ok) process.exit(1);
+  if (!r.changes.length) {
+    say(`✓ ${path} needs no rewrite on 15.x — the pending items above are for 16.0`);
+    return;
+  }
+  if (options.dryRun) {
+    if (!options.json) {
+      console.log('\n--- diff ---\n');
+      process.stdout.write(r.diff);
+    }
+    return;
+  }
+  const { resolve } = await import('path');
+  const { existsSync } = await import('fs');
+  const { copyFile, rename } = await import('fs/promises');
+  if (options.inPlace) {
+    const bak = `${path}.pre-v13.bak`;
+    if (existsSync(bak) && !options.force) throw new Error(`backup ${bak} already exists (an earlier migration?) — move it away or pass --force`);
+    await copyFile(path, bak);
+    const tmp = `${path}.tmp-${process.pid}`;
+    await writeFile(tmp, r.text);
+    await rename(tmp, path);
+    say(`Rewrote ${path} (still schema v12; backup: ${bak})`);
+    return;
+  }
+  const target = options.output ?? (/\.(ya?ml|json)$/i.test(path) ? path.replace(/\.(ya?ml|json)$/i, '.v13-ready.$1') : `${path}.v13-ready.yml`);
+  if (resolve(target) === resolve(path)) throw new Error('refusing to write over the input: use --in-place (it keeps a backup)');
+  if (existsSync(target) && !options.force) throw new Error(`${target} already exists — pass --force to overwrite`);
+  await writeFile(target, r.text);
+  say(`Written to ${target}`);
 }
 
 async function v12Preview(options: { config?: string; to: string }) {
@@ -532,9 +593,9 @@ const configCmd = program.command('config').description('Config schema tools: mi
 
 configCmd
   .command('migrate')
-  .description('Migrate a schema v11 config to schema v12 (comments and layout kept): writes <name>.v12.<ext> (or -o), or rewrites the file with --in-place (backup <file>.v11.bak); --dry-run only prints the v12 config, unified diff and compatibility report')
+  .description('Migrate a schema v11 config to schema v12 (comments and layout kept): writes <name>.v12.<ext> (or -o), or rewrites the file with --in-place (backup <file>.v11.bak); --dry-run only prints the v12 config, unified diff and compatibility report. 15.9: --to v13 applies the v12-compatible part of the 16.0 changes (isolation → runtime; backup <file>.pre-v13.bak) and lists the rest')
   .option('-c, --config <path>', 'Config file (default: the usual search paths)')
-  .option('--to <version>', 'Target schema (only v12)', 'v12')
+  .option('--to <version>', 'Target schema: v12, or v13 (15.9: applies the v12-compatible part of the 16.0 changes, lists the rest)', 'v12')
   .option('--dry-run', 'Print the result without writing anything')
   .option('-o, --output <path>', 'Write the v12 config to this file (default: <name>.v12.<ext> next to the input)')
   .option('--in-place', 'Rewrite the config file itself, after copying it to <file>.v11.bak (undo: mcp-gateway config rollback)')
@@ -542,6 +603,7 @@ configCmd
   .option('--json', 'Print { to, config, diff, changes, report } as JSON')
   .action(async (options) => {
     try {
+      if (v12Target(options.to) === 13) return await v13Migrate(options);
       const { path, text, r } = await v12Preview(options);
       const say = (m: string) => { if (!options.json) console.log(m); };
       if (options.json) console.log(JSON.stringify({ file: path, to: 12, ok: r.ok, config: r.config, text: r.text, diff: r.diff, changes: r.changes, report: r.report }, null, 2));
@@ -613,10 +675,18 @@ configCmd
   .command('diff')
   .description('Unified diff between a schema v11 config and its schema v12 migration (exit 3 when it would change)')
   .option('-c, --config <path>', 'Config file (default: the usual search paths)')
-  .option('--to <version>', 'Target schema (only v12)', 'v12')
+  .option('--to <version>', 'Target schema: v12, or v13 (15.9: applies the v12-compatible part of the 16.0 changes, lists the rest)', 'v12')
   .option('--json', 'Print { diff, changes, report } as JSON')
   .action(async (options) => {
     try {
+      if (v12Target(options.to) === 13) {
+        const { r } = await v13Preview(options);
+        if (options.json) console.log(JSON.stringify({ to: 13, writes: 12, ok: r.ok, diff: r.diff, changes: r.changes, pending: r.pending, report: r.report }, null, 2));
+        else if (!r.ok) printV13Plan(r);
+        else process.stdout.write(r.diff);
+        process.exitCode = !r.ok ? 1 : r.diff ? 3 : 0;
+        return;
+      }
       const { r } = await v12Preview(options);
       if (options.json) console.log(JSON.stringify({ to: 12, ok: r.ok, diff: r.diff, changes: r.changes, report: r.report }, null, 2));
       else if (!r.ok) printReport(r);

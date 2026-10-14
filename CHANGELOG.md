@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [15.9.0-canary.1] - 2026-10-14
+
+**Development prerelease** (npm dist-tag `canary`, image `:15.9.0-canary.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). Second build of the 15.9 line (v16 preparation): everything in 15.9.0-canary.0 plus the `config migrate --to v13` codemod and the draft 16.0 freeze list. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — and the 16.0 list stays a proposal until 16.0.0-rc.1.
+
+### Added
+
+- **`mcp-gateway config migrate --to v13`** (and `config diff --to v13`) — the codemod for the 16.0 config changes ([migrating to v16](docs/migrating-to-v16.md#the-codemod-config-migrate---to-v13-1590-canary1)). Config schema v13 is read from 16.0.0-alpha.1 on, so on 15.9 it applies only the rewrites that are valid schema v12 and mean the same thing on 15.x — `isolation: worker | process | inline` on a module plugin becomes `runtime:` (comments and layout kept; WASM component `isolation` untouched; the file keeps `version: 12`) — and lists the v13-only changes as *pending* without writing them: inline module plugins (16.0 needs `allowInline: true` on the plugin entry), `mcp.protocolVersions` naming 2024-11-05, Node.js 24. `--dry-run` prints the plan and the diff; `--in-place` keeps a `<file>.pre-v13.bak` backup; without either it writes `<name>.v13-ready.<ext>`; `--json` prints `{ to: 13, writes: 12, changes, pending, report, diff }`. Idempotent. Refuses files that are not schema v12 and `isolation` / `runtime` pairs that disagree (exit 1); `config diff --to v13` exits 3 when the file would change.
+
+### Documentation
+
+- `docs/v16/freeze.md` (draft): the surfaces 16.0 keeps as in 15.x, what 16.0 changes and what the 15.9 codemod does for each. Decision recorded there: the inline opt-in is per plugin entry (`allowInline: true`), because `plugins` is a list.
+- `docs/migrating-to-v16.md`: the codemod section; `docs/deprecations.md` links it.
+
+### Additions after the freeze
+
+Additive only, as allowed by the [freeze list](docs/v15/freeze.md): `config migrate` / `config diff` accept `--to v13` (before: refused with exit 1); `--to v12` behaves exactly as before. No route, response field, error code, HTTP status mapping, config key or plugin API changed. The codemod is loaded on demand by the CLI only (not in the gateway's start-up graph).
+
+### Tests
+
+- `test/v13-codemod-15-9-1.test.ts` (written first; failing-before: module missing → `v13codemod-failing-before`): C1 alias rewrite (comments kept, still v12, same effective runtime, alias deprecations gone), C2 v13-only items pending and never written, C3 idempotent / clean file, C4 refusals (conflicting `isolation` / `runtime` — the v12 loader already refuses it, so the test expects the loader's message; non-v12 files; JSON input), C5 CLI (`--dry-run` writes nothing, `--in-place` backup, `validate` passes on the result, `config diff` exit 3 / 0, `--json`, second run is a no-op, `--to v14` refused). After the failing-before run the fixture's server got the required `id` / `name` and the C4 assertion was pointed at the loader's message.
+
 ## [15.9.0-canary.0] - 2026-10-14
 
 **Development prerelease** (npm dist-tag `canary`, image `:15.9.0-canary.0` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). First build of the 15.9 line (v16 preparation): every removal proposed for 16.0.0 is now announced as a deprecation, one minor ahead, with a draft migration guide. Behaviour is unchanged. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — and the 16.0 list stays a proposal until 16.0.0-rc.1.
