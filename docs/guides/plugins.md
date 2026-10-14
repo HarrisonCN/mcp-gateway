@@ -11,7 +11,7 @@ plugins:
     runtime: worker                       # 14.x default: inline; 15.0 default: worker — say which you want
     options: { header: x-tenant }
   - module: '@acme/mcp-gateway-audit'
-    runtime: inline
+    runtime: worker
     enabled: false
 ```
 

@@ -147,7 +147,8 @@ describe('admin REST API', () => {
     expect(r.changes.map((c) => c.path)).toContain('auth');
     const d = (await (await fetch(`${url}/deprecations`, { headers: op })).json()) as { config: unknown[]; runtime: Array<{ id: string }> };
     expect(d.config).toEqual([]);
-    expect(d.runtime.map((x) => x.id)).toEqual(['test-dep']);
+    // 15.9.0-canary.0: on Node < 24 the gateway start also records `v16.node.<major>` (environment-dependent)
+    expect(d.runtime.map((x) => x.id).filter((id) => !id.startsWith('v16.node.'))).toEqual(['test-dep']);
   });
 
   it('reload without a config source is 501', async () => {

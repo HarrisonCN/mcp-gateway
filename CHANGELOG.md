@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [15.9.0-canary.0] - 2026-10-14
+
+**Development prerelease** (npm dist-tag `canary`, image `:15.9.0-canary.0` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). First build of the 15.9 line (v16 preparation): every removal proposed for 16.0.0 is now announced as a deprecation, one minor ahead, with a draft migration guide. Behaviour is unchanged. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — and the 16.0 list stays a proposal until 16.0.0-rc.1.
+
+### Deprecated (removed in 16.0.0 — proposal)
+
+Each use is reported as `DEPRECATED (removed in 16.0.0)`: logged once per id, listed by `mcp-gateway validate` and by `GET /api/v1/admin/deprecations`. Ids in [deprecations](docs/deprecations.md#planned-removals-in-1600-announced-1590-canary0).
+
+- `v16.plugins.<i>.isolation` — `isolation: worker | process | inline` on a module plugin (the 14.3 alias of `runtime`). 16.0 reads only `runtime`. WASM components keep `isolation: tenant | client | shared`, which is a different setting and is not deprecated.
+- `v16.plugins.<i>.inline` — a module plugin running inline, in the gateway process (`runtime: inline`, or `isolation: inline`). 16.0 (config schema v13) runs inline module plugins only with an explicit opt-in.
+- `v16.mcp.protocol-2024-11-05` — `mcp.protocolVersions` naming `2024-11-05` (config), or a downstream `/mcp` session that negotiates it (runtime). Upstream servers on HTTP+SSE stay supported.
+- `v16.node.<major>` — running on Node.js older than 24 (runtime). 16.0 needs `engines.node >= 24`; Node 22 maintenance ends 2027-04-30.
+
+### Documentation
+
+- `docs/migrating-to-v16.md` (draft): what changes in 16.0, what to do on 15.9, rollback. The `config migrate --to v13` codemod and the 16.0 freeze list follow in 15.9.0-canary.1.
+- `docs/guides/plugins.md`: the example no longer shows an inline module plugin.
+
+### Additions after the freeze
+
+Additive only, as allowed by the [freeze list](docs/v15/freeze.md): new entries in the existing deprecation lists (config and runtime). No route, response field, error code, HTTP status mapping, CLI flag, config key or plugin API changed. A config that loaded on 15.3 loads on 15.9 the same way.
+
+### Tests
+
+- `test/v16-prep-15-9-0.test.ts` (written first; failing-before: module missing → `v16prep-failing-before`): D1 module-plugin `isolation` alias announced, WASM component isolation not; D2 inline module plugins announced; D3 `mcp.protocolVersions` with 2024-11-05 announced; D4 Node < 24 announced, 24+ not; D5 `validateConfig` lists them, behaviour unchanged; D6 a `/mcp` session on 2024-11-05 records the runtime deprecation once, newer revisions do not.
+- `test/admin.test.ts`: the runtime deprecations assertion ignores the environment-dependent `v16.node.<major>` entry.
+
 ## [15.3.0-canary.1] - 2026-10-14
 
 **Development prerelease** (npm dist-tag `canary`, image `:15.3.0-canary.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). Second build of the 15.3 line (AI generation governance): everything in 15.3.0-canary.0 plus per-tenant generation budgets, the approval ↔ lineage link, a prompt-injection regression corpus and the Motionary interop check under tool schema governance. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — so no 15.x release after it can become stable before it.

@@ -29,6 +29,7 @@ import { FEATURE_MANIFEST } from '../features/manifest.js';
 import { createFeatureRouter, featureSections, principalOf, clientIdOf, isFeatureActive, type FeatureRouter } from './features.js';
 import { clientPrincipal, deniedPrincipal, systemPrincipal, type Principal } from '../auth/authorizer.js';
 import { deprecate } from '../utils/deprecations.js';
+import { nodeDeprecation } from '../config/v16-deprecations.js';
 import { createA2ARouter } from '../bridges/a2a.js';
 import { ServerSupervisor } from './supervisor.js';
 import { createLiveRouter, type LiveRouter } from './live.js';
@@ -710,6 +711,8 @@ export class Gateway {
     this.app.use(createErrorHandler(() => this.config.security?.exposeErrorDetails === true));
 
     for (const d of this.config.deprecations ?? []) deprecate(d);
+    // 15.9.0-canary.0: 16.0.0 needs Node.js 24
+    { const n = nodeDeprecation(); if (n) deprecate(n); }
     // 14.0.0: one notice when the config file is schema v11 (migrated in memory; read until 15.0.0)
     { const n = schemaNotice(this.config); if (n) deprecate({ id: 'schema.v11', message: n, removedIn: '15.0.0' } as never); }
 
