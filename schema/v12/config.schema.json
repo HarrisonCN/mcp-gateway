@@ -857,6 +857,11 @@
               "type": "boolean",
               "default": false,
               "description": "Add the denial explanation (with the config path) to refused REST tool calls made by operators; other clients never get it."
+            },
+            "tenantViewers": {
+              "type": "boolean",
+              "default": false,
+              "description": "NEW in 15.1 (optional): tenant members (role owner / admin / viewer) read the call traces, lineage and cost rollup (GET /admin/ops/costs) of their own tenants, and nothing else on the console."
             }
           }
         },

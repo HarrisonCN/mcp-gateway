@@ -575,6 +575,7 @@ export class Gateway {
         exposed: (serverId, tool) => this.registry.isToolExposed(serverId, tool),
         failedModules: () => this.moduleFailures.ids(),
         portable: () => portableConfig(this.config),
+        costs: { currency: () => this.cfgNow().costs?.currency ?? 'USD', rollup: (by, since, tenants) => this.costs.rollup(by, since, tenants) },
       }),
     );
     // 5.1: feature modules under /api/v1/admin/<id> (src/features).

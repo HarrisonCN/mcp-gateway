@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [15.1.0-canary.1] - 2026-10-14
+
+**Development prerelease** (npm dist-tag `canary`, image `:15.1.0-canary.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). Completes the 15.1 control-plane slice on `main`: tenant-scoped console viewers, the cost rollup, lineage over `/mcp`, and the dashboard lineage view. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — so no 15.1 release can become stable before it.
+
+### Added
+
+- **Tenant viewers** (`controlPlane.console.tenantViewers: true`, default `false`): tenant members with role `owner`, `admin` or `viewer` read the call traces, lineage and cost rollup of **their own tenants only**. Another tenant's call (and a call without a tenant) answers `404`; a correlation id lookup lists only their calls; every other console route stays `403`. Operators and `controlPlane.console.viewers` keep the full view. Guide: [operations console → tenant viewers](docs/guides/operations-console.md#tenant-viewers-151).
+- **Cost rollup** `GET /api/v1/admin/ops/costs?by=tenant|client|tool|day&since=<ISO 8601>`: totals from the cost ledger (`cost`, `calls`, tokens) plus a grand `total`, in the configured `currency`. Tenant viewers see only calls charged to their tenants. Guide: [operations console → cost rollup](docs/guides/operations-console.md#cost-rollup-151).
+- **Dashboard → Operations → Lineage & costs**: look up a call by request id or correlation id (`X-Request-Id`), and the cost rollup by tenant / client / tool / day. The trace detail now shows the call's tenant. Demo mock answers both routes.
+
+### Additions after the freeze
+
+Additive only, as allowed by the [freeze list](docs/v15/freeze.md): one new optional config key (`controlPlane.console.tenantViewers`, schema v12 gains it as an optional property), one new admin route (`GET /admin/ops/costs`), a new `CostLedger.rollup()` method and new exports `tenantViewScope`, `TENANT_VIEWER_ROLES`, `COST_ROLLUP_BY` from the ops console module. Reason: 15.1 roadmap (tenant operators may only see their tenant; tenant cost rollup). No existing route, field, status code, config key or CLI flag changed; without the new key, behaviour is identical (tenant members get `403` on the console as before), and `GET /api/v1/costs` is unchanged.
+
+### Tests
+
+- `test/lineage-tenant-15-1-1.test.ts` (written first; failing-before 9/11): TV1–TV4 tenant viewer matrix (own tenant only, 404 for other tenants, correlation lookup per tenant, other console routes 403, non-members 403, off by default, invalid key never widens access), C1–C4 cost rollup (by tenant / client / tool / day, `since`, bad input, tenant scope, 4.3 `/costs` unchanged), M1 lineage of an `/mcp` `tools/call` with `X-Request-Id` (`via: mcp`, tenant scope), D1–D2 dashboard tab and demo mock.
+
 ## [15.1.0-canary.0] - 2026-10-13
 
 **Development prerelease** (npm dist-tag `canary`, image `:15.1.0-canary.0` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). First build of the 15.1 line from `main`: everything in 15.0.0-rc.4 plus call lineage. 15.0.0 itself has not shipped — its gates A / B / C are still open ([v15 gates](docs/v15/gates.md)) — so no 15.1 release can become stable before it.

@@ -224,6 +224,38 @@ export class CostLedger {
     return [...m.values()].sort((a, b) => b.cost - a.cost);
   }
 
+  /**
+   * 15.1.0: cost rollup for `GET /admin/ops/costs` — totals since `since` by tenant, client, `server/tool` or UTC day, plus
+   * the grand total (each call counted once). With `tenants`, only calls charged to one of them count, and a `tenant`
+   * rollup lists only those tenants.
+   */
+  rollup(by: 'tenant' | 'client' | 'tool' | 'day', since = 0, tenants?: ReadonlySet<string>): { totals: Array<{ key: string; cost: number; calls: number; inputTokens: number; outputTokens: number }>; total: { cost: number; calls: number; inputTokens: number; outputTokens: number } } {
+    const m = new Map<string, { key: string; cost: number; calls: number; inputTokens: number; outputTokens: number }>();
+    const total = { cost: 0, calls: 0, inputTokens: 0, outputTokens: 0 };
+    const add = (t: { cost: number; calls: number; inputTokens: number; outputTokens: number }, e: CostEntry) => {
+      t.cost = Math.round((t.cost + e.cost) * 1e6) / 1e6;
+      t.calls++;
+      t.inputTokens += e.usage?.inputTokens ?? 0;
+      t.outputTokens += e.usage?.outputTokens ?? 0;
+    };
+    for (const e of this.entries) {
+      if (e.at < since) continue;
+      const own = tenants ? (e.tenants ?? []).filter((t) => tenants.has(t)) : e.tenants;
+      if (tenants && !own?.length) continue;
+      const keys =
+        by === 'tenant' ? (own?.length ? own : ['(none)']) : by === 'client' ? [e.clientId ?? 'anonymous'] : by === 'tool' ? [`${e.serverId}/${e.tool}`] : [new Date(e.at).toISOString().slice(0, 10)];
+      for (const key of keys) {
+        const t = m.get(key) ?? { key, cost: 0, calls: 0, inputTokens: 0, outputTokens: 0 };
+        add(t, e);
+        m.set(key, t);
+      }
+      add(total, e);
+    }
+    const totals = [...m.values()];
+    totals.sort(by === 'day' ? (a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0) : (a, b) => b.cost - a.cost || (a.key < b.key ? -1 : 1));
+    return { totals, total };
+  }
+
   /** Budget status for every subject seen in the current periods. */
   budgets(): Array<{ name: string; subject: string; period: string; limit: number; spent: number; used: number; action: string }> {
     const now = this.now();

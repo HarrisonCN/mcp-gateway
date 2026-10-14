@@ -597,6 +597,7 @@ const CONTROL_PLANE_V12 = {
         traceBuffer: { type: 'integer', minimum: 10, maximum: 100000, default: 500, description: 'Call traces kept in memory.' },
         timelineBuffer: { type: 'integer', minimum: 10, maximum: 100000, default: 1000, description: 'Incidents kept in memory.' },
         explainDenials: { type: 'boolean', default: false, description: 'Add the denial explanation (with the config path) to refused REST tool calls made by operators; other clients never get it.' },
+        tenantViewers: { type: 'boolean', default: false, description: 'NEW in 15.1 (optional): tenant members (role owner / admin / viewer) read the call traces, lineage and cost rollup (GET /admin/ops/costs) of their own tenants, and nothing else on the console.' },
       },
     },
     token: { type: 'string', minLength: 1, description: 'Data plane: an operator API key of the control plane. ${VAR} references are expanded; an unset variable is a config error (14.7, MGW-2026-019).' },

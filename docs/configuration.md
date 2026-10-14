@@ -698,6 +698,7 @@ denial explanations, incident timeline, troubleshooting wizard). On by default f
 | `controlPlane.console.traceBuffer` | `500` | call traces kept in memory (10–100000) |
 | `controlPlane.console.timelineBuffer` | `1000` | incidents kept in memory (10–100000) |
 | `controlPlane.console.explainDenials` | `false` | add the denial explanation (`policy.explain`, with the config path) to refused REST tool calls made by operators; other clients never get it |
+| `controlPlane.console.tenantViewers` | `false` | 15.1: tenant members (role `owner` / `admin` / `viewer` in `tenants[].members`) read the call traces, lineage and cost rollup of their own tenants — nothing else on the console |
 
 ```yaml
 version: 12

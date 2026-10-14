@@ -58,6 +58,11 @@ export const OpsConsoleSchema = z
     timelineBuffer: z.number().int().min(10).max(100_000).default(1000),
     /** Add the denial explanation to refused-call error data for operator requests sending `X-MCP-Explain: 1`. */
     explainDenials: z.boolean().default(false),
+    /**
+     * 15.1.0: tenant members (role owner / admin / viewer in `tenants[].members`) may read the call traces, lineage and
+     * cost rollup of their own tenants — and nothing else on the console (default false).
+     */
+    tenantViewers: z.boolean().default(false),
   })
   .strict();
 export type OpsConsoleConfig = z.input<typeof OpsConsoleSchema>;
@@ -452,6 +457,11 @@ export interface OpsDeps {
   exposed: (serverId: string, tool: string) => boolean;
   failedModules: () => string[];
   portable: () => Record<string, unknown>;
+  /** 15.1.0: cost ledger rollup for `GET /admin/ops/costs` (absent: the route answers with empty totals). */
+  costs?: {
+    currency: () => string;
+    rollup: (by: CostRollupBy, since: number, tenants?: ReadonlySet<string>) => { totals: Array<{ key: string; cost: number; calls: number; inputTokens: number; outputTokens: number }>; total: { cost: number; calls: number; inputTokens: number; outputTokens: number } };
+  };
 }
 
 const MAX_REPORTS = 200;
@@ -509,6 +519,25 @@ export function consoleRole(req: Request, cfg: GatewayConfig, isOperator: (req: 
   return opsSettings(cfg).viewers.some((g) => globToRegExp(g).test(id)) ? 'viewer' : undefined;
 }
 
+/** 15.1.0: console routes a tenant viewer may read (GET only): traces, lineage and the cost rollup. */
+const TENANT_VIEW_ROUTES = /^\/(?:(?:traces|lineage)(?:\/[^/]+)?|costs)\/?$/;
+/** 15.1.0: roles of `tenants[].members` that make a client a tenant viewer when `controlPlane.console.tenantViewers` is on. */
+export const TENANT_VIEWER_ROLES: readonly string[] = ['owner', 'admin', 'viewer'];
+
+/**
+ * 15.1.0: the tenants whose traces, lineage and costs this client may read as a tenant viewer — empty when
+ * `controlPlane.console.tenantViewers` is off or the client is no member (operators and console viewers do not need it).
+ */
+export function tenantViewScope(cfg: GatewayConfig, clientId: string | undefined): string[] {
+  if (!clientId || !opsSettings(cfg).tenantViewers) return [];
+  const tenants = (cfg.tenants ?? []) as Array<{ id: string; members?: Array<{ client: string; role: string }> }>;
+  return tenants.filter((t) => (t.members ?? []).some((m) => TENANT_VIEWER_ROLES.includes(m.role) && globToRegExp(m.client).test(clientId))).map((t) => t.id);
+}
+
+/** Cost rollup dimensions of `GET /admin/ops/costs`. */
+export const COST_ROLLUP_BY = ['tenant', 'client', 'tool', 'day'] as const;
+export type CostRollupBy = (typeof COST_ROLLUP_BY)[number];
+
 /** Replace every leaf value with `<redacted>` (keys are kept so the report shows the shape of the call). */
 function redactArgs(v: unknown, depth = 0): unknown {
   if (depth > 6) return '<redacted>';
@@ -525,8 +554,25 @@ export function createOpsConsoleRouter(deps: OpsDeps): express.Router {
   const cfg = deps.config;
 
   const enabled: RequestHandler = (_req, res, next) => (opsSettings(cfg()).enabled ? next() : void res.status(404).json({ error: 'Not Found', message: 'The operations console is disabled (controlPlane.console.enabled: false)' }));
-  const reader: RequestHandler = (req, res, next) =>
-    consoleRole(req, cfg(), deps.isOperator) ? next() : void res.status(403).json({ error: 'Forbidden', message: 'The operations console is for operators and console viewers (controlPlane.console.viewers)' });
+  // 15.1.0: tenant viewers (controlPlane.console.tenantViewers) pass for GET traces / lineage / costs only, with
+  // res.locals.tenantScope set to the tenants they may read; operators and console viewers have no scope (full view).
+  const reader: RequestHandler = (req, res, next) => {
+    const c = cfg();
+    if (consoleRole(req, c, deps.isOperator)) return next();
+    if (req.method === 'GET' && TENANT_VIEW_ROUTES.test(req.path)) {
+      const scope = tenantViewScope(c, (req as Request & { clientId?: string }).clientId);
+      if (scope.length) {
+        res.locals.tenantScope = new Set(scope);
+        return next();
+      }
+    }
+    res.status(403).json({ error: 'Forbidden', message: 'The operations console is for operators and console viewers (controlPlane.console.viewers)' });
+  };
+  /** 15.1.0: may this request see this trace? (tenant viewers: only calls whose acting tenant is theirs) */
+  const visible = (res: Response, t: CallTrace): boolean => {
+    const scope = res.locals.tenantScope as Set<string> | undefined;
+    return !scope || (t.tenant !== undefined && scope.has(t.tenant));
+  };
   const operator: RequestHandler = (req, res, next) =>
     deps.isOperator(req) ? next() : void res.status(403).json({ error: 'Forbidden', message: 'The troubleshooting wizard is for operators (unscoped keys)' });
   const noStore: RequestHandler = (_req, res, next) => (res.set('Cache-Control', 'no-store'), next());
@@ -593,7 +639,7 @@ export function createOpsConsoleRouter(deps: OpsDeps): express.Router {
     if (outcome && !['ok', 'denied', 'error'].includes(outcome)) return void res.status(400).json({ error: 'Bad Request', message: 'outcome must be ok, denied or error' });
     const list = deps.traces
       .list()
-      .filter((t) => (!client || t.clientId === client) && (!server || t.serverId === server) && (!tool || t.tool === tool) && (!outcome || t.outcome === outcome))
+      .filter((t) => visible(res, t) && (!client || t.clientId === client) && (!server || t.serverId === server) && (!tool || t.tool === tool) && (!outcome || t.outcome === outcome))
       .slice(0, limit)
       .map(({ steps: _s, explain: _e, ...t }) => t);
     res.json({ traces: list, total: list.length });
@@ -601,7 +647,7 @@ export function createOpsConsoleRouter(deps: OpsDeps): express.Router {
 
   ops.get('/traces/:id', (req, res) => {
     const t = deps.traces.get(req.params.id);
-    if (!t) return void res.status(404).json({ error: 'Not Found', message: 'No trace with this request id (traces are kept in memory: controlPlane.console.traceBuffer)' });
+    if (!t || !visible(res, t)) return void res.status(404).json({ error: 'Not Found', message: 'No trace with this request id (traces are kept in memory: controlPlane.console.traceBuffer)' });
     res.json(t);
   });
 
@@ -611,14 +657,30 @@ export function createOpsConsoleRouter(deps: OpsDeps): express.Router {
     if (cid === undefined) return void res.status(400).json({ error: 'Bad Request', message: 'Give a request id (/lineage/<requestId>) or ?correlationId=' });
     if (!isCorrelationId(cid)) return void res.status(400).json({ error: 'Bad Request', message: 'correlationId must be 1–128 characters of A–Z a–z 0–9 . _ : -' });
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
-    const list = deps.traces.byCorrelationId(cid).slice(0, limit).map(lineageOf);
+    const list = deps.traces.byCorrelationId(cid).filter((t) => visible(res, t)).slice(0, limit).map(lineageOf);
     res.json({ lineage: list, total: list.length });
   });
 
   ops.get('/lineage/:id', (req, res) => {
     const t = deps.traces.get(req.params.id);
-    if (!t) return void res.status(404).json({ error: 'Not Found', message: 'No call with this request id (lineage is kept with the call traces: controlPlane.console.traceBuffer)' });
+    if (!t || !visible(res, t)) return void res.status(404).json({ error: 'Not Found', message: 'No call with this request id (lineage is kept with the call traces: controlPlane.console.traceBuffer)' });
     res.json(lineageOf(t));
+  });
+
+  // 15.1.0: cost rollup — the cost ledger summed by tenant, client, tool or UTC day since an instant (default: all kept)
+  ops.get('/costs', (req, res) => {
+    const by = req.query.by === undefined ? 'tenant' : req.query.by;
+    if (typeof by !== 'string' || !(COST_ROLLUP_BY as readonly string[]).includes(by)) return void res.status(400).json({ error: 'Bad Request', message: `by must be one of ${COST_ROLLUP_BY.join(', ')}` });
+    let since = 0;
+    if (req.query.since !== undefined) {
+      const raw = req.query.since;
+      const ms = typeof raw === 'string' && raw.length > 0 && raw.length <= 40 && /^\d{4}-\d{2}-\d{2}/.test(raw) ? Date.parse(raw) : NaN;
+      if (!Number.isFinite(ms)) return void res.status(400).json({ error: 'Bad Request', message: 'since must be an ISO 8601 date or date-time (e.g. 2026-10-01 or 2026-10-01T00:00:00Z)' });
+      since = ms;
+    }
+    const scope = res.locals.tenantScope as Set<string> | undefined;
+    const r = deps.costs?.rollup(by as CostRollupBy, since, scope) ?? { totals: [], total: { cost: 0, calls: 0, inputTokens: 0, outputTokens: 0 } };
+    res.json({ currency: deps.costs?.currency() ?? cfg().costs?.currency ?? 'USD', by, since: since ? new Date(since).toISOString() : null, totals: r.totals, total: r.total });
   });
 
   const parseCall = (req: Request, res: Response) => {

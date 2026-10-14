@@ -515,6 +515,16 @@
       return json({ requestId: m[1], at: iso(Date.now() - 4000), serverId: 'github', tool: denied ? 'create_issue' : 'search_issues', clientId: denied ? 'key:agents' : 'key:ci', traceId: '4bf92f3577b34da6a3ce929d0e0e4736', success: !denied, outcome: denied ? 'denied' : 'ok', totalMs: denied ? 1.2 : 182.4, steps,
         ...(denied ? { explain: { decision: 'deny', layer: 'policy', rule: 'agents-read-only', configPath: 'policy.rules[2]', reason: 'Agents may only read issues', client: 'key:agents' } } : {}) });
     }
+    // 15.1.0: call lineage and the cost rollup
+    const demoLineage = (id) => ({ requestId: id, at: iso(Date.now() - 4000), correlationId: 'motionary-edit-42', identity: { subject: 'key:ci', chain: ['key:ci'] }, tenant: 'acme', generation: 42,
+      target: { serverId: 'github', tool: 'search_issues', kind: 'tool', via: 'mcp' }, decision: { outcome: 'ok' }, upstream: { status: 'ok', ms: 181.2 }, cost: 0.002 });
+    if (p === '/admin/ops/lineage') return json({ lineage: [demoLineage('demo-t1')], total: 1 });
+    if ((m = p.match(/^\/admin\/ops\/lineage\/(.+)$/))) return json(demoLineage(decodeURIComponent(m[1])));
+    if (p === '/admin/ops/costs') {
+      const by = url.searchParams.get('by') || 'tenant';
+      const rows = { tenant: [['acme', 1.284, 642], ['labs', 0.412, 206]], client: [['key:ci', 0.9, 450], ['key:agents', 0.796, 398]], tool: [['github/search_issues', 1.1, 550], ['github/create_issue', 0.596, 298]], day: [[iso(Date.now()).slice(0, 10), 1.696, 848]] }[by] || [];
+      return json({ currency: 'USD', by, since: null, totals: rows.map(([key, cost, calls]) => ({ key, cost, calls, inputTokens: 0, outputTokens: 0 })), total: { cost: 1.696, calls: 848, inputTokens: 0, outputTokens: 0 } });
+    }
     if (p === '/admin/ops/timeline') return json({ events: [
       { at: iso(Date.now() - 60000), kind: 'circuit-open', severity: 'error', subject: 'pii-scan', detail: 'plugin circuit opened after 5 consecutive failure(s) in onToolCall', source: 'plugins' },
       { at: iso(Date.now() - 600000), kind: 'config-apply', severity: 'info', detail: 'config generation 42 committed', source: 'gateway' },
