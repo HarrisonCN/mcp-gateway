@@ -533,6 +533,23 @@ export interface ToolPolicyConfig {
     allowSelfApproval?: boolean;
   };
   outputFilter?: OutputFilterConfig;
+  /** 15.3.0-canary.0: tool schema governance — `outputSchema` validation and schema pins. */
+  toolSchemas?: ToolSchemasConfig;
+}
+
+/** 15.3.0-canary.0: `policy.toolSchemas`. */
+export interface ToolSchemasConfig {
+  /**
+   * Check a tool result's `structuredContent` against the tool's `outputSchema`: `off` (default), `audit` (pass through,
+   * count and log) or `enforce` (refuse the call with -32005; nothing of the invalid result reaches the client).
+   */
+  validateOutput?: 'off' | 'audit' | 'enforce';
+  /** `server/tool` globs validation applies to (default: every tool with an `outputSchema`). */
+  tools?: string[];
+  /** `server/tool` → sha256 of the tool's canonical `{ inputSchema, outputSchema }` (`GET /api/v1/admin/ops/tool-schemas`). */
+  pins?: Record<string, string>;
+  /** A call to a tool whose schema no longer matches its pin: `block` (default, refused before the upstream call) or `audit`. */
+  onDrift?: 'block' | 'audit';
 }
 
 export interface ObservabilityConfig {

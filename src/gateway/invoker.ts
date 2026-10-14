@@ -14,10 +14,11 @@ import { authorize, principalChain, type Principal } from '../auth/authorizer.js
 import { actorOf, identityOf, type CallIdentity } from '../auth/identity.js';
 import type { McpProxy, ProgressUpdate, RelayCaller } from '../proxy/index.js';
 import type { MetricsCollector } from '../monitor/index.js';
-import type { McpServerConfig, ProxyResponse, ToolPolicyConfig } from '../utils/types.js';
+import type { McpServerConfig, ProxyResponse, ToolInfo, ToolPolicyConfig } from '../utils/types.js';
 import { evaluateActorPolicy, evaluatePolicy } from '../policy/tool-policy.js';
 import { ApprovalQueue } from '../policy/approvals.js';
 import { OutputFilter } from '../policy/output-filter.js';
+import { ToolSchemaGovernor } from '../policy/tool-schemas.js';
 
 /** Call refused by `policy.rules` (also used for forbidden scopes). */
 export const ERR_POLICY_DENIED = -32003;
@@ -191,6 +192,8 @@ export interface InvokerDeps {
   serverKey?: (serverId: string) => string | undefined;
   /** 13.2.0: plugin instances of the pinned generation (default: the host's active ones). */
   pluginList?: () => readonly GatewayPlugin[];
+  /** 15.3.0-canary.0: the tool-list entry of a server's tool (schemas for `policy.toolSchemas`). */
+  toolInfo?: (serverId: string, tool: string) => ToolInfo | undefined;
 }
 
 /** A routing-split decision made once per call and authorized before any cache lookup (13.1.1). */
@@ -225,6 +228,8 @@ const MAX_FINAL_ROUNDS = 3;
 export class ToolInvoker {
   readonly approvals: ApprovalQueue;
   private filter?: { config: unknown; filter: OutputFilter };
+  /** 15.3.0-canary.0: `policy.toolSchemas` (output validation, schema pins) and its counters. */
+  readonly toolSchemas = new ToolSchemaGovernor();
   /** Prompt-injection findings since start (per pattern). */
   readonly filterFindings = new Map<string, number>();
   /** Calls refused by the central authorizer since start (11.1). */
@@ -710,6 +715,17 @@ export class ToolInvoker {
         return this.refuse(ctx, ERR_BUDGET_EXCEEDED, message, { decision: 'budget', budget: over.budget, limit: over.limit, spent: over.spent, resetsAt: over.resetsAt }, span);
       }
     }
+    // 15.3.0-canary.0: schema pin — refused before the upstream call when the tool's schema drifted.
+    const schemaCfg = ctx.kind === 'tool' ? this.deps.policy?.()?.toolSchemas : undefined;
+    if (schemaCfg?.pins) {
+      const drift = this.toolSchemas.checkPin(schemaCfg, snapshot.serverId, snapshot.tool, this.deps.toolInfo?.(snapshot.serverId, snapshot.tool));
+      if (drift) {
+        span.setAttribute('mcp.tool_schema.drift', drift.key);
+        const message = `Tool ${drift.key} no longer matches its pinned schema (pinned ${drift.expected.slice(0, 12)}…, now ${drift.actual ? `${drift.actual.slice(0, 12)}…` : 'not listed'})`;
+        if (drift.block) return this.refuse(ctx, ERR_POLICY_DENIED, message, { decision: 'schema-drift', tool: drift.key, pinned: drift.expected, current: drift.actual }, span);
+        logger.warn(`audit: ${message} — let through (policy.toolSchemas.onDrift: audit)`);
+      }
+    }
     clock.lap('policy');
     let result: ProxyResponse;
     try {
@@ -759,6 +775,22 @@ export class ToolInvoker {
               error: { code: ERR_OUTPUT_BLOCKED, message: 'Tool output blocked: possible prompt injection', data: { patterns: ids, result: out.result } },
             }
           : { ...result, result: out.result };
+      }
+    }
+    // 15.3.0-canary.0: structuredContent against the tool's outputSchema (policy.toolSchemas.validateOutput).
+    if (schemaCfg && result.success) {
+      const bad = this.toolSchemas.checkOutput(schemaCfg, snapshot.serverId, snapshot.tool, this.deps.toolInfo?.(snapshot.serverId, snapshot.tool), result.result);
+      if (bad) {
+        const where = bad.errors.slice(0, 3).map((e) => `${e.path || '(root)'}: ${e.message}`).join('; ');
+        span.setAttribute('mcp.tool_schema.violation', bad.key);
+        logger.warn(`audit: ${bad.key} result does not match its outputSchema (${where}): ${bad.enforce ? 'blocked' : 'passed (audit)'}`);
+        if (bad.enforce) {
+          result = {
+            success: false,
+            durationMs: result.durationMs,
+            error: { code: ERR_OUTPUT_BLOCKED, message: "Tool output blocked: structuredContent does not match the tool's outputSchema", data: { decision: 'output-schema', tool: bad.key, errors: bad.errors } },
+          };
+        }
       }
     }
     // 5.6: feature call hooks (after).
