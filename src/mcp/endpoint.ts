@@ -57,6 +57,23 @@ import {
 import { isServerInScope } from '../auth/scopes.js';
 import { matchesUriTemplate } from './catalog.js';
 import { clientCorrelationId, metaCorrelationId } from '../middleware/request-id.js';
+import {
+  MODERN_PROTOCOL_VERSION,
+  META_CLIENT_CAPABILITIES,
+  META_CLIENT_INFO,
+  MODERN_METHODS,
+  MODERN_REMOVED_METHODS,
+  MODERN_TTL_MS,
+  ERR_HEADER_MISMATCH,
+  ERR_UNSUPPORTED_PROTOCOL_VERSION,
+  LEGACY_RESOURCE_NOT_FOUND,
+  MODERN_RESOURCE_NOT_FOUND,
+  declaredVersion,
+  decorateModernResult,
+  headerMismatch,
+  metaOf,
+} from './modern.js';
+export { MODERN_PROTOCOL_VERSION } from './modern.js';
 
 /** 15.2.0-canary.1: `params._meta.correlationId` of the message, else the X-Request-Id / X-Correlation-Id header. */
 const correlationOf = (req: Request, msg: JsonRpcMessage): string | undefined => metaCorrelationId(msg.params) ?? clientCorrelationId(req);
@@ -141,6 +158,8 @@ interface DownstreamSession {
   /** Requests the gateway sent to the client, awaiting its response (by JSON-RPC id). */
   pendingClient: Map<string, (msg: JsonRpcMessage) => void>;
   clientSeq: number;
+  /** 16.1.0-canary.0: a per-request session for one stateless MCP 2026-07-28 request (never stored, no Mcp-Session-Id). */
+  ephemeral?: true;
 }
 
 /** Reference to the downstream caller handed to the proxy with each call (passthrough routing). */
@@ -449,6 +468,17 @@ export class McpEndpoint {
     }
     const msgs = messages as JsonRpcMessage[];
 
+    // 16.1.0-canary.0: MCP 2026-07-28 — `server/discover` and requests that declare their version in `_meta` (or a
+    // modern MCP-Protocol-Version header) without a session are served statelessly; `initialize` keeps the handshake.
+    if (typeof req.headers['mcp-session-id'] !== 'string' && !msgs.some((m) => m.method === 'initialize')) {
+      const discover = msgs.length === 1 && msgs[0]!.method === 'server/discover' && msgs[0]!.id !== undefined && msgs[0]!.id !== null;
+      const modernHeader = req.headers['mcp-protocol-version'] === MODERN_PROTOCOL_VERSION;
+      if (discover || modernHeader || msgs.some((m) => declaredVersion(m.params) !== undefined)) {
+        await this.handleModern(req, res, msgs, batch);
+        return;
+      }
+    }
+
     // ── initialize: creates the session ──
     const init = msgs.find((m) => m.method === 'initialize');
     if (init) {
@@ -461,13 +491,6 @@ export class McpEndpoint {
         return;
       }
       this.initialize(req, res, init);
-      return;
-    }
-
-    // 13.6.0: a sessionless `server/discover` (the 2026-07-28 stateless-era probe) is answered "method not found",
-    // so modern SDK clients fall back to the initialize handshake instead of failing on a missing-session error.
-    if (msgs.length === 1 && msgs[0]!.method === 'server/discover' && msgs[0]!.id !== undefined && msgs[0]!.id !== null && typeof req.headers['mcp-session-id'] !== 'string') {
-      res.status(200).json(rpcError(msgs[0]!.id, { code: JSONRPC_METHOD_NOT_FOUND, message: `Method not found: server/discover (this gateway negotiates with initialize: ${this.allowedVersions().join(', ')})` }));
       return;
     }
 
@@ -528,6 +551,120 @@ export class McpEndpoint {
     res.status(200).json(batch ? replies : replies[0]);
   }
 
+  /** 16.1.0-canary.0: whether `/mcp` serves the stateless 2026-07-28 core (on unless `mcp.protocolVersions` leaves it out). */
+  private modernEnabled(): boolean {
+    const pinned = this.cfg.protocolVersions;
+    return !pinned?.length || pinned.includes(MODERN_PROTOCOL_VERSION);
+  }
+
+  /** Every revision this endpoint serves, newest first (the modern core, then the handshake revisions). */
+  supportedVersions(): string[] {
+    return this.modernEnabled() ? [MODERN_PROTOCOL_VERSION, ...this.allowedVersions()] : this.allowedVersions();
+  }
+
+  private serverInfo(): { name: string; version: string } {
+    return { name: 'mcp-gateway', version: VERSION };
+  }
+
+  /**
+   * 16.1.0-canary.0: one stateless MCP 2026-07-28 request. Header validation (-32020), version check (-32022), then the
+   * same request handlers as a session, with a per-request session built from the caller's identity and `_meta`.
+   */
+  private async handleModern(req: Request, res: Response, msgs: JsonRpcMessage[], batch: boolean): Promise<void> {
+    if (batch || msgs.length !== 1) {
+      res.status(400).json(rpcError(null, { code: JSONRPC_INVALID_REQUEST, message: `Invalid Request: MCP ${MODERN_PROTOCOL_VERSION} takes one JSON-RPC message per POST` }));
+      return;
+    }
+    const msg = msgs[0]!;
+    if (msg.method === undefined) {
+      res.status(400).json(rpcError(msg.id, { code: JSONRPC_INVALID_REQUEST, message: `Invalid Request: clients do not send responses in MCP ${MODERN_PROTOCOL_VERSION}` }));
+      return;
+    }
+    if (msg.id === undefined || msg.id === null) {
+      res.status(202).end(); // 2026-07-28 defines no client notifications over HTTP; accepted and ignored
+      return;
+    }
+    const id = msg.id;
+    const method = msg.method;
+    const supported = this.supportedVersions();
+    // A bare `server/discover` (a dual-era client's probe, no _meta / headers) is answered as is.
+    const bareDiscover = method === 'server/discover' && declaredVersion(msg.params) === undefined && req.headers['mcp-protocol-version'] === undefined;
+    if (bareDiscover && !this.modernEnabled()) {
+      // core off (mcp.protocolVersions without 2026-07-28): keep the 13.6 answer so dual-era clients use initialize
+      res.status(200).json(rpcError(id, { code: JSONRPC_METHOD_NOT_FOUND, message: `Method not found: server/discover (this gateway negotiates with initialize: ${this.allowedVersions().join(', ')})` }));
+      return;
+    }
+    if (!bareDiscover) {
+      const mismatch = headerMismatch(req.headers, method, msg.params);
+      if (mismatch) {
+        res.status(400).json(rpcError(id, { code: ERR_HEADER_MISMATCH, message: `Header mismatch: ${mismatch}` }));
+        return;
+      }
+      const requested = declaredVersion(msg.params)!;
+      // Handshake revisions need `initialize`; statelessly only the modern core is served.
+      const servable = method === 'server/discover' ? supported.includes(requested) : requested === MODERN_PROTOCOL_VERSION && this.modernEnabled();
+      if (!servable) {
+        res.status(400).json(rpcError(id, { code: ERR_UNSUPPORTED_PROTOCOL_VERSION, message: 'Unsupported protocol version', data: { supported, requested } }));
+        return;
+      }
+    }
+    if (method === 'server/discover') {
+      const result: Record<string, unknown> = {
+        supportedVersions: supported,
+        capabilities: { tools: {}, resources: {}, prompts: {}, completions: {} },
+        cacheScope: 'private',
+        ttlMs: MODERN_TTL_MS,
+      };
+      if (this.cfg.instructions) result.instructions = this.cfg.instructions;
+      res.status(200).json({ jsonrpc: '2.0', id, result: decorateModernResult(method, result, this.serverInfo()) });
+      return;
+    }
+    if (MODERN_REMOVED_METHODS.has(method) || !MODERN_METHODS.has(method)) {
+      res.status(404).json(rpcError(id, { code: JSONRPC_METHOD_NOT_FOUND, message: `Method not found: ${method} is not part of MCP ${MODERN_PROTOCOL_VERSION}` }));
+      return;
+    }
+    const meta = metaOf(msg.params) ?? {};
+    const info = meta[META_CLIENT_INFO];
+    const session: DownstreamSession = {
+      id: `stateless-${randomUUID()}`,
+      clientId: (req as AuthedRequest).clientId,
+      protocolVersion: MODERN_PROTOCOL_VERSION,
+      clientInfo: isObject(info) ? { name: typeof info.name === 'string' ? info.name : undefined, version: typeof info.version === 'string' ? info.version : undefined } : undefined,
+      createdAt: new Date(),
+      lastSeen: Date.now(),
+      streams: [],
+      inflight: new Map(),
+      eventSeq: 0,
+      eventLog: [],
+      auth: identityOf(req),
+      subscriptions: new Set(),
+      capabilities: isObject(meta[META_CLIENT_CAPABILITIES]) ? (meta[META_CLIENT_CAPABILITIES] as Record<string, unknown>) : {},
+      pendingClient: new Map(),
+      clientSeq: 0,
+      ephemeral: true,
+    };
+    const ctrl = new AbortController();
+    res.on('close', () => {
+      if (!res.writableFinished) ctrl.abort(); // 2026-07-28: closing the response stream is the cancellation signal
+    });
+    const stream = acceptsEventStream(req) ? this.replyStream(res, session) : undefined;
+    let reply = await this.handleRequest(session, req, res, msg, ctrl.signal, true, stream).catch((err: unknown): JsonRpcMessage => {
+      logger.error(`MCP ${method} failed: ${err instanceof Error ? err.message : String(err)}`);
+      return rpcError(id, { code: JSONRPC_INTERNAL_ERROR, message: 'Internal error' });
+    });
+    if (reply.error?.code === LEGACY_RESOURCE_NOT_FOUND) reply = { ...reply, error: { ...reply.error, code: MODERN_RESOURCE_NOT_FOUND } };
+    if (reply.result !== undefined) reply = { ...reply, result: decorateModernResult(method, reply.result, this.serverInfo()) };
+    if (stream?.started) {
+      if (!res.writableEnded) {
+        stream.send(reply);
+        res.end();
+      }
+      return;
+    }
+    if (res.headersSent || res.destroyed) return;
+    res.status(200).json(reply); // an upstream's own -32601 stays a 200: 404 means the gateway lacks the method
+  }
+
   private replyStream(res: Response, session: DownstreamSession): ReplyStream {
     const stream: ReplyStream = {
       started: false,
@@ -541,7 +678,7 @@ export class McpEndpoint {
             'Cache-Control': 'no-cache, no-transform',
             Connection: 'keep-alive',
             'X-Accel-Buffering': 'no',
-            'Mcp-Session-Id': session.id,
+            ...(session.ephemeral ? {} : { 'Mcp-Session-Id': session.id }),
           });
           res.flushHeaders();
         }
@@ -554,12 +691,20 @@ export class McpEndpoint {
   /** Revisions this endpoint accepts (`mcp.protocolVersions`, default all). */
   private allowedVersions(): string[] {
     const pinned = this.cfg.protocolVersions?.filter((v) => DOWNSTREAM_PROTOCOL_VERSIONS.includes(v));
-    return pinned?.length ? pinned : DOWNSTREAM_PROTOCOL_VERSIONS;
+    if (pinned?.length) return pinned;
+    // 16.1.0-canary.0: a list that names only 2026-07-28 makes the endpoint modern-only (no handshake revision)
+    if (this.cfg.protocolVersions?.includes(MODERN_PROTOCOL_VERSION)) return [];
+    return DOWNSTREAM_PROTOCOL_VERSIONS;
   }
 
   private initialize(req: Request, res: Response, msg: JsonRpcMessage): void {
     const params = isObject(msg.params) ? msg.params : {};
     const requested = typeof params.protocolVersion === 'string' ? params.protocolVersion : undefined;
+    if (this.allowedVersions().length === 0) {
+      // modern-only endpoint: name the supported revision, legacy clients have no fall-forward (2026-07-28 versioning)
+      res.status(400).json(rpcError(msg.id, { code: ERR_UNSUPPORTED_PROTOCOL_VERSION, message: `Unsupported protocol version: this endpoint serves only MCP ${MODERN_PROTOCOL_VERSION} (no initialize handshake)`, data: { supported: this.supportedVersions(), requested } }));
+      return;
+    }
     const protocolVersion = negotiateVersion(requested, this.allowedVersions());
     if (requested === '2024-11-05') deprecate(MCP_2024_11_05); // 16.0.0-alpha.1: asked for, answered with a newer revision
 

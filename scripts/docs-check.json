@@ -11,7 +11,7 @@
   ],
   "prerelease": {
     "tag": "canary",
-    "version": "16.0.0-rc.1",
+    "version": "16.1.0-canary.0",
     "stable": "14.9.2"
   },
   "historical": [
@@ -34,6 +34,10 @@
     {
       "tag": "next",
       "version": "15.0.0-rc.4"
+    },
+    {
+      "tag": "canary",
+      "version": "16.0.0-rc.1"
     }
   ]
 }
