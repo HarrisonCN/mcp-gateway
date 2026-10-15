@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [16.1.0-canary.0] - 2026-10-15
+
+**Development prerelease — first 16.1 canary** (npm dist-tag `canary`, image `:16.1.0-canary.0` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). 16.1 was conditional on a new MCP specification revision; [MCP 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28) was published on 2026-07-28. This canary makes `/mcp` dual-era. 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)); 16.0.0 is at rc.1 on `canary` and needs its own gates.
+
+### Added
+
+- **MCP 2026-07-28 on `/mcp`, statelessly** ([client compatibility](docs/guides/client-compatibility.md#mcp-2026-07-28-1610-canary0)), additive — the handshake revisions (2025-11-25, 2025-06-18, 2025-03-26) and their sessions are unchanged:
+  - **`server/discover`** without a session: `supportedVersions` (2026-07-28 first, then the handshake revisions allowed by `mcp.protocolVersions`), `capabilities`, `_meta["io.modelcontextprotocol/serverInfo"]`, `instructions`, `ttlMs` / `cacheScope`. A bare probe without `_meta` gets the same answer, so dual-era clients (the official Python SDK `mcp` 2.x in `mode="auto"`) stay on 2026-07-28 instead of falling back — 13.6–16.0 answered `-32601`.
+  - A request without `Mcp-Session-Id` that declares `params._meta["io.modelcontextprotocol/protocolVersion"]` is served without a session: `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`, `prompts/list`, `prompts/get`, `completion/complete`, through the same authentication, scopes, policy, rate limits, audit and lineage as a session request. Results carry `resultType: "complete"` and `_meta` serverInfo; list / read results carry `ttlMs` (30 s) and `cacheScope: "private"`.
+  - Streamable HTTP server validation: `MCP-Protocol-Version` must equal the `_meta` version, `Mcp-Method` the method, `Mcp-Name` the tool / prompt name or resource URI (Base64 sentinel `=?base64?…?=` decoded) → otherwise `400` + `-32020` HeaderMismatch. A version that is not served statelessly → `400` + `-32022` with `data.supported` / `data.requested`. Methods 2026-07-28 removed (`ping`, `logging/setLevel`, `resources/subscribe` / `unsubscribe`) and unknown methods → `404` + `-32601`; one message per POST (a batch is `400` `-32600`); resource not found is `-32602` in this mode.
+  - `mcp.protocolVersions` accepts `2026-07-28`: without the key everything is served; a list without it turns the stateless core off (a bare `server/discover` keeps the old `-32601`); a list naming only it makes `/mcp` modern-only (`initialize` → `400` + `-32022` naming the supported revision).
+  - Not in this canary: `subscriptions/listen`, Multi Round-Trip Requests (upstream sampling / elicitation / roots are unavailable to stateless callers), the tasks extension, per-request `logLevel`, `x-mcp-header` parameters, speaking 2026-07-28 to upstream servers.
+
+### Tests
+
+- `test/mcp-modern-16-1-0.test.ts` (written first; failing-before 6/7 → `mcpmodern-failing-before`; M7, the unchanged handshake path, passed before): M1 discover, M2 stateless tools with scopes, M3 header validation incl. Base64 sentinel, M4 unsupported versions and the pin without 2026-07-28, M5 removed methods / batches, M6 resources and prompts (-32602), M7 handshake unchanged, M8 config + modern-only pin. During implementation: M6 found that an upstream's own `-32601` must stay HTTP 200 (404 only for methods the gateway lacks), and the "unknown resource" case needed a caller with no resource server in scope (the fixture answers any URI); M4 / M8 were added for the pinned cases.
+- `test/compat-matrix-13-6-0.test.ts`: the `server/discover` check now expects a DiscoverResult (and `-32020` for a header-only probe); the Python SDK check accepts `2026-07-28` for `mode="auto"`. Locally with `mcp==2.3.0` (the version CI pins): auto mode stays on 2026-07-28 and calls a tool statelessly; session mode on 2025-11-25 unchanged.
+
 ## [16.0.0-rc.1] - 2026-10-14
 
 **Release candidate prerelease — first 16.0 release candidate** (npm dist-tag `canary`, image `:16.0.0-rc.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate until 15.0.0 is stable). From this release the [16.0 freeze list](docs/v16/freeze.md) is **frozen**. A frozen list is not a passed gate: 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)) and stable 16.0.0 needs its own gates (A / B against the 15.0 baseline, an incremental external security review).
