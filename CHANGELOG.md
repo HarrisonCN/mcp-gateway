@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [16.2.0-canary.0] - 2026-10-15
+
+**Development prerelease — first 16.2 canary** (npm dist-tag `canary`, image `:16.2.0-canary.0` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). Multi-region control plane 2.0. 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)); 16.0.0 is at rc.1 on `canary` and needs its own gates.
+
+### Added
+
+- **Revocation propagation SLO** ([multi-region](docs/guides/multi-region.md#control-plane-20-1620-canary0-development-prerelease)) — `regions.consistency.revocationSloMs` (integer ≥ 100, default `maxStalenessMs`). When a revocation issued in another region first reaches this one, its latency is measured (this region's clock minus the issuing region's revocation time, corrected by that peer's observed clock skew; never negative). A slower one is a breach: counted, on the operations console timeline as the new kind `revocation-slo` (warning) and exported as `mcp_gateway_region_revocation_slo_breaches_total`, next to `mcp_gateway_region_revocation_slo_seconds` and `mcp_gateway_region_revocation_propagation_seconds{quantile}`. `GET /admin/regions/report` gains `revocationPropagation` (`sloMs`, `samples`, `breaches`, p50 / p99 / max over the last 200, 20 most recent samples). Own-region and store-relayed revocations are not sampled. A peer's skew is now recorded before its revocations are merged in a sync round, so the correction uses the same exchange.
+- **Cross-region rollup** — each region adds its own figures to the sync exchange (cost ledger since the start of the UTC day, total and by tenant; kept call lineage by outcome). `GET /admin/regions/rollup` lists every region (`self` / `fresh` / `stale` / `missing`, `asOf`, `lagMs`) with the sums (`total.costs`, `total.byTenant`, `total.lineage`) and `complete` (every peer fresh with figures). The operations console cluster view shows it under `regions.rollup`, with the propagation summary. A malformed rollup, or one claiming another region, is ignored.
+- **Region-qualified lineage** — with `regions` configured, lineage records (`GET /admin/ops/lineage/:requestId`, `?correlationId=`) carry `region` and `globalId` (`<region>:<requestId>`, unique across regions). `GET /admin/regions/lineage/:globalId` resolves one from any region (its own record, or the peer's fetched with the peer `apiKey`; `404` unknown region / call, `400` without a region part, `502` peer unreachable). Gateways without `regions` keep the 15.1 lineage shape.
+- Feature context (`FeatureContext`) gains optional `costRollup`, `lineageSummary`, `lineage` (used by the regions module).
+
+### Tests
+
+- `test/regions-control-plane-16-2-0.test.ts` (written first; failing-before 8/8 → `regions162-failing-before`): propagation latency with skew correction, breaches and quantiles; never-negative latency and the default SLO; config validation; `mergeRollups` (sums, statuses, completeness); peer rollups only from configured peers and only when well formed; two in-process regions: rollup of costs + lineage across regions and on the console cluster view, region-qualified lineage resolvable from either region, an SLO breach under an injected partition (report, metrics, timeline).
+
 ## [16.1.0-canary.1] - 2026-10-15
 
 **Development prerelease — second 16.1 canary** (npm dist-tag `canary`, image `:16.1.0-canary.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). It adds change notifications for stateless MCP 2026-07-28 callers. 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)); 16.0.0 is at rc.1 on `canary` and needs its own gates.
