@@ -112,7 +112,8 @@ mcp:
     expect(out.mcp.protocolVersions).toEqual(['2025-06-18']);
     const c = validateConfig(out) as any;
     expect(c.schemaVersion).toBe(13);
-    expect(ids(c)).toEqual([]);
+    // 16.9.0-canary.0: no 16.0 entries; the inline plugin (allowInline) is announced for 17.0 (plugin API v6)
+    expect(ids(c)).toEqual(['v17.plugins.1.inline']);
     const again = planV13(r.text, 'yaml');
     expect(again.ok).toBe(true);
     expect(again.changes).toEqual([]);

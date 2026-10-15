@@ -38,7 +38,7 @@ describe('8.0: schema v8, plugin API v5', () => {
     expect(() => validateConfig({ servers: [], plugins: [{ module: './a.mjs', runtime: 'inline', limits: { timeoutMs: 5 } }] })).toThrow(/apply to WASM component plugins only/); // 15.0: inline must be explicit
     expect(() => validateConfig({ version: 14, servers: [] })).toThrow(/16\.0 reads `version: 13`/); // 16.0.0-alpha.1: v13 is read
     expect(removedConfigKeys({ version: 11 })).toEqual([]);
-    expect(PLUGIN_API_VERSION).toBe(5);
+    expect(PLUGIN_API_VERSION).toBeGreaterThanOrEqual(5); // 16.9.0-canary.0: the loader implements v6 (v5 still loads)
     expect(PLUGIN_API_MIN_VERSION).toBe(5);
   });
 

@@ -33,6 +33,12 @@
  * from `onToolCall`, `{ action: 'continue' | 'replace', result }` from `onResponse` — the same contract WASM component
  * plugins (`component:`) implement. The v4 return shapes keep working inside v5 plugins. 8.0 refuses `apiVersion: 4`.
  *
+ * Plugin API v6 (16.9.0-canary.0, the 17.0 contract — proposal until 17.0.0-rc.1): v5 without the v4 return shapes —
+ * hooks return `{ action }` outcomes only (anything else fails the hook, fail closed) — and module plugins run in a
+ * worker or a child process only (a v6 module plugin is refused inline, so it has no `onRequest` / `routes`). 16.9 loads
+ * v5 and v6; a loaded v5 module plugin, a v4-era outcome from it and HTTP hooks are recorded as 17.0 deprecations
+ * (`mcp-gateway plugin migrate --to v6` rewrites a plugin file).
+ *
  * Hooks run in configuration order; the first refusal / short-circuit wins.
  * A hook that throws fails the call (`-32006`) — plugins fail closed.
  *
@@ -50,14 +56,16 @@ import { logger, type Logger } from '../utils/logger.js';
 import { VERSION } from '../utils/version.js';
 import { createHash } from 'crypto';
 import { isDeepStrictEqual } from 'util';
+import { deprecate } from '../utils/deprecations.js';
+import { apiV5, httpHooks, legacyOutcome } from '../config/v17-deprecations.js';
 import { IsolatedRuntimeHandle, PluginBusy, PluginCrash, RUNTIME, RUNTIME_KILL, type HookName, type IsolatedRuntime, type ModulePluginLimits, type PluginPermissions } from './runtime.js';
 
 export { PluginCrash, PluginBusy, PluginTimeout, type PluginPermissions, type ModulePluginLimits } from './runtime.js';
 
 /** Version of the plugin contract implemented by this gateway. */
-export const PLUGIN_API_VERSION = 5;
+export const PLUGIN_API_VERSION = 6;
 
-/** Oldest plugin contract still loaded (8.0: v5 only). */
+/** Oldest plugin contract still loaded (8.0: v5 only; 16.9.0: v5 – v6; 17.0: v6 only, proposal). */
 export const PLUGIN_API_MIN_VERSION = 5;
 
 /** Call refused (or failed) by a plugin hook. */
@@ -407,6 +415,21 @@ export function pluginRuntimeOf(p: unknown): 'inline' | IsolatedRuntime | 'wasm'
 }
 
 
+/** 16.9.0: plugin API version of each loaded module plugin (programmatic plugin objects are not tracked). */
+const moduleApi = new WeakMap<GatewayPlugin, number>();
+
+/**
+ * 16.9.0: a hook outcome in a v4-era shape (anything but `{ action }` / nothing). A v6 module plugin fails the hook;
+ * a v5 one is recorded as the 17.0 deprecation `v17.plugins.<name>.legacy-outcome`.
+ */
+function checkOutcome(p: GatewayPlugin, hook: 'onToolCall' | 'onResponse', out: unknown, name = p.name): void {
+  if (!out || typeof out !== 'object' || 'action' in out) return;
+  const v = moduleApi.get(p);
+  if (v === undefined) return;
+  if (v >= 6) throw new Error(`plugin API v6 accepts only { action } outcomes from ${hook} (got ${Object.keys(out).slice(0, 4).join(', ') || 'an object'}); see docs/migrating-to-v17.md`);
+  deprecate(legacyOutcome(name, hook));
+}
+
 /** Plugin API v5 outcome (`{ action }`) → the internal shape; v4 shapes pass through. */
 export function normalizeToolCallOutcome(out: unknown): ToolCallOutcome {
   if (!out || typeof out !== 'object' || !('action' in out)) return out as ToolCallOutcome;
@@ -467,6 +490,14 @@ export async function loadPlugin(cfg: PluginConfig, baseDir = process.cwd(), tru
   const exported = mod.default ?? mod.plugin ?? mod;
   const plugin = await instantiate(exported, contextFor(cfg), spec);
   const out = cfg.name ? { ...plugin, name: cfg.name, close: plugin.close?.bind(plugin) } : plugin;
+  // 16.9.0: plugin API v6 module plugins never run in the gateway process
+  if ((plugin.apiVersion ?? 0) >= 6) {
+    await closeQuietly(out);
+    throw new Error(`Plugin "${out.name}" declares plugin API v6, whose module plugins run in a worker or a child process only — use runtime: worker (or process)`);
+  }
+  moduleApi.set(out, plugin.apiVersion ?? PLUGIN_API_MIN_VERSION);
+  deprecate(apiV5(out.name));
+  if (out.onRequest || out.routes) deprecate(httpHooks(out.name));
   if (cfg.secrets) grants.set(out, { ...cfg.secrets });
   try {
     parsedOptions.set(out, validatePluginOptions(out, cfg.options ?? {}));
@@ -507,6 +538,8 @@ async function loadIsolated(cfg: PluginConfig, runtime: IsolatedRuntime, url: st
     throw err;
   }
   const name = cfg.name ?? meta.name;
+  const apiVersion = meta.apiVersion ?? PLUGIN_API_MIN_VERSION;
+  if (apiVersion < 6) deprecate(apiV5(name));
   const plugin: GatewayPlugin & { [RUNTIME]: IsolatedRuntime; [RUNTIME_KILL]: () => Promise<void>; runtimeStats: () => ReturnType<IsolatedRuntimeHandle['stats']> } = {
     name,
     apiVersion: meta.apiVersion,
@@ -515,6 +548,7 @@ async function loadIsolated(cfg: PluginConfig, runtime: IsolatedRuntime, url: st
     runtimeStats: () => handle.stats(),
     close: () => handle.close(),
   };
+  moduleApi.set(plugin, apiVersion);
   const callPayload = (call: PluginCall) => ({
     serverId: call.serverId,
     name: call.name,
@@ -536,6 +570,7 @@ async function loadIsolated(cfg: PluginConfig, runtime: IsolatedRuntime, url: st
       const before = call.arguments;
       const r = await handle.call('onToolCall', { call: callPayload(call), tenant: tenantOf(ctx), secretNames: ctx.secrets?.names() ?? [] }, ctx.secrets);
       syncState(call, r.state);
+      checkOutcome(plugin, 'onToolCall', r.out, name);
       const out = normalizeToolCallOutcome(r.out);
       // an in-place change of `call.arguments` inside the runtime is a rewrite
       if (!out && r.arguments && !isDeepStrictEqual(r.arguments, before)) return { arguments: r.arguments };
@@ -546,6 +581,7 @@ async function loadIsolated(cfg: PluginConfig, runtime: IsolatedRuntime, url: st
     plugin.onResponse = async (call, result, ctx) => {
       const r = await handle.call('onResponse', { call: callPayload(call), result, tenant: tenantOf(ctx), secretNames: ctx.secrets?.names() ?? [] }, ctx.secrets);
       syncState(call, r.state);
+      checkOutcome(plugin, 'onResponse', r.out, name);
       return r.out as ProxyResponse | void;
     };
   }
@@ -696,7 +732,8 @@ export class PluginHost {
   private ctxOf(p: GatewayPlugin, call?: PluginCall): PluginHookContext {
     let c = this.hookCtx.get(p);
     if (!c) {
-      c = { plugin: p.name, logger, gatewayVersion: VERSION, apiVersion: PLUGIN_API_VERSION };
+      // 16.9.0: hooks see the contract the plugin declared (a v5 plugin keeps seeing 5)
+      c = { plugin: p.name, logger, gatewayVersion: VERSION, apiVersion: Math.min(p.apiVersion ?? PLUGIN_API_VERSION, PLUGIN_API_VERSION) };
       if ((p.apiVersion ?? 1) >= 3) {
         const granted = grants.get(p) ?? {};
         const resolve = this.env.resolveSecret;
@@ -927,7 +964,9 @@ export class PluginHost {
       const snapshot = readOnly ? structuredCloneSafe(call.arguments) : undefined;
       let out: ToolCallOutcome;
       try {
-        out = normalizeToolCallOutcome(await withTimeout(p, 'onToolCall', hookTimeouts.get(p), () => p.onToolCall!(call, this.ctxOf(p, call))));
+        const raw = await withTimeout(p, 'onToolCall', hookTimeouts.get(p), () => p.onToolCall!(call, this.ctxOf(p, call)));
+        if (pluginRuntimeOf(p) === 'inline') checkOutcome(p, 'onToolCall', raw); // isolated plugins are checked in their proxy
+        out = normalizeToolCallOutcome(raw);
         this.succeeded(p);
       } catch (err) {
         if (snapshot) call.arguments = snapshot;
@@ -962,7 +1001,9 @@ export class PluginHost {
       }
       let next: ProxyResponse | undefined;
       try {
-        next = normalizeResponseOutcome(await withTimeout(p, 'onResponse', hookTimeouts.get(p), () => p.onResponse!(call, current, this.ctxOf(p, call))), current);
+        const raw = await withTimeout(p, 'onResponse', hookTimeouts.get(p), () => p.onResponse!(call, current, this.ctxOf(p, call)));
+        if (pluginRuntimeOf(p) === 'inline') checkOutcome(p, 'onResponse', raw);
+        next = normalizeResponseOutcome(raw, current);
         this.succeeded(p);
       } catch (err) {
         const e = this.failed(p, 'onResponse', err);

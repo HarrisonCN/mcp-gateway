@@ -202,7 +202,8 @@ async function init(m) {
     }
   }
   plugin = value;
-  base = { plugin: m.name || value.name, logger, gatewayVersion: m.gatewayVersion, apiVersion: m.apiVersion, state: createState() };
+  // 16.9.0: hooks see the contract the plugin declared (a v5 plugin keeps seeing 5 on a v6 gateway)
+  base = { plugin: m.name || value.name, logger, gatewayVersion: m.gatewayVersion, apiVersion: Math.min(value.apiVersion || m.apiVersion, m.apiVersion), state: createState() };
   const hooks = ['onRequest', 'onToolCall', 'onResponse', 'onError', 'onConfigChange'].filter((h) => typeof value[h] === 'function');
   return { name: value.name, apiVersion: value.apiVersion, hooks, routes: !!value.routes, options: clone(options) };
 }

@@ -118,9 +118,18 @@ describe('compatibility matrix (15.2.0-canary.1)', () => {
 
   it('C2 the running gateway is in the matrix and matches PLUGIN_API_VERSION / the loader', () => {
     const row = compat.PLUGIN_COMPATIBILITY.find((r) => compat.inRange(VERSION, r));
-    if (Number(VERSION.split('.')[0]) >= 16) {
-      // 16.0.0-rc.1: the 16.0 row is frozen (prerelease) until a 16.0.0 GA exists (still plugin API v5)
-      expect(compat.pluginApiSupport(VERSION)).toEqual({ min: 5, max: PLUGIN_API_VERSION, frozen: true });
+    const [maj, min] = VERSION.split('.').map(Number) as [number, number];
+    if (maj > 16 || (maj === 16 && min >= 9)) {
+      // 16.9.0-canary.0: v5 – v6 (v6 early, a proposal until 17.0.0-rc.1); the loader implements v6
+      expect(compat.pluginApiSupport(VERSION)).toEqual({ min: 5, max: PLUGIN_API_VERSION, proposal: true });
+      expect(row?.notes).toMatch(/v6/);
+      return;
+    }
+    if (maj >= 16) {
+      // 16.0.0-rc.1: the 16.0 row is frozen (prerelease) until a 16.0.0 GA exists (still plugin API v5; a 16.9 loader
+      // tested before its version bump already implements v6)
+      expect(compat.pluginApiSupport(VERSION)).toEqual({ min: 5, max: 5, frozen: true });
+      expect(PLUGIN_API_VERSION).toBeGreaterThanOrEqual(5);
       expect(row?.notes).toMatch(/allowInline/);
       return;
     }

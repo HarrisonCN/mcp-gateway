@@ -114,7 +114,7 @@ describe('plugin API v4 (5.0)', () => {
   });
 
   it('gives v5 plugins ctx.state (persisting across calls)', async () => {
-    expect(PLUGIN_API_VERSION).toBe(5);
+    expect(PLUGIN_API_VERSION).toBeGreaterThanOrEqual(5); // 16.9.0-canary.0: v6 implemented, v5 loads
     const seen: Array<{ name: string; ctx: PluginHookContext }> = [];
     const counter = {
       name: 'counter',
