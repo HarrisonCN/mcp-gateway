@@ -56,6 +56,9 @@ describe('15.0.0 changes (announced in 14.9.0)', () => {
     // 17.0.0-alpha.1: the same rule holds for v13 (the only schema read)
     expect(() => validateConfig({ version: 13, servers: [], include: ['x.yml'], extraThing: 1 } as never)).toThrow(/include: `include` is not a top-level key[\s\S]*extraThing: `extraThing`/);
     expect(() => validateConfig({ version: 13, servers: [], $schema: './schema/v13/config.schema.json' } as never)).not.toThrow();
+    // 17.0.0-rc.1: the message names the schema the file declares (a v13 file is not told about "config schema v12")
+    expect(() => validateConfig({ version: 13, servers: [], extraThing: 1 } as never)).toThrow(/`extraThing` is not a top-level key of config schema v13 /);
+    expect(() => validateV12ForMigration({ version: 12, servers: [], extraThing: 1 } as never)).toThrow(/`extraThing` is not a top-level key of config schema v12 /);
     expect(v15ConfigErrors({ version: 12, servrs: [] })).toEqual([expect.stringMatching(/^servrs: /)]);
     expect(v15ConfigErrors(null)).toEqual([]);
   });
