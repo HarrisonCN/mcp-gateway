@@ -2,8 +2,8 @@
  * 17.0.0-alpha.2: the SDK export surface — every export (value or type) of each package entry point
  * (`package.json` `exports`), computed from the TypeScript sources with the compiler API. `api/exports-surface.json`
  * records it; until 17.0.0 ships the surface may only grow (docs/v17/freeze.md): a recorded export that disappears is
- * a frozen-surface break (test/v17-sdk-surface-17-0-0.test.ts). The record is a proposal until 17.0.0-rc.1, which
- * re-records it as the frozen list.
+ * a frozen-surface break (test/v17-sdk-surface-17-0-0.test.ts). First recorded at 17.0.0-alpha.2; re-recorded at
+ * 17.0.0-rc.1 as the frozen list (test/v17-freeze-17-0-0-rc1.test.ts).
  *
  *   npx tsx scripts/sdk-surface.ts                         # prints recorded exports missing now (exit 1 when any)
  *   npx tsx scripts/sdk-surface.ts --record [--at <ver>]   # rewrites api/exports-surface.json (only at a freeze point)
@@ -76,7 +76,7 @@ if (isMain) {
   const cur = sdkSurface(root);
   if (args.includes('--record')) {
     const at = opt('--at') ?? JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
-    const body = { $comment: 'SDK export surface (scripts/sdk-surface.ts). Recorded exports may not disappear before 17.0.0 ships (docs/v17/freeze.md).', recordedAt: at, entries: cur };
+    const body = { $comment: 'SDK export surface (scripts/sdk-surface.ts), frozen from 17.0.0-rc.1: recorded exports may not disappear before 17.0.0 ships (docs/v17/freeze.md).', recordedAt: at, entries: cur };
     writeFileSync(join(root, 'api/exports-surface.json'), JSON.stringify(body, null, 2) + '\n');
     console.log(`recorded ${Object.values(cur).reduce((n, l) => n + l.length, 0)} exports at ${at}`);
   } else {

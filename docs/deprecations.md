@@ -39,7 +39,7 @@ Exit codes: `config migrate` 1 when the compatibility report has errors; `config
 
 ## Planned removals in 17.0.0 (announced 16.9.0-canary.0)
 
-The 17.0 list is a **proposal** until 17.0.0-rc.1 ([migrating to v17](migrating-to-v17.md)). 16.x keeps working
+The 17.0 list is frozen from 17.0.0-rc.1 ([migrating to v17](migrating-to-v17.md), [17.0 freeze](v17/freeze.md)). 16.x keeps working
 unchanged; each use is a `DEPRECATED (removed in 17.0.0)` warning.
 
 **17.0.0-alpha.1 (npm `canary`) removes them:** a v5 plugin, an inline module plugin (`runtime: inline` /

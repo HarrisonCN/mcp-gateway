@@ -1,6 +1,6 @@
 {
-  "$comment": "SDK export surface (scripts/sdk-surface.ts). Recorded exports may not disappear before 17.0.0 ships (docs/v17/freeze.md).",
-  "recordedAt": "17.0.0-alpha.2",
+  "$comment": "SDK export surface (scripts/sdk-surface.ts), frozen from 17.0.0-rc.1: recorded exports may not disappear before 17.0.0 ships (docs/v17/freeze.md).",
+  "recordedAt": "17.0.0-rc.1",
   "entries": {
     ".": [
       "type A2aFederationConfig",

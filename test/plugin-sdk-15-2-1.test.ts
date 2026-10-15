@@ -147,7 +147,7 @@ describe('compatibility matrix (15.2.0-canary.1)', () => {
   it('C3 docs/guides/plugin-compatibility.md carries the generated matrix (no drift)', () => {
     const doc = readFileSync(join(ROOT, 'docs', 'guides', 'plugin-compatibility.md'), 'utf8');
     expect(doc).toContain(compat.compatibilityMarkdown());
-    expect(doc).toMatch(/plugin API v6.*17\.0.*proposal/is);
+    expect(doc).toMatch(/plugin API v6.*17\.0.*frozen \(prerelease\)/is); // 17.0.0-rc.1 (before: proposal)
   });
 });
 
