@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [17.0.0-alpha.1] - 2026-10-15
+
+**Development prerelease — first 17.0 breaking prerelease** (npm dist-tag `canary`, image `:17.0.0-alpha.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). The removals announced by 16.9.0-canary.0 take effect; the 17.0 list is a **proposal** until 17.0.0-rc.1 ([migrating to v17](docs/migrating-to-v17.md#1700-alpha1-npm-canary)). 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)); 16.0.0 and 17.0.0 stable need their own gates — **17.0.0 GA is blocked while A / B / C are open.**
+
+### Breaking (17.0)
+
+- **Plugin API v6 only.** `PLUGIN_API_MIN_VERSION` is 6: an `apiVersion: 5` plugin (module or programmatic) is refused at load with the `mcp-gateway plugin migrate --to v6 <file>` hint. Every hook — programmatic plugin objects included — must return `{ action }` outcomes; a v4-era shape (`{ deny }`, `{ respond }`, `{ arguments }`, a whole response from `onResponse`) fails the hook (fail closed, `-32006` unless `failure: open`). `definePlugin` and the `plugin init` template write `apiVersion: 6`. Plugin compatibility table: 17.0 loads v6 only.
+- **No inline module plugins.** `runtime: inline` (with or without `allowInline`) and a stray `allowInline` are configuration errors; `loadPlugin` refuses `runtime: inline` before importing the module. Module plugins run in a `worker` (default) or `process`. Plugin objects passed through the embedding API still run in process.
+- **Config schema v13 only.** `version: 12` is refused with the `config migrate --to v13 --in-place` hint (v11 keeps its own message). A file without `version:` is read as schema v13. `CONFIG_SCHEMA_VERSION` is 13; `init`, the desktop profile, portable / distributed configs, the Helm chart, the Kubernetes / Compose / Docker examples and every file under `examples/` are `version: 13`. The migration tooling (`config migrate / diff --to v12 | v13`, `config rollback`, docs-check) still reads older files.
+- The 17.0 config deprecations (`v17.plugins.<i>.inline`, `v17.plugins.<name>.api-v5` / `legacy-outcome`, `schema.v12`) are gone — they are errors now.
+
+### Changed
+
+- `config migrate --to v13` targets 17.0: an inline module plugin becomes `runtime: worker` and is listed under *pending* (`v17.plugins.<i>.inline` — a plugin with `onRequest` / `routes` needs a person), `allowInline` is dropped (also from a 16.x v13 file), and an unversioned file that already is valid v13 only gets `version: 13`.
+- `schema/v13/config.schema.json` (frozen from 16.0.0-rc.1) is unchanged: it describes the 16.x v13 format, including `allowInline`; 17.0 adds the plugin API v6 rule on top (one listed exception in `test/v13-tooling-16-0-2.test.ts` J3).
+- `examples/plugins/tool-quota`: `pluginTrust` moved under `features` (the example did not validate as v13).
+
+### Tests
+
+- `test/v17-core-17-0-0.test.ts` (written first; failing-before 6/7 → `v17core-failing-before`; K7 is a guard that already held): K1 v6 only, K2 no inline module plugins, K3 v6 outcomes for every plugin, K4 v12 refused / tooling reads v12, K5 unversioned = v13, K6 codemod, K7 no 17.0 deprecations left.
+- Expected churn in older tests (exploratory full run: 206 failed in 66 files before the fixture work): 41 files' fixtures `version: 12` → 13, 7 files' plugins `apiVersion: 5` → 6. History tests (v13-schema, v16-prep, v15-changes, v14-prep, rc-migration, core-v2, fuzz, plugin-runtime-extra, reload, v13-tooling J6) keep their v12 / 16.x assertions through `validateV12ForMigration` and assert the 17.0 refusal next to them; reload's transactional plugin tests use worker plugins. `plugin-devkit-15-2-0` D2 / D4 (inline is now a config error — new assertion), `v13-codemod-15-9-1` C1 / C2 / C4 / C5 (inline → worker + the pending entry), `v13-tooling-16-0-2` J3 (listed exception) / J4 / J6, `v10` (schema 13); found by the local full suite: `v7` (distributed config is v13; failing-before `v7-1701-failing-before`).
+
 ## [16.9.0-canary.0] - 2026-10-15
 
 **Development prerelease — v17 preparation** (npm dist-tag `canary`, image `:16.9.0-canary.0` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). Every removal planned for 17.0.0 is announced one minor ahead and plugin API v6 is available early; the 17.0 list is a **proposal** until 17.0.0-rc.1 ([migrating to v17](docs/migrating-to-v17.md)). 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)); 16.0.0 is at rc.1 on `canary` and needs its own gates.
