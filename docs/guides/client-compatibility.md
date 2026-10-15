@@ -25,21 +25,23 @@ served statelessly.
 
 | | 16.1.0-canary.0 |
 | --- | --- |
-| `server/discover` | `supportedVersions` = `2026-07-28` + the handshake revisions, `capabilities` (tools, resources, prompts, completions), `_meta` serverInfo, `instructions`, `ttlMs` / `cacheScope`; also answers a bare probe without `_meta` |
+| `server/discover` | `supportedVersions` = `2026-07-28` + the handshake revisions, `capabilities` (tools, resources, prompts, completions; `listChanged` / `subscribe` from 16.1.0-canary.1), `_meta` serverInfo, `instructions`, `ttlMs` / `cacheScope`; also answers a bare probe without `_meta` |
 | Stateless methods | `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`, `prompts/list`, `prompts/get`, `completion/complete` — same authentication, scopes, policy, rate limits, audit and lineage as a session |
 | Results | `resultType: "complete"`, `_meta["io.modelcontextprotocol/serverInfo"]`; list / read results carry `ttlMs` (30 s) and `cacheScope: "private"` (lists depend on the caller's scope) |
 | Header validation | `MCP-Protocol-Version` (= `_meta` version), `Mcp-Method` (= `method`), `Mcp-Name` (= `params.name` / `params.uri`, Base64 sentinel `=?base64?…?=` decoded) required → otherwise `400` + `-32020` HeaderMismatch |
 | Versions | a version the endpoint does not serve statelessly → `400` + `-32022` with `data.supported` / `data.requested` |
 | Removed in 2026-07-28 | `ping`, `logging/setLevel`, `resources/subscribe` / `unsubscribe`, `initialize` with modern `_meta`, any unknown method → `404` + `-32601`; an upstream's own `-32601` stays HTTP 200 |
 | Errors | resource not found is `-32602` (was `-32002`) |
-| Not yet | `subscriptions/listen`, Multi Round-Trip Requests (`input_required` — upstream sampling / elicitation / roots are unavailable to stateless callers), the tasks extension, per-request `logLevel`, `x-mcp-header` parameters, speaking 2026-07-28 to upstream servers |
+| `subscriptions/listen` (16.1.0-canary.1) | a long-lived SSE response: `notifications/subscriptions/acknowledged` first (the agreed filter — URIs outside the caller's scope or on servers without resource subscriptions are left out), then `notifications/{tools,prompts,resources}/list_changed` and `notifications/resources/updated` for what the caller opted in to, each with `_meta["io.modelcontextprotocol/subscriptionId"]` = the listen request id; closing the stream ends it; a gateway shutdown (or a removed key) ends it with a `resultType: "complete"` response; at most `mcp.maxSessions` open listeners; `server/discover` advertises `listChanged` / `subscribe` |
+| Not yet | Multi Round-Trip Requests (`input_required` — upstream sampling / elicitation / roots are unavailable to stateless callers), the tasks extension, per-request `logLevel`, `x-mcp-header` parameters, speaking 2026-07-28 to upstream servers |
 
 `mcp.protocolVersions` controls it: without the key everything is served; a list without `2026-07-28` turns the
 stateless core off (modern requests get `-32022`, a bare `server/discover` keeps the old `-32601` so dual-era clients
 use `initialize`); a list naming only `2026-07-28` makes `/mcp` modern-only (`initialize` → `400` + `-32022`).
 
-Tested: `test/mcp-modern-16-1-0.test.ts` (raw HTTP) and the CI compat job's Python SDK (`mcp` 2.3.0), whose
-`mode="auto"` now stays on `2026-07-28` and calls a tool statelessly.
+Tested: `test/mcp-modern-16-1-0.test.ts`, `test/mcp-subscriptions-16-1-1.test.ts` (raw HTTP) and the CI compat job's
+Python SDK (`mcp` 2.3.0), whose `mode="auto"` now stays on `2026-07-28`, calls a tool statelessly and opens
+`subscriptions/listen` (16.1.0-canary.1).
 
 ## Tested clients
 

@@ -64,6 +64,7 @@ import {
   MODERN_METHODS,
   MODERN_REMOVED_METHODS,
   MODERN_TTL_MS,
+  META_SUBSCRIPTION_ID,
   ERR_HEADER_MISMATCH,
   ERR_UNSUPPORTED_PROTOCOL_VERSION,
   LEGACY_RESOURCE_NOT_FOUND,
@@ -160,6 +161,24 @@ interface DownstreamSession {
   clientSeq: number;
   /** 16.1.0-canary.0: a per-request session for one stateless MCP 2026-07-28 request (never stored, no Mcp-Session-Id). */
   ephemeral?: true;
+}
+
+/** 16.1.0-canary.1: one `subscriptions/listen` stream (MCP 2026-07-28) — a stateless caller's change notifications. */
+interface Listener {
+  /** Key in `upstreamSubs` (shares the upstream resources/subscribe with sessions). */
+  key: string;
+  /** JSON-RPC id of the listen request = the subscription id on every message. */
+  id: JsonRpcId;
+  res: Response;
+  auth: ClientIdentity;
+  tools: boolean;
+  prompts: boolean;
+  resources: boolean;
+  /** `<serverId>\0<uri>` keys of the agreed resourceSubscriptions. */
+  subs: Set<string>;
+  toolsFingerprint?: string;
+  resourcesFingerprint?: string;
+  promptsFingerprint?: string;
 }
 
 /** Reference to the downstream caller handed to the proxy with each call (passthrough routing). */
@@ -297,6 +316,8 @@ function acceptsEventStream(req: Request): boolean {
 export class McpEndpoint {
   private cfg: McpEndpointConfig & typeof DEFAULT_MCP_CONFIG;
   private readonly sessions = new Map<string, DownstreamSession>();
+  /** 16.1.0-canary.1: open `subscriptions/listen` streams by key. */
+  private readonly listeners = new Map<string, Listener>();
   private sweepTimer?: NodeJS.Timeout;
   private keepaliveTimer?: NodeJS.Timeout;
   private notifyTimer?: NodeJS.Timeout;
@@ -414,6 +435,7 @@ export class McpEndpoint {
     this.deps.proxy.off('disconnected', this.onUpstreamDisconnected);
     this.deps.proxy.setClientRequestHandler(undefined);
     for (const s of [...this.sessions.values()]) this.endSession(s);
+    for (const l of [...this.listeners.values()]) this.endListener(l, true);
   }
 
   getSessions(): McpSessionSummary[] {
@@ -611,12 +633,17 @@ export class McpEndpoint {
     if (method === 'server/discover') {
       const result: Record<string, unknown> = {
         supportedVersions: supported,
-        capabilities: { tools: {}, resources: {}, prompts: {}, completions: {} },
+        // 16.1.0-canary.1: change notifications through subscriptions/listen
+        capabilities: { tools: { listChanged: true }, resources: { listChanged: true, subscribe: true }, prompts: { listChanged: true }, completions: {} },
         cacheScope: 'private',
         ttlMs: MODERN_TTL_MS,
       };
       if (this.cfg.instructions) result.instructions = this.cfg.instructions;
       res.status(200).json({ jsonrpc: '2.0', id, result: decorateModernResult(method, result, this.serverInfo()) });
+      return;
+    }
+    if (method === 'subscriptions/listen') {
+      await this.listen(req, res, msg);
       return;
     }
     if (MODERN_REMOVED_METHODS.has(method) || !MODERN_METHODS.has(method)) {
@@ -663,6 +690,103 @@ export class McpEndpoint {
     }
     if (res.headersSent || res.destroyed) return;
     res.status(200).json(reply); // an upstream's own -32601 stays a 200: 404 means the gateway lacks the method
+  }
+
+  /**
+   * 16.1.0-canary.1: `subscriptions/listen` — a long-lived SSE response carrying the change notifications the caller
+   * opted in to, each tagged with `_meta["io.modelcontextprotocol/subscriptionId"]` (= the request id). The first
+   * message is `notifications/subscriptions/acknowledged` with the agreed filter; resource URIs the caller cannot reach
+   * (scope, routing) or whose server cannot subscribe are left out. Closing the stream ends the subscription.
+   */
+  private async listen(req: Request, res: Response, msg: JsonRpcMessage): Promise<void> {
+    const id = msg.id as JsonRpcId;
+    if (!acceptsEventStream(req)) {
+      res.status(400).json(rpcError(id, { code: JSONRPC_INVALID_REQUEST, message: 'subscriptions/listen answers with an SSE stream: accept text/event-stream' }));
+      return;
+    }
+    if (this.listeners.size >= this.cfg.maxSessions) {
+      res.status(503).json(rpcError(id, { code: JSONRPC_INTERNAL_ERROR, message: 'Too many subscriptions' }));
+      return;
+    }
+    const params = isObject(msg.params) ? msg.params : {};
+    const want = isObject(params.notifications) ? params.notifications : {};
+    const auth = identityOf(req);
+    const l: Listener = {
+      key: `listen-${randomUUID()}`,
+      id,
+      res,
+      auth,
+      tools: want.toolsListChanged === true,
+      prompts: want.promptsListChanged === true,
+      resources: want.resourcesListChanged === true,
+      subs: new Set(),
+    };
+    // Same routing and scope as resources/subscribe on a session.
+    const probe = { auth } as DownstreamSession;
+    const agreedUris: string[] = [];
+    const uris = Array.isArray(want.resourceSubscriptions) ? [...new Set(want.resourceSubscriptions.filter((u): u is string => typeof u === 'string' && u.length > 0))] : [];
+    for (const uri of uris.slice(0, 100)) {
+      const serverId = this.routeUri(probe, uri);
+      if (!serverId) continue;
+      const caps = this.deps.proxy.getSessionInfo(serverId)?.capabilities;
+      if (!isObject(caps?.resources) || caps.resources.subscribe !== true) continue;
+      const key = `${serverId}\u0000${uri}`;
+      let subs = this.upstreamSubs.get(key);
+      if (!subs || subs.size === 0) {
+        const r = await this.deps.proxy.request(serverId, 'resources/subscribe', { uri }, 10_000);
+        if (!r.success) continue;
+        subs = this.upstreamSubs.get(key) ?? new Set();
+        this.upstreamSubs.set(key, subs);
+      }
+      subs.add(l.key);
+      l.subs.add(key);
+      agreedUris.push(uri);
+    }
+    if (res.destroyed || this.closed) {
+      for (const key of l.subs) this.releaseListenerSub(l, key);
+      return;
+    }
+    if (l.tools) l.toolsFingerprint = this.fingerprint(this.toolIndex(auth));
+    if (l.resources) l.resourcesFingerprint = this.resourcesFingerprint(auth);
+    if (l.prompts) l.promptsFingerprint = this.promptsFingerprint(auth);
+    this.listeners.set(l.key, l);
+    res.status(200).set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+    res.flushHeaders();
+    res.on('close', () => this.endListener(l, false));
+    const agreed: Record<string, unknown> = {};
+    if (l.tools) agreed.toolsListChanged = true;
+    if (l.prompts) agreed.promptsListChanged = true;
+    if (l.resources) agreed.resourcesListChanged = true;
+    if (agreedUris.length) agreed.resourceSubscriptions = agreedUris;
+    this.notifyListener(l, 'notifications/subscriptions/acknowledged', { notifications: agreed });
+  }
+
+  private notifyListener(l: Listener, method: string, params: Record<string, unknown> = {}): void {
+    if (l.res.writableEnded || l.res.destroyed) return;
+    const msg = { jsonrpc: '2.0', method, params: { ...params, _meta: { [META_SUBSCRIPTION_ID]: l.id } } };
+    l.res.write(`event: message\ndata: ${JSON.stringify(msg)}\n\n`);
+  }
+
+  /** Ends a listener; `graceful` (the gateway's own decision) sends the completion response first. */
+  private endListener(l: Listener, graceful: boolean): void {
+    if (!this.listeners.delete(l.key)) return;
+    for (const key of [...l.subs]) this.releaseListenerSub(l, key);
+    if (l.res.writableEnded || l.res.destroyed) return;
+    if (graceful) l.res.write(`event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', id: l.id, result: { resultType: 'complete', _meta: { [META_SUBSCRIPTION_ID]: l.id } } })}\n\n`);
+    l.res.end();
+  }
+
+  private releaseListenerSub(l: Listener, key: string): void {
+    l.subs.delete(key);
+    const subs = this.upstreamSubs.get(key);
+    if (!subs) return;
+    subs.delete(l.key);
+    if (subs.size === 0) this.dropUpstreamSub(key);
+  }
+
+  /** Open `subscriptions/listen` streams (for tests / monitoring). */
+  listenerCount(): number {
+    return this.listeners.size;
   }
 
   private replyStream(res: Response, session: DownstreamSession): ReplyStream {
@@ -1575,6 +1699,8 @@ export class McpEndpoint {
         if (s && isServerInScope(s.auth.scope, serverId)) {
           this.send(s, { jsonrpc: '2.0', method: 'notifications/resources/updated', params: { uri: params.uri } });
         }
+        const l = this.listeners.get(sid);
+        if (l && isServerInScope(l.auth.scope, serverId)) this.notifyListener(l, 'notifications/resources/updated', { uri: params.uri });
       }
       return;
     }
@@ -1605,6 +1731,35 @@ export class McpEndpoint {
   }
 
   private sendListChanged(): void {
+    for (const l of [...this.listeners.values()]) {
+      const current = this.deps.resolveClient?.(l.auth.clientId);
+      if (current && !current.known) {
+        this.endListener(l, true); // the key that opened it is gone
+        continue;
+      }
+      if (current) l.auth = { ...l.auth, scope: current.scope };
+      if (l.tools) {
+        const fp = this.fingerprint(this.toolIndex(l.auth));
+        if (fp !== l.toolsFingerprint) {
+          l.toolsFingerprint = fp;
+          this.notifyListener(l, 'notifications/tools/list_changed');
+        }
+      }
+      if (l.resources) {
+        const rfp = this.resourcesFingerprint(l.auth);
+        if (rfp !== l.resourcesFingerprint) {
+          l.resourcesFingerprint = rfp;
+          this.notifyListener(l, 'notifications/resources/list_changed');
+        }
+      }
+      if (l.prompts) {
+        const pfp = this.promptsFingerprint(l.auth);
+        if (pfp !== l.promptsFingerprint) {
+          l.promptsFingerprint = pfp;
+          this.notifyListener(l, 'notifications/prompts/list_changed');
+        }
+      }
+    }
     for (const s of [...this.sessions.values()]) {
       const current = this.deps.resolveClient?.(s.auth.clientId);
       if (current && !current.known) {
@@ -1657,6 +1812,7 @@ export class McpEndpoint {
 
   private keepalive(): void {
     for (const s of this.sessions.values()) for (const st of s.streams) st.write(': keepalive\n\n');
+    for (const l of this.listeners.values()) if (!l.res.writableEnded) l.res.write(': keepalive\n\n');
   }
 
   private sweep(now = Date.now()): void {
