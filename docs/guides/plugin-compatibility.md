@@ -11,7 +11,7 @@ Prerelease versions count as their release: `15.2.0-canary.1` is in the `8.0.0 �
 
 | Gateway | Loads plugin API | Status | Notes |
 |---|---|---|---|
-| 17.0.0 + | v6 | frozen (prerelease) | plugin API v6 only: { action } outcomes only, module plugins only in worker / process / wasm (inline removed); codemod in 16.9; enforced since 17.0.0-alpha.1, frozen from 17.0.0-rc.1 (canary) |
+| 17.0.0 + | v6 | shipped | plugin API v6 only: { action } outcomes only, module plugins only in worker / process / wasm (inline removed); codemod in 16.9; enforced since 17.0.0-alpha.1, frozen from 17.0.0-rc.1, shipped in 17.0.0 |
 | 16.9.0 – <17.0.0 | v5 – v6 | proposal | v6 loads early ({ action } outcomes only, worker / process only); v5 loads with 17.0 deprecations; plugin migrate --to v6 |
 | 16.0.0 – <16.9.0 | v5 | frozen (prerelease) | v5; a module plugin with runtime: inline needs allowInline: true on its entry (config schema v13) |
 | 8.0.0 – <16.0.0 | v5 | shipped | v5 only (v4 refused); the current contract |
@@ -65,14 +65,29 @@ Plugin API v5 capabilities by gateway release (8.0.0 – <16.0.0):
 - reproducible verify (15.2)
 - /testing export (15.2)
 
+Plugin API v5 capabilities by gateway release (8.0.0 – <16.0.0):
+
+- signed artifacts (since 5.4)
+- WASM components (7.9)
+- configSchema / plugin routes (10.5)
+- hybrid ML-DSA signatures, experimental (10.8)
+- reload fails on an unloadable plugin (13.2)
+- worker / process runtime (14.3)
+- permissions, limits, circuit breaker (14.3)
+- worker is the default runtime (15.0)
+- plugin init / doctor (15.2)
+- reproducible verify (15.2)
+- /testing export (15.2)
+
 Rows marked **proposal** are roadmap plans. The 16.9 row (plugin API v6 early, v5 – v6) stays one: 16.9 is a
 prerelease line on npm `canary` that announces the 17.0 removals (deprecation warnings, a codemod and the migration
 guide one minor ahead of the major). The 17.0 row (plugin API v6 only: module plugins run only in `worker` /
-`process` / WASM, `inline` removed) is frozen from 17.0.0-rc.1.
+`process` / WASM, `inline` removed) was frozen from 17.0.0-rc.1 and is **shipped** since 17.0.0 (2026-10-15; released by owner decision; external security review and dedicated-hardware soak not yet performed).
 
-**frozen (prerelease)** (16.0, since 16.0.0-rc.1; 17.0, since 17.0.0-rc.1): the range is fixed by a release
+**frozen (prerelease)** (16.0, since 16.0.0-rc.1; 17.0 from 17.0.0-rc.1 until 17.0.0): the range is fixed by a release
 candidate ([16.0 freeze](../v16/freeze.md), [17.0 freeze](../v17/freeze.md)) but only prereleases exist on npm
-`canary`. It becomes **shipped** only with a 16.0.0 / 17.0.0 GA, which needs that major's release gates.
+`canary`. It becomes **shipped** only with a GA: 17.0 is shipped since 17.0.0 (an owner decision taken while the
+v17 release gates were open); 16.0 never had a GA, so its row stays frozen (prerelease).
 
 ## Checking a plugin against the matrix
 

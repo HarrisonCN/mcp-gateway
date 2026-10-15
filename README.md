@@ -9,7 +9,7 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-> **15.0 release candidate:** `15.0.0-rc.1` is a prerelease for testing under the npm dist-tag `next` (`npm i @winstonsayno/mcp-gateway@next`; image `:15.0.0-rc.1`). `latest`, `:latest` and `:14` stay on 14.9. The 15.0 API / config freeze, what changes and how to upgrade: [freeze list](docs/v15/freeze.md) · [migrating to v15](docs/migrating-to-v15.md) · [release candidate notice](docs/v15/release-candidate.md).
+> **17.0.0 is the current release — released by owner decision; external security review and dedicated-hardware soak not yet performed.** 15.0.0 and 16.0.0 never shipped as stable releases, so 17.0.0 is the first stable major after 14.9 and carries every breaking change of 15.0, 16.0 and 17.0 (Node.js ≥ 24, config schema v13 only, plugin API v6 only, no inline module plugins). Test it in staging first; see [release gates](docs/release-gates.md). Upgrading from 14.9: [migrating to v15](docs/migrating-to-v15.md) · [v16](docs/migrating-to-v16.md) · [v17](docs/migrating-to-v17.md). Staying on 14.9: `npm i @winstonsayno/mcp-gateway@v14-lts`, image `:14`.
 
 **One authenticated, observable endpoint in front of all your MCP servers.**
 
@@ -19,7 +19,7 @@ Streamable HTTP at `/mcp` or a REST API under `/api/v1` — and the gateway auth
 do, routes the call to the right upstream and records what happened. Keys, scopes, rate limits, policy, logs and
 metrics live in one place instead of in every client.
 
-Current release: **14.9.2** (npm `latest`). Live dashboard demo with simulated traffic, no backend:
+Current release: **17.0.0** (npm `latest`). Live dashboard demo with simulated traffic, no backend:
 <https://harrisoncn.github.io/mcp-gateway/>
 
 ## Contents
@@ -158,7 +158,7 @@ docker run -d -p 4000:4000 \
   -v mcp-gateway-data:/app/data \
   -e MCP_GATEWAY_HOST=0.0.0.0 \
   -e MCP_GATEWAY_API_KEYS=sha256:<digest from gen-key> \
-  ghcr.io/harrisoncn/mcp-gateway:14
+  ghcr.io/harrisoncn/mcp-gateway:17
 ```
 
 `MCP_GATEWAY_API_KEYS` (comma-separated, plain or `sha256:<hex>`) turns on API-key auth without editing the file, and
@@ -170,7 +170,7 @@ Every image is signed with cosign (keyless, GitHub OIDC) and carries SLSA proven
 before you deploy, and pin the digest it prints:
 
 ```bash
-cosign verify ghcr.io/harrisoncn/mcp-gateway:14.9.2 \
+cosign verify ghcr.io/harrisoncn/mcp-gateway:17.0.0 \
   --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -197,7 +197,7 @@ off by default. See the [chart README](deploy/helm/mcp-gateway/README.md) and th
 `mcp-gateway.yml` — an authenticated gateway with one stdio server:
 
 ```yaml
-version: 12            # config schema v12 (15.0 refuses v11 files: mcp-gateway config migrate --to v12)
+version: 13            # config schema v13 (17.0 refuses v12 files: mcp-gateway config migrate --to v13)
 host: 127.0.0.1        # 0.0.0.0 only together with auth
 port: 4000
 
@@ -325,7 +325,9 @@ See [Observability](docs/configuration.md#observability) and [Audit log](docs/co
 
 | Line | Latest | npm dist-tag | Image tag | Status |
 |---|---|---|---|---|
-| 14.x | 14.9.2 | `latest` | `:14`, `:latest` | Current — new features, bug and security fixes |
+| 17.x | 17.0.0 | `latest`, `next` | `:17`, `:latest` | Current — new features, bug and security fixes. Released by owner decision; external security review and dedicated-hardware soak not yet performed |
+| 15.x / 16.x | — | — | — | Prerelease lines only (15.0.0-rc.4, 16.0.0-rc.1); never shipped as stable — their changes are in 17.0.0 |
+| 14.x | 14.9.2 | `v14-lts` | `:14` | Maintained — security and critical bug fixes for existing users; upgrade to 17.x |
 | 13.x | 13.9.5 | `v13-lts` | `:13` | Maintained — security and critical bug fixes, at least until 15.0.0 ships and no earlier than 2027-04-30; upgrade to 14.x |
 | 12.x | 12.0.15 | `v12-0` | `:12` | Superseded — carries the MGW-2026-001, -005, -007, -008, -009, -010, -011, -012, -013, -014, -015, -016, -017, -018 and -019 fixes; upgrade to 13.x |
 | 11.x | 11.2.0 | — | `:11` | Superseded — upgrade to 13.x |
@@ -333,7 +335,8 @@ See [Observability](docs/configuration.md#observability) and [Audit log](docs/co
 | < 10.0 | — | — | — | Unsupported — upgrade with `mcp-gateway migrate` |
 
 ```bash
-npm i @winstonsayno/mcp-gateway            # 13.x
+npm i @winstonsayno/mcp-gateway            # 17.x
+npm i @winstonsayno/mcp-gateway@v14-lts    # 14.9.x
 npm i @winstonsayno/mcp-gateway@v10-lts    # 10.x LTS
 ```
 

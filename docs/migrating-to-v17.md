@@ -1,9 +1,9 @@
 # Migrating to 17.0
 
-> **Status: frozen from 17.0.0-rc.1** ([17.0 freeze list](v17/freeze.md)). 17.0.0 has
-> not shipped: its alphas and release candidates go to npm `canary` only, and stable 17.0.0 needs the v17 release
-> gates (A/B against the previous stable major, an incremental external security review of the 17.0 changes) — see
-> [release gates](release-gates.md). 16.0.0 itself is still a release candidate on `canary`.
+> **Status: frozen from 17.0.0-rc.1; shipped in 17.0.0** ([17.0 freeze list](v17/freeze.md)). 17.0.0 is on npm
+> `latest` — released by owner decision; external security review and dedicated-hardware soak not yet performed (the v17 release gates are open; see [release gates](release-gates.md)).
+> 15.0.0 and 16.0.0 never shipped as stable releases: from 14.9 read [migrating to v15](migrating-to-v15.md) and
+> [migrating to v16](migrating-to-v16.md) first. 14.9.x stays installable as npm `v14-lts` / image `:14`.
 
 16.9 announces every 17.0 removal one minor ahead. Run `mcp-gateway validate -c <file>` on 16.9 and check
 `GET /api/v1/admin/deprecations` on a running gateway: every line marked `removed in 17.0.0` needs a change before

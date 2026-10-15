@@ -109,7 +109,10 @@ describe('deployment examples', () => {
     const tags = [...doc.matchAll(/(?:^|[\s"'`(])ghcr\.io\/harrisoncn\/mcp-gateway:([\w.-]+)/gm)].map((m) => m[1]);
     expect(tags.length).toBeGreaterThan(3);
     const minor = V.split('.').slice(0, 2).join('.');
-    for (const t of tags) expect(['latest', MAJOR, minor, V, '13', '13.9', '12', '12.0', '10', '10.9']).toContain(t);
+    // 17.0.0: maintained lines come from scripts/docs-check.json (`lts`, e.g. 14.9 → :14 / :14.9) instead of a fixed list
+    const lts = Object.keys(JSON.parse(readFileSync(join(root, 'scripts/docs-check.json'), 'utf8')).lts ?? {}) as string[];
+    const allowed = ['latest', MAJOR, minor, V, '13', '13.9', '12', '12.0', '10', '10.9', ...lts.flatMap((l) => [l, l.split('.')[0]])];
+    for (const t of tags) expect(allowed).toContain(t);
     expect(doc).toMatch(/@sha256:/);
     expect(existsSync(join(root, '.github/workflows/deploy-examples.yml'))).toBe(true);
     void dirname;

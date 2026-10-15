@@ -122,7 +122,8 @@ describe('compatibility matrix (15.2.0-canary.1)', () => {
     if (maj >= 17) {
       // 17.0.0-alpha.1: plugin API v6 only; the loader implements v6 and refuses v5. 17.0.0-rc.1: the row is frozen
       // (prerelease) — it was a proposal in the alphas
-      expect(compat.pluginApiSupport(VERSION)).toEqual({ min: 6, max: PLUGIN_API_VERSION, frozen: true });
+      // 17.0.0 GA: shipped (no frozen flag) — the prerelease versions count as their release
+      expect(compat.pluginApiSupport(VERSION)).toEqual({ min: 6, max: PLUGIN_API_VERSION });
       expect(PLUGIN_API_VERSION).toBe(6);
       expect(row?.notes).toMatch(/plugin API v6 only/);
       return;
@@ -148,7 +149,7 @@ describe('compatibility matrix (15.2.0-canary.1)', () => {
   it('C3 docs/guides/plugin-compatibility.md carries the generated matrix (no drift)', () => {
     const doc = readFileSync(join(ROOT, 'docs', 'guides', 'plugin-compatibility.md'), 'utf8');
     expect(doc).toContain(compat.compatibilityMarkdown());
-    expect(doc).toMatch(/plugin API v6.*17\.0.*frozen \(prerelease\)/is); // 17.0.0-rc.1 (before: proposal)
+    expect(doc).toMatch(/plugin API v6.*17\.0.*shipped/is); // 17.0.0 (rc.1: frozen (prerelease); before: proposal)
   });
 });
 

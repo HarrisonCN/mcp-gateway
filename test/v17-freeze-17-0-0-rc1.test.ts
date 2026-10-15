@@ -31,6 +31,7 @@ describe('17.0 freeze (17.0.0-rc.1)', () => {
     expect(doc).toMatch(/Status: frozen from 17\.0\.0-rc\.1/);
     expect(doc).not.toMatch(/proposal/i);
     expect(doc).not.toMatch(/draft/i);
+    // 17.0.0: shipped by owner decision without its gates (test/v17-ga-17-0-0.test.ts); before: "stable 17.0.0 needs gates"
     expect(doc).toMatch(/stable 17\.0\.0[^.]*gates/i);
     expect(doc).toMatch(/not a passed gate/);
     expect(doc).not.toMatch(/gates? (A|B|C)[^.\n]* (passed|closed)/i);
@@ -45,13 +46,14 @@ describe('17.0 freeze (17.0.0-rc.1)', () => {
   });
 
   it('F3 plugin compatibility: 17.0 is "frozen (prerelease)" until a 17.0.0 GA exists', () => {
+    // 17.0.0 GA (owner decision, 2026-10-15): the row moved from frozen (prerelease) to shipped — see v17-ga-17-0-0
     const r17 = compat.PLUGIN_COMPATIBILITY.find((r) => r.from === '17.0.0');
-    expect(r17?.status).toBe('frozen');
+    expect(r17?.status).toBe('shipped');
     expect(r17?.notes).not.toMatch(/proposal/);
-    expect(compat.pluginApiSupport('17.0.0-rc.1')).toEqual({ min: 6, max: 6, frozen: true });
+    expect(compat.pluginApiSupport('17.0.0-rc.1')).toEqual({ min: 6, max: 6 });
     const md = compat.compatibilityMarkdown();
-    expect(md).toMatch(/\| 17\.0\.0 \+ \| v6 \| frozen \(prerelease\) \|/);
-    expect(md).not.toMatch(/\| 17\.0\.0 \+ \| v6 \| shipped \|/);
+    expect(md).toMatch(/\| 17\.0\.0 \+ \| v6 \| shipped \|/);
+    expect(md).not.toMatch(/\| 17\.0\.0 \+ \| v6 \| frozen \(prerelease\) \|/);
     expect(read('docs/guides/plugin-compatibility.md')).toContain(md);
   });
 
@@ -66,6 +68,8 @@ describe('17.0 freeze (17.0.0-rc.1)', () => {
     const v = read('docs/versions.md');
     expect(v).toMatch(/`v15-lts`/);
     expect(v).toMatch(/planned[^.\n]*not active/i);
-    expect(v).toMatch(/15\.0\.0 and 17\.0\.0 are stable/);
+    // 17.0.0 shipped but 15.0.0 never did: still no v15-lts (14.9.x is kept as v14-lts instead)
+    expect(v).toMatch(/no\s+`v15-lts` tag/);
+    expect(v).toMatch(/`v14-lts`/);
   });
 });

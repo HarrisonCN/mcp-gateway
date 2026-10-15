@@ -1,18 +1,20 @@
 {
   "lts": {
+    "14.9": "14.9.2",
     "13.9": "13.9.5",
     "12.0": "12.0.15",
     "10.9": "10.9.16"
   },
   "distTags": [
+    "v14-lts",
     "v13-lts",
     "v12-0",
     "v10-lts"
   ],
   "prerelease": {
     "tag": "canary",
-    "version": "16.1.0-canary.1",
-    "stable": "14.9.2"
+    "version": "17.0.0-rc.1",
+    "stable": "17.0.0"
   },
   "historical": [
     "docs/ROADMAP.md",
@@ -42,6 +44,10 @@
     {
       "tag": "canary",
       "version": "16.1.0-canary.0"
+    },
+    {
+      "tag": "canary",
+      "version": "16.1.0-canary.1"
     }
   ]
 }
