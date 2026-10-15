@@ -48,13 +48,14 @@ if (profile === 'all') {
   const { validateConfig } = await import(process.env.MGW_DIST + '/config/loader.js');
   const { FEATURE_CONFIG_KEYS } = await import(process.env.MGW_DIST + '/gateway/features.js');
   const features = {};
-  // 15.0.0-rc.1: schema v11 is refused — the same feature set in v12 form (three sections were renamed by v12)
+  // 15.0.0-rc.1: schema v11 is refused — the same feature set in v12 form (three sections were renamed by v12);
+  // 17.0.0-alpha.1: v12 is refused too — v13 (same sections)
   const V12_NAME = { genaiTelemetry: 'genaiOtel', policyShadow: 'policySim', postQuantumTls: 'pqTls' };
   for (const k of FEATURE_CONFIG_KEYS) {
     const key = V12_NAME[k] ?? k;
-    try { validateConfig({ version: 12, servers: [], features: { [key]: {} } }); features[key] = {}; } catch {}
+    try { validateConfig({ version: 13, servers: [], features: { [key]: {} } }); features[key] = {}; } catch {}
   }
-  cfg = { ...validateConfig({ version: 12, servers: [], features }), ...base };
+  cfg = { ...validateConfig({ version: 13, servers: [], features }), ...base };
 }
 const gw = new Gateway(cfg);
 await gw.start();

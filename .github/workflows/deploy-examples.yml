@@ -63,6 +63,15 @@ jobs:
               echo "::notice::the published image the example names is not available yet (new major before its release) — booting this commit's image only"
               echo "::endgroup::"; continue
             fi
+            # 17.0.0-alpha.1: a new major's config schema (v13 only) before its release — the published image the example
+            # names (the stable line) cannot read it. Skip only on that exact refusal; any other problem still fails.
+            if [ -z "$image" ] && ! docker compose run --rm --no-deps -T mcp-gateway validate -c /app/mcp-gateway.yml > /tmp/published-validate.txt 2>&1; then
+              if grep -Eq 'config version [0-9]+ is not supported' /tmp/published-validate.txt; then
+                cat /tmp/published-validate.txt
+                echo "::notice::the published image the example names cannot read this commit's config schema (new major before its release) — booting this commit's image only"
+                echo "::endgroup::"; continue
+              fi
+            fi
             docker compose up -d --wait --wait-timeout 120 || fail
             check || fail
             docker compose down -v

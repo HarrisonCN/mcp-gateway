@@ -217,9 +217,18 @@ describe.runIf(!!V14)('14.8.0 → current (14.x state)', () => {
     const b = await boot(CurrentGateway as unknown as GatewayCtor, base);
     const st = (await b.req('admin/gitops/status')).body;
     expect(st).toMatchObject({ managed: true, release: { gitSha: 'a'.repeat(40), configHash: bundle.configHash } });
+    // 17.0.0-alpha.1: the 14.8 bundle itself (version: 12) is refused before the replay check — the same release
+    // re-signed as v13 (same gitSha, same createdAt: not newer than the stored record) must be refused as a replay
     const again = await b.req('admin/gitops/apply', { bundle, manifest: m });
-    expect(again.status).toBe(403);
-    expect(JSON.stringify(again.body)).toMatch(/replay|not newer/);
+    expect(again.status).toBe(400);
+    expect(JSON.stringify(again.body)).toMatch(/schema v12 is no longer read by 17\.0\.0/);
+    const cfg13 = { ...bundleCfg, version: 13 };
+    const bundle13 = { ...bundle, config: cfg13, configHash: configHash(cfg13) };
+    let m13 = createReleaseManifest({ bundle: bundle13 as never, gitSha: 'a'.repeat(40), author: 'release-bot', keyId: 'ci', privateKeyPem: author.privateKeyPem, createdAt: m.createdAt });
+    m13 = approveRelease(m13, { keyId: 'alice', privateKeyPem: alice.privateKeyPem, by: 'alice' });
+    const replay = await b.req('admin/gitops/apply', { bundle: bundle13, manifest: m13 });
+    expect(replay.status).toBe(403);
+    expect(JSON.stringify(replay.body)).toMatch(/replay|not newer/);
   }, 30_000);
 
   for (const backend of BACKENDS) {
