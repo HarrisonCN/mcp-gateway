@@ -79,7 +79,7 @@ jobs:
           node bench/kernel.mjs --runs 5 --compare bench/baseline.json | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload coverage report
         if: matrix.node == 24 && always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage/
@@ -214,7 +214,7 @@ jobs:
           cat compat-matrix.json
       - name: Fail if a client was skipped
         run: node -e "const r=require('./compat-matrix.json'); const k=Object.keys(r); if(!k.some(x=>x.startsWith('py-sdk@'))||k.filter(x=>x.startsWith('ts-sdk@')).length<3){console.error('matrix incomplete', k); process.exit(1)}"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: compat-matrix
