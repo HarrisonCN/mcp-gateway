@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [17.0.0-rc.1] - 2026-10-15
+
+**Release candidate on `canary` — the 17.0 list is frozen** (npm dist-tag `canary`, image `:17.0.0-rc.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). From this release until 17.0.0 ships, the [17.0 freeze list](docs/v17/freeze.md) changes only by additions. **A frozen list is not a passed gate:** 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)), 16.0.0 is a release candidate, and stable 17.0.0 needs the v17 gates — **17.0.0 GA is blocked while A / B / C are open.**
+
+### Changed
+
+- **17.0 freeze**: `docs/v17/freeze.md`, `docs/migrating-to-v17.md` and `docs/deprecations.md` say "frozen from 17.0.0-rc.1" (no longer a proposal).
+- **Plugin compatibility**: the 17.0 row (plugin API v6 only) is `frozen` — shown as "frozen (prerelease)"; `pluginApiSupport('17.x')` reports `frozen: true`. It becomes `shipped` only with a 17.0.0 GA. The 16.9 row (v5 – v6) stays a proposal.
+- **SDK export surface** re-recorded at 17.0.0-rc.1 as the frozen list (`api/exports-surface.json`, 705 exports, nothing dropped since alpha.2).
+- `docs/versions.md`: the planned 15.x maintenance line (`v15-lts`, image `:15`) is written down as **planned, not active** — it starts only once 15.0.0 and 17.0.0 are stable.
+
+### Fixed
+
+- The unknown top-level key error on a `version: 13` file named "config schema v12" (the internal form it is checked in); it now names the schema the file declares (`config schema v13`). v12 files read by the migration tooling keep "config schema v12". Found by the 17.0.0-alpha.1 install check.
+
+### Tests
+
+- `test/v17-freeze-17-0-0-rc1.test.ts` (written first; failing-before 5/5 → `v17rc1-failing-before`): F1 freeze doc frozen + gates still required, F2 no proposal status, F3 compatibility row frozen (never shipped), F4 SDK surface re-recorded with nothing dropped, F5 `v15-lts` planned, not active.
+- History tests follow the freeze: `test/v16-freeze-16-0-0-rc1.test.ts` R4 (17.0 row frozen), `test/v17-sdk-surface-17-0-0.test.ts` E5, `test/plugin-sdk-15-2-1.test.ts` C2 / C3.
+- `test/v15-changes-15-0-0.test.ts` C3: the unknown-key message names v13 for a v13 file and v12 for a v12 file read by the migration tooling (failing-before → `v17rc1-msg-failing-before`).
+
 ## [17.0.0-alpha.2] - 2026-10-15
 
 **Development prerelease — 17.0 SDK surface** (npm dist-tag `canary`, image `:17.0.0-alpha.2` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). The 17.0 list is a **proposal** until 17.0.0-rc.1 ([17.0 freeze list, draft](docs/v17/freeze.md)). 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)); stable 17.0.0 needs its own gates — **17.0.0 GA is blocked while A / B / C are open.**
