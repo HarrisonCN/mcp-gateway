@@ -453,6 +453,7 @@ features:
       maxStalenessMs: 30000       # default max(30000, 3 × syncIntervalMs); ≥ 2 × syncIntervalMs
       maxClockSkewMs: 30000       # replicated writes stamped further ahead are rejected
       onStale: deny               # deny (fail closed, default) | allow (14.4 behaviour)
+      # revocationSloMs: 30000    # 16.2.0: revocation propagation SLO, ≥ 100 (default: maxStalenessMs)
     peers:
       - { id: us-east, url: https://us.gw.example.com, apiKey: "${US_ADMIN_KEY}", priority: 1 }
 ```
@@ -467,6 +468,9 @@ features:
 - **Behaviour change in 14.5.0:** with peers configured, a region that cannot reach a peer for longer than
   `maxStalenessMs` stops serving tool calls. Remove a permanently lost region from `peers` (hot reload) or set
   `onStale: allow` to keep the 14.4 behaviour. See [Multi-region](guides/multi-region.md).
+- 16.2.0-canary.0: revocations slower than `revocationSloMs` are counted as breaches (report, metrics, operations
+  timeline `revocation-slo`); `GET /api/v1/admin/regions/rollup` sums costs and lineage across regions; lineage records
+  carry `region` / `globalId` (`<region>:<requestId>`). See [Multi-region](guides/multi-region.md#control-plane-20-1620-canary0-development-prerelease).
 
 ## Secrets (3.5)
 

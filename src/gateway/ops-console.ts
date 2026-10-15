@@ -467,6 +467,8 @@ export interface OpsDeps {
   portable: () => Record<string, unknown>;
   /** 15.3.0-canary.0: `GET /admin/ops/tool-schemas` — digests, pin state and violation counters of every listed tool. */
   toolSchemas?: () => unknown | Promise<unknown>;
+  /** 16.2.0: this gateway's region (`regions.self`) — lineage records then carry `region` and `globalId`. */
+  region?: () => string | undefined;
   /** 15.1.0: cost ledger rollup for `GET /admin/ops/costs` (absent: the route answers with empty totals). */
   costs?: {
     currency: () => string;
@@ -662,19 +664,24 @@ export function createOpsConsoleRouter(deps: OpsDeps): express.Router {
   });
 
   // 15.1.0: call lineage — by the gateway request id (unique) or by the client's correlation id (may repeat)
+  // 16.2.0: with multi-region, a lineage record names its region and a region-qualified id unique across regions
+  const regional = (t: CallTrace): CallLineage & { region?: string; globalId?: string } => {
+    const region = deps.region?.();
+    return region ? { ...lineageOf(t), region, globalId: `${region}:${t.requestId}` } : lineageOf(t);
+  };
   ops.get('/lineage', (req, res) => {
     const cid = req.query.correlationId;
     if (cid === undefined) return void res.status(400).json({ error: 'Bad Request', message: 'Give a request id (/lineage/<requestId>) or ?correlationId=' });
     if (!isCorrelationId(cid)) return void res.status(400).json({ error: 'Bad Request', message: 'correlationId must be 1–128 characters of A–Z a–z 0–9 . _ : -' });
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
-    const list = deps.traces.byCorrelationId(cid).filter((t) => visible(res, t)).slice(0, limit).map(lineageOf);
+    const list = deps.traces.byCorrelationId(cid).filter((t) => visible(res, t)).slice(0, limit).map(regional);
     res.json({ lineage: list, total: list.length });
   });
 
   ops.get('/lineage/:id', (req, res) => {
     const t = deps.traces.get(req.params.id);
     if (!t || !visible(res, t)) return void res.status(404).json({ error: 'Not Found', message: 'No call with this request id (lineage is kept with the call traces: controlPlane.console.traceBuffer)' });
-    res.json(lineageOf(t));
+    res.json(regional(t));
   });
 
   // 15.1.0: cost rollup — the cost ledger summed by tenant, client, tool or UTC day since an instant (default: all kept)

@@ -8,7 +8,7 @@
 import { instanceLocal } from '../kernel/instance.js';
 import { redactString } from '../security/redact.js';
 
-export const TIMELINE_KINDS = ['restart', 'config-apply', 'gitops-release', 'revocation', 'circuit-open', 'region-stale', 'region-fresh', 'audit'] as const;
+export const TIMELINE_KINDS = ['restart', 'config-apply', 'gitops-release', 'revocation', 'circuit-open', 'region-stale', 'region-fresh', 'audit', 'revocation-slo'] as const;
 export type TimelineKind = (typeof TIMELINE_KINDS)[number];
 export interface OpsEvent {
   at: string;

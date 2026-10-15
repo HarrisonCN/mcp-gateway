@@ -435,6 +435,8 @@ Operators only. Writes need `controlPlane.configApi: true`. On a data plane (7.0
 | `POST` | `/admin/regions/sync` | Peer exchange `{ region, since, entries, servers }` (5.2) |
 | `GET` / `PUT` / `DELETE` | `/admin/regions/kv/:key` | Replicated state, last-writer-wins (`PUT { value }`) (5.2) |
 | `GET` | `/admin/regions/route/:serverId` | Where a call should run: `local`, a peer, or `none` (5.2) |
+| `GET` | `/admin/regions/rollup` | Costs (UTC day) and lineage summary of every region from the sync exchange, summed; `complete` while every peer is fresh (16.2.0-canary.0) |
+| `GET` | `/admin/regions/lineage/:region::requestId` | One call's lineage by region-qualified id `<region>:<requestId>`; another region's record is fetched from that peer (16.2.0-canary.0) |
 | `GET` | `/admin/edge-fleet` | Managed edge nodes with config drift (`in-sync` / `stale` / `never-synced` / `unmanaged` / `offline`) (5.3) |
 | `POST` | `/admin/edge-fleet/push` | Ask edges to sync now `{ nodes?, labels?, onlyDrifted? }` → per-node results (5.3) |
 | `GET` | `/admin/marketplace` | Plugin marketplace entries from `marketplace.indexes` (`trusted` = signed by a `pluginTrust` key) (5.4) |
