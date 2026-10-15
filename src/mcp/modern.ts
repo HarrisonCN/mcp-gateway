@@ -16,6 +16,8 @@ export const META_PROTOCOL_VERSION = 'io.modelcontextprotocol/protocolVersion';
 export const META_CLIENT_INFO = 'io.modelcontextprotocol/clientInfo';
 export const META_CLIENT_CAPABILITIES = 'io.modelcontextprotocol/clientCapabilities';
 export const META_SERVER_INFO = 'io.modelcontextprotocol/serverInfo';
+/** 16.1.0-canary.1: tags every message on a `subscriptions/listen` stream (= the listen request's JSON-RPC id). */
+export const META_SUBSCRIPTION_ID = 'io.modelcontextprotocol/subscriptionId';
 
 /** 2026-07-28 error codes (spec-reserved range -32020 … -32099). */
 export const ERR_HEADER_MISMATCH = -32020;

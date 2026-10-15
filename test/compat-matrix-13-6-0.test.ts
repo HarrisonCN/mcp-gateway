@@ -329,6 +329,14 @@ async def main(url):
                     await negotiate_auto(s)
                     out["auto"] = s.protocol_version
                     out["auto_call"] = (await s.call_tool("shttp__echo", {"msg": "auto"})).content[0].text
+                    # 16.1.0-canary.1: subscriptions/listen through the SDK when auto mode stayed on 2026-07-28
+                    try:
+                        from mcp.client.subscriptions import listen as sdk_listen
+                    except ImportError:
+                        sdk_listen = None
+                    if sdk_listen is not None and s.protocol_version == "2026-07-28":
+                        async with sdk_listen(s, tools_list_changed=True) as sub:
+                            out["listen"] = bool(sub.honored.tools_list_changed)
     print(json.dumps(out))
 
 anyio.run(main, sys.argv[1])
@@ -350,6 +358,10 @@ describe.skipIf(!PY)('Python SDK client (official "mcp" package)', () => {
       expect([MODERN_PROTOCOL_VERSION, ...PROTOCOL_VERSIONS]).toContain(out.auto);
       expect(out.auto_call).toBe('echo:auto');
       mark(`py-sdk@${out.auto}`, out.auto === MODERN_PROTOCOL_VERSION ? 'auto mode (stateless 2026-07-28)' : 'auto mode (server/discover fallback)', true);
+      if (out.listen !== undefined) {
+        expect(out.listen).toBe(true); // 16.1.0-canary.1: the SDK's listen() got an acknowledgment honoring toolsListChanged
+        mark(`py-sdk@${out.auto}`, 'subscriptions/listen', true);
+      }
     }
     mark(`py-sdk@${out.version}`, 'session+tools+progress', true);
   }, 70_000);

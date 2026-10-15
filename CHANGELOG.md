@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [16.1.0-canary.1] - 2026-10-15
+
+**Development prerelease — second 16.1 canary** (npm dist-tag `canary`, image `:16.1.0-canary.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). It adds change notifications for stateless MCP 2026-07-28 callers. 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)); 16.0.0 is at rc.1 on `canary` and needs its own gates.
+
+### Added
+
+- **`subscriptions/listen`** ([MCP 2026-07-28 subscriptions](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/subscriptions); [client compatibility](docs/guides/client-compatibility.md#mcp-2026-07-28-1610-canary0)) — the 2026-07-28 replacement for the GET stream and `resources/subscribe`, for callers without a session:
+  - the request (header validation as for every modern request) answers with a long-lived SSE response; a client that does not accept `text/event-stream` gets `400`;
+  - first message `notifications/subscriptions/acknowledged` with the agreed filter: `toolsListChanged` / `promptsListChanged` / `resourcesListChanged` as asked, `resourceSubscriptions` limited to URIs the caller's scope can route to a server that supports resource subscriptions (at most 100 per listen);
+  - then `notifications/tools/list_changed`, `notifications/prompts/list_changed`, `notifications/resources/list_changed` (computed per caller scope, as for sessions) and `notifications/resources/updated`, each with `_meta["io.modelcontextprotocol/subscriptionId"]` = the listen request's id; types the caller did not ask for are never sent;
+  - upstream `resources/subscribe` is shared with sessions and released when the last subscriber (session or listener) goes; closing the stream ends the subscription;
+  - the gateway ends a listener gracefully — a `resultType: "complete"` response carrying the subscription id — on shutdown and when an auth reload removes the key that opened it; SSE keepalive comments as on session streams; at most `mcp.maxSessions` open listeners (`503` beyond).
+- `server/discover` advertises `tools.listChanged`, `resources.listChanged` / `subscribe` and `prompts.listChanged`.
+
+### Tests
+
+- `test/mcp-subscriptions-16-1-1.test.ts` (written first; failing-before 5/6 → `subs1611-failing-before`; S6, header validation, already held from canary.0): S1 acknowledgment + agreed filter + SSE required, S2 tagged tools/list_changed and no unrequested types, S3 resources/updated, S4 closing releases the upstream subscription, S5 scope, S6 header validation, S7 graceful end on shutdown; S8 (key removed by an auth reload) added after the first green run, for the documented behaviour.
+- `test/compat-matrix-13-6-0.test.ts`: when the Python SDK's auto mode stays on 2026-07-28 it also opens `subscriptions/listen` with the SDK's own `listen()` and checks the acknowledgment (passes locally with `mcp==2.3.0`).
+
 ## [16.1.0-canary.0] - 2026-10-15
 
 **Development prerelease — first 16.1 canary** (npm dist-tag `canary`, image `:16.1.0-canary.0` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). 16.1 was conditional on a new MCP specification revision; [MCP 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28) was published on 2026-07-28. This canary makes `/mcp` dual-era. 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)); 16.0.0 is at rc.1 on `canary` and needs its own gates.
