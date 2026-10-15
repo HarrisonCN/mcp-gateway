@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [16.9.0-canary.0] - 2026-10-15
+
+**Development prerelease — v17 preparation** (npm dist-tag `canary`, image `:16.9.0-canary.0` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). Every removal planned for 17.0.0 is announced one minor ahead and plugin API v6 is available early; the 17.0 list is a **proposal** until 17.0.0-rc.1 ([migrating to v17](docs/migrating-to-v17.md)). 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)); 16.0.0 is at rc.1 on `canary` and needs its own gates.
+
+### Added
+
+- **Plugin API v6** (the 17.0 contract, loadable now): hooks return `{ action }` outcomes only — a v4-era shape (`{ deny }`, `{ respond }`, `{ arguments }`, a whole response from `onResponse`) fails the hook (fail closed, `-32006` unless `failure: open`); a v6 module plugin is refused with `runtime: inline` (so it has no `onRequest` / `routes`). `PLUGIN_API_VERSION` is 6, `PLUGIN_API_MIN_VERSION` stays 5: 16.9 loads v5 and v6. Hooks see the contract the plugin declared in `ctx.apiVersion` (a v5 plugin keeps seeing 5). Plugin compatibility table: `16.0.0 – <16.9.0` v5 (frozen, prerelease), `16.9.0 – <17.0.0` v5 – v6 (proposal), 17.0 v6 (proposal).
+- **17.0 deprecations** (`DEPRECATED (removed in 17.0.0)`, listed by `GET /admin/deprecations`; [deprecations](docs/deprecations.md#planned-removals-in-1700-announced-1690-canary0)): `v17.plugins.<name>.api-v5` (a loaded v5 module plugin), `v17.plugins.<name>.legacy-outcome` (a v5 module plugin hook returned a v4-era outcome; it keeps working), `v17.plugins.<name>.http-hooks` (a plugin with `onRequest` / `routes`), `v17.plugins.<i>.inline` (a schema v13 file with an inline module plugin; also listed by `mcp-gateway validate`). Schema v12 files and the `v16.*` items stay reported as before (removed in 17.0.0).
+- **Codemod** `mcp-gateway plugin migrate --to v6 <file> [--in-place] [--json]` (`migratePluginSource` in `src/plugins/migrate-v6.ts`): `apiVersion: 5` → 6, literal v4-era outcomes → `{ action }`, a report of what needs a person (`onResponse` returns, HTTP hooks, a missing `apiVersion`); dry run by default, `--in-place` keeps `<file>.bak`; idempotent.
+- `docs/migrating-to-v17.md` (proposal): plugin API v6, runtimes, HTTP hooks, schema v13 only (a file without `version:` is read as v13 in 17.0), the codemod.
+
+### Tests
+
+- `test/v17-prep-16-9-0.test.ts` (written first; failing-before: modules missing → `v17prep-failing-before`): P1 v5 and v6 load / table, P2 v4-era outcomes (v6 fails closed in a worker, v5 works inline and is recorded), P3 v6 refused inline, P4 load-time deprecations, P5 v13 config deprecation, P6 codemod + CLI.
+- Adjusted for the 16.9 behaviour (expected changes): `test/v13-schema-16-0-0.test.ts` S7 (a migrated v13 file with an inline plugin now lists `v17.plugins.1.inline`), `test/v16-freeze-16-0-0-rc1.test.ts` R4 (the frozen v5 range ends at 16.9.0), `test/plugin-sdk-15-2-1.test.ts` C2 (16.9 row), `test/v5.test.ts` / `test/v8.test.ts` (`PLUGIN_API_VERSION` ≥ 5).
+- Found by the local full suite (failing-before `v169-fix-failing-before`): `test/plugins.test.ts` (a v5 plugin's hooks see `ctx.apiVersion` 5; a v6 plugin sees 6 — new assertion), `test/v13-codemod-15-9-1.test.ts` C1 (after `config migrate --to v13` every 16.0 deprecation is resolved and exactly `v17.plugins.1.inline` remains), `test/v13-tooling-16-0-2.test.ts` J4.
+
+### Changed
+
+- `scripts/docs-check.ts`: the `v17.*` deprecations are advisory in docs (they describe valid 16.x configs; 17.0 refuses those forms at load, which docs-check then reports) — before, an `allowInline` v13 example was mislabelled a "schema v11 field".
+
 ## [16.2.0-canary.0] - 2026-10-15
 
 **Development prerelease — first 16.2 canary** (npm dist-tag `canary`, image `:16.2.0-canary.0` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). Multi-region control plane 2.0. 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)); 16.0.0 is at rc.1 on `canary` and needs its own gates.
