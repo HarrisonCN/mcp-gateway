@@ -37,7 +37,7 @@ import { corsMiddleware } from '../middleware/cors.js';
 import { requestIdMiddleware } from '../middleware/request-id.js';
 import { createErrorHandler, notFoundHandler } from '../middleware/error-handler.js';
 import { dashboardCsp, securityHeadersMiddleware } from '../security/headers.js';
-import { OpsTimeline, TraceStore, buildTrace, createOpsConsoleRouter, emitOpsEvent, explainDenial as explainOpsDenial, opsSettings } from './ops-console.js';
+import { OpsTimeline, TraceStore, buildTrace, createOpsConsoleRouter, emitOpsEvent, explainDenial as explainOpsDenial, lineageOf, opsSettings } from './ops-console.js';
 import { decisionOf as decisionOfData } from './invoker.js';
 import { crossSiteGuardMiddleware, defaultAllowedHosts, effectiveRebindingProtection, hostCheckMiddleware, ipAllowlistMiddleware, LOOPBACK_ORIGIN_PATTERN } from '../security/network.js';
 import { configureRedaction } from '../security/redact.js';
@@ -578,6 +578,7 @@ export class Gateway {
         failedModules: () => this.moduleFailures.ids(),
         portable: () => portableConfig(this.config),
         costs: { currency: () => this.cfgNow().costs?.currency ?? 'USD', rollup: (by, since, tenants) => this.costs.rollup(by, since, tenants) },
+        region: () => (this.cfgNow().regions as { self?: string } | undefined)?.self,
         toolSchemas: async () => (await this.invoker!.loadToolSchemas()).report(this.cfgNow().policy?.toolSchemas, this.registry.getAllTools()),
       }),
     );
@@ -604,6 +605,23 @@ export class Gateway {
           onStop: (fn) => void this.featureStops.push(fn),
           edgeNodes: () => [...edgeControl.nodes.values()],
           capturedCalls: () => this.invoker?.recorder?.list() ?? [],
+          // 16.2.0: regions rollup + region-qualified lineage
+          costRollup: (since) => {
+            const r = this.costs.rollup('tenant', since);
+            return { currency: this.cfgNow().costs?.currency ?? 'USD', total: r.total, byTenant: r.totals };
+          },
+          lineageSummary: () => {
+            const out = { kept: 0, ok: 0, denied: 0, error: 0 };
+            for (const t of this.traceStore.list()) {
+              out.kept++;
+              out[t.outcome]++;
+            }
+            return out;
+          },
+          lineage: (requestId) => {
+            const t = this.traceStore.get(requestId);
+            return t ? lineageOf(t) : undefined;
+          },
           applyConfig: async (raw, dryRun) => {
             const next = await prepareConfig(raw, this.config);
             const changes = diffAgainst(this.config, next);

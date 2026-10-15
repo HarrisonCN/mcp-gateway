@@ -1,4 +1,4 @@
-# Multi-region active-active (5.2; consistency 14.5)
+# Multi-region active-active (5.2; consistency 14.5; control plane 2.0 16.2)
 
 Run a full gateway in every region and let them peer. Each region serves traffic on its own; regions replicate a
 small shared state — **revocations**, a key-value store and which upstream servers they have online — so a key revoked
@@ -16,6 +16,7 @@ features:
       maxStalenessMs: 30000
       maxClockSkewMs: 30000
       onStale: deny
+      # revocationSloMs: 30000   # 16.2.0: revocation propagation SLO (default: maxStalenessMs)
     peers:
       - { id: us-east, url: https://us.gw.example.com, apiKey: "${US_ADMIN_KEY}", priority: 1 }
 ```
@@ -99,7 +100,37 @@ depend on clocks and replicate regardless.
 - Prometheus: `mcp_gateway_region_fresh`, `mcp_gateway_region_replication_lag_seconds{peer}`,
   `mcp_gateway_region_peer_up{peer}`, `mcp_gateway_region_clock_skew_seconds{peer}`,
   `mcp_gateway_region_denied_total{reason="stale|revoked"}`, `mcp_gateway_region_rejected_entries_total{reason}`,
-  `mcp_gateway_region_conflicts_total`, `mcp_gateway_region_revocations`.
+  `mcp_gateway_region_conflicts_total`, `mcp_gateway_region_revocations`; 16.2.0:
+  `mcp_gateway_region_revocation_slo_seconds`, `mcp_gateway_region_revocation_propagation_seconds{quantile="0.5|0.99"}`
+  (+ `_count`), `mcp_gateway_region_revocation_slo_breaches_total`.
+
+## Control plane 2.0 (16.2.0-canary.0, development prerelease)
+
+**Revocation propagation SLO.** When a revocation issued in another region first reaches this one (directly or relayed
+through a third region), the gateway times it: this region's clock now, minus the issuing region's revocation time
+corrected by that peer's observed clock skew (never negative). A revocation slower than `consistency.revocationSloMs`
+(default: `maxStalenessMs`) is a **breach**: counted, put on the operations console timeline as `revocation-slo`
+(severity warning) and exported. `GET /api/v1/admin/regions/report` has `revocationPropagation`: `sloMs`, `samples`,
+`breaches`, `p50Ms` / `p99Ms` / `maxMs` (nearest rank over the last 200) and the 20 most recent samples
+(`clientId`, `from`, `latencyMs`, `breached`). Revocations this region issued itself, or learnt from the other
+instances of this region through the shared store, are not sampled. The measurement includes clock-skew error (the
+skew is estimated from the last exchange and includes one-way latency).
+
+**Cross-region rollup.** Each region adds its own figures to the sync exchange — its cost ledger since the start of
+the current UTC day (total and by tenant) and the call lineage it keeps (operations console traces) by outcome.
+`GET /api/v1/admin/regions/rollup` answers one row per region (`self`, `fresh`, `stale` — the last figures it sent,
+flagged — or `missing`) with `asOf` and `lagMs`, plus the sums in `total` (`costs`, `byTenant`, `lineage`) and
+`complete: true` only while every peer is fresh with figures. The figures are as good as the sync interval and each
+region's own retention: costs come from the in-memory ledger, lineage counts from the bounded trace buffer
+(`controlPlane.console.traceBuffer`). The operations console cluster view (`GET /api/v1/admin/ops/cluster`) shows the
+same rollup and the propagation summary under `regions`.
+
+**Region-qualified lineage.** With `regions` configured, every lineage record (`GET /api/v1/admin/ops/lineage/…`)
+carries `region` and `globalId` = `<region>:<requestId>`. A request id is only unique within the region that issued
+it (a client's `X-Request-Id` is its correlation id, not the request id); the region-qualified id is unique across
+regions. `GET /api/v1/admin/regions/lineage/<region>:<requestId>` resolves it from any region: its own record, or the
+peer's, fetched with that peer's `apiKey` (`404` for an unknown region or request id, `400` without a region part,
+`502` when the peer cannot be reached).
 
 ## Failover routing
 

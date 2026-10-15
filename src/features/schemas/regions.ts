@@ -23,6 +23,12 @@ export const RegionConsistencySchema = z
     maxClockSkewMs: z.number().int().min(0).default(30_000),
     /** What a region does with tool calls while it is not fresh: `deny` (fail closed, default) or `allow` (14.4 behaviour). */
     onStale: z.enum(['deny', 'allow']).default('deny'),
+    /**
+     * 16.2.0: revocation propagation SLO — a revocation issued in another region should be known here within this many
+     * ms (measured from the issuing region's clock, corrected by the peer's observed clock skew). A slower one is a
+     * breach: counted, on the operations timeline (`revocation-slo`) and in metrics. Default: `maxStalenessMs`.
+     */
+    revocationSloMs: z.number().int().min(100).optional(),
   })
   .strict();
 

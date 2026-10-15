@@ -37,6 +37,15 @@
  * - `POST /admin/regions/sync` — peer exchange `{ region, since, entries, servers, revocations, now, config }`.
  * - `GET|PUT|DELETE /admin/regions/kv/:key` — replicated state (`PUT` body `{ value, ifGeneration? }`).
  * - `GET  /admin/regions/route/:serverId` — where a call to that server should run: `local`, a peer, or none.
+ * - `GET  /admin/regions/rollup` — 16.2.0: costs (current UTC day) and the call lineage summary of every region, each
+ *   region's own figures carried in the sync exchange, summed; `complete: false` while a region is missing or stale.
+ * - `GET  /admin/regions/lineage/:region::requestId` — 16.2.0: one call's lineage by its region-qualified id
+ *   (`<region>:<requestId>`, unique across regions); another region's record is fetched from that peer.
+ *
+ * 16.2.0 also measures **revocation propagation**: when a revocation issued in another region arrives, its latency
+ * (issuing region's clock, corrected by that peer's observed clock skew) is compared with
+ * `consistency.revocationSloMs` (default `maxStalenessMs`); a slower one is a breach — counted in the report and the
+ * metrics and put on the operations timeline (`revocation-slo`).
  *
  * @module features/regions
  */
@@ -110,6 +119,94 @@ export interface PeerState {
   skewMs?: number;
   /** 14.5.0: the peer's config fingerprint (policy hash + config generation) at the last exchange. */
   config?: { policyHash?: string; generation?: number };
+  /** 16.2.0: the peer's own rollup (costs + lineage summary) from its last exchange. */
+  rollup?: RegionRollup;
+}
+
+/** 16.2.0: cost totals of one rollup row (same shape as the cost ledger rollup). */
+export interface RollupCost {
+  cost: number;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+/** 16.2.0: one region's own figures, carried in its sync exchange. */
+export interface RegionRollup {
+  region: string;
+  asOf: string;
+  /** Cost ledger since the start of the current UTC day. */
+  costs: { currency: string; since: string; total: RollupCost; byTenant: Array<RollupCost & { key: string }> };
+  /** Call lineage kept by the region (operations console traces), by outcome. */
+  lineage: { kept: number; ok: number; denied: number; error: number };
+}
+/** 16.2.0: one row of the cross-region rollup. */
+export interface RollupRow {
+  region: string;
+  status: 'self' | 'fresh' | 'stale' | 'missing';
+  asOf: string | null;
+  lagMs: number | null;
+  costs: RegionRollup['costs'] | null;
+  lineage: RegionRollup['lineage'] | null;
+}
+export interface MergedRollup {
+  regions: RollupRow[];
+  total: { costs: RollupCost; byTenant: Array<RollupCost & { key: string }>; lineage: RegionRollup['lineage'] };
+  /** Every peer's figures are present and fresh. */
+  complete: boolean;
+}
+/** 16.2.0: one measured revocation propagation. */
+export interface PropagationSample {
+  clientId: string;
+  from: string;
+  latencyMs: number;
+  breached: boolean;
+  at: string;
+}
+
+const num = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x) && x >= 0;
+const validCost = (c: unknown): c is RollupCost => !!c && typeof c === 'object' && num((c as RollupCost).cost) && num((c as RollupCost).calls) && num((c as RollupCost).inputTokens) && num((c as RollupCost).outputTokens);
+/** 16.2.0: a rollup received from a peer is used only when well formed and about that peer. */
+export function validRollup(r: unknown, region: string): r is RegionRollup {
+  if (!r || typeof r !== 'object') return false;
+  const x = r as RegionRollup;
+  if (x.region !== region || typeof x.asOf !== 'string') return false;
+  const c = x.costs;
+  if (!c || typeof c !== 'object' || typeof c.currency !== 'string' || typeof c.since !== 'string' || !validCost(c.total) || !Array.isArray(c.byTenant) || c.byTenant.length > 1000) return false;
+  if (!c.byTenant.every((t) => validCost(t) && typeof (t as { key?: unknown }).key === 'string')) return false;
+  const l = x.lineage;
+  return !!l && typeof l === 'object' && num(l.kept) && num(l.ok) && num(l.denied) && num(l.error);
+}
+const r6 = (x: number) => Math.round(x * 1e6) / 1e6;
+const addCost = (a: RollupCost, b: RollupCost): RollupCost => ({ cost: r6(a.cost + b.cost), calls: a.calls + b.calls, inputTokens: a.inputTokens + b.inputTokens, outputTokens: a.outputTokens + b.outputTokens });
+
+/**
+ * 16.2.0: the cross-region rollup — this region's figures plus each peer's latest, summed. A peer without figures is
+ * `missing`, one not synced within `maxStalenessMs` is `stale` (its last figures still count, flagged); `complete`
+ * only while every peer is fresh with figures.
+ */
+export function mergeRollups(self: RegionRollup, peers: Array<{ id: string; rollup?: RegionRollup; fresh: boolean; lagMs: number | null }>): MergedRollup {
+  const zero: RollupCost = { cost: 0, calls: 0, inputTokens: 0, outputTokens: 0 };
+  const rows: RollupRow[] = [{ region: self.region, status: 'self', asOf: self.asOf, lagMs: 0, costs: self.costs, lineage: self.lineage }];
+  for (const p of peers) {
+    rows.push(p.rollup
+      ? { region: p.id, status: p.fresh ? 'fresh' : 'stale', asOf: p.rollup.asOf, lagMs: p.lagMs, costs: p.rollup.costs, lineage: p.rollup.lineage }
+      : { region: p.id, status: 'missing', asOf: null, lagMs: p.lagMs, costs: null, lineage: null });
+  }
+  let costs = zero;
+  const tenants = new Map<string, RollupCost & { key: string }>();
+  const lineage = { kept: 0, ok: 0, denied: 0, error: 0 };
+  for (const r of rows) {
+    if (r.costs) {
+      costs = addCost(costs, r.costs.total);
+      for (const t of r.costs.byTenant) tenants.set(t.key, { key: t.key, ...addCost(tenants.get(t.key) ?? zero, t) });
+    }
+    if (r.lineage) for (const k of ['kept', 'ok', 'denied', 'error'] as const) lineage[k] += r.lineage[k];
+  }
+  return {
+    regions: rows,
+    total: { costs, byTenant: [...tenants.values()].sort((a, b) => a.key.localeCompare(b.key)), lineage },
+    complete: rows.every((r) => r.status === 'self' || r.status === 'fresh'),
+  };
 }
 
 /** A write that named a stale generation (`ifGeneration`) (14.5.0). */
@@ -156,6 +253,12 @@ export function compareVv(a: VersionVector, b: VersionVector): number {
 const joinVv = (a: VersionVector, b: VersionVector): VersionVector => Object.fromEntries([...vvKeys(a, b)].sort().map((k) => [k, Math.max(a[k] ?? 0, b[k] ?? 0)]));
 const genOf = (vv: VersionVector) => Object.values(vv).reduce((s, n) => s + n, 0);
 
+/** What a region adds to its sync exchange besides the replicated state (14.5.0 config fingerprint, 16.2.0 rollup). */
+export interface SyncExtra {
+  config?: PeerState['config'];
+  rollup?: RegionRollup;
+}
+
 export interface MeshStats {
   rejected: { clockSkew: number; stale: number; invalid: number };
   conflicts: number;
@@ -167,6 +270,10 @@ export class RegionMesh {
   private readonly entries = new Map<string, ReplicatedEntry>();
   private readonly peers = new Map<string, PeerState>();
   private readonly revoked = new Map<string, Revocation>();
+  /** 16.2.0: recent revocation propagation samples (bounded) and totals. */
+  private readonly propagation: PropagationSample[] = [];
+  private propagationCount = 0;
+  private propagationBreaches = 0;
   private clock = 0;
   private timer?: ReturnType<typeof setInterval>;
   private readonly counters: MeshStats = { rejected: { clockSkew: 0, stale: 0, invalid: 0 }, conflicts: 0, denied: { stale: 0, revoked: 0 } };
@@ -333,9 +440,45 @@ export class RegionMesh {
       if (!cur) {
         this.revoked.set(v.clientId, v);
         n++;
+        if (v.region !== this.cfg.self) this.samplePropagation(v);
       } else if (v.at < cur.at) this.revoked.set(v.clientId, v); // keep the earliest notice
     }
     return n;
+  }
+
+  /** 16.2.0: the configured (or default) revocation propagation SLO. */
+  get revocationSloMs(): number {
+    return this.cfg.consistency.revocationSloMs ?? this.cfg.consistency.maxStalenessMs;
+  }
+
+  /** 16.2.0: latency of a revocation first seen here, from the issuing region's clock (corrected by its skew). */
+  private samplePropagation(r: Revocation): void {
+    const now = this.now();
+    const skew = this.peers.get(r.region)?.skewMs ?? 0;
+    const latencyMs = Math.max(0, Math.round(now - (r.at - skew)));
+    const slo = this.revocationSloMs;
+    const breached = latencyMs > slo;
+    this.propagationCount++;
+    if (breached) this.propagationBreaches++;
+    this.propagation.push({ clientId: r.clientId, from: r.region, latencyMs, breached, at: new Date(now).toISOString() });
+    if (this.propagation.length > 200) this.propagation.splice(0, this.propagation.length - 200);
+    if (breached)
+      emitOpsEvent({ kind: 'revocation-slo', severity: 'warning', subject: r.clientId, detail: `revocation of ${r.clientId} from region ${r.region} reached ${this.cfg.self} after ${latencyMs} ms (SLO ${slo} ms)`, source: 'regions' });
+  }
+
+  /** 16.2.0: revocation propagation against the SLO (quantiles over the last 200 samples; nearest rank). */
+  revocationPropagation(): { sloMs: number; samples: number; breaches: number; p50Ms: number | null; p99Ms: number | null; maxMs: number | null; recent: PropagationSample[] } {
+    const sorted = this.propagation.map((x) => x.latencyMs).sort((a, b) => a - b);
+    const q = (p: number) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))]! : null);
+    return {
+      sloMs: this.revocationSloMs,
+      samples: this.propagationCount,
+      breaches: this.propagationBreaches,
+      p50Ms: q(0.5),
+      p99Ms: q(0.99),
+      maxMs: sorted.length ? sorted[sorted.length - 1]! : null,
+      recent: this.propagation.slice(-20).reverse().map((x) => ({ ...x })),
+    };
   }
 
   // ─── region store: share revocations with the other instances of this region (14.5.0) ──────────
@@ -387,7 +530,7 @@ export class RegionMesh {
   }
 
   /** Record a peer's gossip (from an inbound or outbound sync). */
-  sawPeer(id: string, servers: unknown, cursor?: number, meta: { now?: unknown; config?: unknown } = {}): void {
+  sawPeer(id: string, servers: unknown, cursor?: number, meta: { now?: unknown; config?: unknown; rollup?: unknown } = {}): void {
     const p = this.peers.get(id);
     if (!p) return;
     const now = this.now();
@@ -401,6 +544,14 @@ export class RegionMesh {
     if (typeof meta.now === 'number' && Number.isFinite(meta.now)) p.skewMs = Math.round(meta.now - now);
     const c = meta.config as { policyHash?: unknown; generation?: unknown } | undefined;
     if (c && typeof c === 'object') p.config = { ...(typeof c.policyHash === 'string' ? { policyHash: c.policyHash } : {}), ...(typeof c.generation === 'number' ? { generation: c.generation } : {}) };
+    if (meta.rollup !== undefined && validRollup(meta.rollup, id)) p.rollup = meta.rollup;
+  }
+
+  /** 16.2.0: each peer's latest rollup with its freshness. */
+  peerRollups(): Array<{ id: string; rollup?: RegionRollup; fresh: boolean; lagMs: number | null }> {
+    const now = this.now();
+    const f = this.freshness();
+    return this.peerList().map((p) => ({ id: p.id, ...(p.rollup ? { rollup: p.rollup } : {}), fresh: !f.stale.includes(p.id), lagMs: this.lagOf(p, now) }));
   }
 
   peerFailed(id: string, err: string): void {
@@ -462,12 +613,12 @@ export class RegionMesh {
   }
 
   /** The payload this region sends in a sync exchange (14.5.0 adds revocations, clock and config fingerprint). */
-  exchange(localOnline: string[], extra: { config?: PeerState['config'] } = {}): Record<string, unknown> {
-    return { region: this.cfg.self, entries: this.delta(0), servers: localOnline, revocations: this.revocationList(), now: this.now(), ...(extra.config ? { config: extra.config } : {}) };
+  exchange(localOnline: string[], extra: SyncExtra = {}): Record<string, unknown> {
+    return { region: this.cfg.self, entries: this.delta(0), servers: localOnline, revocations: this.revocationList(), now: this.now(), ...(extra.config ? { config: extra.config } : {}), ...(extra.rollup ? { rollup: extra.rollup } : {}) };
   }
 
   /** One outbound sync round with every peer. */
-  async syncOnce(localOnline: string[], f: typeof fetch = fetch, extra: { config?: PeerState['config'] } = {}): Promise<void> {
+  async syncOnce(localOnline: string[], f: typeof fetch = fetch, extra: SyncExtra = {}): Promise<void> {
     await this.pushStore();
     await Promise.all(
       this.peerList().map(async (p) => {
@@ -481,11 +632,12 @@ export class RegionMesh {
             signal: AbortSignal.timeout(Math.max(1000, this.cfg.syncIntervalMs)),
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const body = (await res.json()) as { entries?: ReplicatedEntry[]; servers?: string[]; revocations?: unknown; now?: unknown; config?: unknown };
+          const body = (await res.json()) as { entries?: ReplicatedEntry[]; servers?: string[]; revocations?: unknown; now?: unknown; config?: unknown; rollup?: unknown };
           const entries = Array.isArray(body.entries) ? body.entries : [];
           this.merge(entries);
+          // 16.2.0: the peer's clock skew is known before its revocations are timed
+          this.sawPeer(p.id, body.servers, entries.reduce((m, e) => Math.max(m, typeof e?.ts === 'number' ? e.ts : 0), 0), { now: body.now, config: body.config, rollup: body.rollup });
           if (this.mergeRevocations(body.revocations)) void this.pushStore();
-          this.sawPeer(p.id, body.servers, entries.reduce((m, e) => Math.max(m, typeof e?.ts === 'number' ? e.ts : 0), 0), { now: body.now, config: body.config });
         } catch (e) {
           this.peerFailed(p.id, (e as Error).message);
         }
@@ -493,7 +645,7 @@ export class RegionMesh {
     );
   }
 
-  start(localOnline: () => string[], f: typeof fetch = fetch, extra: () => { config?: PeerState['config'] } = () => ({})): void {
+  start(localOnline: () => string[], f: typeof fetch = fetch, extra: () => SyncExtra = () => ({})): void {
     this.stop();
     if (!this.cfg.peers.length && !this.store) return;
     this.timer = setInterval(() => void this.syncOnce(localOnline(), f, extra()), this.cfg.syncIntervalMs);
@@ -552,6 +704,7 @@ export class RegionMesh {
       conflictedKeys: conflicted,
       rejected: { ...this.counters.rejected },
       revocations: this.revoked.size,
+      revocationPropagation: this.revocationPropagation(),
       denied: { ...this.counters.denied },
     };
   }
@@ -582,6 +735,13 @@ export class RegionMesh {
     for (const [r, n] of Object.entries(this.counters.rejected)) out.push(`mcp_gateway_region_rejected_entries_total{reason="${r === 'clockSkew' ? 'clock_skew' : r}"} ${n}`);
     out.push('# TYPE mcp_gateway_region_conflicts_total counter', `mcp_gateway_region_conflicts_total ${this.counters.conflicts}`);
     out.push('# TYPE mcp_gateway_region_revocations gauge', `mcp_gateway_region_revocations ${this.revoked.size}`);
+    // 16.2.0: revocation propagation SLO
+    const rp = this.revocationPropagation();
+    const sec = (ms: number | null) => (ms === null ? 'NaN' : (ms / 1000).toFixed(3));
+    out.push('# HELP mcp_gateway_region_revocation_slo_seconds Revocation propagation SLO (consistency.revocationSloMs) (16.2.0)', '# TYPE mcp_gateway_region_revocation_slo_seconds gauge', `mcp_gateway_region_revocation_slo_seconds ${sec(rp.sloMs)}`);
+    out.push('# HELP mcp_gateway_region_revocation_propagation_seconds Latency of revocations issued in other regions (last 200)', '# TYPE mcp_gateway_region_revocation_propagation_seconds summary');
+    out.push(`mcp_gateway_region_revocation_propagation_seconds{quantile="0.5"} ${sec(rp.p50Ms)}`, `mcp_gateway_region_revocation_propagation_seconds{quantile="0.99"} ${sec(rp.p99Ms)}`, `mcp_gateway_region_revocation_propagation_seconds_count ${rp.samples}`);
+    out.push('# HELP mcp_gateway_region_revocation_slo_breaches_total Revocations that arrived later than the SLO', '# TYPE mcp_gateway_region_revocation_slo_breaches_total counter', `mcp_gateway_region_revocation_slo_breaches_total ${rp.breaches}`);
     return out;
   }
 }
@@ -611,6 +771,30 @@ function configPrint(ctx: FeatureContext): PeerState['config'] {
   return { policyHash, ...(typeof generation === 'number' ? { generation } : {}) };
 }
 
+/** 16.2.0: this region's own rollup — cost ledger since the start of the UTC day, kept call lineage by outcome. */
+export function rollupOf(ctx: FeatureContext, region: string, now = Date.now()): RegionRollup {
+  const d = new Date(now);
+  const since = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const c = ctx.costRollup?.(since);
+  const zero = { cost: 0, calls: 0, inputTokens: 0, outputTokens: 0 };
+  return {
+    region,
+    asOf: new Date(now).toISOString(),
+    costs: { currency: c?.currency ?? (ctx.config() as { costs?: { currency?: string } }).costs?.currency ?? 'USD', since: new Date(since).toISOString(), total: c?.total ?? zero, byTenant: c?.byTenant ?? [] },
+    lineage: ctx.lineageSummary?.() ?? { kept: 0, ok: 0, denied: 0, error: 0 },
+  };
+}
+
+function syncExtra(ctx: FeatureContext, region: string): SyncExtra {
+  let rollup: RegionRollup | undefined;
+  try {
+    rollup = rollupOf(ctx, region);
+  } catch {
+    rollup = undefined; // a rollup source failing never stops replication
+  }
+  return { config: configPrint(ctx), ...(rollup ? { rollup } : {}) };
+}
+
 function meshFor(state: RegionState): RegionMesh | undefined {
   const ctx = state.ctx;
   if (!ctx) return state.mesh;
@@ -635,7 +819,8 @@ function meshFor(state: RegionState): RegionMesh | undefined {
     } catch {
       state.mesh.attachStore(undefined);
     }
-    state.mesh.start(() => ctx.onlineServers?.() ?? [], fetch, () => ({ config: configPrint(ctx) }));
+    const mesh = state.mesh;
+    mesh.start(() => ctx.onlineServers?.() ?? [], fetch, () => syncExtra(ctx, mesh.self));
   }
   return state.mesh;
 }
@@ -696,6 +881,9 @@ registerFeature({
         maxLagMs: f.maxLagMs,
         ...(f.store ? { store: f.store } : {}),
         peers: m.peerList().map((p) => ({ id: p.id, status: p.status, lagMs: p.lastSyncAt === undefined ? null : Math.max(0, now - p.lastSyncAt), ...(p.lastError ? { lastError: p.lastError } : {}) })),
+        // 16.2.0: region view — every region's costs / lineage summary and the revocation propagation SLO
+        rollup: mergeRollups(rollupOf(ctx, m.self), m.peerRollups()),
+        revocationPropagation: (({ recent: _r, ...rest }) => rest)(m.revocationPropagation()),
       };
     });
     // 14.6.0: replicated revocations are an authority for deferred work (edge outbox replays on reconnect).
@@ -706,7 +894,7 @@ registerFeature({
         const m = meshFor(state);
         if (!m || (!m.settings.peers.length && !m.hasStore())) return { fresh: true };
         const t0 = m.now();
-        await m.syncOnce(ctx.onlineServers?.() ?? [], fetch, { config: configPrint(ctx) });
+        await m.syncOnce(ctx.onlineServers?.() ?? [], fetch, syncExtra(ctx, m.self));
         const behind = m.peerList().filter((p) => p.lastSyncAt === undefined || p.lastSyncAt < t0).map((p) => p.id);
         const f = m.freshness();
         if (behind.length) return { fresh: false, detail: `peers not reached since reconnect: ${behind.join(', ')}` };
@@ -767,9 +955,9 @@ registerFeature({
       if (partitioned(m.self, b.region)) return void res.status(503).json({ error: 'Service Unavailable', message: 'partitioned (fault injection)' });
       const entries = Array.isArray(b.entries) ? (b.entries as ReplicatedEntry[]) : [];
       m.merge(entries);
+      m.sawPeer(b.region, b.servers, entries.reduce((x, e) => Math.max(x, typeof e?.ts === 'number' ? e.ts : 0), 0), { now: b.now, config: b.config, rollup: b.rollup });
       if (m.mergeRevocations(b.revocations)) void m.pushStore();
-      m.sawPeer(b.region, b.servers, entries.reduce((x, e) => Math.max(x, typeof e?.ts === 'number' ? e.ts : 0), 0), { now: b.now, config: b.config });
-      const out = m.exchange(ctx.onlineServers?.() ?? [], { config: configPrint(ctx) });
+      const out = m.exchange(ctx.onlineServers?.() ?? [], syncExtra(ctx, m.self));
       res.json({ ...out, entries: m.delta(typeof b.since === 'number' ? b.since : 0) });
     });
     router.get('/kv/:key', (req, res) => {
@@ -797,6 +985,41 @@ registerFeature({
     router.delete('/kv/:key', (req, res) => {
       const m = need(res);
       if (m) res.json({ deleted: m.delete(req.params.key!) });
+    });
+    // 16.2.0: cross-region rollup
+    router.get('/rollup', (_req, res) => {
+      const m = need(res);
+      if (!m) return;
+      const self = rollupOf(ctx, m.self);
+      res.json({ self: m.self, currency: self.costs.currency, ...mergeRollups(self, m.peerRollups()) });
+    });
+    // 16.2.0: lineage by region-qualified id — this region's own record, or the peer's (fetched with its sync key)
+    router.get('/lineage/:globalId', async (req, res) => {
+      const m = need(res);
+      if (!m) return;
+      const g = /^([a-z0-9][a-z0-9-]*):(.{1,200})$/.exec(req.params.globalId ?? '');
+      if (!g) return badRequest(res, 'give a region-qualified id: <region>:<requestId> (e.g. eu-west:4f1c…)');
+      const [, region, requestId] = g as unknown as [string, string, string];
+      const qualify = (l: Record<string, unknown>) => ({ ...l, region, globalId: `${region}:${requestId}` });
+      if (region === m.self) {
+        const l = ctx.lineage?.(requestId);
+        if (!l) return void res.status(404).json({ error: 'Not Found', message: `no call ${requestId} kept in region ${region}` });
+        return void res.json(qualify(l as Record<string, unknown>));
+      }
+      const peer = m.settings.peers.find((p) => p.id === region);
+      if (!peer) return void res.status(404).json({ error: 'Not Found', message: `unknown region "${region}"` });
+      if (partitioned(m.self, region)) return void res.status(503).json({ error: 'Service Unavailable', message: 'partitioned (fault injection)' });
+      try {
+        const r = await fetch(`${peer.url.replace(/\/$/, '')}/api/v1/admin/ops/lineage/${encodeURIComponent(requestId)}`, {
+          headers: peer.apiKey ? { authorization: `Bearer ${peer.apiKey}` } : {},
+          signal: AbortSignal.timeout(Math.max(1000, m.settings.syncIntervalMs)),
+        });
+        if (r.status === 404) return void res.status(404).json({ error: 'Not Found', message: `no call ${requestId} kept in region ${region}` });
+        if (!r.ok) return void res.status(502).json({ error: 'Bad Gateway', message: `region ${region} answered HTTP ${r.status}` });
+        res.json(qualify((await r.json()) as Record<string, unknown>));
+      } catch (e) {
+        res.status(502).json({ error: 'Bad Gateway', message: `region ${region} unreachable: ${(e as Error).message}` });
+      }
     });
     router.get('/route/:serverId', (req, res) => {
       const m = need(res);

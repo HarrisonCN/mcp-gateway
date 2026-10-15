@@ -61,6 +61,12 @@ export interface FeatureContext {
   net?: { fetch: typeof fetch };
   /** 14.0.0: capabilities the module declared (manifest + module). */
   capabilities?: readonly ModuleCapability[];
+  /** 16.2.0: cost ledger since an instant — total and by tenant (regions rollup). */
+  costRollup?: (since: number) => { currency: string; total: { cost: number; calls: number; inputTokens: number; outputTokens: number }; byTenant: Array<{ key: string; cost: number; calls: number; inputTokens: number; outputTokens: number }> };
+  /** 16.2.0: call lineage kept by the operations console, by outcome (regions rollup). */
+  lineageSummary?: () => { kept: number; ok: number; denied: number; error: number };
+  /** 16.2.0: one kept call's lineage (operations console) by request id. */
+  lineage?: (requestId: string) => unknown;
   /** 14.0.0: the gateway instance's module state (F3); the kernel drops a module's state on disable / dispose. */
   instanceScope?: import('../kernel/instance.js').InstanceScope;
 }
