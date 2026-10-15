@@ -68,6 +68,14 @@ Add a job to `required` only once it has run green on `main`; rename entries tog
 `test/release-gate-13-4-0.test.ts` fails when a listed check is no longer a job name in the workflows or is missing
 from this page.
 
+## 17.0.0: released by owner decision with the gates open
+
+17.0.0 (npm `latest`, 2026-10-15) was **released by owner decision; external security review and dedicated-hardware soak not yet performed**. The project owner decided the release and signed it
+off; gates A (72 h soak on dedicated hardware), B (performance baseline on the same fixed hardware) and C (independent
+external security review) below have **not** been passed for 15.0, 16.0 or 17.0 — they are not redefined, relaxed or
+marked passed. The required CI checks above were green on the merge commit as for every release. Running A / B / C
+against 17.x is still open work ([docs/v15/gates.md](v15/gates.md) describes how).
+
 ## v15 gates
 
 15.0.0 ships only when these hold in addition to the required checks (roadmap; status in

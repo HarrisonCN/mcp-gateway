@@ -4,7 +4,9 @@
 
 | Version | Supported |
 |---|---|
-| 14.x (current) | ✅ new features, bug and security fixes |
+| 17.x (current) | ✅ new features, bug and security fixes — 17.0.0 (npm `latest`, image `:17`) was released by owner decision; external security review and dedicated-hardware soak not yet performed |
+| 15.x / 16.x | ⚠️ prerelease lines only (never stable); upgrade to 17.x |
+| 14.x (maintained) | ✅ security and critical bug fixes — latest 14.9.2 (npm dist-tag `v14-lts`, image `:14`, branch `maint/14.9.x`); upgrade to 17.x ([migrating to v15](docs/migrating-to-v15.md), [v16](docs/migrating-to-v16.md), [v17](docs/migrating-to-v17.md)) |
 | 13.x (maintained) | ✅ security and critical bug fixes, at least until 15.0.0 ships and no earlier than 2027-04-30 — latest 13.9.5 (npm dist-tag `v13-lts`, image `:13`, branch `lts/13.x`); upgrade to 14.x ([Migrating from 13.x to 14.0](docs/migration/v13-to-v14.md)) |
 | 12.x | ⚠️ superseded — latest 12.0.15 (npm dist-tag `v12-0`, image `:12`) carries the MGW-2026-001, MGW-2026-005, MGW-2026-007, MGW-2026-008, MGW-2026-009, MGW-2026-010, MGW-2026-011, MGW-2026-012, MGW-2026-013, MGW-2026-014, MGW-2026-015, MGW-2026-016, MGW-2026-017, MGW-2026-018 and MGW-2026-019 fixes; upgrade to 13.x ([Migrating to 13.0](docs/guides/migrating-to-v13.md)) |
 | 11.x | ⚠️ superseded — 11.2.0 carries the 11.1 / 11.2 security fixes; upgrade to 12.x ([Migrating to 12.0](docs/guides/migrating-to-v12.md)) |
@@ -80,7 +82,7 @@ revocation, stdio environment allowlist).
   scanning and Dependabot. Verify an image with:
 
   ```bash
-  cosign verify ghcr.io/harrisoncn/mcp-gateway:14 \
+  cosign verify ghcr.io/harrisoncn/mcp-gateway:17 \
     --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
   ```

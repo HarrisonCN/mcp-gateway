@@ -33,14 +33,15 @@
 | 16.1 | 下一版 MCP 协议修订 + 工具 schema 协商（以官方规范为准；条件已满足：MCP `2026-07-28` 于 2026-07-28 发布） | 🧪 16.1.0-canary.0（npm `canary`）：`/mcp` 双时代——`server/discover`、无会话的 2026-07-28 请求（`_meta` 版本、`MCP-Protocol-Version` / `Mcp-Method` / `Mcp-Name` 校验 → -32020、不支持的版本 → -32022、`resultType` / serverInfo / `ttlMs` / `cacheScope`），握手修订不变；🧪 16.1.0-canary.1：`subscriptions/listen`（确认帧、按订阅 id 标记的列表变更 / 资源更新、关闭即结束、停机优雅结束）；后续：MRTR、tasks 扩展、上游 2026-07-28 | MCP compat matrix 全绿（Python SDK 2.3.0 auto 模式走 2026-07-28） |
 | 16.2 | 多区域控制面 2.0：lineage / 成本跨区域汇总、吊销延迟告警 | 🧪 16.2.0-canary.0（npm `canary`）：吊销传播 SLO（`consistency.revocationSloMs`，报告 / 指标 / 运维时间线 `revocation-slo`）、`GET /admin/regions/rollup`（每区域当日成本 + lineage 计数，随同步交换）、区域限定的 lineage id（`<region>:<requestId>`，任一区域可查） | 区域新鲜度测试；lineage 跨区域唯一 |
 | 16.9 | v17 准备：plugin API v5 → v6 告警与 codemod、`docs/migrating-to-v17.md`；`17.0.0-alpha.1` | 🧪 16.9.0-canary.0（npm `canary`）：plugin API v6 提前可用（只接受 `{ action }` 结果、模块插件只在 worker / process）、v5 插件 / v4 结果形状 / HTTP 钩子 / v13 inline 插件的 17.0 告警、`plugin migrate --to v6` codemod、`docs/migrating-to-v17.md`（提案，17.0.0-rc.1 冻结） | 同 15.9 |
-| 17.0 | （破坏性，提案）plugin API v6（模块插件只在 worker / process / wasm 运行）、拒绝 `version: 12`、SDK 冻结；15.x 成为 LTS | 🧪 17.0.0-alpha.1（npm `canary`）：只加载 plugin API v6（v5 拒绝、所有插件只接受 `{ action }` 结果）、拒绝 inline 模块插件与 `allowInline`、拒绝 `version: 12`、无 `version:` 的文件按 v13 读取、codemod 把 inline 插件改到 worker；17.0.0-alpha.2：SDK 导出面记录（`api/exports-surface.json`、`scripts/sdk-surface.ts`，只许增加）+ `docs/v17/freeze.md` 草案；17.0.0-rc.1：17.0 清单冻结（`docs/v17/freeze.md`、SDK 导出面按 rc.1 重新记录、插件兼容表 17.0 行 = “frozen (prerelease)”，17.0.0 GA 前不写 shipped；docs/versions.md 写明 `v15-lts` 为计划、未生效） / ⛔ 稳定版 | 稳定版需要 v17 闸门 A / B / C；15.0 闸门未过之前不发 17.0.0 GA |
+| 17.0 | （破坏性，提案）plugin API v6（模块插件只在 worker / process / wasm 运行）、拒绝 `version: 12`、SDK 冻结；15.x 成为 LTS | 🧪 17.0.0-alpha.1（npm `canary`）：只加载 plugin API v6（v5 拒绝、所有插件只接受 `{ action }` 结果）、拒绝 inline 模块插件与 `allowInline`、拒绝 `version: 12`、无 `version:` 的文件按 v13 读取、codemod 把 inline 插件改到 worker；17.0.0-alpha.2：SDK 导出面记录（`api/exports-surface.json`、`scripts/sdk-surface.ts`，只许增加）+ `docs/v17/freeze.md` 草案；17.0.0-rc.1：17.0 清单冻结（`docs/v17/freeze.md`、SDK 导出面按 rc.1 重新记录、插件兼容表 17.0 行 = “frozen (prerelease)”，17.0.0 GA 前不写 shipped；docs/versions.md 写明 `v15-lts` 为计划、未生效） / ✅ 17.0.0（2026-10-15，npm `latest`）：由项目所有者决定发布；外部安全审查与专用硬件长稳测试尚未进行（released by owner decision; external security review and dedicated-hardware soak not yet performed） | v17 闸门 A / B / C 均未通过（未重新定义、未放宽）；15.0.0 / 16.0.0 从未作为稳定版发布 |
 
 ## 发布通道
 
 | 通道 | npm dist-tag | 镜像标签 | 分支 | 内容 |
 |---|---|---|---|---|
-| 稳定 | `latest` | `<version>`、`14.9`、`14`、`latest` | `maint/14.9.x` | 14.9.x（15.0.0 GA 后改为 15.x） |
-| GA 候选 | `next` | 只有 `15.0.0-rc.N` | `main`，rc.4 之后 `release/15.0.x` | 15.0.0 候选，冻结面不变 |
+| 稳定 | `latest`、`next` | `<version>`、`17.0`、`17`、`latest` | `main` | 17.x（2026-10-15 起；所有者决定发布，闸门 A / B / C 未通过） |
+| 14.x 维护 | `v14-lts` | `14`、`14.9`、`14.9.2` | `maint/14.9.x` | 14.9.x：为现有用户提供安全与关键缺陷修复 |
+| GA 候选（已被取代） | — | 只有 `15.0.0-rc.N` | `release/15.0.x` | 15.0.0 从未作为稳定版发布，变更已并入 17.0.0 |
 | 开发线 | `canary` | 只有 `<version>` | `main` | 15.1 → 15.9、16.0.0-alpha、17.0.0-alpha |
 | LTS | `v13-lts`、`v12-0`、`v10-lts` | `13`、`12`、`10` | `lts/*` | 不变 |
 
@@ -49,6 +50,8 @@
 ## 闸门的处理（2026-10-13）
 
 闸门 A / B / C 的定义不变，也不放宽：
+
+- **2026-10-15 更新**：项目所有者决定把 17.0.0 发布到 npm `latest`（由所有者签字）。闸门 A（专用硬件 72 小时 soak）、B（固定硬件基线）、C（独立外部安全评审）均**未进行、未通过**，发布说明、CHANGELOG 和文档都如实写明这一点；对 17.x 运行这些闸门仍是待办事项。
 
 - A 要求一次连续 72 小时的运行，B 要求固定专用硬件上的同机基线，C 要求独立的外部评审；开发用的共享环境做不到这三项，那里的 30 – 90 分钟 soak、2 小时演练和内部安全回归只作为辅助证据，**不算闸门证据**。
 - 闸门未关闭之前，15.0 保持 RC（`next`），稳定线保持 14.9.x（`latest`），15.1 起的开发以 `canary` 预发布推进。

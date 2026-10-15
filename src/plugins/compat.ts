@@ -7,7 +7,8 @@
  * `PLUGIN_API_MIN_VERSION` in plugins/index.ts. Rows marked `proposal` are the roadmap's plans (17.0) and may change
  * before that release. 16.0.0-rc.1: the 16.0 row is `frozen` — its surface is fixed (docs/v16/freeze.md) but only
  * prereleases exist; it becomes `shipped` only with a 16.0.0 GA, which needs the v16 gates. 17.0.0-rc.1: the 17.0 row
- * is `frozen` the same way (docs/v17/freeze.md); `shipped` only with a 17.0.0 GA (v17 gates).
+ * was `frozen` the same way (docs/v17/freeze.md) and is `shipped` since 17.0.0 (released by owner decision with the v17
+ * gates open).
  *
  * @module plugins/compat
  */
@@ -64,7 +65,7 @@ export const PLUGIN_COMPATIBILITY: readonly PluginCompatRow[] = [
   },
   { from: '16.0.0', until: '16.9.0', min: 5, max: 5, status: 'frozen', notes: 'v5; a module plugin with runtime: inline needs allowInline: true on its entry (config schema v13)' },
   { from: '16.9.0', until: '17.0.0', min: 5, max: 6, status: 'proposal', notes: 'v6 loads early ({ action } outcomes only, worker / process only); v5 loads with 17.0 deprecations; plugin migrate --to v6' },
-  { from: '17.0.0', min: 6, max: 6, status: 'frozen', notes: 'plugin API v6 only: { action } outcomes only, module plugins only in worker / process / wasm (inline removed); codemod in 16.9; enforced since 17.0.0-alpha.1, frozen from 17.0.0-rc.1 (canary)' },
+  { from: '17.0.0', min: 6, max: 6, status: 'shipped', notes: 'plugin API v6 only: { action } outcomes only, module plugins only in worker / process / wasm (inline removed); codemod in 16.9; enforced since 17.0.0-alpha.1, frozen from 17.0.0-rc.1, shipped in 17.0.0' },
 ];
 
 const core = (v: string): [number, number, number] => {

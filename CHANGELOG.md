@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [17.0.0] - 2026-10-15
+
+**17.0.0 — stable release by owner decision** (npm dist-tags `latest` and `next`; images `:17.0.0`, `:17.0`, `:17`, `:latest`). Same code as 17.0.0-rc.1 (the frozen 17.0 list); only the version, the release documentation and the channel policy change.
+
+> **Released by owner decision; external security review and dedicated-hardware soak not yet performed.**
+> The project owner decided and signed off this release (2026-10-15). **None of the release gates has been passed:** gate A (72 h soak on dedicated hardware, two instances + Redis, fault injection) and gate B (performance baseline against 14.9 on the same fixed hardware) have not been run, and gate C (an independent external security review of the 17.0 surface) has not been performed. The gates are not redefined or relaxed — this release is an owner decision taken while they are open. 15.0.0 and 16.0.0 never shipped as stable releases; 17.0.0 is the first stable release after 14.9.2 and contains all of the 15.x and 16.x development lines. Test it in staging before production. The [release gates](docs/release-gates.md) document what is still outstanding.
+
+### Upgrading from 14.9.x
+
+17.0.0 is a major release that includes every breaking change of 15.0, 16.0 and 17.0. Read [migrating to v15](docs/migrating-to-v15.md), [v16](docs/migrating-to-v16.md) and [v17](docs/migrating-to-v17.md) before upgrading. In short:
+
+- **Node.js ≥ 24** (`engines.node`); the image runs on `node:24-alpine`.
+- **Config schema v13 only.** `version: 12` (and older) files are refused at start with a hint; a file without `version:` is read as v13. Rewrite files with `mcp-gateway config migrate --to v13 --in-place -c <file>` (17.0 still reads older files for the migration; `config rollback` restores the backup).
+- **Plugin API v6 only.** `apiVersion: 5` is refused; hooks must return `{ action }` outcomes (`mcp-gateway plugin migrate --to v6 <file>`). **Inline module plugins are removed** — module plugins run with `runtime: worker` or `process` (WASM components unchanged).
+- **`/mcp` no longer serves MCP revision 2024-11-05**; the stateless 2026-07-28 core is served next to the handshake revisions.
+- Rollback: pin `@winstonsayno/mcp-gateway@v14-lts` (14.9.2) or image `:14` and restore the config backup written by `config migrate --in-place`.
+
+### Release channels
+
+- npm `latest` and `next` → 17.0.0; npm `v14-lts` → 14.9.2 (pinned 14.x line for existing users); `canary` keeps the last prerelease (17.0.0-rc.1).
+- Images: `:latest`, `:17`, `:17.0`, `:17.0.0`; `:14` / `:14.9` / `:14.9.2` unchanged.
+- 14.9.x (`maint/14.9.x`, npm `v14-lts`, image `:14`) gets security and critical bug fixes — see [versions](docs/versions.md).
+
+### Changed
+
+- Version 17.0.0; plugin compatibility row 17.0 (plugin API v6 only) is `shipped` (was "frozen (prerelease)").
+- README, deployment docs, Helm chart and examples name 17.0.0 / image `:17` with schema v13 configs.
+- `docs/versions.md`, `SECURITY.md`, `docs/release-gates.md`, `docs/v17/freeze.md`, `docs/ROADMAP.md`: 17.x is the current line; the gate status is written down as above (owner sign-off given; gates A, B and C not passed).
+
 ## [17.0.0-rc.1] - 2026-10-15
 
 **Release candidate on `canary` — the 17.0 list is frozen** (npm dist-tag `canary`, image `:17.0.0-rc.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). From this release until 17.0.0 ships, the [17.0 freeze list](docs/v17/freeze.md) changes only by additions. **A frozen list is not a passed gate:** 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)), 16.0.0 is a release candidate, and stable 17.0.0 needs the v17 gates — **17.0.0 GA is blocked while A / B / C are open.**

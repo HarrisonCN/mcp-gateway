@@ -53,9 +53,9 @@ describe('16.0 freeze (16.0.0-rc.1)', () => {
     const r16 = compat.PLUGIN_COMPATIBILITY.find((r) => r.from === '16.0.0');
     const r17 = compat.PLUGIN_COMPATIBILITY.find((r) => r.from === '17.0.0');
     expect(r16?.status).toBe('frozen');
-    expect(r17?.status).toBe('frozen'); // 17.0.0-rc.1 (a proposal before)
+    expect(r17?.status).toBe('shipped'); // 17.0.0 GA (frozen in rc.1, a proposal before)
     expect(compat.pluginApiSupport('16.0.0-rc.1')).toEqual({ min: 5, max: 5, frozen: true });
-    expect(compat.pluginApiSupport('17.0.0-alpha.1')).toEqual({ min: 6, max: 6, frozen: true }); // 17.0.0-rc.1 froze the row
+    expect(compat.pluginApiSupport('17.0.0-alpha.1')).toEqual({ min: 6, max: 6 }); // 17.0.0 shipped the row (rc.1 froze it)
     const md = compat.compatibilityMarkdown();
     // 16.9.0-canary.0: the frozen v5 range ends at 16.9.0 (16.9 loads v5 – v6 early, a proposal like 17.0)
     expect(md).toMatch(/\| 16\.0\.0 – <16\.9\.0 \| v5 \| frozen \(prerelease\) \|/);

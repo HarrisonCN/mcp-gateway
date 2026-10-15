@@ -1,12 +1,12 @@
 # 17.0 freeze list (listed in 17.0.0-alpha.2, frozen in 17.0.0-rc.1)
 
-> **Status: frozen from 17.0.0-rc.1.** 17.0.0 has not shipped: 17.0.0-rc.N is a prerelease on npm `canary` (GHCR
-> exact tag only); npm `latest` stays on 14.9.x and `next` on the 15.0 release candidate. Stable 17.0.0 needs the v17
-> gates (A/B against the previous stable major, an incremental external security review of the 17.0 changes), and
-> 15.0.0 and 16.0.0 are not stable either (see [v15 gates](../v15/gates.md)). A frozen list is not a passed gate, and
-> none of the gates is closed.
+> **Status: frozen from 17.0.0-rc.1; shipped in 17.0.0** (npm `latest`, 2026-10-15). 17.0.0 was released by owner decision; external security review and dedicated-hardware soak not yet performed:
+> the owner decided the release while the v17 gates (A/B against the previous stable major, an incremental external
+> security review of the 17.0 changes) were open, and 15.0.0 / 16.0.0 never shipped as stable releases (see
+> [v15 gates](../v15/gates.md)). A frozen list is not a passed gate, and none of the gates is closed; stable 17.0.0
+> shipped without its gates by owner decision ([release gates](../release-gates.md)).
 
-From 17.0.0-rc.1 until 17.0.0 ships, the surfaces below are **frozen**: no renames, no removals and no changed
+From 17.0.0-rc.1 the surfaces below are **frozen** (and from 17.0.0 on they follow semantic versioning within 17.x): no renames, no removals and no changed
 meaning. Additions that cannot break a caller (a new optional key, export, endpoint, response field or enum value)
 stay allowed and are noted in the CHANGELOG under "Additions after the freeze".
 
