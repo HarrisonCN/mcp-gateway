@@ -33,7 +33,7 @@ describe('stdio environment allowlist (12.0)', () => {
   });
 
   it('validates envPassthrough and isolation', () => {
-    const s = (extra: Record<string, unknown>) => ({ version: 12, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', ...extra }] });
+    const s = (extra: Record<string, unknown>) => ({ version: 13, servers: [{ id: 'a', name: 'a', transport: 'stdio', command: 'x', ...extra }] });
     expect(() => validateConfig(s({ envPassthrough: ['bad name'] }))).toThrow(/environment variable name/);
     expect(() => validateConfig(s({ isolation: { sandbox: { type: 'container' } } }))).toThrow(/image is required/);
     expect(() => validateConfig(s({ isolation: { sandbox: { type: 'custom', command: ['nsjail'] } } }))).toThrow(/\{command\}/);

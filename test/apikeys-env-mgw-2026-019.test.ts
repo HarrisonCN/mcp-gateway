@@ -29,7 +29,7 @@ describe('MGW-2026-019: ${VAR} in API keys and controlPlane.token', () => {
     process.env.MGW019_OPERATOR_KEY = 'op-019-0123456789abcdef0123456789abcdef';
     const dir = mkdtempSync(join(tmpdir(), 'mgw019-'));
     const file = join(dir, 'mcp-gateway.yml');
-    writeFileSync(file, 'version: 12\nhost: 127.0.0.1\ncontrolPlane:\n  role: control\nauth:\n  strategy: api-key\n  apiKeys:\n    - ${MGW019_OPERATOR_KEY}\nservers: []\n');
+    writeFileSync(file, 'version: 13\nhost: 127.0.0.1\ncontrolPlane:\n  role: control\nauth:\n  strategy: api-key\n  apiKeys:\n    - ${MGW019_OPERATOR_KEY}\nservers: []\n');
     const cfg = await loadConfig(file);
     const gw = new Gateway({ ...cfg, port: 0, host: '127.0.0.1', logLevel: 'error' });
     await gw.start();

@@ -13,7 +13,7 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { parse as parseYaml, parseAllDocuments } from 'yaml';
 import Ajv from 'ajv';
-import { validateConfig, validateV11ForMigration } from '../src/config/loader.js';
+import { validateConfig, validateV11ForMigration, validateV12ForMigration } from '../src/config/loader.js';
 import { V12_DEPRECATIONS, migrateToV12, downgradeFromV12, unifiedDiff, buildV12ConfigSchema, buildV12ModuleSchema, moduleDeclarationV12 } from '../src/config/v12.js';
 import { deprecate, runtimeDeprecations, resetDeprecations } from '../src/utils/deprecations.js';
 import { logger } from '../src/utils/logger.js';
@@ -46,10 +46,11 @@ function exampleConfigs(): Array<{ name: string; text: string }> {
       else if (/^mcp-gateway\.ya?ml$/.test(n)) {
         const txt = readFileSync(p, 'utf8');
         const docs = parseAllDocuments(txt).map((x) => x.toJS());
-        if (docs.length === 1 && (docs[0]?.version === 11 || docs[0]?.version === 12)) out.push({ name: p.slice(ROOT.length + 1), text: txt });
+        // 17.0.0-alpha.1: examples ship in v13 (= the v12 form + the 16.0 rules); the v11 → v12 preview runs on their v12 form
+        if (docs.length === 1 && (docs[0]?.version === 11 || docs[0]?.version === 12 || docs[0]?.version === 13)) out.push({ name: p.slice(ROOT.length + 1), text: txt.replace(/^version: 13\s*$/m, 'version: 12') });
         for (const d2 of docs) {
           const cm = d2?.kind === 'ConfigMap' ? d2.data?.['mcp-gateway.yml'] : undefined;
-          if (typeof cm === 'string') out.push({ name: `${p.slice(ROOT.length + 1)} (ConfigMap)`, text: cm });
+          if (typeof cm === 'string') out.push({ name: `${p.slice(ROOT.length + 1)} (ConfigMap)`, text: cm.replace(/^version: 13\s*$/m, 'version: 12') });
         }
       }
     }
@@ -58,7 +59,7 @@ function exampleConfigs(): Array<{ name: string; text: string }> {
   const helm = join(ROOT, 'examples/deploy/helm/values.yaml');
   if (existsSync(helm)) {
     const v = parseYaml(readFileSync(helm, 'utf8'));
-    if (v?.config && typeof v.config === 'object') out.push({ name: 'examples/deploy/helm/values.yaml (config)', text: JSON.stringify(v.config, null, 2) });
+    if (v?.config && typeof v.config === 'object') out.push({ name: 'examples/deploy/helm/values.yaml (config)', text: JSON.stringify(v.config.version === 13 ? { ...v.config, version: 12 } : v.config, null, 2) }); // 17.0: helm values ship v13
   }
   out.push({ name: 'test/fixtures/v11-deprecated.yml', text: fixText });
   return out;
@@ -91,7 +92,8 @@ describe('schema v12 draft files', () => {
     for (const w of ['init', 'reconfigure', 'disable', 'dispose', 'health', 'capabilities']) expect(design).toContain(w);
   });
   it('14.0: schema v12 is the runtime schema; a v11 file without v11-only fields has nothing deprecated', () => {
-    expect(validateConfig({ version: 12 }).schemaVersion).toBe(12);
+    expect(validateV12ForMigration({ version: 12 }).schemaVersion).toBe(12); // 17.0.0-alpha.1: the tooling reads v12, the gateway v13
+    expect(() => validateConfig({ version: 12 })).toThrow(/schema v12 is no longer read by 17\.0\.0/);
     expect(() => validateConfig({ version: 11 })).toThrow(/schema v11 is no longer read by 15\.0\.0/); // 15.0.0
     expect(validateV11ForMigration({ version: 11 }).deprecations).toBeUndefined();
   });
@@ -170,7 +172,7 @@ describe('migration preview: v11 → v12', () => {
       if (before.version === 12) {
         // 14.0.0: the examples ship in schema v12 — nothing to migrate, valid against the schema
         expect(r.changes, name).toEqual([]);
-        expect(validateConfig(before).schemaVersion, name).toBe(12);
+        expect(validateV12ForMigration(before).schemaVersion, name).toBe(12); // 17.0: the gateway reads the v13 original
         expect(validate(before), `${name}: ${ajv.errorsText(validate.errors)}`).toBe(true);
         continue;
       }

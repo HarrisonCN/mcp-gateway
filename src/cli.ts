@@ -621,9 +621,10 @@ configCmd
         return;
       }
       // never write a file the gateway would refuse
-      const { validateConfig } = await import('./config/loader.js');
+      // 17.0.0-alpha.1: the gateway reads v13 only; a v12 file is the step before `config migrate --to v13`
+      const { validateV12ForMigration } = await import('./config/loader.js');
       const { parse } = await import('yaml');
-      const out = validateConfig(/\.json$/i.test(path) ? JSON.parse(r.text) : parse(r.text));
+      const out = validateV12ForMigration(/\.json$/i.test(path) ? JSON.parse(r.text) : parse(r.text));
       if (out.schemaVersion !== 12) throw new Error('the migrated file does not read as schema v12');
       const { resolve } = await import('path');
       const { existsSync } = await import('fs');
@@ -635,7 +636,7 @@ configCmd
         const tmp = `${path}.tmp-${process.pid}`;
         await writeFile(tmp, r.text);
         await rename(tmp, path);
-        say(`Migrated ${path} to schema v12 in place (backup: ${bak}; undo: mcp-gateway config rollback -c ${path})`);
+        say(`Migrated ${path} to schema v12 in place (backup: ${bak}; undo: mcp-gateway config rollback -c ${path}). 17.0 reads schema v13 only — next: mcp-gateway config migrate --to v13 --in-place -c ${path}`);
         void text;
         return;
       }

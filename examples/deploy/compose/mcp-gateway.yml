@@ -1,6 +1,6 @@
 # Gateway config for the Compose / Kubernetes / Helm deployment examples (config schema v11).
 # API keys are NOT here: they come from MCP_GATEWAY_API_KEYS (Compose environment, Kubernetes Secret).
-version: 12
+version: 13
 logLevel: info
 monitor:
   prometheus: true

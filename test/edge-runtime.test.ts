@@ -28,9 +28,9 @@ const call = async (name: string, args: unknown = {}) => {
 
 describe('edge WASM runtime 2.0 (9.2)', () => {
   it('validates tools', () => {
-    expect(() => validateConfig({ version: 12, servers: [], features: { edgeRuntime: { tools: [{ name: 'a', wasm: 'a.wasm', warm: 5, limits: { maxConcurrent: 2 } }] } } })).toThrow(/warm must not exceed/);
-    expect(() => validateConfig({ version: 12, servers: [], features: { edgeRuntime: { tools: [{ name: 'a', wasm: 'x' }, { name: 'a', wasm: 'y' }] } } })).toThrow(/duplicate edge tool/);
-    expect(() => validateConfig({ version: 12, servers: [], features: { edgeRuntime: { tools: [{ name: 'a', wasm: 'x', sha256: 'abc' }] } } })).toThrow();
+    expect(() => validateConfig({ version: 13, servers: [], features: { edgeRuntime: { tools: [{ name: 'a', wasm: 'a.wasm', warm: 5, limits: { maxConcurrent: 2 } }] } } })).toThrow(/warm must not exceed/);
+    expect(() => validateConfig({ version: 13, servers: [], features: { edgeRuntime: { tools: [{ name: 'a', wasm: 'x' }, { name: 'a', wasm: 'y' }] } } })).toThrow(/duplicate edge tool/);
+    expect(() => validateConfig({ version: 13, servers: [], features: { edgeRuntime: { tools: [{ name: 'a', wasm: 'x', sha256: 'abc' }] } } })).toThrow();
     expect(ERR_EDGE_RUNTIME).toBe(-32023);
   });
 

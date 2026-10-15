@@ -14,7 +14,7 @@
  *  - N reloads do not grow handles, timers, listeners, sessions or child processes.
  */
 import { describe, it, expect, afterEach, beforeAll } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { startFeatureGw, fakeServer, type FeatureGw } from './helpers/feature-gw.js';
@@ -204,35 +204,55 @@ describe('in-flight calls are pinned to one generation (13.2.0)', () => {
 // ── plugins ──────────────────────────────────────────────────────────────────
 
 describe('plugin updates are transactional (13.2.0)', () => {
+  // 17.0.0-alpha.1: module plugins run in a worker only (no inline), so the plugins keep their bookkeeping in files in
+  // the plugin directory instead of the test process's globalThis (same observations: instance ids, closes, holds)
   let dir: string;
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), 'mgw132-'));
     const src = (name: string) => `
-      const g = globalThis.__mgw132 ??= { seq: 0, closed: [], seen: [], hold: undefined };
+      import { readFileSync, writeFileSync, appendFileSync, existsSync } from 'node:fs';
+      const D = ${JSON.stringify(dir)};
+      const f = (n) => D + '/' + n;
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       export default (ctx) => {
-        const inst = '${name}#' + (++g.seq) + ':' + (ctx.options.tag ?? '');
+        const seq = (existsSync(f('seq')) ? Number(readFileSync(f('seq'), 'utf8')) : 0) + 1;
+        writeFileSync(f('seq'), String(seq));
+        const inst = '${name}#' + seq + ':' + (ctx.options.tag ?? '');
         return {
-          name: '${name}', apiVersion: 5,
-          async onToolCall() { if (g.hold) await g.hold; },
-          onResponse(call, r) { g.seen.push(inst); },
-          close() { g.closed.push(inst); },
+          name: '${name}', apiVersion: 6,
+          async onToolCall() { while (existsSync(f('hold'))) await sleep(20); },
+          onResponse() { appendFileSync(f('seen'), inst + '\\n'); },
+          close() { appendFileSync(f('closed'), inst + '\\n'); },
         };
       };`;
     writeFileSync(join(dir, 'pa.mjs'), src('pa'));
     writeFileSync(join(dir, 'pb.mjs'), src('pb'));
     writeFileSync(join(dir, 'broken.mjs'), 'export default () => { throw new Error("broken plugin"); };');
   });
-  const G = () => (globalThis as any).__mgw132 as { seq: number; closed: string[]; seen: string[]; hold?: Promise<void> };
-  const reset = () => Object.assign(G() ?? ((globalThis as any).__mgw132 = {}), { seq: 0, closed: [], seen: [], hold: undefined });
+  const lines = (n: string) => (existsSync(join(dir, n)) ? readFileSync(join(dir, n), 'utf8').split('\n').filter(Boolean) : []);
+  const G = () => ({
+    get seq() { return existsSync(join(dir, 'seq')) ? Number(readFileSync(join(dir, 'seq'), 'utf8')) : 0; },
+    get closed() { return lines('closed'); },
+    get seen() { return lines('seen'); },
+    /** a promise holds every call that starts while it is pending (released when it settles) */
+    set hold(p: Promise<void> | undefined) {
+      if (!p) return;
+      writeFileSync(join(dir, 'hold'), '1');
+      void p.then(() => rmSync(join(dir, 'hold'), { force: true }));
+    },
+  });
+  const reset = () => {
+    for (const n of ['seq', 'closed', 'seen', 'hold']) rmSync(join(dir, n), { force: true });
+  };
 
   it('a failing plugin update fails the whole reload; built instances are closed; old ones keep running', async () => {
     reset();
-    h = await startFeatureGw({ configDir: dir, plugins: [{ module: './pa.mjs', runtime: 'inline', options: { tag: 'v1' } }] } as never);
+    h = await startFeatureGw({ configDir: dir, plugins: [{ module: './pa.mjs', runtime: 'worker', options: { tag: 'v1' } }] } as never);
     const gw = h.gw as Gw;
     await call('fake');
     expect(G().seen).toEqual(['pa#1:v1']);
     await expect(
-      gw.reload({ ...gw.config, configDir: dir, logLevel: 'warn', plugins: [{ module: './pa.mjs', runtime: 'inline', options: { tag: 'v2' } }, { module: './broken.mjs', runtime: 'inline' }] } as GatewayConfig),
+      gw.reload({ ...gw.config, configDir: dir, logLevel: 'warn', plugins: [{ module: './pa.mjs', runtime: 'worker', options: { tag: 'v2' } }, { module: './broken.mjs', runtime: 'worker' }] } as GatewayConfig),
     ).rejects.toThrow(/broken plugin/);
     expect(G().closed).toEqual(['pa#2:v2']); // the partially built instance — never the running one
     expect(gw.config.logLevel).not.toBe('warn');
@@ -243,7 +263,7 @@ describe('plugin updates are transactional (13.2.0)', () => {
 
   it('a commit failure after the plugin swap restores the old instances (not closed) and closes the new ones', async () => {
     reset();
-    h = await startFeatureGw({ configDir: dir, plugins: [{ module: './pa.mjs', runtime: 'inline', options: { tag: 'v1' } }] } as never);
+    h = await startFeatureGw({ configDir: dir, plugins: [{ module: './pa.mjs', runtime: 'worker', options: { tag: 'v1' } }] } as never);
     const gw = h.gw as Gw;
     const orig = gw.invoker.refreshPolicy.bind(gw.invoker);
     gw.invoker.refreshPolicy = () => {
@@ -251,7 +271,7 @@ describe('plugin updates are transactional (13.2.0)', () => {
       throw new Error('policy commit exploded');
     };
     await expect(
-      gw.reload({ ...gw.config, configDir: dir, plugins: [{ module: './pa.mjs', runtime: 'inline', options: { tag: 'v2' } }], policy: { rules: [{ effect: 'allow', tools: ['*'] }] } } as GatewayConfig),
+      gw.reload({ ...gw.config, configDir: dir, plugins: [{ module: './pa.mjs', runtime: 'worker', options: { tag: 'v2' } }], policy: { rules: [{ effect: 'allow', tools: ['*'] }] } } as GatewayConfig),
     ).rejects.toThrow(/policy commit exploded/);
     expect(G().closed).toEqual(['pa#2:v2']);
     await call('fake');
@@ -260,14 +280,14 @@ describe('plugin updates are transactional (13.2.0)', () => {
 
   it('a call in flight across a plugin swap runs onResponse of its own generation’s plugins, closed only after it ends', async () => {
     reset();
-    h = await startFeatureGw({ configDir: dir, plugins: [{ module: './pa.mjs', runtime: 'inline', options: { tag: 'v1' } }] } as never);
+    h = await startFeatureGw({ configDir: dir, plugins: [{ module: './pa.mjs', runtime: 'worker', options: { tag: 'v1' } }] } as never);
     const gw = h.gw as Gw;
     let release!: () => void;
     G().hold = new Promise<void>((r) => (release = r));
     const inflight = call('fake');
     await sleep(200);
     G().hold = undefined;
-    await gw.reload({ ...gw.config, configDir: dir, plugins: [{ module: './pa.mjs', runtime: 'inline', options: { tag: 'v2' } }] } as GatewayConfig);
+    await gw.reload({ ...gw.config, configDir: dir, plugins: [{ module: './pa.mjs', runtime: 'worker', options: { tag: 'v2' } }] } as GatewayConfig);
     expect(G().closed).toEqual([]); // still used by the in-flight call
     release();
     expect((await inflight).status).toBe(200);

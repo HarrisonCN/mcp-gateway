@@ -5,7 +5,8 @@
  *
  *  C1 `isolation` alias → `runtime` (comments and layout kept; WASM component `isolation` untouched), `version: 13`,
  *     same effective runtime, the result loads as v13 with no deprecations.
- *  C2 inline module plugins get `allowInline: true`; 2024-11-05 is dropped from `mcp.protocolVersions`; Node.js 24 stays pending.
+ *  C2 inline module plugins get `allowInline: true` (16.x; since 17.0.0-alpha.1 they move to `runtime: worker` with a pending
+ *     `v17.plugins.<i>.inline` check); 2024-11-05 is dropped from `mcp.protocolVersions`; Node.js 24 stays pending.
  *  C3 idempotent: a v13 file is checked and left as it is.
  *  C4 refusals: `isolation` and `runtime` disagreeing (the v12 loader already refuses it), v11 files, invalid v13 files; JSON input.
  *  C5 CLI: `--dry-run` writes nothing, `--in-place` keeps `<file>.pre-v13.bak` and the result validates, `config diff --to v13`
@@ -18,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { planV13 } from '../src/config/v13-prep.js';
-import { validateConfig } from '../src/config/loader.js';
+import { validateConfig, validateV12ForMigration } from '../src/config/loader.js';
 import { v16DeprecationsIn } from '../src/config/v16-deprecations.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -50,30 +51,44 @@ describe('config migrate --to v13 codemod (15.9.0-canary.1; writes v13 since 16.
   it('C1 rewrites the module-plugin isolation alias to runtime, keeps comments, writes version: 13 that loads', () => {
     const r = planV13(SAMPLE, 'yaml');
     expect(r.ok).toBe(true);
-    expect(r.changes.slice(0, 3)).toEqual(['version: 12 → 13', 'plugins[0].isolation: worker → runtime: worker', 'plugins[1].isolation: inline → runtime: inline']);
+    expect(r.changes.slice(0, 4)).toEqual([
+      'version: 12 → 13',
+      'plugins[0].isolation: worker → runtime: worker',
+      'plugins[1].isolation: inline → runtime: inline',
+      'plugins[1]: runtime: inline → runtime: worker (17.0 runs module plugins only in a worker or a child process)',
+    ]);
     expect(r.text).toContain('# tenant header');
     expect(r.text).toMatch(/^version: 13$/m);
     const out = parse(r.text);
-    expect(out.plugins.map((p: any) => p.runtime)).toEqual(['worker', 'inline', 'process', undefined]);
+    expect(out.plugins.map((p: any) => p.runtime)).toEqual(['worker', 'worker', 'process', undefined]); // 17.0: inline → worker
     expect(out.plugins[0].isolation).toBeUndefined();
     expect(out.plugins[3].isolation).toBe('tenant'); // WASM component isolation is a different setting
-    const before = validateConfig(parse(SAMPLE)) as any;
+    const before = validateV12ForMigration(parse(SAMPLE)) as any; // 17.0: the gateway refuses version: 12, the tooling reads it
     const after = validateConfig(out) as any;
     expect(after.schemaVersion).toBe(13);
-    expect(after.plugins.map((p: any) => p.runtime ?? p.isolation)).toEqual(before.plugins.map((p: any) => p.runtime ?? p.isolation));
+    expect(before.plugins.map((p: any) => p.runtime ?? p.isolation)).toEqual(['worker', 'inline', 'process', 'tenant']);
+    // same effective runtime, except the inline module plugin, which 17.0 runs in a worker
+    expect(after.plugins.map((p: any) => p.runtime ?? p.isolation)).toEqual(['worker', 'worker', 'process', 'tenant']);
     expect(r.diff).toMatch(/^-\s+isolation: worker$/m);
     expect(r.diff).toMatch(/^\+\s+runtime: worker$/m);
-    // every 16.0 deprecation is resolved; since 16.9.0 the inline module plugin (allowInline) is the one 17.0 removal left
-    expect(after.deprecations?.map((d: any) => [d.id, d.removedIn])).toEqual([['v17.plugins.1.inline', '17.0.0']]);
+    // every 16.0 deprecation is resolved and (17.0.0-alpha.1) the inline module plugin moved to a worker: nothing deprecated
+    expect(after.deprecations).toBeUndefined();
     expect(v16DeprecationsIn(parse(SAMPLE)).length).toBeGreaterThan(0);
   });
 
-  it('C2 opts inline plugins in, drops 2024-11-05, keeps Node.js 24 pending', () => {
+  it('C2 moves inline plugins to a worker (17.0; 16.x opted them in), drops 2024-11-05, keeps Node.js 24 pending', () => {
     const r = planV13(SAMPLE, 'yaml');
     const out = parse(r.text);
-    expect(out.plugins[1]).toEqual({ module: './b.mjs', runtime: 'inline', allowInline: true });
+    expect(out.plugins[1]).toEqual({ module: './b.mjs', runtime: 'worker' });
     expect(out.mcp.protocolVersions).toEqual(['2025-06-18']);
-    expect(r.pending.map((p) => p.id)).toEqual(['v16.node']);
+    expect(r.pending.map((p) => p.id)).toEqual(['v17.plugins.1.inline', 'v16.node']);
+    expect(r.pending[0]).toMatchObject({ path: 'plugins[1]', v13: 'runtime: worker' });
+    expect(r.pending[0]!.now).toMatch(/plugin migrate --to v6/);
+    // a 16.x v13 file with allowInline: the opt-in goes too
+    const v16 = planV13('version: 13\nplugins:\n  - module: ./a.mjs\n    runtime: inline\n    allowInline: true\n', 'yaml');
+    expect(v16.ok).toBe(true);
+    expect(v16.changes).toEqual(['plugins[0]: runtime: inline → runtime: worker (17.0 runs module plugins only in a worker or a child process)', 'plugins[0].allowInline removed (17.0 has no inline module plugins)']);
+    expect(parse(v16.text)).toEqual({ version: 13, plugins: [{ module: './a.mjs', runtime: 'worker' }] });
   });
 
   it('C3 is idempotent: a v13 file is left as it is', () => {
@@ -96,7 +111,11 @@ describe('config migrate --to v13 codemod (15.9.0-canary.1; writes v13 since 16.
     expect(same.ok).toBe(true);
     expect(same.changes).toContain('plugins[0].isolation: worker (same as runtime) removed');
     expect(planV13('version: 11\n', 'yaml').report.errors.join('\n')).toMatch(/config migrate --to v12/);
-    expect(planV13('version: 13\nplugins:\n  - module: ./a.mjs\n    runtime: inline\n', 'yaml').report.errors.join('\n')).toMatch(/allowInline: true/);
+    // invalid v13 file (16.x: inline without allowInline; 17.0 rewrites inline, so: the isolation alias, which v13 refuses)
+    const bad13 = planV13('version: 13\nplugins:\n  - module: ./a.mjs\n    isolation: worker\n', 'yaml');
+    expect(bad13.ok).toBe(false);
+    expect(bad13.changes).toEqual([]);
+    expect(bad13.report.errors.join('\n')).toMatch(/^the v13 file is not valid:\n  - plugins\.0\.isolation: `isolation: worker` on a module plugin is not part of config schema v13/);
     const json = planV13(JSON.stringify({ version: 12, plugins: [{ module: './a.mjs', isolation: 'process' }] }), 'json');
     expect(json.ok).toBe(true);
     expect(JSON.parse(json.text)).toEqual({ version: 13, plugins: [{ module: './a.mjs', runtime: 'process' }] });
@@ -115,7 +134,7 @@ describe('config migrate --to v13 codemod (15.9.0-canary.1; writes v13 since 16.
     const j = JSON.parse(cli('config', 'migrate', '--to', 'v13', '--dry-run', '--json', '-c', f).stdout);
     expect(j.to).toBe(13);
     expect(j.writes).toBe(13);
-    expect(j.pending.length).toBe(1);
+    expect(j.pending.map((p: any) => p.id)).toEqual(['v17.plugins.1.inline', 'v16.node']); // 17.0.0-alpha.1: + the inline → worker check
     const ip = cli('config', 'migrate', '--to', 'v13', '--in-place', '-c', f);
     expect(ip.status).toBe(0);
     expect(readFileSync(`${f}.pre-v13.bak`, 'utf8')).toBe(SAMPLE);

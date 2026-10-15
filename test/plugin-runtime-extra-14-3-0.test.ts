@@ -20,7 +20,7 @@ import { createServer } from 'net';
 import Ajv from 'ajv';
 import { buildV12ConfigSchema } from '../src/config/v12.js';
 import { PluginHost, loadPlugin, pluginRuntimeOf } from '../src/plugins/index.js';
-import { validateConfig } from '../src/config/loader.js';
+import { validateConfig, validateV12ForMigration } from '../src/config/loader.js';
 import { logger } from '../src/utils/logger.js';
 
 logger.setLevel('error');
@@ -44,7 +44,7 @@ describe('X1 runtime: process', () => {
     const d = dir();
     const outside = mkdtempSync(join(tmpdir(), 'mgw-143x-outside-'));
     writeFileSync(join(outside, 'secret.txt'), 'top-secret');
-    const exit = write(d, 'exit.mjs', `export default { name: 'pexit', apiVersion: 5, onToolCall: () => { process.exit(7); } };`);
+    const exit = write(d, 'exit.mjs', `export default { name: 'pexit', apiVersion: 6, onToolCall: () => { process.exit(7); } };`);
     const p = await loadPlugin({ module: exit, runtime: 'process' } as never, d);
     expect(pluginRuntimeOf(p)).toBe('process');
     const host = new PluginHost();
@@ -52,11 +52,11 @@ describe('X1 runtime: process', () => {
     await expect(host.beforeCall(call())).rejects.toThrow(/plugin "pexit" crashed: exited with code 7/i);
     await host.close();
 
-    const mem = write(d, 'mem.mjs', `const keep = []; export default { name: 'pmem', apiVersion: 5, onToolCall: () => { for (;;) keep.push(new Array(1e6).fill(Math.random())); } };`);
+    const mem = write(d, 'mem.mjs', `const keep = []; export default { name: 'pmem', apiVersion: 6, onToolCall: () => { for (;;) keep.push(new Array(1e6).fill(Math.random())); } };`);
     const { r: rm } = await run({ module: mem, runtime: 'process', limits: { memoryMb: 48, timeoutMs: 8000 } }, d);
     expect(JSON.stringify(rm)).toMatch(/memory/i);
 
-    const src = `import { readFileSync } from 'node:fs'; export default { name: 'pfs', apiVersion: 5, onToolCall: (c) => { try { c.state.set('r', readFileSync(${JSON.stringify(join(outside, 'secret.txt'))}, 'utf8')); } catch (e) { c.state.set('r', 'denied:' + (e.code || e.message)); } return { action: 'continue' }; } };`;
+    const src = `import { readFileSync } from 'node:fs'; export default { name: 'pfs', apiVersion: 6, onToolCall: (c) => { try { c.state.set('r', readFileSync(${JSON.stringify(join(outside, 'secret.txt'))}, 'utf8')); } catch (e) { c.state.set('r', 'denied:' + (e.code || e.message)); } return { action: 'continue' }; } };`;
     const fsm = write(d, 'fs.mjs', src);
     const denied = await run({ module: fsm, runtime: 'process' }, d);
     expect(String(denied.c.state.get('r'))).toMatch(/^denied:ERR_ACCESS_DENIED/);
@@ -71,18 +71,18 @@ describe('X2 network and env in a worker', () => {
     await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
     const port = (srv.address() as { port: number }).port;
     const d = dir();
-    const net = write(d, 'net.mjs', `import { connect } from 'node:net'; export default { name: 'net', apiVersion: 5, onToolCall: (c) => new Promise((res) => { try { const s = connect(${port}, '127.0.0.1'); s.on('data', () => { c.state.set('n', 'connected'); s.destroy(); res(); }); s.on('error', (e) => { c.state.set('n', 'error:' + e.message); res(); }); } catch (e) { c.state.set('n', 'denied:' + e.message); res(); } }) };`);
+    const net = write(d, 'net.mjs', `import { connect } from 'node:net'; export default { name: 'net', apiVersion: 6, onToolCall: (c) => new Promise((res) => { try { const s = connect(${port}, '127.0.0.1'); s.on('data', () => { c.state.set('n', 'connected'); s.destroy(); res(); }); s.on('error', (e) => { c.state.set('n', 'error:' + e.message); res(); }); } catch (e) { c.state.set('n', 'denied:' + e.message); res(); } }) };`);
     expect((await run({ module: net, runtime: 'worker' }, d)).c.state.get('n')).toBe('connected');
     expect(String((await run({ module: net, runtime: 'worker', permissions: { network: false } }, d)).c.state.get('n'))).toMatch(/denied:.*permissions\.network/);
     expect(String((await run({ module: net, runtime: 'worker', permissions: { network: ['api.example.com'] } }, d)).c.state.get('n'))).toMatch(/denied/);
     expect((await run({ module: net, runtime: 'worker', permissions: { network: [`127.0.0.1:${port}`] } }, d)).c.state.get('n')).toBe('connected');
-    const ft = write(d, 'fetch.mjs', `export default { name: 'fetch', apiVersion: 5, onToolCall: async (c) => { try { await fetch('http://127.0.0.1:${port}/'); c.state.set('f', 'fetched'); } catch (e) { c.state.set('f', 'denied:' + (e.cause?.message ?? e.message)); } } };`);
+    const ft = write(d, 'fetch.mjs', `export default { name: 'fetch', apiVersion: 6, onToolCall: async (c) => { try { await fetch('http://127.0.0.1:${port}/'); c.state.set('f', 'fetched'); } catch (e) { c.state.set('f', 'denied:' + (e.cause?.message ?? e.message)); } } };`);
     expect(String((await run({ module: ft, runtime: 'worker', permissions: { network: false } }, d)).c.state.get('f'))).toMatch(/denied:.*permissions\.network/);
     srv.close();
 
     process.env.MGW143X_OK = 'visible';
     process.env.MGW143X_HIDDEN = 'hidden';
-    const env = write(d, 'env.mjs', `export default { name: 'env', apiVersion: 5, onToolCall: (c) => { c.state.set('ok', process.env.MGW143X_OK ?? null); c.state.set('hidden', process.env.MGW143X_HIDDEN ?? null); } };`);
+    const env = write(d, 'env.mjs', `export default { name: 'env', apiVersion: 6, onToolCall: (c) => { c.state.set('ok', process.env.MGW143X_OK ?? null); c.state.set('hidden', process.env.MGW143X_HIDDEN ?? null); } };`);
     const e1 = await run({ module: env, runtime: 'worker', permissions: { env: ['MGW143X_OK'] } }, d);
     expect([e1.c.state.get('ok'), e1.c.state.get('hidden')]).toEqual(['visible', null]);
     const e2 = await run({ module: env, runtime: 'worker' }, d);
@@ -93,7 +93,7 @@ describe('X2 network and env in a worker', () => {
 describe('X3 hooks, response, escape hatches', () => {
   it('permissions.hooks / response: read; child_process and nested workers refused', async () => {
     const d = dir();
-    const m = write(d, 'resp.mjs', `export default { name: 'resp', apiVersion: 5, onToolCall: () => ({ action: 'deny', reason: 'tc' }), onResponse: () => ({ action: 'replace', result: 'changed' }) };`);
+    const m = write(d, 'resp.mjs', `export default { name: 'resp', apiVersion: 6, onToolCall: () => ({ action: 'deny', reason: 'tc' }), onResponse: () => ({ action: 'replace', result: 'changed' }) };`);
     const p = await loadPlugin({ module: m, runtime: 'worker', permissions: { hooks: ['onResponse'], response: 'read' } } as never, d);
     const host = new PluginHost();
     await host.set([p]);
@@ -104,7 +104,7 @@ describe('X3 hooks, response, escape hatches', () => {
     const w = await run({ module: m, runtime: 'worker', permissions: { response: 'write' } }, d);
     expect(JSON.stringify(w.r)).toMatch(/tc/);
 
-    const esc = write(d, 'esc.mjs', `import { execSync } from 'node:child_process'; import { Worker } from 'node:worker_threads'; export default { name: 'esc', apiVersion: 5, onToolCall: (c) => { for (const [k, f] of [['cp', () => execSync('id')], ['wt', () => new Worker('1', { eval: true })]]) { try { f(); c.state.set(k, 'ran'); } catch (e) { c.state.set(k, 'refused'); } } } };`);
+    const esc = write(d, 'esc.mjs', `import { execSync } from 'node:child_process'; import { Worker } from 'node:worker_threads'; export default { name: 'esc', apiVersion: 6, onToolCall: (c) => { for (const [k, f] of [['cp', () => execSync('id')], ['wt', () => new Worker('1', { eval: true })]]) { try { f(); c.state.set(k, 'ran'); } catch (e) { c.state.set(k, 'refused'); } } } };`);
     const e = await run({ module: esc, runtime: 'worker' }, d);
     expect([e.c.state.get('cp'), e.c.state.get('wt')]).toEqual(['refused', 'refused']);
   }, 20000);
@@ -113,7 +113,7 @@ describe('X3 hooks, response, escape hatches', () => {
 describe('X4 concurrency and breaker recovery', () => {
   it('maxConcurrent sheds load as "busy"; a successful half-open trial closes the circuit', async () => {
     const d = dir();
-    const slow = write(d, 'slow.mjs', `export default { name: 'slow', apiVersion: 5, onToolCall: () => new Promise((r) => setTimeout(r, 300)) };`);
+    const slow = write(d, 'slow.mjs', `export default { name: 'slow', apiVersion: 6, onToolCall: () => new Promise((r) => setTimeout(r, 300)) };`);
     const p = await loadPlugin({ module: slow, runtime: 'worker', failure: 'closed', limits: { maxConcurrent: 1, maxFailures: 1 } } as never, d);
     const host = new PluginHost();
     await host.set([p]);
@@ -123,7 +123,7 @@ describe('X4 concurrency and breaker recovery', () => {
     expect(host.status()[0]).toMatchObject({ circuit: 'closed', failures: 0 }); // busy is not a plugin failure
     await host.close();
 
-    const flaky = write(d, 'flaky2.mjs', `export default { name: 'flaky2', apiVersion: 5, onToolCall: (c) => { if (c.arguments.fail) throw new Error('nope'); } };`);
+    const flaky = write(d, 'flaky2.mjs', `export default { name: 'flaky2', apiVersion: 6, onToolCall: (c) => { if (c.arguments.fail) throw new Error('nope'); } };`);
     const f = await loadPlugin({ module: flaky, runtime: 'worker', limits: { maxFailures: 1, cooldownMs: 200 } } as never, d);
     const h = new PluginHost();
     await h.set([f]);
@@ -141,23 +141,22 @@ describe('X4 concurrency and breaker recovery', () => {
 describe('X5 compatibility and config', () => {
   it('isolation: worker alias, worker by default (15.0) and explicit inline, onRequest refused in a worker, per-hook failure policy', async () => {
     const d = dir();
-    const m = write(d, 'plain.mjs', `export default { name: 'plain', apiVersion: 5, onToolCall: (c) => ({ action: 'rewrite', arguments: { ...c.arguments, x: process.pid } }) };`);
+    const m = write(d, 'plain.mjs', `export default { name: 'plain', apiVersion: 6, onToolCall: (c) => ({ action: 'rewrite', arguments: { ...c.arguments, x: process.pid } }) };`);
     const iso = await run({ module: m, isolation: 'worker' }, d);
     expect(pluginRuntimeOf(iso.p)).toBe('worker');
     expect((iso.c.arguments as { x: number }).x).toBe(process.pid); // same pid: a thread, not a process
     // 15.0.0: no runtime → worker; inline only when asked for
     const dflt = await run({ module: m }, d);
     expect(pluginRuntimeOf(dflt.p)).toBe('worker');
-    const inline = await run({ module: m, runtime: 'inline' }, d);
-    expect(pluginRuntimeOf(inline.p)).toBe('inline');
-    expect((inline.c.arguments as { x: number }).x).toBe(process.pid);
+    // 17.0.0-alpha.1: inline module plugins are gone (plugin API v6)
+    await expect(loadPlugin({ module: m, runtime: 'inline' } as never, d)).rejects.toThrow(/runtime: inline was removed in 17\.0/);
     const proc = await run({ module: m, runtime: 'process' }, d);
     expect((proc.c.arguments as { x: number }).x).not.toBe(process.pid);
 
-    const http = write(d, 'http.mjs', `export default { name: 'http', apiVersion: 5, onRequest: (q, s, n) => n() };`);
+    const http = write(d, 'http.mjs', `export default { name: 'http', apiVersion: 6, onRequest: (q, s, n) => n() };`);
     await expect(loadPlugin({ module: http, runtime: 'worker' } as never, d)).rejects.toThrow(/onRequest/);
 
-    const both = write(d, 'both.mjs', `export default { name: 'both', apiVersion: 5, onToolCall: () => { throw new Error('tc-fail'); }, onResponse: () => { throw new Error('resp-fail'); } };`);
+    const both = write(d, 'both.mjs', `export default { name: 'both', apiVersion: 6, onToolCall: () => { throw new Error('tc-fail'); }, onResponse: () => { throw new Error('resp-fail'); } };`);
     const p = await loadPlugin({ module: both, runtime: 'worker', failure: { onToolCall: 'closed', onResponse: 'open' } } as never, d);
     const host = new PluginHost();
     await host.set([p]);
@@ -165,16 +164,20 @@ describe('X5 compatibility and config', () => {
     await expect(host.afterCall(call(), { success: true, result: 'r' } as never)).resolves.toMatchObject({ result: 'r' });
     await host.close();
 
-    const base = { version: 12, servers: [] } as Record<string, unknown>;
-    expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', isolation: 'worker', limits: { memoryMb: 64 } }] })).not.toThrow();
+    const base = { version: 13, servers: [] } as Record<string, unknown>;
+    // the 14.3 `isolation` alias: read in v12 files (16.x reading, migration tooling); schema v13 / 17.0 refuse it
+    expect(() => validateV12ForMigration({ version: 12, servers: [], plugins: [{ module: './p.mjs', isolation: 'worker', limits: { memoryMb: 64 } }] })).not.toThrow();
+    expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', isolation: 'worker', limits: { memoryMb: 64 } }] })).toThrow(/isolation.*not part of config schema v13/s);
     expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', isolation: 'tenant' }] })).toThrow(/isolation/);
     // 15.0.0: a module plugin without runtime runs in a worker, so permissions / limits apply; inline refuses them
     expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', permissions: { network: false } }] })).not.toThrow();
     expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', limits: { memoryMb: 64 } }] })).not.toThrow();
-    expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', runtime: 'inline', permissions: { network: false } }] })).toThrow(/isolated runtime/);
-    expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', runtime: 'inline', limits: { memoryMb: 64 } }] })).toThrow(/runtime: worker \| process/);
+    const v12 = { version: 12, servers: [] } as Record<string, unknown>; // 16.x reading (inline still existed there)
+    expect(() => validateV12ForMigration({ ...v12, plugins: [{ module: './p.mjs', runtime: 'inline', permissions: { network: false } }] })).toThrow(/isolated runtime/);
+    expect(() => validateV12ForMigration({ ...v12, plugins: [{ module: './p.mjs', runtime: 'inline', limits: { memoryMb: 64 } }] })).toThrow(/runtime: worker \| process/);
+    expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', runtime: 'inline', permissions: { network: false } }] })).toThrow(/removed in 17\.0/);
     expect(() => validateConfig({ ...base, plugins: [{ component: './p.wasm', limits: { memoryMb: 16, timeoutMs: 50 } }] })).not.toThrow();
-    expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', runtime: 'worker', isolation: 'process' }] })).toThrow(/disagree/);
+    expect(() => validateV12ForMigration({ ...v12, plugins: [{ module: './p.mjs', runtime: 'worker', isolation: 'process' }] })).toThrow(/disagree/); // v13: the alias itself is refused
     // the v12 JSON Schema describes the same block
     const v = new Ajv({ allErrors: true, strict: false }).compile(buildV12ConfigSchema());
     const good = { version: 12, plugins: [{ module: './p.mjs', runtime: 'worker', failure: { onToolCall: 'closed', onResponse: 'open' }, limits: { timeoutMs: 100, memoryMb: 64, maxConcurrent: 4, maxFailures: 3, cooldownMs: 1000 }, permissions: { args: 'read', network: false, env: ['A'], fs: { read: ['/x'] }, hooks: ['onToolCall'] } }] };
@@ -195,7 +198,7 @@ describe('X6 inside a running gateway', () => {
   it('a worker plugin that exits / loops / blows its heap never takes the gateway down', async () => {
     const fixture = fileURLToPath(new URL('./fixtures/fake-mcp-server.mjs', import.meta.url));
     const d = dir();
-    write(d, 'hostile.mjs', `const keep = []; export default { name: 'hostile', apiVersion: 5, onToolCall: (c) => { const m = c.arguments.mode; if (m === 'exit') process.exit(9); if (m === 'loop') for (;;) {} if (m === 'oom') for (;;) keep.push(new Array(1e6).fill(1)); if (m === 'throw') setTimeout(() => { throw new Error('async'); }); } };`);
+    write(d, 'hostile.mjs', `const keep = []; export default { name: 'hostile', apiVersion: 6, onToolCall: (c) => { const m = c.arguments.mode; if (m === 'exit') process.exit(9); if (m === 'loop') for (;;) {} if (m === 'oom') for (;;) keep.push(new Array(1e6).fill(1)); if (m === 'throw') setTimeout(() => { throw new Error('async'); }); } };`);
     gw = new Gateway({
       port: 0,
       host: '127.0.0.1',

@@ -34,7 +34,7 @@ describe('kernel plugin SDK (10.5)', () => {
 
   it('a module plugin with invalid options is refused at load', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'mgw-sdk-'));
-    writeFileSync(join(dir, 'p.mjs'), `export default { name: 'm', apiVersion: 5, configSchema: (o) => (typeof o.limit === 'number' ? [] : ['limit must be a number']) };`);
+    writeFileSync(join(dir, 'p.mjs'), `export default { name: 'm', apiVersion: 6, configSchema: (o) => (typeof o.limit === 'number' ? [] : ['limit must be a number']) };`);
     await expect(loadPlugin({ module: './p.mjs', options: {} }, dir)).rejects.toThrow(/limit must be a number/);
     const ok = await loadPlugin({ module: './p.mjs', options: { limit: 2 } }, dir);
     expect(ok.name).toBe('m');
@@ -42,7 +42,7 @@ describe('kernel plugin SDK (10.5)', () => {
 
   it('timeoutMs fails a slow hook closed; config validation accepts it for modules only', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'mgw-sdk-'));
-    writeFileSync(join(dir, 'slow.mjs'), `export default { name: 'slow', apiVersion: 5, onToolCall: () => new Promise((r) => setTimeout(r, 500)) };`);
+    writeFileSync(join(dir, 'slow.mjs'), `export default { name: 'slow', apiVersion: 6, onToolCall: () => new Promise((r) => setTimeout(r, 500)) };`);
     const p = await loadPlugin({ module: './slow.mjs', timeoutMs: 50 }, dir);
     const host = new PluginHost();
     await host.set([p]);
@@ -51,7 +51,7 @@ describe('kernel plugin SDK (10.5)', () => {
     await expect(host.beforeCall(call)).rejects.toThrow(/onToolCall timed out after 50 ms/);
     expect(Date.now() - t0).toBeLessThan(400);
     await host.close();
-    const base = { version: 12, servers: [] } as Record<string, unknown>;
+    const base = { version: 13, servers: [] } as Record<string, unknown>;
     expect(() => validateConfig({ ...base, plugins: [{ module: './x.mjs', timeoutMs: 100 }] })).not.toThrow();
     expect(() => validateConfig({ ...base, plugins: [{ component: './x.wasm', timeoutMs: 100 }] })).toThrow(/timeoutMs/);
   });

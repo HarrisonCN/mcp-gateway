@@ -23,9 +23,10 @@ describe('PluginHost', () => {
     const seen: string[] = [];
     const host = new PluginHost();
     await host.set([
-      { name: 'a', onToolCall: (c) => (seen.push('a'), { arguments: { ...c.arguments, a: 1 } }) },
-      { name: 'b', onToolCall: (c) => (seen.push('b'), c.arguments.stop ? { deny: 'stopped' } : undefined) },
-      { name: 'c', onResponse: (_c, r) => ({ ...r, result: { wrapped: r.result } }) },
+      // 17.0.0-alpha.1: plugin API v6 only — { action } outcomes (the v4-era shapes fail the hook, see v17-core K3)
+      { name: 'a', onToolCall: (c) => (seen.push('a'), { action: 'rewrite', arguments: { ...c.arguments, a: 1 } }) },
+      { name: 'b', onToolCall: (c) => (seen.push('b'), c.arguments.stop ? { action: 'deny', reason: 'stopped' } : undefined) },
+      { name: 'c', onResponse: (_c, r) => ({ action: 'replace', result: { wrapped: r.result } }) },
       { name: 'd', onResponse: () => undefined },
     ]);
     const call = { serverId: 's', name: 't', kind: 'tool' as const, method: 'tools/call', arguments: {}, via: 'rest' as const, state: new Map() };
@@ -47,7 +48,7 @@ describe('PluginHost', () => {
     await expect(host.beforeCall(call)).rejects.toThrow(/Plugin "boom" failed: nope/);
     await host.set([]);
     expect(closed).toBe(1);
-    await expect(PluginHost.build(undefined, [{ name: 'x', apiVersion: 5 }, { name: 'x', apiVersion: 5 }])).rejects.toThrow(/Duplicate plugin name/);
+    await expect(PluginHost.build(undefined, [{ name: 'x', apiVersion: 6 }, { name: 'x', apiVersion: 6 }])).rejects.toThrow(/Duplicate plugin name/);
     await expect(PluginHost.build(undefined, [(() => ({})) as never])).rejects.toThrow(/must export a plugin object/);
     await expect(PluginHost.build(undefined, [{ name: 'future', apiVersion: PLUGIN_API_VERSION + 1 }])).rejects.toThrow(/needs plugin API/);
   });
@@ -57,8 +58,8 @@ describe('PluginHost', () => {
     const seen: string[] = [];
     const host = new PluginHost();
     const plugins = await PluginHost.build(undefined, [
-      { name: 'v3', apiVersion: 5, onToolCall: (_c, ctx) => void seen.push(`call:${ctx.plugin}:${ctx.apiVersion}`), onError: (_c, e, ctx) => void seen.push(`err:${ctx.plugin}:${e.message}`) },
-      { name: 'broken-observer', apiVersion: 5, onError: () => { throw new Error('ignored'); } },
+      { name: 'v3', apiVersion: 6, onToolCall: (_c, ctx) => void seen.push(`call:${ctx.plugin}:${ctx.apiVersion}`), onError: (_c, e, ctx) => void seen.push(`err:${ctx.plugin}:${e.message}`) },
+      { name: 'broken-observer', apiVersion: 6, onError: () => { throw new Error('ignored'); } },
     ]);
     await host.set(plugins);
     expect(runtimeDeprecations()).toEqual([]); // 8.0
@@ -69,8 +70,9 @@ describe('PluginHost', () => {
     const failed = await host.afterCall(call, { success: false, durationMs: 1, error: { code: -32000, message: 'upstream down' } });
     expect(failed.success).toBe(false);
     await host.afterCall(call, { success: true, durationMs: 1, result: 1 });
-    // 16.9.0: hooks see the contract the plugin declared (this plugin declares 5; the gateway implements 6)
-    expect(seen).toEqual(['call:v3:5', 'err:v3:upstream down']);
+    // 16.9.0: hooks see the contract the plugin declared; 17.0.0-alpha.1: that is always 6 (v5 is refused)
+    expect(seen).toEqual(['call:v3:6', 'err:v3:upstream down']);
+    await expect(PluginHost.build(undefined, [{ name: 'five', apiVersion: 5 }])).rejects.toThrow(/plugin API v5, which was removed in 17\.0/);
     const seen6: number[] = [];
     const host6 = new PluginHost();
     await host6.set(await PluginHost.build(undefined, [{ name: 'v6', apiVersion: 6, onToolCall: (_c, ctx) => void seen6.push(ctx.apiVersion) }]));
@@ -91,7 +93,7 @@ describe('PluginHost', () => {
     const p: GatewayPlugin = grantSecrets(
       {
         name: 'v3',
-        apiVersion: 5,
+        apiVersion: 6,
         onToolCall: async (_c, ctx) => {
           seen.push(`${ctx.tenant?.id ?? '-'}:${ctx.tenant?.role ?? '-'}:${await ctx.secrets!.get('TOKEN')}`);
           await expect(ctx.secrets!.get('OTHER')).rejects.toThrow(/not granted/);
@@ -113,7 +115,7 @@ describe('PluginHost', () => {
       'cfg:v3:policy:s', 'v2cfg',
     ]);
     const fail = new PluginHost();
-    await fail.set([{ name: 'bad', apiVersion: 5, onConfigChange: () => { throw new Error('x'); } }]);
+    await fail.set([{ name: 'bad', apiVersion: 6, onConfigChange: () => { throw new Error('x'); } }]);
     await expect(fail.configChanged({ applied: [], servers: [], at: '' })).resolves.toBeUndefined();
   });
 
@@ -126,14 +128,17 @@ describe('PluginHost', () => {
     const dir = tmp();
     writeFileSync(
       join(dir, 'tagger.mjs'),
-      'export default (ctx) => ({ name: "tagger", apiVersion: 5, onResponse: (_c, r) => ({ ...r, result: { tag: ctx.options.tag, v: ctx.apiVersion, r: r.result } }) });',
+      'export default (ctx) => ({ name: "tagger", apiVersion: 6, onResponse: (_c, r) => ({ action: "replace", result: { tag: ctx.options.tag, v: ctx.apiVersion, r: r.result } }) });',
     );
-    const p = await loadPlugin({ module: './tagger.mjs', runtime: 'inline', options: { tag: 'x' } }, dir); // 15.0: inline is opt-in
+    // 17.0.0-alpha.1: module plugins run in a worker (inline was removed); the proxy returns the plugin's outcome
+    const p = await loadPlugin({ module: './tagger.mjs', runtime: 'worker', options: { tag: 'x' } }, dir);
     expect(p.name).toBe('tagger');
-    const out = await p.onResponse!({} as never, { success: true, durationMs: 0, result: 5 });
+    const out = await p.onResponse!({ serverId: 's', name: 't', kind: 'tool', method: 'tools/call', arguments: {}, via: 'rest', state: new Map() } as never, { success: true, durationMs: 0, result: 5 }, {} as never);
     expect(out).toMatchObject({ result: { tag: 'x', v: PLUGIN_API_VERSION, r: 5 } });
-    const renamed = await loadPlugin({ module: join(dir, 'tagger.mjs'), runtime: 'inline', name: 'renamed' }, '/');
+    const renamed = await loadPlugin({ module: join(dir, 'tagger.mjs'), runtime: 'worker', name: 'renamed' }, '/');
     expect(renamed.name).toBe('renamed');
+    await p.close?.();
+    await renamed.close?.();
   });
 
   it('validates the plugins: config block and records configDir', async () => {
@@ -185,7 +190,7 @@ describe('plugins in the gateway', () => {
       [
         {
           name: 'hdr',
-          apiVersion: 5,
+          apiVersion: 6, // 17.0.0-alpha.1: programmatic (embedding API) plugins keep onRequest; module plugins cannot
           onRequest: (req, res, next) => {
             if (req.path === '/blocked') return void res.status(418).json({ teapot: true });
             res.setHeader('x-plugin', 'hdr');
@@ -194,17 +199,17 @@ describe('plugins in the gateway', () => {
         },
         {
           name: 'rewrite',
-          apiVersion: 5,
+          apiVersion: 6,
           onToolCall: (c) => {
             order.push(`call:${JSON.stringify(c.arguments)}`);
-            if (c.arguments.path === '/safe-alias') return { arguments: { ...c.arguments, path: '/' } };
-            if (c.arguments.cached) return { respond: { content: [{ type: 'text', text: 'from plugin' }] } };
-            if (c.arguments.reject) return { deny: 'plugin says no' };
+            if (c.arguments.path === '/safe-alias') return { action: 'rewrite', arguments: { ...c.arguments, path: '/' } };
+            if (c.arguments.cached) return { action: 'respond', result: { content: [{ type: 'text', text: 'from plugin' }] } };
+            if (c.arguments.reject) return { action: 'deny', reason: 'plugin says no' };
             return undefined;
           },
           onResponse: (_c, r) => {
             order.push(`resp:${JSON.stringify(r.result).includes('SECRET') ? 'raw' : 'filtered'}`);
-            return r;
+            return { action: 'continue' };
           },
         },
       ],
@@ -235,9 +240,9 @@ describe('plugins in the gateway', () => {
 
   it('a failing hook fails the call closed; plugins reload with the config', async () => {
     const dir = tmp();
-    writeFileSync(join(dir, 'p.mjs'), 'export default (ctx) => ({ name: "cfg", apiVersion: 5, onToolCall: () => (ctx.options.deny ? { deny: "cfg deny" } : undefined) });');
+    writeFileSync(join(dir, 'p.mjs'), 'export default (ctx) => ({ name: "cfg", apiVersion: 6, onToolCall: () => (ctx.options.deny ? { action: "deny", reason: "cfg deny" } : undefined) });');
     const url = await start({ configDir: dir, plugins: [{ module: './p.mjs', options: { deny: false } }] }, [
-      { name: 'thrower', apiVersion: 5, onToolCall: (c) => { if (c.arguments.boom) throw new Error('kaput'); } },
+      { name: 'thrower', apiVersion: 6, onToolCall: (c) => { if (c.arguments.boom) throw new Error('kaput'); } },
     ]);
     const boom = await call(url, { boom: true });
     expect(boom.status).toBe(403);

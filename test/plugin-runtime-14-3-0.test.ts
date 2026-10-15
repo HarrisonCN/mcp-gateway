@@ -59,7 +59,7 @@ const isolated = (p: unknown): string => {
 describe('R1-R5 isolation and resource limits (runtime: worker)', () => {
   it('R1 process.exit() inside a worker plugin does not exit the gateway process', async () => {
     const d = dir();
-    const m = write(d, 'exit.mjs', `export default { name: 'exit', apiVersion: 5, onToolCall: () => { process.exit(3); } };`);
+    const m = write(d, 'exit.mjs', `export default { name: 'exit', apiVersion: 6, onToolCall: () => { process.exit(3); } };`);
     const p = await loadPlugin({ module: m, runtime: 'worker', failure: 'closed' } as never, d);
     isolated(p);
     const host = new PluginHost();
@@ -73,7 +73,7 @@ describe('R1-R5 isolation and resource limits (runtime: worker)', () => {
 
   it('R2 an infinite loop is terminated after limits.timeoutMs and the next call is served', async () => {
     const d = dir();
-    const m = write(d, 'loop.mjs', `export default { name: 'loop', apiVersion: 5, onToolCall: (c) => { if (c.arguments.loop) for (;;) {} return { action: 'continue' }; } };`);
+    const m = write(d, 'loop.mjs', `export default { name: 'loop', apiVersion: 6, onToolCall: (c) => { if (c.arguments.loop) for (;;) {} return { action: 'continue' }; } };`);
     const p = await loadPlugin({ module: m, runtime: 'worker', limits: { timeoutMs: 100 } } as never, d);
     isolated(p);
     const host = new PluginHost();
@@ -89,7 +89,7 @@ describe('R1-R5 isolation and resource limits (runtime: worker)', () => {
 
   it('R3 limits.memoryMb kills a plugin that exceeds its heap', async () => {
     const d = dir();
-    const m = write(d, 'mem.mjs', `const keep = []; export default { name: 'mem', apiVersion: 5, onToolCall: () => { for (;;) keep.push(new Array(1e6).fill(Math.random())); } };`);
+    const m = write(d, 'mem.mjs', `const keep = []; export default { name: 'mem', apiVersion: 6, onToolCall: () => { for (;;) keep.push(new Array(1e6).fill(Math.random())); } };`);
     const p = await loadPlugin({ module: m, runtime: 'worker', limits: { memoryMb: 32, timeoutMs: 5000 } } as never, d);
     isolated(p);
     const host = new PluginHost();
@@ -100,7 +100,7 @@ describe('R1-R5 isolation and resource limits (runtime: worker)', () => {
 
   it('R4 failure: open lets the call through after a crash; closed refuses it', async () => {
     const d = dir();
-    const m = write(d, 'boom.mjs', `export default { name: 'boom', apiVersion: 5, onToolCall: () => { setTimeout(() => { throw new Error('async boom'); }); return new Promise(() => {}); } };`);
+    const m = write(d, 'boom.mjs', `export default { name: 'boom', apiVersion: 6, onToolCall: () => { setTimeout(() => { throw new Error('async boom'); }); return new Promise(() => {}); } };`);
     const open = await loadPlugin({ module: m, name: 'boom-open', runtime: 'worker', failure: 'open', limits: { timeoutMs: 500 } } as never, d);
     isolated(open);
     const host = new PluginHost();
@@ -116,7 +116,7 @@ describe('R1-R5 isolation and resource limits (runtime: worker)', () => {
 
   it('R5 circuit breaker opens after maxFailures and reports it', async () => {
     const d = dir();
-    const m = write(d, 'flaky.mjs', `export default { name: 'flaky', apiVersion: 5, onToolCall: () => { throw new Error('nope'); } };`);
+    const m = write(d, 'flaky.mjs', `export default { name: 'flaky', apiVersion: 6, onToolCall: () => { throw new Error('nope'); } };`);
     const p = await loadPlugin({ module: m, runtime: 'worker', failure: 'open', limits: { maxFailures: 2, cooldownMs: 60000 } } as never, d);
     const host = new PluginHost();
     await host.set([p]);
@@ -130,7 +130,7 @@ describe('R1-R5 isolation and resource limits (runtime: worker)', () => {
 describe('R6-R8 fine-grained permissions', () => {
   it('R6 args: read rejects an argument rewrite; write allows it', async () => {
     const d = dir();
-    const m = write(d, 'rw.mjs', `export default { name: 'rw', apiVersion: 5, onToolCall: (c) => ({ action: 'rewrite', arguments: { ...c.arguments, a: 2 } }) };`);
+    const m = write(d, 'rw.mjs', `export default { name: 'rw', apiVersion: 6, onToolCall: (c) => ({ action: 'rewrite', arguments: { ...c.arguments, a: 2 } }) };`);
     for (const [args, expected] of [['read', 1], ['write', 2]] as const) {
       const p = await loadPlugin({ module: m, runtime: 'worker', permissions: { args } } as never, d);
       const host = new PluginHost();
@@ -146,7 +146,7 @@ describe('R6-R8 fine-grained permissions', () => {
     process.env.MGW143_A = 'a-val';
     process.env.MGW143_B = 'b-val';
     const d = dir();
-    const m = write(d, 'sec.mjs', `export default { name: 'sec', apiVersion: 5, onToolCall: async (c, ctx) => { c.state.set('a', await ctx.secrets.get('A')); try { await ctx.secrets.get('B'); c.state.set('b', 'leaked'); } catch (e) { c.state.set('b', 'denied'); } return { action: 'continue' }; } };`);
+    const m = write(d, 'sec.mjs', `export default { name: 'sec', apiVersion: 6, onToolCall: async (c, ctx) => { c.state.set('a', await ctx.secrets.get('A')); try { await ctx.secrets.get('B'); c.state.set('b', 'leaked'); } catch (e) { c.state.set('b', 'denied'); } return { action: 'continue' }; } };`);
     const p = await loadPlugin({ module: m, runtime: 'worker', secrets: { A: 'secret://env/MGW143_A', B: 'secret://env/MGW143_B' }, permissions: { secrets: ['A'] } } as never, d);
     const host = new PluginHost({ resolveSecret: async (ref) => process.env[ref.split('/').pop()!] ?? '' });
     await host.set([p]);
@@ -159,7 +159,7 @@ describe('R6-R8 fine-grained permissions', () => {
 
   it('R8 permissions.servers / tools scope which calls the hook sees', async () => {
     const d = dir();
-    const m = write(d, 'deny.mjs', `export default { name: 'deny', apiVersion: 5, onToolCall: () => ({ action: 'deny', reason: 'scoped' }) };`);
+    const m = write(d, 'deny.mjs', `export default { name: 'deny', apiVersion: 6, onToolCall: () => ({ action: 'deny', reason: 'scoped' }) };`);
     const p = await loadPlugin({ module: m, runtime: 'worker', permissions: { servers: ['prod-*'], tools: ['write_*'] } } as never, d);
     const host = new PluginHost();
     await host.set([p]);
@@ -174,8 +174,8 @@ describe('R9-R10 supply chain and config', () => {
   it('R9 TOCTOU: a file changed after its signature was verified is refused; the swapped code never runs', async () => {
     const d = dir();
     const marker = join(d, 'evil-ran');
-    const good = `export default { name: 'signed', apiVersion: 5, onToolCall: () => ({ action: 'deny', reason: 'signed-code' }) };`;
-    const evil = `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'x'); export default { name: 'signed', apiVersion: 5, onToolCall: () => ({ action: 'continue' }) };`;
+    const good = `export default { name: 'signed', apiVersion: 6, onToolCall: () => ({ action: 'deny', reason: 'signed-code' }) };`;
+    const evil = `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'x'); export default { name: 'signed', apiVersion: 6, onToolCall: () => ({ action: 'continue' }) };`;
     const m = write(d, 'signed.mjs', good);
     const file = join(d, 'signed.mjs');
     const key = generateSigningKey();
@@ -220,14 +220,14 @@ describe('R9-R10 supply chain and config', () => {
 
     // a signed entry may not pull unsigned code from disk (the signature covers one file)
     writeFileSync(join(d, 'helper.mjs'), `export const x = 1;`);
-    const dep = `import { x } from './helper.mjs'; export default { name: 'dep', apiVersion: 5, x };`;
+    const dep = `import { x } from './helper.mjs'; export default { name: 'dep', apiVersion: 6, x };`;
     write(d, 'dep.mjs', dep);
     writeFileSync(join(d, 'dep.mjs.sig'), JSON.stringify(signArtifact(dep, key.privateKey, 'k1')));
     await expect(loadPlugin({ module: './dep.mjs', runtime: 'worker' } as never, d, trust as never)).rejects.toThrow(/self-contained|bundle/i);
   }, 20000);
 
   it('R10 config validation of the runtime block', () => {
-    const base = { version: 12, servers: [] } as Record<string, unknown>;
+    const base = { version: 13, servers: [] } as Record<string, unknown>;
     const ok = { module: './p.mjs', runtime: 'worker', failure: 'open', limits: { timeoutMs: 100, memoryMb: 64, maxFailures: 3, cooldownMs: 1000 }, permissions: { args: 'read', response: 'write', secrets: ['A'], servers: ['a-*'], tools: ['t'], network: false } };
     expect(() => validateConfig({ ...base, plugins: [ok] })).not.toThrow();
     expect(() => validateConfig({ ...base, plugins: [{ module: './p.mjs', runtime: 'vm' }] })).toThrow(/runtime/);

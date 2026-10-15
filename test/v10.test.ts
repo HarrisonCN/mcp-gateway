@@ -25,14 +25,14 @@ describe('10.0: schema v10, unified kernel, LTS', () => {
     expect(() => validateConfig({ version: 9, servers: [] })).toThrow(/config schema v9 was removed in 10.0 — use `version: 11`; run `mcp-gateway migrate --to 11`/);
     expect(() => validateConfig({ version: 8, servers: [] })).toThrow(/use `version: 11`/);
     expect(() => validateConfig({ servers: [], chaos })).toThrow(/chaos: removed in 10.0 — move under `features: \{ … \}`/);
-    expect(() => validateConfig({ version: 14, servers: [] })).toThrow(/16\.0 reads `version: 13`/); // 16.0.0-alpha.1: v13 is read
+    expect(() => validateConfig({ version: 14, servers: [] })).toThrow(/17\.0 reads `version: 13` only/); // 17.0.0-alpha.1: v13 only
     expect(() => validateConfig({ version: 11, servers: [], features: { nope: {} } })).toThrow(/unknown feature section\(s\) nope/);
     const cfg = validateConfig({ version: 11, servers: [], features: { chaos } });
     expect(cfg.chaos).toBeDefined();
     expect(cfg.deprecations?.map((d) => d.id)).toBeUndefined();
     expect(validateConfig({ servers: [], features: { chaos } }).chaos).toBeDefined(); // version may be omitted
     expect(removedConfigKeys({ version: 11 })).toEqual([]);
-    expect(parse(generateDefaultConfig()).version).toBe(12); // 10.9: init writes schema v11
+    expect(parse(generateDefaultConfig()).version).toBe(13); // 10.9: init writes schema v11; 17.0.0-alpha.1: v13
   });
 
   it('round trips through the config API and data planes always get version 10', () => {
@@ -41,7 +41,7 @@ describe('10.0: schema v10, unified kernel, LTS', () => {
     expect(p.features).toEqual({ chaos: cfg.chaos });
     expect(p).not.toHaveProperty('chaos');
     expect(validateConfig(p).chaos).toEqual(cfg.chaos);
-    expect(distributedConfig({ servers: [] }).version).toBe(12);
+    expect(distributedConfig({ servers: [] }).version).toBe(13);
   });
 
   it('migrate --to 10 still upgrades 9.x files; 11.0 validates them after --to 11', () => {
@@ -55,14 +55,14 @@ describe('10.0: schema v10, unified kernel, LTS', () => {
   });
 
   it('kernel: schema, LTS, modules, hook pipeline, configured sections', async () => {
-    expect(CONFIG_SCHEMA_VERSION).toBe(12);
+    expect(CONFIG_SCHEMA_VERSION).toBe(13); // 17.0.0-alpha.1: v13 only (14.0 – 16.x: 12)
     expect(LTS).toMatchObject({ line: '10.x', lts: true });
     expect(ltsStatus(new Date('2027-01-01'))).toBe('active');
     expect(ltsStatus(new Date('2028-01-01'))).toBe('maintenance');
     expect(ltsStatus(new Date('2029-01-01'))).toBe('end-of-life');
     h = await startFeatureGw({ chaos } as never);
     const k = await h.admin('kernel');
-    expect(k.body.schema).toBe(12);
+    expect(k.body.schema).toBe(13); // 17.0.0-alpha.1: CONFIG_SCHEMA_VERSION 13
     expect(k.body.lts.line).toBe('10.x');
     expect(k.body.line).toEqual({ line: '14.x', lts: false });
     expect(k.body.moduleMode).toBe('lazy');
@@ -82,7 +82,7 @@ describe('10.0: schema v10, unified kernel, LTS', () => {
     expect(q).not.toHaveProperty('rollouts');
     expect(withFeatureSection(withFeatureSection(p, 'chaos', undefined), 'x', undefined)).not.toHaveProperty('features');
     const d = desktopConfig({ apiKey: 'k' }).config;
-    expect(d).toMatchObject({ version: 12, features: { offline: { mode: 'auto' } } });
+    expect(d).toMatchObject({ version: 13, features: { offline: { mode: 'auto' } } });
     expect(validateConfig(d).offline).toMatchObject({ mode: 'auto' });
   });
 });

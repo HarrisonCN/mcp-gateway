@@ -8,7 +8,7 @@
 # and check the tenant boundaries before going live:
 #   npx mcp-gateway tenancy report -c mcp-gateway.yml
 
-version: 12
+version: 13
 port: 4000
 host: 127.0.0.1
 logLevel: info

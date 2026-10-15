@@ -8,12 +8,15 @@
  *  C3 `v15.config.unknown-key.<key>`: an unknown top-level key of a `version: 12` file is refused (`$schema` allowed)
  *  C4 `schema/v12-draft`: the alias directory is gone; schema/v12 is generated from the code
  *  C5 the docs name every 15.0 id; the v12 top-level key list matches the generated schema
+ *
+ * 17.0.0-alpha.1 refuses `version: 12` and reads unversioned files as v13: the v12 cases below go through the migration
+ * tooling (`validateV12ForMigration`, the 16.x reading); the 17.0 behaviour is asserted next to them.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { validateConfig } from '../src/config/loader.js';
+import { validateConfig, validateV12ForMigration } from '../src/config/loader.js';
 import { V15_DEPRECATION_IDS, V12_TOP_LEVEL_KEYS, v15ConfigErrors } from '../src/config/v15-deprecations.js';
 import { buildV12ConfigSchema, migrateToV12 } from '../src/config/v12.js';
 import { runtimeOfConfig } from '../src/plugins/index.js';
@@ -27,8 +30,9 @@ describe('15.0.0 changes (announced in 14.9.0)', () => {
     }
     const r = migrateToV12('version: 11\nservers: []\nkernel: { modules: eager }\n');
     expect(r.report.errors).toEqual([]);
-    expect(validateConfig(r.config).schemaVersion).toBe(12);
-    expect(validateConfig({ servers: [] }).schemaVersion).toBe(12); // unversioned without v11 fields: v12, as in 14.x
+    expect(validateV12ForMigration(r.config).schemaVersion).toBe(12);
+    expect(validateV12ForMigration({ servers: [] }).schemaVersion).toBe(12); // unversioned without v11 fields: v12, as in 14.x – 16.x
+    expect(validateConfig({ servers: [] }).schemaVersion).toBe(13); // 17.0.0-alpha.1: read as v13
   });
 
   it('C2 module plugins run in a worker unless they say runtime: inline', () => {
@@ -37,15 +41,21 @@ describe('15.0.0 changes (announced in 14.9.0)', () => {
     expect(runtimeOfConfig({ module: './a.mjs', isolation: 'inline' } as never)).toBe('inline');
     expect(runtimeOfConfig({ module: './a.mjs', runtime: 'process' } as never)).toBe('process');
     const base = { version: 12, servers: [] };
-    // limits / permissions need an isolated runtime: valid by default now, refused for explicit inline
-    expect(() => validateConfig({ ...base, plugins: [{ module: './a.mjs', permissions: { network: false } }] })).not.toThrow();
-    expect(() => validateConfig({ ...base, plugins: [{ module: './a.mjs', runtime: 'inline', permissions: { network: false } }] })).toThrow(/isolated runtime/);
-    expect((validateConfig({ ...base, plugins: [{ module: './a.mjs' }, { component: './e.wasm' }] }).deprecations ?? []).filter((d) => d.id !== 'schema.v12')).toEqual([]); // 16.0.0-alpha.1: + schema.v12
+    // limits / permissions need an isolated runtime: valid by default now, refused for explicit inline (16.x reading)
+    expect(() => validateV12ForMigration({ ...base, plugins: [{ module: './a.mjs', permissions: { network: false } }] })).not.toThrow();
+    expect(() => validateV12ForMigration({ ...base, plugins: [{ module: './a.mjs', runtime: 'inline', permissions: { network: false } }] })).toThrow(/isolated runtime/);
+    expect((validateV12ForMigration({ ...base, plugins: [{ module: './a.mjs' }, { component: './e.wasm' }] }).deprecations ?? []).filter((d) => d.id !== 'schema.v12')).toEqual([]); // 16.0.0-alpha.1: + schema.v12
+    // 17.0.0-alpha.1: worker by default still; inline is gone
+    expect(() => validateConfig({ version: 13, servers: [], plugins: [{ module: './a.mjs', permissions: { network: false } }] })).not.toThrow();
+    expect(() => validateConfig({ version: 13, servers: [], plugins: [{ module: './a.mjs', runtime: 'inline' }] })).toThrow(/removed in 17\.0/);
   });
 
   it('C3 unknown top-level keys of a v12 file are refused; $schema is allowed', () => {
-    expect(() => validateConfig({ version: 12, servers: [], include: ['x.yml'], extraThing: 1 } as never)).toThrow(/include: `include` is not a top-level key[\s\S]*extraThing: `extraThing`/);
-    expect(() => validateConfig({ version: 12, servers: [], $schema: './schema/v12/config.schema.json' } as never)).not.toThrow();
+    expect(() => validateV12ForMigration({ version: 12, servers: [], include: ['x.yml'], extraThing: 1 } as never)).toThrow(/include: `include` is not a top-level key[\s\S]*extraThing: `extraThing`/);
+    expect(() => validateV12ForMigration({ version: 12, servers: [], $schema: './schema/v12/config.schema.json' } as never)).not.toThrow();
+    // 17.0.0-alpha.1: the same rule holds for v13 (the only schema read)
+    expect(() => validateConfig({ version: 13, servers: [], include: ['x.yml'], extraThing: 1 } as never)).toThrow(/include: `include` is not a top-level key[\s\S]*extraThing: `extraThing`/);
+    expect(() => validateConfig({ version: 13, servers: [], $schema: './schema/v13/config.schema.json' } as never)).not.toThrow();
     expect(v15ConfigErrors({ version: 12, servrs: [] })).toEqual([expect.stringMatching(/^servrs: /)]);
     expect(v15ConfigErrors(null)).toEqual([]);
   });

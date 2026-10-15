@@ -1,6 +1,6 @@
 # Shared by every environment. Secrets are references only (${ENV_VAR} or secret://…) — `mcp-gateway gitops render`
 # refuses a literal secret.
-version: 12
+version: 13
 include: [servers.yml, policy.yml]
 host: 0.0.0.0
 port: 4000

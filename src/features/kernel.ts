@@ -17,8 +17,8 @@ import { callHooks } from '../gateway/hooks.js';
 import { loadedFeatures } from '../gateway/kernel-runtime.js';
 import { VERSION } from '../utils/version.js';
 
-/** Config schema version of this release line (14.0: 12; v11 files are read — migrated in memory — until 15.0). */
-export const CONFIG_SCHEMA_VERSION = 12;
+/** Config schema version of this release line (14.0: 12; 17.0.0-alpha.1: 13, the only schema read). */
+export const CONFIG_SCHEMA_VERSION = 13;
 
 /** Long-term support of the 10.x line (14.x is the current, non-LTS line; 10.x keeps its LTS dates). */
 export const LTS = {

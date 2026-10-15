@@ -210,12 +210,12 @@ describe('S19 MGW-2026-019 literal ${VAR} API keys', () => {
     process.env.MGW_S19_OPERATOR_KEY = 'op-s19-0123456789abcdef0123456789abcdef';
     const dir = mkdtempSync(join(tmpdir(), 'sec149-019-'));
     const file = join(dir, 'mcp-gateway.yml');
-    writeFileSync(file, 'version: 12\nhost: 127.0.0.1\ncontrolPlane:\n  role: control\nauth:\n  strategy: api-key\n  apiKeys:\n    - ${MGW_S19_OPERATOR_KEY}\nservers: []\n');
+    writeFileSync(file, 'version: 13\nhost: 127.0.0.1\ncontrolPlane:\n  role: control\nauth:\n  strategy: api-key\n  apiKeys:\n    - ${MGW_S19_OPERATOR_KEY}\nservers: []\n');
     const cfg = await loadConfig(file);
     const g = await gateway({ ...cfg });
     expect((await fetch(`${g.base}/api/v1/admin/config`, { headers: { authorization: 'Bearer ${MGW_S19_OPERATOR_KEY}' } })).status).toBe(401);
     expect((await fetch(`${g.base}/api/v1/admin/config`, { headers: { authorization: `Bearer ${process.env.MGW_S19_OPERATOR_KEY}` } })).status).toBe(200);
-    writeFileSync(file, 'version: 12\nauth:\n  strategy: api-key\n  apiKeys:\n    - ${MGW_S19_UNSET_VAR}\nservers: []\n');
+    writeFileSync(file, 'version: 13\nauth:\n  strategy: api-key\n  apiKeys:\n    - ${MGW_S19_UNSET_VAR}\nservers: []\n');
     await expect(loadConfig(file)).rejects.toThrow(/MGW_S19_UNSET_VAR/);
   });
 });

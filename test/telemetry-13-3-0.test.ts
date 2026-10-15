@@ -30,7 +30,7 @@ interface Captured {
 }
 
 async function gateway(extra: Record<string, unknown>, servers: unknown[]) {
-  const cfg = validateConfig({ version: 12, servers, monitor: { requestLog: false, prometheus: true }, ...extra } as any);
+  const cfg = validateConfig({ version: 13, servers, monitor: { requestLog: false, prometheus: true }, ...extra } as any);
   const full: any = { ...cfg, port: 0, host: '127.0.0.1', logLevel: 'error', auth: { strategy: 'api-key', apiKeys: [{ name: 'alice@example.com', key: KEY }] } };
   const gw: any = new Gateway(full);
   await gw.start();

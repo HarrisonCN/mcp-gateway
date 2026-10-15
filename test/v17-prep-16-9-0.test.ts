@@ -13,6 +13,9 @@
  *  P5 config: a schema v13 file with an inline module plugin (`allowInline`) lists `v17.plugins.<i>.inline`.
  *  P6 codemod: `migratePluginSource` (CLI `mcp-gateway plugin migrate --to v6 <file> [--in-place]`) bumps
  *     `apiVersion: 5` → 6, rewrites literal v4-era outcomes to `{ action }`, reports what needs a person; idempotent.
+ *
+ * 17.0.0-alpha.1 removed what 16.9 announced (test/v17-core-17-0-0.test.ts): the v5 / inline halves of P1–P5 now
+ * assert the refusal instead of the 16.9 warning; the v6 halves and the codemod (P6) are unchanged.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
@@ -41,12 +44,12 @@ beforeEach(() => resetDeprecations());
 describe('16.9.0 plugin API v6 (P1–P4)', () => {
   it('P1 v6 and v5 load; the table says 16.9 loads v5 – v6 and 17.0 v6 only', async () => {
     expect(PLUGIN_API_VERSION).toBe(6);
-    expect(PLUGIN_API_MIN_VERSION).toBe(5);
+    expect(PLUGIN_API_MIN_VERSION).toBe(6); // 17.0.0-alpha.1: v6 only
     const d = dir();
     const v6 = await loadPlugin({ module: write(d, 'six.mjs', `export default { name: 'six', apiVersion: 6, onToolCall: () => ({ action: 'continue' }) };`), runtime: 'worker' } as never, d);
     expect(v6.apiVersion).toBe(6);
     await v6.close?.();
-    const v7 = loadPlugin({ module: write(d, 'seven.mjs', `export default { name: 'seven', apiVersion: 7 };`), runtime: 'inline' } as never, d);
+    const v7 = loadPlugin({ module: write(d, 'seven.mjs', `export default { name: 'seven', apiVersion: 7 };`), runtime: 'worker' } as never, d);
     await expect(v7).rejects.toThrow(/plugin API v7/);
     expect(pluginApiSupport('16.9.0')).toMatchObject({ min: 5, max: 6 });
     expect(pluginApiSupport('16.0.0')).toMatchObject({ min: 5, max: 5 });
@@ -57,15 +60,10 @@ describe('16.9.0 plugin API v6 (P1–P4)', () => {
   it('P2 a v6 plugin returning a v4-era outcome fails the hook; a v5 one works and is recorded', async () => {
     const d = dir();
     const legacy = (name: string, v: number) => `export default { name: '${name}', apiVersion: ${v}, onToolCall: (c) => (c.arguments.deny ? { deny: 'nope' } : undefined), onResponse: () => ({ success: true, result: { content: [{ type: 'text', text: 'swapped' }] }, serverId: 's', tool: 't', durationMs: 1 }) };`;
-    // inline v5: legacy shapes keep working, recorded once per plugin
-    const five = await loadPlugin({ module: write(d, 'l5.mjs', legacy('l5', 5)), runtime: 'inline' } as never, d);
-    const host = new PluginHost();
-    await host.set([five]);
-    expect(await host.beforeCall(call({ arguments: { deny: true } }))).toEqual({ deny: 'nope', plugin: 'l5' });
-    const r = await host.afterCall(call(), okResult);
-    expect(JSON.stringify(r)).toContain('swapped');
-    expect(ids()).toEqual(expect.arrayContaining(['v17.plugins.l5.legacy-outcome']));
-    expect(runtimeDeprecations().find((x) => x.id === 'v17.plugins.l5.legacy-outcome')!.removedIn).toBe('17.0.0');
+    // 16.9: a v5 plugin's legacy shapes kept working (recorded); 17.0.0-alpha.1 refuses v5 (and inline) at load
+    await expect(loadPlugin({ module: write(d, 'l5.mjs', legacy('l5', 5)), runtime: 'inline' } as never, d)).rejects.toThrow(/runtime: inline was removed in 17\.0/);
+    await expect(loadPlugin({ module: write(d, 'l5w.mjs', legacy('l5w', 5)), runtime: 'worker' } as never, d)).rejects.toThrow(/plugin API v5, which was removed in 17\.0/);
+    expect(ids()).toEqual([]);
     // worker v6: the same shapes fail closed
     const six = await loadPlugin({ module: write(d, 'l6.mjs', legacy('l6', 6)), runtime: 'worker' } as never, d);
     const h6 = new PluginHost();
@@ -81,23 +79,22 @@ describe('16.9.0 plugin API v6 (P1–P4)', () => {
     for (const p of [six, good]) await p.close?.();
   }, 30_000);
 
-  it('P3 a v6 module plugin is refused inline; v5 inline still loads', async () => {
+  it('P3 a v6 module plugin is refused inline; 17.0.0-alpha.1: so is a v5 one (no inline module plugins)', async () => {
     const d = dir();
     await expect(loadPlugin({ module: write(d, 'i6.mjs', `export default { name: 'i6', apiVersion: 6 };`), runtime: 'inline' } as never, d)).rejects.toThrow(/plugin API v6.*(worker|process)/);
-    const i5 = await loadPlugin({ module: write(d, 'i5.mjs', `export default { name: 'i5', apiVersion: 5 };`), runtime: 'inline' } as never, d);
-    expect(i5.name).toBe('i5');
+    await expect(loadPlugin({ module: write(d, 'i5.mjs', `export default { name: 'i5', apiVersion: 5 };`), runtime: 'inline' } as never, d)).rejects.toThrow(/runtime: inline was removed in 17\.0/);
   });
 
-  it('P4 v5 module plugins and HTTP hooks are announced at load', async () => {
+  it('P4 16.9 announced v5 module plugins and HTTP hooks at load; 17.0.0-alpha.1 refuses them', async () => {
     const d = dir();
-    const w = await loadPlugin({ module: write(d, 'w5.mjs', `export default { name: 'w5', apiVersion: 5, onToolCall: () => undefined };`), runtime: 'worker' } as never, d);
-    await loadPlugin({ module: write(d, 'h5.mjs', `export default { name: 'h5', apiVersion: 5, onRequest: (req, res, next) => next() };`), runtime: 'inline' } as never, d);
+    await expect(loadPlugin({ module: write(d, 'w5.mjs', `export default { name: 'w5', apiVersion: 5, onToolCall: () => undefined };`), runtime: 'worker' } as never, d)).rejects.toThrow(/plugin API v5, which was removed in 17\.0.*plugin migrate --to v6/);
+    await expect(loadPlugin({ module: write(d, 'h6.mjs', `export default { name: 'h6', apiVersion: 6, onRequest: (req, res, next) => next() };`), runtime: 'worker' } as never, d)).rejects.toThrow(/onRequest \/ routes.*cannot have HTTP hooks/);
     await loadPlugin({ module: write(d, 'w6.mjs', `export default { name: 'w6', apiVersion: 6 };`), runtime: 'worker' } as never, d).then((p) => p.close?.());
-    expect(ids()).toEqual(['v17.plugins.h5.api-v5', 'v17.plugins.h5.http-hooks', 'v17.plugins.w5.api-v5']);
-    const api = runtimeDeprecations().find((x) => x.id === 'v17.plugins.w5.api-v5')!;
-    expect(api.replacement).toMatch(/apiVersion: 6/);
-    expect(api.message).toMatch(/plugin migrate --to v6/);
-    await w.close?.();
+    expect(ids()).toEqual([]);
+    // the deprecation texts stay available (v17-deprecations.ts) for the codemod / docs
+    const { apiV5 } = await import('../src/config/v17-deprecations.js');
+    expect(apiV5('w5').replacement).toMatch(/apiVersion: 6/);
+    expect(apiV5('w5').message).toMatch(/plugin migrate --to v6/);
   });
 });
 
@@ -111,8 +108,8 @@ describe('16.9.0 config deprecations (P5)', () => {
     expect(v17DeprecationsIn({ version: 12, plugins: [{ name: 'a', module: './a.mjs', runtime: 'inline' }] })).toEqual([]);
     expect(v17DeprecationsIn(null)).toEqual([]);
     expect(V17_DEPRECATION_IDS).toEqual(expect.arrayContaining(['v17.plugins.<i>.inline', 'v17.plugins.<name>.api-v5', 'v17.plugins.<name>.legacy-outcome', 'v17.plugins.<name>.http-hooks']));
-    const cfg = validateConfig({ ...v13, servers: [] } as never) as unknown as { deprecations?: Array<{ id: string }> };
-    expect((cfg.deprecations ?? []).map((x) => x.id)).toContain('v17.plugins.0.inline');
+    // 17.0.0-alpha.1: the announced removal is an error now
+    expect(() => validateConfig({ ...v13, servers: [] } as never)).toThrow(/plugins\.0: `runtime: inline`.*removed in 17\.0/);
   });
 });
 

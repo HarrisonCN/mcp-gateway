@@ -15,7 +15,7 @@ import { startFeatureGw, type FeatureGw } from './helpers/feature-gw.js';
 const key = generateSigningKey();
 const other = generateSigningKey();
 const keys = [{ id: 'k1', publicKey: key.publicKey }];
-const PLUGIN = "export default { name: 'mp-demo', apiVersion: 5 };\n";
+const PLUGIN = "export default { name: 'mp-demo', apiVersion: 6 };\n";
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'mgw-mp-')); dirs.push(d); return d; };
 let h: FeatureGw | undefined;

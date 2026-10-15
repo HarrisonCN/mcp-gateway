@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { v16DeprecationsIn, nodeDeprecation, V16_DEPRECATION_IDS } from '../src/config/v16-deprecations.js';
-import { validateConfig } from '../src/config/loader.js';
+import { validateConfig, validateV12ForMigration } from '../src/config/loader.js';
 import { resetDeprecations, runtimeDeprecations } from '../src/utils/deprecations.js';
 import { startFeatureGw, type FeatureGw } from './helpers/feature-gw.js';
 
@@ -65,7 +65,10 @@ describe('16.0 removals announced in 15.9 (15.9.0-canary.0)', () => {
   });
 
   it('D5 validateConfig lists the config deprecations (what `mcp-gateway validate` prints); behaviour unchanged', () => {
-    const cfg = validateConfig({ version: 12, servers: [], mcp: { protocolVersions: ['2024-11-05', '2025-06-18'] }, plugins: [{ name: 'a', module: './a.mjs', isolation: 'worker' }] });
+    // 17.0.0-alpha.1: the gateway refuses v12 files; the migration tooling keeps the 16.x reading checked here
+    const raw12 = { version: 12, servers: [], mcp: { protocolVersions: ['2024-11-05', '2025-06-18'] }, plugins: [{ name: 'a', module: './a.mjs', isolation: 'worker' }] };
+    expect(() => validateConfig(raw12)).toThrow(/schema v12 is no longer read by 17\.0\.0/);
+    const cfg = validateV12ForMigration(raw12);
     // 16.0.0-alpha.1: an explicit `version: 12` file also reports `schema.v12`
     expect(ids(cfg.deprecations ?? [])).toEqual(['schema.v12', 'v16.mcp.protocol-2024-11-05', 'v16.plugins.0.isolation']);
     expect(cfg.mcp?.protocolVersions).toEqual(['2024-11-05', '2025-06-18']);

@@ -62,7 +62,7 @@ describe('deployment examples', () => {
       if (src.startsWith('./')) expect(existsSync(ex(join('compose', src))), `${src} mounted by compose exists`).toBe(true);
     }
     const cfg = parseYaml(readFileSync(ex('compose/mcp-gateway.yml'), 'utf8')) as Record<string, unknown>;
-    expect(cfg.version).toBe(12);
+    expect(cfg.version).toBe(13); // 17.0.0-alpha.1: examples ship in schema v13
     await boots(cfg, ex('compose/echo-server.mjs'));
   }, 30_000);
 
@@ -78,7 +78,7 @@ describe('deployment examples', () => {
     expect(dep.spec.template.spec.securityContext.runAsNonRoot).toBe(true);
     const cm = docs.find((d) => d.kind === 'ConfigMap')!;
     const cfg = parseYaml(cm.data['mcp-gateway.yml']) as Record<string, unknown>;
-    expect(cfg.version).toBe(12);
+    expect(cfg.version).toBe(13); // 17.0.0-alpha.1: examples ship in schema v13
     expect(cm.data['echo-server.mjs']).toBe(readFileSync(ex('compose/echo-server.mjs'), 'utf8'));
     await boots(cfg, ex('compose/echo-server.mjs'));
   }, 30_000);

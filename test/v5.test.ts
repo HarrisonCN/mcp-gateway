@@ -42,7 +42,7 @@ describe('schema v8 (8.0)', () => {
     expect(() => validateConfig({ version: 6, servers: [] })).toThrow(/config schema v6 was removed in 7.0 — use `version: 11`/);
     expect(() => validateConfig({ servers: [{ id: 'a', transport: 'stdio', command: 'x', timeout: 5 }] })).toThrow(/servers.0.timeout: removed in 5.0 — use `timeoutMs`/);
     expect(removedConfigKeys({ version: 4, servers: [{ id: 'a', timeout: 1 }] })).toHaveLength(2);
-    expect(() => validateConfig({ version: 14, servers: [] })).toThrow(/16\.0 reads `version: 13`/); // 16.0.0-alpha.1: v13 is read
+    expect(() => validateConfig({ version: 14, servers: [] })).toThrow(/17\.0 reads `version: 13` only/); // 17.0.0-alpha.1: v13 only
     expect(() => validateConfig({ version: 7, servers: [] })).toThrow(/config schema v7 was removed in 8.0 — use `version: 11`/);
     expect(configDeprecations({ version: 7, servers: [] })).toEqual([]); // 8.0
   });
@@ -118,7 +118,7 @@ describe('plugin API v4 (5.0)', () => {
     const seen: Array<{ name: string; ctx: PluginHookContext }> = [];
     const counter = {
       name: 'counter',
-      apiVersion: 5,
+      apiVersion: 6, // 17.0.0-alpha.1: v6 only (ctx.state is unchanged since v4)
       onToolCall: (_c: unknown, ctx: PluginHookContext) => {
         const n = (ctx.state!.get<number>('calls') ?? 0) + 1;
         ctx.state!.set('calls', n);
@@ -133,15 +133,16 @@ describe('plugin API v4 (5.0)', () => {
     await host.beforeCall({ ...call });
     const c = seen.filter((x) => x.name === 'counter');
     expect(c[1]!.ctx.state!.get('calls')).toBe(2);
-    expect(c[1]!.ctx.apiVersion).toBe(5);
+    expect(c[1]!.ctx.apiVersion).toBe(6);
   });
 
   it('refuses v2, (6.0) v3 and (8.0) v4', async () => {
     resetDeprecations();
-    await expect(PluginHost.build(undefined, [{ name: 'v2', apiVersion: 2 }])).rejects.toThrow(/plugin API v2, which was removed in 5.0 — declare `apiVersion: 5`/);
-    await expect(PluginHost.build(undefined, [{ name: 'v3', apiVersion: 3 }])).rejects.toThrow(/plugin API v3, which was removed in 6.0 — declare `apiVersion: 5`/);
-    await expect(PluginHost.build(undefined, [{ name: 'v4', apiVersion: 4 }])).rejects.toThrow(/plugin API v4, which was removed in 8.0 — declare `apiVersion: 5`/);
-    await PluginHost.build(undefined, [{ name: 'v5', apiVersion: 5 }]);
+    await expect(PluginHost.build(undefined, [{ name: 'v2', apiVersion: 2 }])).rejects.toThrow(/plugin API v2, which was removed in 5.0 — declare `apiVersion: 6`/);
+    await expect(PluginHost.build(undefined, [{ name: 'v3', apiVersion: 3 }])).rejects.toThrow(/plugin API v3, which was removed in 6.0 — declare `apiVersion: 6`/);
+    await expect(PluginHost.build(undefined, [{ name: 'v4', apiVersion: 4 }])).rejects.toThrow(/plugin API v4, which was removed in 8.0 — declare `apiVersion: 6`/);
+    await expect(PluginHost.build(undefined, [{ name: 'v5', apiVersion: 5 }])).rejects.toThrow(/plugin API v5, which was removed in 17\.0/); // 17.0.0-alpha.1
+    await PluginHost.build(undefined, [{ name: 'v6', apiVersion: 6 }]);
     expect(runtimeDeprecations()).toEqual([]); // 8.0
   });
 });

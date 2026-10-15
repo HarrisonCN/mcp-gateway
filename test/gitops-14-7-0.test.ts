@@ -55,7 +55,7 @@ function tree(files: Record<string, string>): string {
 }
 
 const BASE = `
-version: 12
+version: 13
 include: [servers.yml]
 auth:
   strategy: api-key
@@ -301,7 +301,7 @@ const gitopsCfg = (over: Record<string, unknown> = {}) => ({
 /** The bundle a CI job would render for this gateway: same servers / auth, changed rate limit, gitops block kept. */
 function bundleFor(g: FeatureGw, limit: number, gitops = gitopsCfg()) {
   const cfg = {
-    version: 12,
+    version: 13,
     servers: [{ id: 'fake', name: 'fake', transport: 'stdio', command: process.execPath, args: [resolve(__dirname, 'fixtures', 'fake-mcp-server.mjs')], timeoutMs: 5000 }],
     auth: { strategy: 'api-key', apiKeys: ['${GITOPS_TEST_OP_KEY}', { key: '${GITOPS_TEST_SCOPED_KEY}', scope: { servers: ['fake'] } }] },
     controlPlane: { configApi: true, gitops },
@@ -527,7 +527,7 @@ describe('G7 CLI', () => {
     stops.push(g.stop);
     const fakePath = resolve(__dirname, 'fixtures', 'fake-mcp-server.mjs');
     const d = tree({
-      'base.yml': `version: 12\nservers:\n  - { id: fake, name: fake, transport: stdio, command: "${process.execPath}", args: ["${fakePath}"], timeoutMs: 5000 }\nauth:\n  strategy: api-key\n  apiKeys: ["\${GITOPS_TEST_OP_KEY}", { key: "\${GITOPS_TEST_SCOPED_KEY}", scope: { servers: [fake] } }]\nrateLimit: { windowSeconds: 60, limit: 50 }\n`,
+      'base.yml': `version: 13\nservers:\n  - { id: fake, name: fake, transport: stdio, command: "${process.execPath}", args: ["${fakePath}"], timeoutMs: 5000 }\nauth:\n  strategy: api-key\n  apiKeys: ["\${GITOPS_TEST_OP_KEY}", { key: "\${GITOPS_TEST_SCOPED_KEY}", scope: { servers: [fake] } }]\nrateLimit: { windowSeconds: 60, limit: 50 }\n`,
       'environments/prod.yml': `controlPlane:\n  configApi: true\n  gitops:\n    environment: prod\n    enforce: true\n    requiredApprovals: { prod: 1 }\n    driftCheckIntervalMs: 1000\n    trustedKeys:\n${gitopsCfg().trustedKeys.map((k) => `      - { id: ${k.id}, name: ${k.name}, publicKey: "${k.publicKey}", roles: [${k.roles.join(', ')}] }`).join('\n')}\n`,
     });
     const keys = mkdtempSync(join(tmpdir(), 'gitops-k-'));

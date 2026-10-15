@@ -36,10 +36,10 @@ describe('8.0: schema v8, plugin API v5', () => {
     expect(removedConfigKeys({ version: 7, plugins: [{ wasm: 'a' }, { module: 'b' }] })).toHaveLength(2);
     expect(() => validateConfig({ servers: [], plugins: [{ module: './a.mjs', component: './b.wasm' }] })).toThrow(/exactly one of "module" or "component"/);
     expect(() => validateConfig({ servers: [], plugins: [{ module: './a.mjs', runtime: 'inline', limits: { timeoutMs: 5 } }] })).toThrow(/apply to WASM component plugins only/); // 15.0: inline must be explicit
-    expect(() => validateConfig({ version: 14, servers: [] })).toThrow(/16\.0 reads `version: 13`/); // 16.0.0-alpha.1: v13 is read
+    expect(() => validateConfig({ version: 14, servers: [] })).toThrow(/17\.0 reads `version: 13` only/); // 17.0.0-alpha.1: v13 only
     expect(removedConfigKeys({ version: 11 })).toEqual([]);
     expect(PLUGIN_API_VERSION).toBeGreaterThanOrEqual(5); // 16.9.0-canary.0: the loader implements v6 (v5 still loads)
-    expect(PLUGIN_API_MIN_VERSION).toBe(5);
+    expect(PLUGIN_API_MIN_VERSION).toBe(6); // 17.0.0-alpha.1: v6 only
   });
 
   it('plugin API v5 outcomes', () => {
@@ -80,10 +80,10 @@ describe('8.0: schema v8, plugin API v5', () => {
 
   it('JS v4 plugins and wasm entries are refused; v5 runs without warnings', async () => {
     resetDeprecations();
-    await expect(PluginHost.build(undefined, [{ name: 'v4', apiVersion: 4 }])).rejects.toThrow(/plugin API v4, which was removed in 8.0 — declare `apiVersion: 5`/);
+    await expect(PluginHost.build(undefined, [{ name: 'v4', apiVersion: 4 }])).rejects.toThrow(/plugin API v4, which was removed in 8.0 — declare `apiVersion: 6`/);
     await expect(loadPlugin({ wasm: './x.wasm' } as never)).rejects.toThrow(/`plugins\[\].wasm` was removed in 8.0/);
     const host = new PluginHost();
-    await host.set(await PluginHost.build(undefined, [{ name: 'v5', apiVersion: 5, onToolCall: () => ({ action: 'deny', reason: 'v5 deny' }) as never }]));
+    await host.set(await PluginHost.build(undefined, [{ name: 'v5', apiVersion: 6, onToolCall: () => ({ action: 'deny', reason: 'v5 deny' }) as never }])); // 17.0.0-alpha.1: the v5 { action } contract is v6
     closers.push(() => host.close());
     expect(runtimeDeprecations()).toEqual([]);
     expect(await host.beforeCall(call())).toEqual({ deny: 'v5 deny', plugin: 'v5' });
@@ -92,7 +92,7 @@ describe('8.0: schema v8, plugin API v5', () => {
   it('gateway: a component plugin from the config file (schema v8) runs end to end', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'mcpgw-v8-'));
     writeFileSync(join(dir, 'policy.wasm'), W.componentModule('on_tool_call', '{"action":"respond","result":{"content":[{"type":"text","text":"from component"}]}}'));
-    writeFileSync(join(dir, 'mcp-gateway.yml'), `version: 12\nservers:\n  - { id: fake, name: fake, transport: stdio, command: ${JSON.stringify(process.execPath)}, args: [${JSON.stringify(fixture)}] }\nplugins:\n  - { component: policy.wasm, isolation: shared }\n`);
+    writeFileSync(join(dir, 'mcp-gateway.yml'), `version: 13\nservers:\n  - { id: fake, name: fake, transport: stdio, command: ${JSON.stringify(process.execPath)}, args: [${JSON.stringify(fixture)}] }\nplugins:\n  - { component: policy.wasm, isolation: shared }\n`);
     const cfg = await loadConfig(join(dir, 'mcp-gateway.yml'));
     const gw = new Gateway({ ...cfg, port: 0, host: '127.0.0.1', logLevel: 'error', monitor: { requestLog: false } } as GatewayConfig);
     await gw.start();

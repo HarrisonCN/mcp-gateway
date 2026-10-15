@@ -117,7 +117,7 @@ describe('C1 manifest contract', () => {
     // the minimal section is valid schema-v12 configuration (15.0.0: v12 section names — genaiOtel, policySim, pqTls)
     const { configDir: _dir, ...features } = sections[id] as Record<string, unknown>;
     const v12Features = Object.fromEntries(Object.entries(features).map(([k, v]) => [v12Section(k), v]));
-    expect(() => validateConfig({ version: 12, servers: [], features: v12Features })).not.toThrow();
+    expect(() => validateConfig({ version: 13, servers: [], features: v12Features })).not.toThrow();
   });
 });
 

@@ -63,7 +63,7 @@ export const PLUGIN_COMPATIBILITY: readonly PluginCompatRow[] = [
   },
   { from: '16.0.0', until: '16.9.0', min: 5, max: 5, status: 'frozen', notes: 'v5; a module plugin with runtime: inline needs allowInline: true on its entry (config schema v13)' },
   { from: '16.9.0', until: '17.0.0', min: 5, max: 6, status: 'proposal', notes: 'v6 loads early ({ action } outcomes only, worker / process only); v5 loads with 17.0 deprecations; plugin migrate --to v6' },
-  { from: '17.0.0', min: 6, max: 6, status: 'proposal', notes: 'plugin API v6: module plugins only in worker / process / wasm (inline removed); codemod in 16.9' },
+  { from: '17.0.0', min: 6, max: 6, status: 'proposal', notes: 'plugin API v6 only: { action } outcomes only, module plugins only in worker / process / wasm (inline removed); codemod in 16.9; implemented by 17.0.0-alpha.1 (canary), proposal until 17.0.0-rc.1' },
 ];
 
 const core = (v: string): [number, number, number] => {

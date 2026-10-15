@@ -14,7 +14,7 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { parse as parseYaml } from 'yaml';
 import express from 'express';
-import { validateConfig, validateV11ForMigration } from '../src/config/loader.js';
+import { validateConfig, validateV11ForMigration, validateV12ForMigration } from '../src/config/loader.js';
 import { portableConfig } from '../src/gateway/admin.js';
 import { resetDeprecations } from '../src/utils/deprecations.js';
 import { logger } from '../src/utils/logger.js';
@@ -32,8 +32,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 describe('14.0 config: schema v12 is the runtime schema', () => {
   afterEach(() => resetDeprecations());
 
+  // 17.0.0-alpha.1: the gateway reads v13 only (v13 = this v12 form + the 16.0 rules); a v12 file is read by the migration
+  // tooling as 16.x did (validateV12ForMigration), the v12-form rules are checked on v13 files
   it('reads a v12 file: modules block, renamed sections, lifecycle bounds and capability denials', () => {
-    const cfg = validateConfig({
+    const cfg = validateV12ForMigration({
       version: 12,
       servers: [],
       modules: { activation: 'eager', failurePolicy: { billing: 'closed' }, lifecycle: { initTimeoutMs: 5000, unloadTimeoutMs: 2000 }, capabilities: { 'genai-otel': { deny: ['outbound-network'] } } },
@@ -49,7 +51,7 @@ describe('14.0 config: schema v12 is the runtime schema', () => {
   });
 
   it('the five deprecated v11 fields are not part of schema v12', () => {
-    const bad = (raw: object, re: RegExp) => expect(() => validateConfig({ version: 12, servers: [], ...raw })).toThrow(re);
+    const bad = (raw: object, re: RegExp) => expect(() => validateConfig({ version: 13, servers: [], ...raw })).toThrow(re);
     bad({ kernel: { modules: 'eager' } }, /kernel.*not part of config schema v12.*modules\.activation/s);
     bad({ kernel: { failurePolicy: { billing: 'closed' } } }, /modules\.failurePolicy/);
     bad({ features: { genaiTelemetry: {} } }, /genaiTelemetry.*genaiOtel/s);
@@ -58,9 +60,9 @@ describe('14.0 config: schema v12 is the runtime schema', () => {
   });
 
   it('validates modules.capabilities and modules.failurePolicy against the manifest', () => {
-    expect(() => validateConfig({ version: 12, servers: [], modules: { capabilities: { nope: { deny: ['filesystem'] } } } })).toThrow(/unknown module "nope"/);
-    expect(() => validateConfig({ version: 12, servers: [], modules: { capabilities: { billing: { deny: ['teleport'] } } } })).toThrow();
-    expect(() => validateConfig({ version: 12, servers: [], modules: { failurePolicy: { dlp: 'open' } } })).toThrow(/failure policy of "dlp" is fixed/);
+    expect(() => validateConfig({ version: 13, servers: [], modules: { capabilities: { nope: { deny: ['filesystem'] } } } })).toThrow(/unknown module "nope"/);
+    expect(() => validateConfig({ version: 13, servers: [], modules: { capabilities: { billing: { deny: ['teleport'] } } } })).toThrow();
+    expect(() => validateConfig({ version: 13, servers: [], modules: { failurePolicy: { dlp: 'open' } } })).toThrow(/failure policy of "dlp" is fixed/);
     expect(() => validateConfig({ version: 14, servers: [] })).toThrow(/version/); // 16.0.0-alpha.1: v13 is read
   });
 
@@ -70,28 +72,29 @@ describe('14.0 config: schema v12 is the runtime schema', () => {
     const cfg = validateV11ForMigration(v11) as any; // what `config migrate --to v12` reads
     expect(cfg.schemaVersion).toBe(11);
     expect(moduleMode(cfg)).toBe('eager');
-    const v12 = validateConfig({ version: 12, servers: [], modules: { activation: 'eager', failurePolicy: { billing: 'closed' } }, features: { genaiOtel: { otlpEndpoint: 'http://c:4318' }, pqTls: {} } }) as any;
+    const v12 = validateV12ForMigration({ version: 12, servers: [], modules: { activation: 'eager', failurePolicy: { billing: 'closed' } }, features: { genaiOtel: { otlpEndpoint: 'http://c:4318' }, pqTls: {} } }) as any;
     const strip = (c: any) => { const { schemaVersion: _s, deprecations: _d, version: _v, ...rest } = c; return rest; };
     expect(strip(v12)).toEqual(strip(cfg));
   });
 
   it('an unversioned file is v12; one that uses a v11-only field is a v11 file and refused (15.0.0)', () => {
-    expect((validateConfig({ servers: [] }) as any).schemaVersion).toBe(12);
-    expect((validateConfig({ servers: [], features: { genaiOtel: {} } }) as any).schemaVersion).toBe(12);
+    expect((validateConfig({ servers: [] }) as any).schemaVersion).toBe(13); // 17.0.0-alpha.1: unversioned = v13 (14.x – 16.x: 12)
+    expect((validateConfig({ servers: [], features: { genaiOtel: {} } }) as any).schemaVersion).toBe(13);
+    expect((validateV12ForMigration({ servers: [] }) as any).schemaVersion).toBe(12);
     expect(() => validateConfig({ servers: [], kernel: { modules: 'lazy' } })).toThrow(/schema v11 is no longer read/);
     expect(() => validateConfig({ servers: [], features: { genaiTelemetry: {} } })).toThrow(/schema v11 is no longer read/);
     expect(() => validateV11ForMigration({ servers: [], kernel: { modules: 'lazy' }, modules: { activation: 'lazy' } })).toThrow(/both/);
   });
 
-  it('the admin API returns the running config in v12 form', () => {
+  it('the admin API returns the running config in v12 form (labelled version: 13 since 17.0.0-alpha.1)', () => {
     const cfg = validateV11ForMigration({ version: 11, servers: [], kernel: { modules: 'eager' }, features: { genaiTelemetry: {} } });
     const p = portableConfig(cfg) as any;
-    expect(p.version).toBe(12);
+    expect(p.version).toBe(13);
     expect(p.kernel).toBeUndefined();
     expect(p.modules.activation).toBe('eager');
     expect(p.features.genaiOtel).toBeDefined();
     expect(p.features.genaiTelemetry).toBeUndefined();
-    expect((validateConfig(p) as any).schemaVersion).toBe(12);
+    expect((validateConfig(p) as any).schemaVersion).toBe(13);
   });
 
 });
@@ -110,7 +113,7 @@ describe('14.0 migration tool: config migrate --to v12 writes files', () => {
     expect(readFileSync(f, 'utf8')).toBe(V11);
     expect(out).toMatch(/# my gateway/);
     expect(out).toMatch(/activation: eager +# keep/);
-    expect((validateConfig(parseYaml(out)) as any).schemaVersion).toBe(12);
+    expect((validateV12ForMigration(parseYaml(out)) as any).schemaVersion).toBe(12); // 17.0: then --to v13
     // refuses to overwrite an existing output without --force
     expect(cli('config', 'migrate', '--to', 'v12', '-c', f).status).toBe(1);
     expect(cli('config', 'migrate', '--to', 'v12', '-c', f, '--force').status).toBe(0);
@@ -215,7 +218,7 @@ describe('14.0 module lifecycle v2, capabilities and per-instance state', () => 
   });
 
   it('a built-in module whose declared capability is denied is refused at activation (genai-otel, outbound-network)', async () => {
-    const cfg = validateConfig({ version: 12, servers: [], modules: { capabilities: { 'genai-otel': { deny: ['outbound-network'] } } }, features: { genaiOtel: {} } });
+    const cfg = validateConfig({ version: 13, servers: [], modules: { capabilities: { 'genai-otel': { deny: ['outbound-network'] } } }, features: { genaiOtel: {} } });
     const h = await startFeatureGw({ modules: cfg.modules, genaiTelemetry: cfg.genaiTelemetry } as any);
     const k = await h.admin('kernel');
     const m = k.body.modules.find((x: any) => x.id === 'genai-otel');
