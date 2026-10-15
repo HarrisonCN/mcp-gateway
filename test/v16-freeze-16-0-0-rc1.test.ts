@@ -6,7 +6,8 @@
  *  R2 docs/migrating-to-v16.md and docs/deprecations.md: no "proposal" status for the 16.0 list.
  *  R3 the v13 schema title / code headers drop "proposal until 16.0.0-rc.1" and say frozen.
  *  R4 plugin compatibility: the 16.0 row is "frozen (prerelease)" — never "shipped" while no 16.0.0 GA exists;
- *     17.0 stays a proposal; pluginApiSupport reports `frozen: true` for 16.x.
+ *     17.0 stayed a proposal until 17.0.0-rc.1 froze it (test/v17-freeze-17-0-0-rc1.test.ts); pluginApiSupport reports
+ *     `frozen: true` for 16.x.
  *  R5 frozen surface guard: schema/v13/frozen-surface.json (recorded at 16.0.0-rc.1) lists every v13 key path and
  *     enum value; the current schema keeps all of them (additions allowed, removals / renames / narrowed enums fail).
  *  R6 CI for the 16.x line runs the gateway on Node 24 only (engines >= 24); the release gate's required checks follow.
@@ -48,13 +49,13 @@ describe('16.0 freeze (16.0.0-rc.1)', () => {
     expect((buildV13ConfigSchema() as any).title).toMatch(/frozen from 16\.0\.0-rc\.1/);
   });
 
-  it('R4 plugin compatibility: 16.0 is "frozen (prerelease)" until a 16.0.0 GA exists; 17.0 stays a proposal', () => {
+  it('R4 plugin compatibility: 16.0 is "frozen (prerelease)" until a 16.0.0 GA exists; 17.0 is frozen from 17.0.0-rc.1', () => {
     const r16 = compat.PLUGIN_COMPATIBILITY.find((r) => r.from === '16.0.0');
     const r17 = compat.PLUGIN_COMPATIBILITY.find((r) => r.from === '17.0.0');
     expect(r16?.status).toBe('frozen');
-    expect(r17?.status).toBe('proposal');
+    expect(r17?.status).toBe('frozen'); // 17.0.0-rc.1 (a proposal before)
     expect(compat.pluginApiSupport('16.0.0-rc.1')).toEqual({ min: 5, max: 5, frozen: true });
-    expect(compat.pluginApiSupport('17.0.0-alpha.1')).toEqual({ min: 6, max: 6, proposal: true });
+    expect(compat.pluginApiSupport('17.0.0-alpha.1')).toEqual({ min: 6, max: 6, frozen: true }); // 17.0.0-rc.1 froze the row
     const md = compat.compatibilityMarkdown();
     // 16.9.0-canary.0: the frozen v5 range ends at 16.9.0 (16.9 loads v5 – v6 early, a proposal like 17.0)
     expect(md).toMatch(/\| 16\.0\.0 – <16\.9\.0 \| v5 \| frozen \(prerelease\) \|/);

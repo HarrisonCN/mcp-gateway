@@ -1373,7 +1373,7 @@ function validate(raw: unknown, allowV11: boolean, allowV12 = false): GatewayCon
   // 15.0.0: schema v11 files are refused (14.x migrated them in memory) and unknown top-level keys of a v12 file are
   // refused (14.x ignored them) — both announced in 14.9.0 (docs/migrating-to-v15.md)
   if (sv.schemaVersion === 11 && !allowV11) removed.push(V11_REFUSED);
-  else removed.push(...sv.errors, ...v15ConfigErrors(raw));
+  else removed.push(...sv.errors, ...v15ConfigErrors(raw, v13 ? 13 : 12));
   const v4 = normalizeApiKeyScopes(normalizeSchemaV5(removed.length ? raw : normalizeStoreV9(normalizeFeaturesV10(sv.raw))));
   removed.push(...v4.errors);
   if (removed.length > 0) throw new Error(`Invalid configuration:\n${removed.map((m) => `  - ${m}`).join('\n')}`);

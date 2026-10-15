@@ -11,7 +11,8 @@
  *  E4 the plugin-author surface in `./testing` is complete: plugin API constants, compatibility table, signing helpers
  *     and the harness.
  *  E5 `docs/v17/freeze.md` (draft) names the frozen surfaces — plugin API v6, schema v13, the four entry points — says
- *     the list is a proposal until rc.1 and that stable 17.0.0 needs its gates.
+ *     the list is frozen from 17.0.0-rc.1 (a proposal before; test/v17-freeze-17-0-0-rc1.test.ts) and that stable 17.0.0
+ *     needs its gates.
  */
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
@@ -74,7 +75,7 @@ describe('SDK export surface (17.0.0-alpha.2)', { timeout: 120_000 }, () => {
   it('E5 docs/v17/freeze.md names the frozen surfaces and the status', () => {
     const doc = readFileSync(join(ROOT, 'docs/v17/freeze.md'), 'utf8');
     for (const s of ['plugin API v6', 'schema v13', '`.`', '`./gateway`', '`./edge`', '`./testing`', 'api/exports-surface.json', 'scripts/sdk-surface.ts']) expect(doc, s).toContain(s);
-    expect(doc).toMatch(/proposal until 17\.0\.0-rc\.1/);
+    expect(doc).toMatch(/frozen from 17\.0\.0-rc\.1/); // 17.0.0-rc.1 (alpha.2: "proposal until 17.0.0-rc.1")
     expect(doc).toMatch(/gates/);
     expect(doc).not.toMatch(/gates? (A|B|C)[^.\n]* (passed|closed)/i);
   });

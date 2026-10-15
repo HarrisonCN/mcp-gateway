@@ -23,6 +23,10 @@ How releases are tagged and how long each line is maintained. The supported-vers
 - **`latest` follows the current major.** A new major takes npm `latest` and the `latest` image tag when it is
   released. The previous major's last minor becomes a maintained line with its own dist-tag (`v<major>-lts`; npm
   refuses dist-tags that are semver ranges such as `v13`) and keeps its major image tag (`:13`).
+- **15.x maintenance line (planned, not active).** The roadmap makes the last 15.x minor a maintained line with the
+  npm dist-tag `v15-lts` and the image tag `:15` once 15.0.0 and 17.0.0 are stable — security and critical bug fixes
+  for at least 12 months after the 17.0.0 release. Neither is stable today (their release gates are open), so there
+  is no `v15-lts` tag and no 15.x maintenance commitment yet.
 - **Config schema.** A major may change the config schema. The previous schema is still read — migrated in memory with
   one deprecation warning per field and a startup notice — for the whole next major, and removed in the major after
   it (schema v11: read by 14.x, removed in 15.0.0). `mcp-gateway config migrate` rewrites files.

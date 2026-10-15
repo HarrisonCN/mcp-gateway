@@ -1,6 +1,6 @@
 # Migrating to 17.0
 
-> **Status: proposal until 17.0.0-rc.1.** The list below may still change; it is frozen in 17.0.0-rc.1. 17.0.0 has
+> **Status: frozen from 17.0.0-rc.1** ([17.0 freeze list](v17/freeze.md)). 17.0.0 has
 > not shipped: its alphas and release candidates go to npm `canary` only, and stable 17.0.0 needs the v17 release
 > gates (A/B against the previous stable major, an incremental external security review of the 17.0 changes) — see
 > [release gates](release-gates.md). 16.0.0 itself is still a release candidate on `canary`.
@@ -31,7 +31,7 @@ describes what 16.x reads, including `allowInline`; 17.0 adds the plugin API v6 
 
 The package's public exports get a recorded surface: every export of `.`, `./gateway`, `./edge` and `./testing` is
 listed in `api/exports-surface.json` (`npx tsx scripts/sdk-surface.ts` fails when one disappears). The list is a
-proposal until 17.0.0-rc.1 freezes it with the rest of the [17.0 freeze list](v17/freeze.md). Nothing to migrate.
+list 17.0.0-rc.1 froze with the rest of the [17.0 freeze list](v17/freeze.md). Nothing to migrate.
 
 ## What changes in 17.0
 

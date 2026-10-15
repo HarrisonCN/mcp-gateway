@@ -39,10 +39,11 @@ const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 
  * file that is not part of config schema v12 refuses the file. (Module plugins without `runtime` now run in a worker
  * — `v15.plugins.<i>.runtime` needs no error; schema v11 files are refused by the loader.)
  */
-export function v15ConfigErrors(raw: unknown): string[] {
+export function v15ConfigErrors(raw: unknown, schema: 12 | 13 = 12): string[] {
+  // 17.0.0-rc.1: `schema` names the schema the user's file declares (a v13 file is checked in its v12 internal form)
   if (!isObj(raw) || raw.version !== 12) return [];
   const known = v12TopLevelKeys();
   return Object.keys(raw)
     .filter((k) => !known.has(k))
-    .map((k) => `${k}: \`${k}\` is not a top-level key of config schema v12 (15.0.0 refuses unknown keys; 14.x ignored them and 14.9 reported \`v15.config.unknown-key.${k}\`) — remove it or fix the typo; GitOps fragments with \`include:\` are rendered with \`mcp-gateway gitops render\`, not loaded directly`);
+    .map((k) => `${k}: \`${k}\` is not a top-level key of config schema v${schema} (15.0.0 refuses unknown keys; 14.x ignored them and 14.9 reported \`v15.config.unknown-key.${k}\`) — remove it or fix the typo; GitOps fragments with \`include:\` are rendered with \`mcp-gateway gitops render\`, not loaded directly`);
 }
