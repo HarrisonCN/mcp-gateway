@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [17.0.0-alpha.2] - 2026-10-15
+
+**Development prerelease — 17.0 SDK surface** (npm dist-tag `canary`, image `:17.0.0-alpha.2` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). The 17.0 list is a **proposal** until 17.0.0-rc.1 ([17.0 freeze list, draft](docs/v17/freeze.md)). 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)); stable 17.0.0 needs its own gates — **17.0.0 GA is blocked while A / B / C are open.**
+
+### Added
+
+- **SDK export surface record**: `api/exports-surface.json` lists every export (value or type) of the package entry points `.`, `./gateway`, `./edge` and `./testing` (705 at 17.0.0-alpha.2: 389 values, 316 types), computed from the TypeScript sources by `scripts/sdk-surface.ts` (compiler API). `npx tsx scripts/sdk-surface.ts` exits 1 when a recorded export disappears (the surface may only grow); `--record [--at <version>]` re-records it at a freeze point. Recorded as a proposal; 17.0.0-rc.1 re-records it as the frozen list.
+- `docs/v17/freeze.md` (draft): the 17.0 changes (plugin API v6 only, no inline module plugins, schema v13 only), the mechanically checked surfaces (config schema v13, plugin API v6, SDK exports), what stays as in 16.x and what is not frozen (deep imports among them).
+
+### Tests
+
+- `test/v17-sdk-surface-17-0-0.test.ts` (written first; failing-before: module missing → `sdk1702-failing-before`): E1 the record covers every `package.json` export, sorted, with its version; E2 only growth, a removed export is reported (exit 1); E3 recorded value exports equal the runtime exports of each entry point; E4 `./testing` carries the plugin-author surface; E5 the freeze doc.
+
 ## [17.0.0-alpha.1] - 2026-10-15
 
 **Development prerelease — first 17.0 breaking prerelease** (npm dist-tag `canary`, image `:17.0.0-alpha.1` only — not for production; `latest` stays on 14.9.x and `next` on the 15.0 release candidate). The removals announced by 16.9.0-canary.0 take effect; the 17.0 list is a **proposal** until 17.0.0-rc.1 ([migrating to v17](docs/migrating-to-v17.md#1700-alpha1-npm-canary)). 15.0.0 has not shipped (gates A / B / C open, [v15 gates](docs/v15/gates.md)); 16.0.0 and 17.0.0 stable need their own gates — **17.0.0 GA is blocked while A / B / C are open.**
