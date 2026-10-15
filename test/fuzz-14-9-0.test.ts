@@ -10,7 +10,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { stringify } from 'yaml';
 import Ajv from 'ajv';
-import { validateConfig } from '../src/config/loader.js';
+import { validateConfig, validateV12ForMigration } from '../src/config/loader.js';
 import { migrateToV12, downgradeFromV12, downgradeLoss, V12_DEPRECATIONS } from '../src/config/v12.js';
 import { canonicalJson, configHash } from '../src/config/gitops.js';
 import { SmartRouter } from '../src/gateway/routing.js';
@@ -50,7 +50,7 @@ describe('F1 v11 → v12 migration', () => {
         expect(() => validateConfig(JSON.parse(JSON.stringify(v11)))).toThrow(/schema v11 is no longer read by 15\.0\.0.*config migrate --to v12/s);
         const r = migrateToV12(stringify(v11));
         try {
-          validateConfig(JSON.parse(JSON.stringify(r.config)));
+          validateV12ForMigration(JSON.parse(JSON.stringify(r.config))); // 17.0.0-alpha.1: v12 is a tooling step (then --to v13)
         } catch (err) {
           invalid(err);
           return;
@@ -59,7 +59,7 @@ describe('F1 v11 → v12 migration', () => {
         expect(r.report.errors).toEqual([]);
         expect((r.config as any).version).toBe(12);
         expect(validateSchema(r.config), JSON.stringify(validateSchema.errors?.slice(0, 2))).toBe(true);
-        expect(() => validateConfig(JSON.parse(JSON.stringify(r.config)))).not.toThrow();
+        expect(() => validateV12ForMigration(JSON.parse(JSON.stringify(r.config)))).not.toThrow();
         expect(migrateToV12(r.text).changes).toEqual([]);
         expect(downgradeLoss(r.config as any)).toEqual([]);
         expect(downgradeFromV12(r.config as any)).toEqual(downgradeFromV12(migrateToV12(stringify(downgradeFromV12(r.config as any))).config as any));
@@ -123,10 +123,13 @@ describe('F3 loader ⇔ JSON schema agreement on known sections', () => {
     },
     { requiredKeys: [] },
   );
-  it('a config the loader accepts is valid against schema/v12/config.schema.json', () => {
+  // 17.0.0-alpha.1: the loader reads v13 only, so its accepted configs are checked against schema/v13 (v13 = the v12
+  // form + the 16.0 rules); the v12 schema keeps its check through the migration tooling's reading
+  it('a config the loader accepts is valid against schema/v13/config.schema.json (and its v12 form against schema/v12)', () => {
+    const validateV13 = new Ajv({ allErrors: true, strict: false }).compile(JSON.parse(readFileSync(join(ROOT, 'schema/v13/config.schema.json'), 'utf8')));
     fc.assert(
       fc.property(section, servers, (s, srv) => {
-        const cfg = { version: 12, servers: srv, ...s };
+        const cfg = { version: 13, servers: srv, ...s };
         try {
           validateConfig(JSON.parse(JSON.stringify(cfg)));
         } catch (err) {
@@ -134,7 +137,10 @@ describe('F3 loader ⇔ JSON schema agreement on known sections', () => {
           return;
         }
         accepted.f3++;
-        expect(validateSchema(cfg), `${JSON.stringify(cfg)}: ${JSON.stringify(validateSchema.errors?.slice(0, 2))}`).toBe(true);
+        expect(validateV13(cfg), `${JSON.stringify(cfg)}: ${JSON.stringify(validateV13.errors?.slice(0, 2))}`).toBe(true);
+        const v12 = { ...cfg, version: 12 };
+        expect(() => validateV12ForMigration(JSON.parse(JSON.stringify(v12)))).not.toThrow();
+        expect(validateSchema(v12), `${JSON.stringify(v12)}: ${JSON.stringify(validateSchema.errors?.slice(0, 2))}`).toBe(true);
       }),
       { numRuns: RUNS, seed: 1493 },
     );

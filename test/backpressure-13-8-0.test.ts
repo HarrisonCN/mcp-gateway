@@ -194,11 +194,11 @@ describe('13.8.0 stage timer', () => {
 
 describe('13.8.0 config (schema v11 compatible)', () => {
   it('overload is optional, validates, and rejects inconsistent limits', () => {
-    expect(validateConfig({ version: 12, servers: [] } as any).overload).toBeUndefined();
-    const c = validateConfig({ version: 12, servers: [], overload: { enabled: true, concurrency: { initial: 8, min: 2, max: 16 }, queue: { maxSize: 32, timeoutMs: 500, perTenant: 8 }, fairness: { weights: { acme: 2 } }, retryAfterSeconds: 2 } } as any);
+    expect(validateConfig({ version: 13, servers: [] } as any).overload).toBeUndefined();
+    const c = validateConfig({ version: 13, servers: [], overload: { enabled: true, concurrency: { initial: 8, min: 2, max: 16 }, queue: { maxSize: 32, timeoutMs: 500, perTenant: 8 }, fairness: { weights: { acme: 2 } }, retryAfterSeconds: 2 } } as any);
     expect(c.overload?.enabled).toBe(true);
-    expect(() => validateConfig({ version: 12, servers: [], overload: { concurrency: { min: 10, max: 5 } } } as any)).toThrow();
-    expect(() => validateConfig({ version: 12, servers: [], overload: { bogus: 1 } } as any)).toThrow();
+    expect(() => validateConfig({ version: 13, servers: [], overload: { concurrency: { min: 10, max: 5 } } } as any)).toThrow();
+    expect(() => validateConfig({ version: 13, servers: [], overload: { bogus: 1 } } as any)).toThrow();
   });
 });
 
@@ -206,7 +206,7 @@ async function gateway(extra: Record<string, unknown>) {
   const up = await startHttpUpstream({ tag: 'h' });
   cleanups.push(() => up.down());
   const cfg = validateConfig({
-    version: 12,
+    version: 13,
     monitor: { requestLog: false, prometheus: true },
     servers: [{ id: 'h', name: 'h', transport: 'streamable-http', url: up.url, timeoutMs: 5000 }],
     tenants: [

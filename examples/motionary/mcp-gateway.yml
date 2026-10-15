@@ -4,7 +4,7 @@
 # then start the gateway from this directory:
 #   MCP_GATEWAY_API_KEYS=$(openssl rand -hex 24) npx mcp-gateway start -c mcp-gateway.yml
 
-version: 12
+version: 13
 port: 4000
 # Loopback only. Clients authenticate with a key from MCP_GATEWAY_API_KEYS.
 host: 127.0.0.1

@@ -19,7 +19,7 @@ afterEach(() => {
 const cfgFile = () => {
   const d = mkdtempSync(join(tmpdir(), 'svc-links-'));
   const f = join(d, 'mcp-gateway.yml');
-  writeFileSync(f, 'version: 12\nport: 4000\nhost: 127.0.0.1\nservers: []\n');
+  writeFileSync(f, 'version: 13\nport: 4000\nhost: 127.0.0.1\nservers: []\n');
   return f;
 };
 

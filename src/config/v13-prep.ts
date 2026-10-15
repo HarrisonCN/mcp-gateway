@@ -8,11 +8,15 @@
  * `mcp.protocolVersions` (16.0's `/mcp` ignores it already; a list that named only it is removed). `pending` keeps what
  * a file cannot say (Node.js 24). Idempotent: a v13 file is checked and left as it is. Loaded on demand by the CLI only.
  *
+ * 17.0.0-alpha.1: the codemod targets 17.0 — inline module plugins move to `runtime: worker` (and `allowInline` goes,
+ * also from a 16.x v13 file), reported in `pending` because a plugin with HTTP hooks needs a person; a file without
+ * `version:` that already is valid v13 only gets `version: 13`, one that is not is read as 16.x did (v12) and migrated.
+ *
  * @module config/v13-prep
  */
 
 import { parseDocument, isMap, isSeq, isScalar, type Document, type YAMLMap, type Pair, type Scalar } from 'yaml';
-import { validateConfig } from './loader.js';
+import { validateConfig, validateV12ForMigration } from './loader.js';
 import { unifiedDiff, type CompatibilityReport } from './v12.js';
 
 /** A 16.0 (schema v13) change the codemod cannot apply on 15.x. */
@@ -64,25 +68,29 @@ export function planV13(text: string, format?: 'yaml' | 'json', names: { from?: 
     return done(false);
   }
   const version = doc.get('version');
-  if (version === 13) {
+  if (version !== 12 && version !== 13 && version !== undefined) {
+    report.errors.push(`the config is on schema v${String(version)}: run \`mcp-gateway config migrate --to v12\` first, then \`--to v13\``);
+    return done(false);
+  }
+  const reason = (e: unknown) => (e as Error).message.replace(/^Invalid configuration:\n?/, '');
+  // 17.0.0-alpha.1: a file without `version:` is read as v13 — when it already is valid v13, it only gets `version: 13`
+  let unversionedV13 = false;
+  if (version === undefined) {
     try {
       validateConfig(doc.toJS());
+      unversionedV13 = true;
+    } catch {
+      /* not v13 as written: read it as 16.x did (schema v12) and migrate */
+    }
+  }
+  const from: 12 | 13 = version === 13 || unversionedV13 ? 13 : 12;
+  if (from === 12) {
+    try {
+      validateV12ForMigration(doc.toJS());
     } catch (e) {
-      report.errors.push(`the v13 file is not valid:\n${(e as Error).message.replace(/^Invalid configuration:\n?/, '')}`);
+      report.errors.push(`the v12 file is not valid — fix it first:\n${reason(e)}`);
       return done(false);
     }
-    pending.push(NODE24);
-    return done(true);
-  }
-  if (version !== 12 && version !== undefined) {
-    report.errors.push(`the config is on schema ${version === undefined ? '(no version)' : `v${String(version)}`}: run \`mcp-gateway config migrate --to v12\` first, then \`--to v13\``);
-    return done(false);
-  }
-  try {
-    validateConfig(doc.toJS());
-  } catch (e) {
-    report.errors.push(`the v12 file is not valid — fix it first:\n${(e as Error).message.replace(/^Invalid configuration:\n?/, '')}`);
-    return done(false);
   }
 
   const plugins = doc.get('plugins');
@@ -93,7 +101,7 @@ export function planV13(text: string, format?: 'yaml' | 'json', names: { from?: 
       if (typeof m.get('module') !== 'string' || m.has('component')) return; // WASM components keep `isolation`
       const iso = m.get('isolation');
       const rt = m.get('runtime');
-      if (typeof iso === 'string' && ALIAS.has(iso)) {
+      if (from === 12 && typeof iso === 'string' && ALIAS.has(iso)) {
         if (rt === undefined) {
           const pair = m.items.find((p) => keyOf(p as Pair) === 'isolation') as Pair;
           if (isScalar(pair.key)) (pair.key as Scalar).value = 'runtime';
@@ -106,9 +114,15 @@ export function planV13(text: string, format?: 'yaml' | 'json', names: { from?: 
           report.errors.push(`plugins[${i}] says \`isolation: ${iso}\` and \`runtime: ${String(rt)}\`: keep one (\`runtime\` is what 16.0 reads)`);
         }
       }
-      if (m.get('runtime') === 'inline' && m.get('allowInline') !== true) {
-        m.set('allowInline', true);
-        changes.push(`plugins[${i}]: runtime: inline → allowInline: true (schema v13 opt-in; consider runtime: worker)`);
+      // 17.0.0-alpha.1: plugin API v6 runs module plugins in a worker or a child process only (16.x: allowInline: true)
+      if (m.get('runtime') === 'inline') {
+        m.set('runtime', 'worker');
+        changes.push(`plugins[${i}]: runtime: inline → runtime: worker (17.0 runs module plugins only in a worker or a child process)`);
+        pending.push({ id: `v17.plugins.${i}.inline`, path: `plugins[${i}]`, now: 'check the plugin runs in a worker: move onRequest / routes out of it and run `mcp-gateway plugin migrate --to v6 <file>` (plugin API v6)', v13: 'runtime: worker' });
+      }
+      if (m.has('allowInline')) {
+        m.delete('allowInline');
+        changes.push(`plugins[${i}].allowInline removed (17.0 has no inline module plugins)`);
       }
     });
   }
@@ -124,9 +138,23 @@ export function planV13(text: string, format?: 'yaml' | 'json', names: { from?: 
   }
   pending.push(NODE24);
   if (report.errors.length) return done(false);
-  if (version === undefined) (doc.contents as YAMLMap).items.unshift(doc.createPair('version', 13) as never);
-  else doc.set('version', 13);
-  changes.unshift(`version: ${version === undefined ? '(none, read as 12)' : '12'} → 13`);
+  if (version === undefined) {
+    (doc.contents as YAMLMap).items.unshift(doc.createPair('version', 13) as never);
+    changes.unshift(`version: (none, read as ${from}) → 13`);
+  } else if (version === 12) {
+    doc.set('version', 13);
+    changes.unshift('version: 12 → 13');
+  }
+  if (changes.length === 0) {
+    // already v13: check it as it is (idempotent)
+    try {
+      validateConfig(doc.toJS());
+    } catch (e) {
+      report.errors.push(`the v13 file is not valid:\n${reason(e)}`);
+      return done(false);
+    }
+    return done(true);
+  }
 
   const out = fmt === 'json' ? JSON.stringify(doc.toJS(), null, 2) + '\n' : doc.toString({ lineWidth: 0, flowCollectionPadding: false });
   try {
@@ -136,5 +164,5 @@ export function planV13(text: string, format?: 'yaml' | 'json', names: { from?: 
     return done(false);
   }
   const input = fmt === 'json' ? JSON.stringify(JSON.parse(text), null, 2) + '\n' : text;
-  return done(true, out, unifiedDiff(input, out, names.from ?? 'v12', names.to ?? 'v13'));
+  return done(true, out, unifiedDiff(input, out, names.from ?? `v${from}`, names.to ?? 'v13'));
 }

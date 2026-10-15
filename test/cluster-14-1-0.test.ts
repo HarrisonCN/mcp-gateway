@@ -349,14 +349,14 @@ describe('R8 HTTP integration', () => {
 describe('R9 config', () => {
   const base = { servers: [] };
   it('accepts controlPlane.rollout on a control plane with defaults', () => {
-    const c = validateConfig({ ...base, version: 12, controlPlane: { role: 'control', rollout: { strategy: 'canary', canary: { percent: 10 } } } });
+    const c = validateConfig({ ...base, version: 13, controlPlane: { role: 'control', rollout: { strategy: 'canary', canary: { percent: 10 } } } });
     expect(c.controlPlane!.rollout).toMatchObject({ strategy: 'canary', canary: { percent: 10 }, bakeMs: 30_000, failureThreshold: 1, autoRollback: true, maxDivergenceMs: 60_000, history: 10 });
   });
   it('rejects rollout on a data plane, a canary without a size, and bad values', () => {
-    expect(() => validateConfig({ ...base, version: 12, controlPlane: { role: 'data', url: 'http://cp', token: 't', rollout: { strategy: 'all-at-once' } } })).toThrow(/rollout/);
-    expect(() => validateConfig({ ...base, version: 12, controlPlane: { role: 'control', rollout: { strategy: 'canary' } } })).toThrow(/canary/);
-    expect(() => validateConfig({ ...base, version: 12, controlPlane: { role: 'control', rollout: { history: 0 } } })).toThrow();
-    expect(() => validateConfig({ ...base, version: 12, controlPlane: { role: 'control', rollout: { canary: { percent: 150 } } } })).toThrow();
+    expect(() => validateConfig({ ...base, version: 13, controlPlane: { role: 'data', url: 'http://cp', token: 't', rollout: { strategy: 'all-at-once' } } })).toThrow(/rollout/);
+    expect(() => validateConfig({ ...base, version: 13, controlPlane: { role: 'control', rollout: { strategy: 'canary' } } })).toThrow(/canary/);
+    expect(() => validateConfig({ ...base, version: 13, controlPlane: { role: 'control', rollout: { history: 0 } } })).toThrow();
+    expect(() => validateConfig({ ...base, version: 13, controlPlane: { role: 'control', rollout: { canary: { percent: 150 } } } })).toThrow();
   });
   it('schema/v12 JSON Schema: rollout is optional and described; v12 files without it stay valid (backward compatible)', () => {
     const schema = JSON.parse(readFileSync(new URL('../schema/v12/config.schema.json', import.meta.url), 'utf8'));

@@ -6,7 +6,8 @@
  *  J2 the JSON Schema states the v13 rules: `version: 13`; module plugins take `runtime` only (component `isolation`
  *     stays); `runtime: inline` needs `allowInline: true`; `allowInline` only on inline module plugins; no 2024-11-05
  *     in `mcp.protocolVersions`.
- *  J3 the loader and the JSON Schema agree on those cases (accept ⇔ valid).
+ *  J3 the loader and the JSON Schema agree on those cases (accept ⇔ valid). 17.0.0-alpha.1: one listed exception —
+ *     `inline + allowInline` stays valid in the frozen schema/v13 (16.0 surface) but the 17.0 loader refuses it.
  *  J4 docs-check: a `version: 13` config fence is validated (loader + schema v13); a broken one is a finding; every
  *     current v12 / unversioned config must also be valid in its v13 form (codemod output against schema/v13), so the
  *     docs switch at 16.0 GA is mechanical.
@@ -14,7 +15,8 @@
  *     as <file>.v13.bak); with both a v11 and a pre-v13 backup it asks for `--to`; `--to v12` / `--to v11` pick one.
  *  J6 decision (alpha.2, replaces the alpha.1 "revisit"): an unversioned file stays schema v12 in 16.x and gets no
  *     `schema.v12` notice, but every 16.0 removal in it is still reported (v16.* deprecations) — 17.0.0 reads an
- *     unversioned file as v13, so those notices are the 16.x warning for it.
+ *     unversioned file as v13, so those notices are the 16.x warning for it. 17.0.0-alpha.1: the 16.x reading lives on in
+ *     the migration tooling (validateV12ForMigration); the gateway reads an unversioned file as v13.
  */
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
@@ -23,7 +25,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import Ajv from 'ajv';
-import { validateConfig } from '../src/config/loader.js';
+import { validateConfig, validateV12ForMigration } from '../src/config/loader.js';
 import { buildV13ConfigSchema } from '../src/config/v13-schema.js';
 import { runDocsCheck } from '../scripts/docs-check.js';
 
@@ -76,7 +78,17 @@ describe('config schema v13 tooling (16.0.0-alpha.2)', () => {
 
   it('J3 loader and JSON Schema agree on the v13 rule cases', () => {
     const v = compile(buildV13ConfigSchema());
-    for (const c of CASES) expect([c.name, loads(c.raw)]).toEqual([c.name, v(c.raw) as boolean]);
+    // 17.0.0-alpha.1: the frozen v13 schema (16.0 surface) still allows inline + allowInline; the 17.0 loader refuses it
+    const EXCEPTIONS_17 = ['inline + allowInline'];
+    for (const c of CASES) {
+      if (EXCEPTIONS_17.includes(c.name)) {
+        expect([c.name, loads(c.raw), v(c.raw) as boolean]).toEqual([c.name, false, true]);
+        expect(() => validateConfig(c.raw)).toThrow(/`runtime: inline` .* was removed in 17\.0 .* and drop `allowInline`/);
+        continue;
+      }
+      expect([c.name, loads(c.raw)]).toEqual([c.name, v(c.raw) as boolean]);
+    }
+    expect(CASES.filter((c) => EXCEPTIONS_17.includes(c.name)).length).toBe(EXCEPTIONS_17.length);
   });
 
   it('J4 docs-check validates version: 13 fences and the v13 form of every current config', async () => {
@@ -87,14 +99,15 @@ describe('config schema v13 tooling (16.0.0-alpha.2)', () => {
     }
     mkdirSync(join(dir, 'docs'), { recursive: true });
     const fence = (y: string) => '```yaml\n' + y + '```\n';
-    writeFileSync(join(dir, 'docs/good13.md'), '# ok\n\n' + fence('version: 13\nplugins:\n  - module: ./a.mjs\n    runtime: inline\n    allowInline: true\n'));
+    // 17.0.0-alpha.1: a good v13 fence runs its module plugin in a worker (inline is removed)
+    writeFileSync(join(dir, 'docs/good13.md'), '# ok\n\n' + fence('version: 13\nplugins:\n  - module: ./a.mjs\n    runtime: worker\n'));
     writeFileSync(join(dir, 'docs/bad13.md'), '# bad\n\n' + fence('version: 13\nplugins:\n  - module: ./a.mjs\n    runtime: inline\n'));
     writeFileSync(join(dir, 'docs/v12.md'), '# v12\n\n' + fence('version: 12\nplugins:\n  - module: ./a.mjs\n    runtime: worker\n'));
     const { findings, stats } = await runDocsCheck(dir);
     const cfg = findings.filter((f) => f.rule === 'config');
     expect(cfg.filter((f) => f.file === 'docs/good13.md')).toEqual([]);
     expect(cfg.filter((f) => f.file === 'docs/v12.md')).toEqual([]);
-    expect(cfg.find((f) => f.file === 'docs/bad13.md')?.message).toMatch(/allowInline/);
+    expect(cfg.find((f) => f.file === 'docs/bad13.md')?.message).toMatch(/removed in 17\.0/);
     // good13 + v12 are checked in their v13 form; bad13 already fails the loader
     expect(stats.v13Checked).toBeGreaterThanOrEqual(2);
   });
@@ -128,11 +141,17 @@ describe('config schema v13 tooling (16.0.0-alpha.2)', () => {
   }, 120_000);
 
   it('J6 an unversioned file stays v12 without schema.v12, but its 16.0 removals are reported', () => {
-    const plain = validateConfig({}) as any;
+    // 16.x reading — since 17.0.0-alpha.1 kept by the migration tooling only
+    const plain = validateV12ForMigration({}) as any;
     expect(plain.schemaVersion ?? 12).toBe(12);
     expect(ids(plain)).toEqual([]);
-    const c = validateConfig({ plugins: [{ module: './a.mjs', isolation: 'worker' }] }) as any;
+    const c = validateV12ForMigration({ plugins: [{ module: './a.mjs', isolation: 'worker' }] }) as any;
     expect(ids(c)).not.toContain('schema.v12');
     expect(ids(c).some((x) => x.startsWith('v16.'))).toBe(true);
+    // 17.0.0-alpha.1: the gateway reads an unversioned file as v13, so the 16.0 removal is now an error
+    const plain17 = validateConfig({}) as any;
+    expect(plain17.schemaVersion).toBe(13);
+    expect(ids(plain17)).toEqual([]);
+    expect(() => validateConfig({ plugins: [{ module: './a.mjs', isolation: 'worker' }] })).toThrow(/plugins\.0\.isolation: `isolation: worker` on a module plugin is not part of config schema v13/);
   });
 });

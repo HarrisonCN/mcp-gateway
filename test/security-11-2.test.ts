@@ -216,8 +216,8 @@ describe('agent-token revocation store (11.2)', () => {
     expect(await sq.get('b')).toBeUndefined();
     expect(await sq.pttl('a')).toBeGreaterThan(0);
     await sq.close();
-    expect(validateConfig({ version: 12, servers: [], store: { backend: 'sqlite', sqlite: { path: 'x.db' } } }).state?.store).toBe('sqlite');
-    expect(() => validateConfig({ version: 12, servers: [], features: { agentIdentity: { signingKey: KEY, revocation: { failureMode: 'maybe' } } } })).toThrow();
+    expect(validateConfig({ version: 13, servers: [], store: { backend: 'sqlite', sqlite: { path: 'x.db' } } }).state?.store).toBe('sqlite');
+    expect(() => validateConfig({ version: 13, servers: [], features: { agentIdentity: { signingKey: KEY, revocation: { failureMode: 'maybe' } } } })).toThrow();
     expect(securityWarnings({ servers: [], agentIdentity: agentCfg } as never).some((w) => w.id === 'agent-revocation-in-memory')).toBe(true);
     expect(securityWarnings({ servers: [], agentIdentity: agentCfg, state: { store: 'redis', redis: { url: 'redis://x' } } } as never).some((w) => w.id === 'agent-revocation-in-memory')).toBe(false);
   });

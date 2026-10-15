@@ -167,9 +167,9 @@ describe('P0-2: failure policies (13.1)', () => {
     // unknown modules with a request-blocking hook default to closed
     expect(failurePolicyOf('some-plugin-module')).toBe('closed');
     expect(failurePolicyOf('some-plugin-module', undefined, false)).toBe('open');
-    expect(() => validateConfig({ version: 12, servers: [], modules: { failurePolicy: { dlp: 'open' } } })).toThrow(/failure policy of "dlp" is fixed/);
-    expect(() => validateConfig({ version: 12, servers: [], modules: { failurePolicy: { nope: 'open' } } })).toThrow(/unknown module "nope"/);
-    expect(() => validateConfig({ version: 12, servers: [], modules: { failurePolicy: { 'realtime-budgets': 'open', billing: 'closed' } } })).not.toThrow();
+    expect(() => validateConfig({ version: 13, servers: [], modules: { failurePolicy: { dlp: 'open' } } })).toThrow(/failure policy of "dlp" is fixed/);
+    expect(() => validateConfig({ version: 13, servers: [], modules: { failurePolicy: { nope: 'open' } } })).toThrow(/unknown module "nope"/);
+    expect(() => validateConfig({ version: 13, servers: [], modules: { failurePolicy: { 'realtime-budgets': 'open', billing: 'closed' } } })).not.toThrow();
   });
 
   it('closed: a failed DLP module refuses the calls (clear code, audited); other modules keep working', async () => {

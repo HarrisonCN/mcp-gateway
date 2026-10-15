@@ -30,7 +30,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join, relative, dirname, resolve, extname } from 'path';
 import { parse as parseYaml, parseAllDocuments } from 'yaml';
 import { transformSync } from 'esbuild';
-import { validateConfig, CONFIG_FILE_KEYS } from '../src/config/loader.js';
+import { validateConfig, validateV12ForMigration, CONFIG_FILE_KEYS } from '../src/config/loader.js';
 import { listEnvironments, renderConfigDir } from '../src/config/gitops.js';
 import { stringify as stringifyYaml } from 'yaml';
 import Ajv from 'ajv';
@@ -197,7 +197,9 @@ async function check(root: string, opts: { external?: boolean }) {
     // (`<hex>`, `…`, `...`, `xxx`, `change-me`) are not findings.
     const filled = JSON.parse(JSON.stringify({ servers: [], ...doc }).replace(/\$\{([A-Z0-9_]+)(?::-[^}]*)?\}/g, (_m, n: string) => `docs-check-env-${n.toLowerCase()}-0123456789abcdef0123`)) as Record<string, unknown>;
     try {
-      const c = validateConfig(filled);
+      // 17.0.0-alpha.1: the gateway reads v13 only; v12 / unversioned fences are written for npm `latest` (14.9.x, which
+      // reads them as v12), so they are read as 16.x did and their v13 form is checked below; v13 fences get the 17.0 rules
+      const c = filled.version === 13 ? validateConfig(filled) : validateV12ForMigration(filled);
       // 16.0.0-alpha.1: docs and examples stay on schema v12 while npm `latest` is 14.9.x / 15.x (which cannot read
       // v13), so the 16.x `schema.v12` notice is not a docs finding; switch the examples when 16.0 becomes `latest`.
       // 16.9.0: the v17.* entries (17.0 removals, e.g. an allowInline module plugin) describe a valid 16.x config, so

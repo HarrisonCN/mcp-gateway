@@ -69,8 +69,7 @@ import { validateChains, type ChainsConfig } from '../orchestration/chains.js';
 import { normalizeSchemaVersion, MODULE_CAPABILITIES } from './v12-deprecations.js';
 import { v15ConfigErrors } from './v15-deprecations.js';
 import { v16DeprecationsIn } from './v16-deprecations.js';
-import { v17DeprecationsIn } from './v17-deprecations.js';
-import { fromV13, SCHEMA_V12_NOTICE } from './v13.js';
+import { fromV13, SCHEMA_V12_NOTICE, V12_REFUSED } from './v13.js';
 import { configDeprecations, normalizeApiKeyScopes, normalizeFeaturesV10, normalizeSchemaV5, normalizeStoreV9, removedConfigKeys } from '../utils/deprecations.js';
 import { invalidCidr } from '../security/network.js';
 import { invalidRedactPattern } from '../security/redact.js';
@@ -1348,12 +1347,25 @@ export function validateV11ForMigration(raw: unknown): GatewayConfig {
   return validate(raw, true);
 }
 
-function validate(raw: unknown, allowV11: boolean): GatewayConfig {
+/**
+ * 17.0.0-alpha.1: validates a schema v12 file (or a file without `version:`) as 16.x did — in-memory migration,
+ * `v16.*` / `schema.v12` deprecations — for the migration tooling only (`config migrate / diff --to v13`, docs-check of
+ * the v12 examples while npm `latest` cannot read v13). The gateway itself refuses `version: 12` ({@link validateConfig}).
+ * @internal
+ */
+export function validateV12ForMigration(raw: unknown): GatewayConfig {
+  return validate(raw, false, true);
+}
+
+function validate(raw: unknown, allowV11: boolean, allowV12 = false): GatewayConfig {
   // 16.0.0-alpha.1: schema v13 = schema v12 + the 16.0 rules (config/v13.ts); an explicit v12 file is reported once
+  // 17.0.0-alpha.1: v13 only — `version: 12` is refused, a file without `version:` is read as v13 (the migration tooling
+  // keeps the 16.x reading through validateV11ForMigration / validateV12ForMigration)
   const declared = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as { version?: unknown }).version : undefined;
-  const v13 = declared === 13 ? fromV13(raw as Record<string, unknown>) : undefined;
+  if (declared === 12 && !allowV12 && !allowV11) throw new Error(`Invalid configuration:\n  - ${V12_REFUSED}`);
+  const asV13 = declared === 13 || (declared === undefined && !allowV11 && !allowV12 && raw !== null && typeof raw === 'object' && !Array.isArray(raw));
+  const v13 = asV13 ? fromV13(raw as Record<string, unknown>, { release: allowV12 ? 16 : 17, unversioned: declared === undefined }) : undefined;
   if (v13?.errors.length) throw new Error(`Invalid configuration:\n${v13.errors.map((m) => `  - ${m}`).join('\n')}`);
-  const fileRaw = raw; // 16.9.0: the file as written (v17 deprecations are about the v13 form)
   if (v13) raw = v13.raw;
   const removed = removedConfigKeys(raw);
   // 14.0.0: schema v12 is the runtime schema; v11 files are migrated in memory (internal form keeps the v11 names)
@@ -1378,10 +1390,11 @@ function validate(raw: unknown, allowV11: boolean): GatewayConfig {
   const config = result.data as GatewayConfig;
   if (sv.schemaVersion) config.schemaVersion = sv.schemaVersion;
   // a v11 file reaches here only through the migration tooling (validateV11ForMigration): list its v11 fields
-  // 15.9.0-canary.0: the 16.0.0 removals are listed for every file
-  const deprecations = [...(sv.schemaVersion === 11 ? configDeprecations(raw) : []), ...(v13 ? v17DeprecationsIn(fileRaw) : v16DeprecationsIn(raw)), ...(declared === 12 ? [SCHEMA_V12_NOTICE] : [])];
+  // 15.9.0-canary.0: the 16.0.0 removals are listed for every file; 17.0.0-alpha.1: only the v12 migration tooling
+  // still reads files that can carry them (the 17.0 removals are errors, so a v13 file has none)
+  const deprecations = [...(sv.schemaVersion === 11 ? configDeprecations(raw) : []), ...((allowV12 || allowV11) && !v13 ? v16DeprecationsIn(raw) : []), ...((allowV12 || allowV11) && declared === 12 ? [SCHEMA_V12_NOTICE] : [])];
   if (deprecations.length > 0) config.deprecations = deprecations;
-  if (v13) config.schemaVersion = 13;
+  if (v13 && sv.schemaVersion !== 11) config.schemaVersion = 13;
 
   return config;
 }
@@ -1499,7 +1512,7 @@ export function generateDefaultConfig(): string {
   return `# mcp-gateway configuration
 # Documentation: https://github.com/HarrisonCN/mcp-gateway/docs
 
-version: 12
+version: 13
 port: 4000
 # Loopback only. To listen on every interface (0.0.0.0) configure auth first: since 10.3 the gateway refuses to
 # start without auth on a non-loopback address unless started with --insecure.

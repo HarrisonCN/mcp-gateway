@@ -26,7 +26,7 @@ export function create(options = {}, now = () => Date.now()) {
   const windows = new Map(); // `${client}\u0000${tool}` → { start, count }
   return {
     name: 'tool-quota',
-    apiVersion: 5,
+    apiVersion: 6,
     configSchema: checkOptions,
     onToolCall(call) {
       if (only && !only.has(call.name)) return { action: 'continue' };

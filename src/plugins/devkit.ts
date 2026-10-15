@@ -61,7 +61,7 @@ export function create(options = {}) {
   const blocked = new Set(Array.isArray(options.blockedTools) ? options.blockedTools : []);
   return {
     name: '${name}',
-    apiVersion: 5,
+    apiVersion: 6,
     configSchema: checkOptions,
     /**
      * Runs before every tool call this plugin may see (permissions.servers / tools).

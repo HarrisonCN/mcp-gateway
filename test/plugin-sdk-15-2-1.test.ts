@@ -57,7 +57,7 @@ const cli = (args: string[], cwd: string) => {
 describe('reproducible signature check (15.2.0-canary.1)', { timeout: 60_000 }, () => {
   const k = trust.generateSigningKey();
   const keys = [{ id: 'acme', publicKey: k.publicKey }];
-  const src = 'export default { name: "r", apiVersion: 5 };\n';
+  const src = 'export default { name: "r", apiVersion: 6 };\n';
 
   it('S1 verifyReproducible: the signature verifies and every rebuild has the signed digest', () => {
     const sig = trust.signArtifact(src, k.privateKey, 'acme');
@@ -119,7 +119,14 @@ describe('compatibility matrix (15.2.0-canary.1)', () => {
   it('C2 the running gateway is in the matrix and matches PLUGIN_API_VERSION / the loader', () => {
     const row = compat.PLUGIN_COMPATIBILITY.find((r) => compat.inRange(VERSION, r));
     const [maj, min] = VERSION.split('.').map(Number) as [number, number];
-    if (maj > 16 || (maj === 16 && min >= 9)) {
+    if (maj >= 17) {
+      // 17.0.0-alpha.1: plugin API v6 only (a proposal until 17.0.0-rc.1); the loader implements v6 and refuses v5
+      expect(compat.pluginApiSupport(VERSION)).toEqual({ min: 6, max: PLUGIN_API_VERSION, proposal: true });
+      expect(PLUGIN_API_VERSION).toBe(6);
+      expect(row?.notes).toMatch(/plugin API v6 only/);
+      return;
+    }
+    if (maj === 16 && min >= 9) {
       // 16.9.0-canary.0: v5 – v6 (v6 early, a proposal until 17.0.0-rc.1); the loader implements v6
       expect(compat.pluginApiSupport(VERSION)).toEqual({ min: 5, max: PLUGIN_API_VERSION, proposal: true });
       expect(row?.notes).toMatch(/v6/);
@@ -161,7 +168,7 @@ describe('@winstonsayno/mcp-gateway/testing (15.2.0-canary.1)', { timeout: 60_00
     expect(c.state).toBeInstanceOf(Map);
     expect(testing.toolResponse({ ok: 1 })).toMatchObject({ success: true, result: { ok: 1 } });
     const d = tmp();
-    writeFileSync(join(d, 'deny.mjs'), `export default { name: 'deny', apiVersion: 5, onToolCall: (c) => c.name === 'rm' ? { action: 'deny', reason: 'no rm' } : { action: 'continue' } };`);
+    writeFileSync(join(d, 'deny.mjs'), `export default { name: 'deny', apiVersion: 6, onToolCall: (c) => c.name === 'rm' ? { action: 'deny', reason: 'no rm' } : { action: 'continue' } };`);
     const key = testing.createTestSigningKey('t1');
     const sig = testing.signPluginFile(join(d, 'deny.mjs'), key);
     expect(existsSync(join(d, 'deny.mjs.sig'))).toBe(true);
@@ -175,7 +182,7 @@ describe('@winstonsayno/mcp-gateway/testing (15.2.0-canary.1)', { timeout: 60_00
 
   it('T3 the harness reports a failing hook as refused (failure: closed) and exposes host status', async () => {
     const d = tmp();
-    writeFileSync(join(d, 'boom.mjs'), `export default { name: 'boom', apiVersion: 5, onToolCall: () => { throw new Error('kaput'); } };`);
+    writeFileSync(join(d, 'boom.mjs'), `export default { name: 'boom', apiVersion: 6, onToolCall: () => { throw new Error('kaput'); } };`);
     const h = await testing.startPluginHarness({ module: './boom.mjs', runtime: 'worker', failure: 'closed' }, { baseDir: d });
     harnesses.push(h);
     const r = await h.callTool('x');
@@ -192,7 +199,7 @@ describe('harness outside a test runner (15.2.0-canary.1)', { timeout: 60_000 },
     const out = join(ROOT, 'node_modules', '.mgw-test', `testing-${process.pid}.mjs`);
     const { buildSync } = await import('esbuild');
     buildSync({ entryPoints: [join(ROOT, 'src', 'testing', 'index.ts')], bundle: true, platform: 'node', format: 'esm', packages: 'external', outfile: out, logLevel: 'error' });
-    writeFileSync(join(d, 'p.mjs'), `let n = 0; export default { name: 'p', apiVersion: 5, onToolCall: () => (++n > 1 ? { action: 'deny', reason: 'second' } : { action: 'continue' }) };`);
+    writeFileSync(join(d, 'p.mjs'), `let n = 0; export default { name: 'p', apiVersion: 6, onToolCall: () => (++n > 1 ? { action: 'deny', reason: 'second' } : { action: 'continue' }) };`);
     writeFileSync(join(d, 'run.mjs'), `import { startPluginHarness } from ${JSON.stringify(pathToFileURL(out).href)};
 const h = await startPluginHarness({ module: './p.mjs', runtime: 'worker' }, { baseDir: ${JSON.stringify(d)} });
 const a = await h.callTool('x');

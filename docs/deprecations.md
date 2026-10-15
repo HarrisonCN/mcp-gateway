@@ -42,6 +42,10 @@ Exit codes: `config migrate` 1 when the compatibility report has errors; `config
 The 17.0 list is a **proposal** until 17.0.0-rc.1 ([migrating to v17](migrating-to-v17.md)). 16.x keeps working
 unchanged; each use is a `DEPRECATED (removed in 17.0.0)` warning.
 
+**17.0.0-alpha.1 (npm `canary`) removes them:** a v5 plugin, an inline module plugin (`runtime: inline` /
+`allowInline`), a v4-era hook outcome and a `version: 12` file are errors there, not warnings (a file without
+`version:` is read as schema v13). Stable 17.0.0 has not shipped.
+
 | Id | What | Replacement | Announced |
 |---|---|---|---|
 | `v17.plugins.<name>.api-v5` | a loaded module plugin on plugin API v5 (runtime) | `apiVersion: 6` — `mcp-gateway plugin migrate --to v6 <file>` | 16.9.0-canary.0 |

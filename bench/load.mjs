@@ -109,7 +109,7 @@ async function main() {
   const redis = storeKind === 'redis' ? await U.startFakeRedis() : undefined;
   const KEY = 'bench-key-'.padEnd(40, 'x');
   const cfg = validateConfig({
-    version: 12,
+    version: 13, // 17.0.0-alpha.1: schema v13 only
     monitor: { requestLog: false },
     servers: [
       { id: 'h', name: 'h', transport: 'streamable-http', url: H.url, timeoutMs: 2000, reconnect: { initialDelayMs: 200, maxDelayMs: 1000, jitter: 0 }, replicas: [{ url: H2.url }], loadBalancing: { strategy: 'round-robin', failoverOn: ['not-connected', 'timeout'], ejectAfter: 3, ejectMs: 1000 } },

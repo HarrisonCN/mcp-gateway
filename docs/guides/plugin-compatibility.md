@@ -11,7 +11,7 @@ Prerelease versions count as their release: `15.2.0-canary.1` is in the `8.0.0 �
 
 | Gateway | Loads plugin API | Status | Notes |
 |---|---|---|---|
-| 17.0.0 + | v6 | proposal | plugin API v6: module plugins only in worker / process / wasm (inline removed); codemod in 16.9 |
+| 17.0.0 + | v6 | proposal | plugin API v6 only: { action } outcomes only, module plugins only in worker / process / wasm (inline removed); codemod in 16.9; implemented by 17.0.0-alpha.1 (canary), proposal until 17.0.0-rc.1 |
 | 16.9.0 – <17.0.0 | v5 – v6 | proposal | v6 loads early ({ action } outcomes only, worker / process only); v5 loads with 17.0 deprecations; plugin migrate --to v6 |
 | 16.0.0 – <16.9.0 | v5 | frozen (prerelease) | v5; a module plugin with runtime: inline needs allowInline: true on its entry (config schema v13) |
 | 8.0.0 – <16.0.0 | v5 | shipped | v5 only (v4 refused); the current contract |

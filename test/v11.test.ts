@@ -42,13 +42,13 @@ describe('11.0: schema v11 only', () => {
     expect(() => validateConfig({ version: 11, servers: [], features: { workflows: [] } })).toThrow(/features.workflows: removed in 11.0 — use `features.taskGraphs`; run `mcp-gateway migrate --to 11`/);
     expect(removedConfigKeys({ features: { workflows: [] } })).toEqual([expect.stringMatching(/^features.workflows: removed in 11.0/)]);
     expect(() => validateConfig({ version: 9, servers: [] })).toThrow(/use `version: 11`/);
-    expect(() => validateConfig({ version: 14, servers: [] })).toThrow(/16\.0 reads `version: 13`/); // 16.0.0-alpha.1: v13 is read
+    expect(() => validateConfig({ version: 14, servers: [] })).toThrow(/17\.0 reads `version: 13` only/); // 17.0.0-alpha.1: v13 only
     expect(validateConfig({ version: 11, servers: [] }).deprecations).toBeUndefined();
     expect(validateConfig({ servers: [] }).deprecations).toBeUndefined(); // no version = v11
     expect(configDeprecations({})).toEqual([]);
     expect(DEPRECATIONS).toEqual({});
-    expect(parse(generateDefaultConfig()).version).toBe(12);
-    expect(distributedConfig({ servers: [], port: 1 }).version).toBe(12);
+    expect(parse(generateDefaultConfig()).version).toBe(13); // 17.0.0-alpha.1: v13
+    expect(distributedConfig({ servers: [], port: 1 }).version).toBe(13);
   });
 
   it('the workflow engine is gone: no module, no config key, no root exports; topoLayers moved to task graphs', () => {

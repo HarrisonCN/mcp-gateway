@@ -18,7 +18,7 @@
  */
 
 import { parseDocument, isMap, isScalar, type Document, type YAMLMap, type Pair, type Scalar } from 'yaml';
-import { validateConfig, validateV11ForMigration, CONFIG_FILE_KEYS } from './loader.js';
+import { validateV12ForMigration, validateV11ForMigration, CONFIG_FILE_KEYS } from './loader.js';
 import type { FeatureManifestEntry, FailurePolicy } from '../features/manifest.js';
 import { FEATURE_MANIFEST, failurePolicyOf } from '../features/manifest.js';
 import { FEATURE_CONFIG_KEYS, type FeatureModule } from '../gateway/features.js';
@@ -82,7 +82,7 @@ export function migrateToV12(text: string, format?: 'yaml' | 'json', names: { fr
     // already v12 (14.0.0: the runtime schema): validate it as it is
     const obj = doc.toJS() as Record<string, unknown>;
     try {
-      validateConfig(obj);
+      validateV12ForMigration(obj); // 17.0.0-alpha.1: the gateway refuses v12; the tooling still reads it
     } catch (e) {
       report.errors.push(`the v12 file is not valid: ${(e as Error).message}`);
     }

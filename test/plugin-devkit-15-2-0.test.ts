@@ -48,7 +48,7 @@ describe('plugin init (15.2)', { timeout: 60_000 }, () => {
     expect(Object.keys(s.files).sort()).toEqual(['pii-guard.config.yaml', 'pii-guard.mjs', 'pii-guard.test.mjs']);
     const mod = s.files['pii-guard.mjs']!;
     expect(mod).not.toMatch(/from ['"](?!node:)/); // no imports except node: built-ins — signable as one file
-    expect(mod).toContain('apiVersion: 5');
+    expect(mod).toContain('apiVersion: 6');
     const entry = YAML.parse(s.files['pii-guard.config.yaml']!).plugins[0];
     expect(entry).toMatchObject({ module: './pii-guard.mjs', runtime: 'worker', failure: 'closed', permissions: { args: 'read', response: 'read', hooks: ['onToolCall'], network: false, env: [] } });
     expect(entry.limits).toMatchObject({ timeoutMs: expect.any(Number), memoryMb: expect.any(Number), maxConcurrent: expect.any(Number) });
@@ -106,7 +106,7 @@ describe('plugin doctor (15.2)', { timeout: 60_000 }, () => {
     expect(r.ok).toBe(true);
     expect(r.plugins).toHaveLength(1);
     const p = r.plugins[0]!;
-    expect(p).toMatchObject({ name: 'pii-guard', runtime: 'worker', apiVersion: 5, hooks: ['onToolCall'] });
+    expect(p).toMatchObject({ name: 'pii-guard', runtime: 'worker', apiVersion: 6, hooks: ['onToolCall'] });
     for (const id of ['config', 'load', 'runtime', 'api', 'hooks', 'network', 'limits', 'signature']) expect(check(p, id), id).toBeTruthy();
     expect(p.checks.filter((c: any) => c.status === 'fail')).toEqual([]);
     expect(check(p, 'runtime').status).toBe('pass');
@@ -117,14 +117,14 @@ describe('plugin doctor (15.2)', { timeout: 60_000 }, () => {
   it('D2 mismatches between the config and the plugin are reported', async () => {
     const dir = tmp();
     write(dir, {
-      'both.mjs': "export default { name: 'both', apiVersion: 5, onToolCall() { return { action: 'continue' }; }, onResponse() { return { action: 'continue' }; } };",
+      'both.mjs': "export default { name: 'both', apiVersion: 6, onToolCall() { return { action: 'continue' }; }, onResponse() { return { action: 'continue' }; } };",
       'boom.mjs': "throw new Error('kaboom at load');",
-      'strict.mjs': "export default { name: 'strict', apiVersion: 5, configSchema: (o) => (typeof o.max === 'number' ? [] : ['max must be a number']), onToolCall() {} };",
+      'strict.mjs': "export default { name: 'strict', apiVersion: 6, configSchema: (o) => (typeof o.max === 'number' ? [] : ['max must be a number']), onToolCall() {} };",
     });
     const file = configWith(dir, [
       { module: './both.mjs', runtime: 'worker', permissions: { hooks: ['onToolCall', 'onError'] }, limits: { timeoutMs: 500 } },
       { module: './boom.mjs', runtime: 'worker' },
-      { module: './strict.mjs', runtime: 'inline', options: { max: 'many' } },
+      { module: './strict.mjs', runtime: 'worker', options: { max: 'many' } }, // 17.0: inline is refused by the config (D4)
     ]);
     const r = await doctorPlugins(file);
     expect(r.ok).toBe(false);
@@ -138,10 +138,10 @@ describe('plugin doctor (15.2)', { timeout: 60_000 }, () => {
     // a load failure fails the plugin, with the error
     expect(check(boom, 'load')).toMatchObject({ status: 'fail' });
     expect(check(boom, 'load').detail).toMatch(/kaboom/);
-    // invalid options are a load failure; inline is a runtime warning
+    // invalid options are a load failure; a worker runtime passes (17.0: inline no longer reaches the runtime check — D4)
     expect(check(strict, 'load').status).toBe('fail');
     expect(check(strict, 'load').detail).toMatch(/max must be a number/);
-    expect(check(strict, 'runtime').status).toBe('warn');
+    expect(check(strict, 'runtime')).toMatchObject({ status: 'pass', detail: 'runtime: worker' });
   });
 
   it('D3 pluginTrust: an unsigned plugin fails when signatures are required, warns otherwise', async () => {
@@ -159,11 +159,19 @@ describe('plugin doctor (15.2)', { timeout: 60_000 }, () => {
   it('D4 an invalid config is one failed check; a config without module plugins is fine', async () => {
     const dir = tmp();
     const bad = join(dir, 'bad.yaml');
-    writeFileSync(bad, YAML.stringify({ servers: [], plugins: [{ module: './x.mjs', runtime: 'inline', permissions: { network: false } }] }));
+    writeFileSync(bad, YAML.stringify({ servers: [], plugins: [{ module: './x.mjs', runtime: 'worker', permissions: { network: true } }] }));
     const r = await doctorPlugins(bad);
     expect(r.ok).toBe(false);
     expect(r.config).toMatchObject({ status: 'fail' });
     expect(r.config.detail).toMatch(/permissions/);
+    // 17.0.0-alpha.1: an inline module plugin is an invalid config (it was a runtime warning in 15.x / 16.x)
+    const inline = join(dir, 'inline.yaml');
+    writeFileSync(inline, YAML.stringify({ servers: [], plugins: [{ module: './x.mjs', runtime: 'inline' }] }));
+    const ri = await doctorPlugins(inline);
+    expect(ri.ok).toBe(false);
+    expect(ri.config).toMatchObject({ status: 'fail' });
+    expect(ri.config.detail).toMatch(/plugins\.0: `runtime: inline` .* was removed in 17\.0/);
+    expect(ri.plugins).toEqual([]);
     const none = await doctorPlugins(configWith(dir, []));
     expect(none).toMatchObject({ ok: true, plugins: [] });
   });

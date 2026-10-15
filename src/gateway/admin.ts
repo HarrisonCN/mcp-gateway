@@ -42,8 +42,9 @@ export interface AdminDeps {
 export function portableConfig(cfg: GatewayConfig): Record<string, unknown> {
   const { configDir: _d, deprecations: _x, schemaVersion: _sv, ...rest } = cfg;
   const out = JSON.parse(JSON.stringify(rest)) as Record<string, unknown>;
-  // 14.0.0: the running config is written in schema v12 (`modules` block; feature sections named after their module)
-  out.version = 12;
+  // 14.0.0: the running config is written in the v12 form (`modules` block; feature sections named after their module);
+  // 17.0.0-alpha.1: labelled `version: 13` (v13 = that form + the 16.0 rules, which a loaded config already meets)
+  out.version = 13;
   {
     const k = (out.kernel ?? {}) as Record<string, unknown>;
     const m = { ...((out.modules ?? {}) as Record<string, unknown>) };

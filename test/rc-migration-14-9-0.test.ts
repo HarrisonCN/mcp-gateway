@@ -19,7 +19,7 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { parse as parseYaml, parseAllDocuments, stringify } from 'yaml';
 import Ajv from 'ajv';
-import { validateConfig, validateV11ForMigration } from '../src/config/loader.js';
+import { validateV12ForMigration as validateConfig, validateV11ForMigration } from '../src/config/loader.js'; // 17.0.0-alpha.1: v12 is read by the migration tooling only
 import { migrateToV12, downgradeFromV12, downgradeLoss } from '../src/config/v12.js';
 import { logger } from '../src/utils/logger.js';
 
@@ -46,21 +46,24 @@ function walk(dir: string, pick: (name: string) => boolean, out: string[] = []):
   return out;
 }
 
+// 17.0.0-alpha.1: the examples ship in schema v13 (= the v12 form + the 16.0 rules); the v11 ⇄ v12 tooling is checked
+// on their v12 form (same file with `version: 12`)
+const as12 = (t: string) => t.replace(/^(\s*)version: 13\s*$/m, '$1version: 12');
 function exampleConfigs(): Array<{ name: string; text: string }> {
   const out: Array<{ name: string; text: string }> = [];
   for (const p of walk(join(ROOT, 'examples'), (n) => /^mcp-gateway\.ya?ml$/.test(n))) {
     const txt = readFileSync(p, 'utf8');
     const docs = parseAllDocuments(txt).map((x) => x.toJS());
-    if (docs.length === 1 && docs[0]?.version === 12) out.push({ name: p.slice(ROOT.length + 1), text: txt });
+    if (docs.length === 1 && (docs[0]?.version === 12 || docs[0]?.version === 13)) out.push({ name: p.slice(ROOT.length + 1), text: as12(txt) });
     for (const d of docs) {
       const cm = d?.kind === 'ConfigMap' ? d.data?.['mcp-gateway.yml'] : undefined;
-      if (typeof cm === 'string') out.push({ name: `${p.slice(ROOT.length + 1)} (ConfigMap)`, text: cm });
+      if (typeof cm === 'string') out.push({ name: `${p.slice(ROOT.length + 1)} (ConfigMap)`, text: as12(cm) });
     }
   }
   const helm = join(ROOT, 'examples/deploy/helm/values.yaml');
   if (existsSync(helm)) {
     const v = parseYaml(readFileSync(helm, 'utf8'));
-    if (v?.config && typeof v.config === 'object') out.push({ name: 'examples/deploy/helm/values.yaml (config)', text: stringify(v.config) });
+    if (v?.config && typeof v.config === 'object') out.push({ name: 'examples/deploy/helm/values.yaml (config)', text: as12(stringify(v.config)) });
   }
   return out;
 }

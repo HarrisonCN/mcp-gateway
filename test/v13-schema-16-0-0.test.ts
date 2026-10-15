@@ -12,12 +12,16 @@
  *  S7 `config migrate --to v13` writes `version: 13`: `isolation` → `runtime`, `allowInline: true` on inline module
  *     plugins, 2024-11-05 dropped from `mcp.protocolVersions`; the result loads as v13; idempotent.
  *  S8 package.json `engines.node` is `>=24`.
+ *
+ * 17.0.0-alpha.1 (test/v17-core-17-0-0.test.ts): the 16.x readings of S3–S5 and S7 are checked through the migration
+ * tooling (`validateV12ForMigration`, `fromV13(…, { release: 16 })`) and the gateway's 17.0 refusal is asserted next to them.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
-import { validateConfig } from '../src/config/loader.js';
+import { validateConfig, validateV12ForMigration } from '../src/config/loader.js';
+import { fromV13 } from '../src/config/v13.js';
 import { planV13 } from '../src/config/v13-prep.js';
 import { adaptToolResult, PROTOCOL_VERSIONS } from '../src/mcp/compat.js';
 import { DOWNSTREAM_PROTOCOL_VERSIONS } from '../src/mcp/endpoint.js';
@@ -53,24 +57,30 @@ describe('config schema v13 (16.0.0-alpha.1)', () => {
     expect(err({ version: 13, plugins: [{ component: './w.wasm', isolation: 'tenant' }] })).toBe('');
   });
 
-  it('S3 v13 inline module plugins need allowInline: true on the entry', () => {
-    expect(err({ version: 13, plugins: [{ module: './a.mjs', runtime: 'inline' }] })).toMatch(/plugins\.0.*allowInline: true/s);
-    expect(err({ version: 13, plugins: [{ module: './a.mjs', runtime: 'inline', allowInline: true }] })).toBe('');
-    expect(err({ version: 13, plugins: [{ module: './a.mjs', runtime: 'worker', allowInline: true }] })).toMatch(/plugins\.0\.allowInline.*runtime: inline/s);
+  it('S3 v13 inline module plugins need allowInline: true on the entry (16.x); 17.0 refuses inline module plugins', () => {
+    const e16 = (raw: Record<string, unknown>) => fromV13(raw, { release: 16 }).errors.join('\n');
+    expect(e16({ version: 13, plugins: [{ module: './a.mjs', runtime: 'inline' }] })).toMatch(/plugins\.0.*allowInline: true/s);
+    expect(e16({ version: 13, plugins: [{ module: './a.mjs', runtime: 'inline', allowInline: true }] })).toBe('');
+    expect(e16({ version: 13, plugins: [{ module: './a.mjs', runtime: 'worker', allowInline: true }] })).toMatch(/plugins\.0\.allowInline.*runtime: inline/s);
+    expect(err({ version: 13, plugins: [{ module: './a.mjs', runtime: 'inline' }] })).toMatch(/plugins\.0.*removed in 17\.0/s);
+    expect(err({ version: 13, plugins: [{ module: './a.mjs', runtime: 'inline', allowInline: true }] })).toMatch(/plugins\.0.*removed in 17\.0/s);
+    expect(err({ version: 13, plugins: [{ module: './a.mjs', runtime: 'worker', allowInline: true }] })).toMatch(/plugins\.0\.allowInline.*removed in 17\.0/s);
   });
 
   it('S4 v13 refuses /mcp revision 2024-11-05; a v12 file naming it still loads and reports it', () => {
     expect(err({ version: 13, mcp: { protocolVersions: ['2025-06-18', '2024-11-05'] } })).toMatch(/mcp\.protocolVersions.*2024-11-05/s);
-    const c = validateConfig({ version: 12, mcp: { protocolVersions: ['2025-06-18', '2024-11-05'] } }) as any;
+    const c = validateV12ForMigration({ version: 12, mcp: { protocolVersions: ['2025-06-18', '2024-11-05'] } }) as any;
     expect(ids(c)).toContain('v16.mcp.protocol-2024-11-05');
+    expect(err({ version: 12, mcp: { protocolVersions: ['2025-06-18'] } })).toMatch(/schema v12 is no longer read by 17\.0\.0/); // 17.0
   });
 
   it('S5 an explicit v12 file reports schema.v12 (removed in 17.0.0); an unversioned file does not', () => {
-    const c = validateConfig({ version: 12 }) as any;
+    const c = validateV12ForMigration({ version: 12 }) as any; // 17.0: the gateway refuses it (v17-core K4)
     expect(c.schemaVersion).toBe(12);
     const d = (c.deprecations ?? []).find((x: any) => x.id === 'schema.v12');
     expect(d?.removedIn).toBe('17.0.0');
     expect(d?.message).toMatch(/config migrate --to v13/);
+    expect(ids(validateV12ForMigration({}))).toEqual([]);
     expect(ids(validateConfig({}))).toEqual([]);
   });
 
@@ -107,13 +117,15 @@ mcp:
     expect(r.text).toContain('# keep me');
     const out = parse(r.text);
     expect(out.plugins[0]).toEqual({ module: './a.mjs', runtime: 'worker' });
-    expect(out.plugins[1]).toEqual({ module: './b.mjs', runtime: 'inline', allowInline: true });
+    // 16.x wrote runtime: inline + allowInline: true; 17.0.0-alpha.1 moves it to a worker (reported as pending)
+    expect(out.plugins[1]).toEqual({ module: './b.mjs', runtime: 'worker' });
+    expect(r.pending.map((p) => p.id)).toContain('v17.plugins.1.inline');
     expect(out.plugins[2]).toEqual({ component: './w.wasm', isolation: 'tenant' });
     expect(out.mcp.protocolVersions).toEqual(['2025-06-18']);
     const c = validateConfig(out) as any;
     expect(c.schemaVersion).toBe(13);
-    // 16.9.0-canary.0: no 16.0 entries; the inline plugin (allowInline) is announced for 17.0 (plugin API v6)
-    expect(ids(c)).toEqual(['v17.plugins.1.inline']);
+    // 16.9.0-canary.0 announced the inline plugin for 17.0; 17.0.0-alpha.1: nothing left to announce
+    expect(ids(c)).toEqual([]);
     const again = planV13(r.text, 'yaml');
     expect(again.ok).toBe(true);
     expect(again.changes).toEqual([]);

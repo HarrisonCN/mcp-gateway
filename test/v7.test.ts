@@ -42,7 +42,7 @@ describe('7.0: schema v7', () => {
 
   it('distributed config drops controlPlane / port / host; ETag is order independent', () => {
     const d = distributedConfig({ version: 11, port: 1, host: 'h', controlPlane: { role: 'control' }, servers: [], logLevel: 'info' });
-    expect(d).toEqual({ version: 12, servers: [], logLevel: 'info' });
+    expect(d).toEqual({ version: 13, servers: [], logLevel: 'info' }); // 17.0.0-alpha.1: data planes get schema v13 (14.0 – 16.x: 12)
     expect(configEtag({ a: 1, b: [1, { c: 2, d: 3 }] })).toBe(configEtag({ b: [1, { d: 3, c: 2 }], a: 1 }));
     expect(configEtag({ a: 1 })).not.toBe(configEtag({ a: 2 }));
     expect(configEtag({ a: 1 })).toMatch(/^"[0-9a-f]{32}"$/);

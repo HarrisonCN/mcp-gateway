@@ -9,6 +9,24 @@
 `GET /api/v1/admin/deprecations` on a running gateway: every line marked `removed in 17.0.0` needs a change before
 upgrading. The ids are listed in [deprecations](deprecations.md#planned-removals-in-1700-announced-1690-canary0).
 
+## 17.0.0-alpha.1 (npm `canary`)
+
+The first 17.0 prerelease enforces the list below; it is for trying the migration, not for production (`latest` stays
+on 14.9.x, `next` on the 15.0 release candidate, and stable 17.0.0 needs its own gates):
+
+- plugin API v6 only — `apiVersion: 5` is refused at load (`PLUGIN_API_MIN_VERSION` is 6), and every hook, programmatic
+  plugin objects included, must return `{ action }` outcomes (anything else fails the hook, fail closed);
+- no inline module plugins — `runtime: inline` and `allowInline` are configuration errors and `loadPlugin` refuses
+  `runtime: inline` before importing the module; plugin objects passed through the embedding API still run in process;
+- schema v13 only — `version: 12` is refused with the `config migrate --to v13` hint, and a file without `version:` is
+  read as schema v13 (so the v13 rules apply to it); `config migrate --to v12 / --to v13` still read older files;
+- `config migrate --to v13` targets 17.0: an inline module plugin becomes `runtime: worker` (listed under *pending*,
+  because a plugin with `onRequest` / `routes` needs a person), `allowInline` is dropped (also from a 16.x v13 file), and
+  a file without `version:` that already is valid v13 only gets `version: 13`.
+
+The v13 *format* ([schema/v13](../schema/v13/config.schema.json), frozen from 16.0.0-rc.1) is unchanged: it still
+describes what 16.x reads, including `allowInline`; 17.0 adds the plugin API v6 rule on top.
+
 ## What changes in 17.0
 
 | Area | 16.x | 17.0 | What to do on 16.9 |
