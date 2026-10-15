@@ -69,7 +69,14 @@ describe('PluginHost', () => {
     const failed = await host.afterCall(call, { success: false, durationMs: 1, error: { code: -32000, message: 'upstream down' } });
     expect(failed.success).toBe(false);
     await host.afterCall(call, { success: true, durationMs: 1, result: 1 });
-    expect(seen).toEqual([`call:v3:${PLUGIN_API_VERSION}`, 'err:v3:upstream down']);
+    // 16.9.0: hooks see the contract the plugin declared (this plugin declares 5; the gateway implements 6)
+    expect(seen).toEqual(['call:v3:5', 'err:v3:upstream down']);
+    const seen6: number[] = [];
+    const host6 = new PluginHost();
+    await host6.set(await PluginHost.build(undefined, [{ name: 'v6', apiVersion: 6, onToolCall: (_c, ctx) => void seen6.push(ctx.apiVersion) }]));
+    await host6.beforeCall({ ...call, state: new Map() });
+    expect(seen6).toEqual([PLUGIN_API_VERSION]);
+    await host6.close();
     await expect(PluginHost.build(undefined, [{ name: 'old', apiVersion: 2 }])).rejects.toThrow(/plugin API v2, which was removed in 5.0/);
     await expect(PluginHost.build(undefined, [{ name: 'zero', apiVersion: 0 }])).rejects.toThrow(/unsupported plugin API v0/);
     await host.close();

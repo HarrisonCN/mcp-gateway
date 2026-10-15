@@ -63,7 +63,8 @@ describe('config migrate --to v13 codemod (15.9.0-canary.1; writes v13 since 16.
     expect(after.plugins.map((p: any) => p.runtime ?? p.isolation)).toEqual(before.plugins.map((p: any) => p.runtime ?? p.isolation));
     expect(r.diff).toMatch(/^-\s+isolation: worker$/m);
     expect(r.diff).toMatch(/^\+\s+runtime: worker$/m);
-    expect(after.deprecations).toBeUndefined();
+    // every 16.0 deprecation is resolved; since 16.9.0 the inline module plugin (allowInline) is the one 17.0 removal left
+    expect(after.deprecations?.map((d: any) => [d.id, d.removedIn])).toEqual([['v17.plugins.1.inline', '17.0.0']]);
     expect(v16DeprecationsIn(parse(SAMPLE)).length).toBeGreaterThan(0);
   });
 
