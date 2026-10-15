@@ -27,6 +27,12 @@ on 14.9.x, `next` on the 15.0 release candidate, and stable 17.0.0 needs its own
 The v13 *format* ([schema/v13](../schema/v13/config.schema.json), frozen from 16.0.0-rc.1) is unchanged: it still
 describes what 16.x reads, including `allowInline`; 17.0 adds the plugin API v6 rule on top.
 
+## 17.0.0-alpha.2 (npm `canary`)
+
+The package's public exports get a recorded surface: every export of `.`, `./gateway`, `./edge` and `./testing` is
+listed in `api/exports-surface.json` (`npx tsx scripts/sdk-surface.ts` fails when one disappears). The list is a
+proposal until 17.0.0-rc.1 freezes it with the rest of the [17.0 freeze list](v17/freeze.md). Nothing to migrate.
+
 ## What changes in 17.0
 
 | Area | 16.x | 17.0 | What to do on 16.9 |
