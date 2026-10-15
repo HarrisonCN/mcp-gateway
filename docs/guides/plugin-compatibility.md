@@ -12,7 +12,8 @@ Prerelease versions count as their release: `15.2.0-canary.1` is in the `8.0.0 �
 | Gateway | Loads plugin API | Status | Notes |
 |---|---|---|---|
 | 17.0.0 + | v6 | proposal | plugin API v6: module plugins only in worker / process / wasm (inline removed); codemod in 16.9 |
-| 16.0.0 – <17.0.0 | v5 | frozen (prerelease) | v5; a module plugin with runtime: inline needs allowInline: true on its entry (config schema v13) |
+| 16.9.0 – <17.0.0 | v5 – v6 | proposal | v6 loads early ({ action } outcomes only, worker / process only); v5 loads with 17.0 deprecations; plugin migrate --to v6 |
+| 16.0.0 – <16.9.0 | v5 | frozen (prerelease) | v5; a module plugin with runtime: inline needs allowInline: true on its entry (config schema v13) |
 | 8.0.0 – <16.0.0 | v5 | shipped | v5 only (v4 refused); the current contract |
 | 7.9.0 – <8.0.0 | v4 – v5 | shipped | v5 preview: one contract for JS and WASM (WIT world mcp-gateway:plugin@5.0.0) |
 | 6.0.0 – <7.9.0 | v4 | shipped | v3 refused |
@@ -21,6 +22,20 @@ Prerelease versions count as their release: `15.2.0-canary.1` is in the `8.0.0 �
 | 4.0.0 – <4.9.0 | v2 – v3 | shipped | v3: ctx.secrets, onConfigChange; v1 refused, v2 warns |
 | 3.0.0 – <4.0.0 | v1 – v2 | shipped | v2: hooks get a context argument; v1 loads with a warning |
 | 2.0.0 – <3.0.0 | v1 | shipped | plugin API v1: hooks, fail closed (-32006) |
+
+Plugin API v5 capabilities by gateway release (8.0.0 – <16.0.0):
+
+- signed artifacts (since 5.4)
+- WASM components (7.9)
+- configSchema / plugin routes (10.5)
+- hybrid ML-DSA signatures, experimental (10.8)
+- reload fails on an unloadable plugin (13.2)
+- worker / process runtime (14.3)
+- permissions, limits, circuit breaker (14.3)
+- worker is the default runtime (15.0)
+- plugin init / doctor (15.2)
+- reproducible verify (15.2)
+- /testing export (15.2)
 
 Plugin API v5 capabilities by gateway release (8.0.0 – <16.0.0):
 

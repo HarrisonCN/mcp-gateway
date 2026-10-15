@@ -738,7 +738,7 @@ program
 
 // ─── plugin signing (5.4) ─────────────────────────────────────────────────────
 
-const pluginCmd = program.command('plugin').description('Plugins: init, doctor (15.2), keygen, sign, verify (--rebuilt: reproducible check, 15.2)');
+const pluginCmd = program.command('plugin').description('Plugins: init, doctor (15.2), migrate --to v6 (16.9), keygen, sign, verify (--rebuilt: reproducible check, 15.2)');
 // 15.2.0: plugin developer kit
 pluginCmd
   .command('init <name>')
@@ -773,6 +773,27 @@ pluginCmd
     const r = await doctorPlugins(file);
     console.log(options.json ? JSON.stringify(r, null, 2) : formatDoctor(r));
     process.exit(r.ok ? 0 : 1);
+  });
+// 16.9.0-canary.0: plugin API v5 → v6 codemod
+pluginCmd
+  .command('migrate <file>')
+  .description('Rewrite a module plugin file for plugin API v6 (apiVersion, { action } outcomes); dry run unless --in-place')
+  .requiredOption('--to <version>', 'Target plugin API: v6')
+  .option('--in-place', 'Write the file (the original is kept as <file>.bak)')
+  .option('--json', 'Print JSON')
+  .action(async (file: string, options) => {
+    if (options.to !== 'v6' && options.to !== '6') { logger.error(`--to ${options.to}: only v6 is supported`); process.exit(1); }
+    const { migratePluginSource, formatPluginMigration } = await import('./plugins/migrate-v6.js');
+    const { readFileSync, writeFileSync, copyFileSync } = await import('fs');
+    let src: string;
+    try { src = readFileSync(file, 'utf8'); } catch (e) { logger.error((e as Error).message); process.exit(1); }
+    const r = migratePluginSource(src);
+    const write = !!options.inPlace && r.output !== src;
+    if (write) {
+      copyFileSync(file, `${file}.bak`);
+      writeFileSync(file, r.output);
+    }
+    console.log(options.json ? JSON.stringify({ file, written: write, changes: r.changes, manual: r.manual }, null, 2) : formatPluginMigration(file, r, write));
   });
 pluginCmd
   .command('keygen')

@@ -37,6 +37,20 @@ mcp-gateway config diff --to v12 -c mcp-gateway.yml                 # preview on
 Exit codes: `config migrate` 1 when the compatibility report has errors; `config diff` 3 when the file would change,
 1 on errors. Comments and layout of YAML files are kept.
 
+## Planned removals in 17.0.0 (announced 16.9.0-canary.0)
+
+The 17.0 list is a **proposal** until 17.0.0-rc.1 ([migrating to v17](migrating-to-v17.md)). 16.x keeps working
+unchanged; each use is a `DEPRECATED (removed in 17.0.0)` warning.
+
+| Id | What | Replacement | Announced |
+|---|---|---|---|
+| `v17.plugins.<name>.api-v5` | a loaded module plugin on plugin API v5 (runtime) | `apiVersion: 6` — `mcp-gateway plugin migrate --to v6 <file>` | 16.9.0-canary.0 |
+| `v17.plugins.<name>.legacy-outcome` | a v5 plugin hook returned a v4-era outcome (`{ deny }`, `{ respond }`, `{ arguments }`, a whole response from `onResponse`) (runtime) | `{ action }` outcomes | 16.9.0-canary.0 |
+| `v17.plugins.<name>.http-hooks` | a plugin with `onRequest` / `routes` (runtime) | request handling in gateway configuration or in front of the gateway | 16.9.0-canary.0 |
+| `v17.plugins.<i>.inline` | a schema v13 file with an inline module plugin (`runtime: inline` + `allowInline: true`) | `runtime: worker` or `runtime: process` | 16.9.0-canary.0 |
+
+Schema v12 files (`schema.v12`) and the `v16.*` items that schema v13 refuses are also removed in 17.0.0.
+
 ## Planned removals in 16.0.0 (announced 15.9.0-canary.0)
 
 The 16.0 list is **frozen** from 16.0.0-rc.1 ([16.0 freeze](v16/freeze.md), [migrating to v16](migrating-to-v16.md)). 15.x keeps working

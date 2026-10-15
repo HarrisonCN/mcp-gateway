@@ -56,8 +56,9 @@ describe('16.0 freeze (16.0.0-rc.1)', () => {
     expect(compat.pluginApiSupport('16.0.0-rc.1')).toEqual({ min: 5, max: 5, frozen: true });
     expect(compat.pluginApiSupport('17.0.0-alpha.1')).toEqual({ min: 6, max: 6, proposal: true });
     const md = compat.compatibilityMarkdown();
-    expect(md).toMatch(/\| 16\.0\.0 – <17\.0\.0 \| v5 \| frozen \(prerelease\) \|/);
-    expect(md).not.toMatch(/\| 16\.0\.0 – <17\.0\.0 \| v5 \| shipped \|/);
+    // 16.9.0-canary.0: the frozen v5 range ends at 16.9.0 (16.9 loads v5 – v6 early, a proposal like 17.0)
+    expect(md).toMatch(/\| 16\.0\.0 – <16\.9\.0 \| v5 \| frozen \(prerelease\) \|/);
+    expect(md).not.toMatch(/\| 16\.0\.0 – <1[67]\.\d\.0 \| v5 \| shipped \|/);
     expect(read('docs/guides/plugin-compatibility.md')).toContain(md);
   });
 

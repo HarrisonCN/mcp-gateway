@@ -199,8 +199,10 @@ async function check(root: string, opts: { external?: boolean }) {
     try {
       const c = validateConfig(filled);
       // 16.0.0-alpha.1: docs and examples stay on schema v12 while npm `latest` is 14.9.x / 15.x (which cannot read
-      // v13), so the 16.x `schema.v12` notice is not a docs finding; switch the examples when 16.0 becomes `latest`
-      if (!hist) for (const d of (c.deprecations ?? []).filter((x) => x.id !== 'schema.v12')) add(rel, line, 'config', `${d.id.startsWith('v15.') ? 'removed / changed in 15.0.0' : 'schema v11 field'} in current docs: ${(d as { path?: string }).path ?? d.id} — use ${(d as { replacement?: string }).replacement ?? 'the v12 form'}`);
+      // v13), so the 16.x `schema.v12` notice is not a docs finding; switch the examples when 16.0 becomes `latest`.
+      // 16.9.0: the v17.* entries (17.0 removals, e.g. an allowInline module plugin) describe a valid 16.x config, so
+      // they are advisory here; 17.0 refuses those forms at load, which docs-check then reports as a load failure.
+      if (!hist) for (const d of (c.deprecations ?? []).filter((x) => x.id !== 'schema.v12' && !x.id.startsWith('v17.'))) add(rel, line, 'config', `${d.id.startsWith('v15.') ? 'removed / changed in 15.0.0' : 'schema v11 field'} in current docs: ${(d as { path?: string }).path ?? d.id} — use ${(d as { replacement?: string }).replacement ?? 'the v12 form'}`);
       if (!hist && doc.version !== 11) for (const m of v13Findings(filled)) add(rel, line, 'config', m);
     } catch (e) {
       const issues = (e as Error).message.replace(/^Invalid configuration:\s*/, '').split(/\n\s*-\s*/).map((x) => x.replace(/^\s*-\s*/, '').trim()).filter(Boolean);
