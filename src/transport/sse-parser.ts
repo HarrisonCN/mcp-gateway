@@ -18,23 +18,30 @@ export class SseParser {
   private buffer = '';
   private eventType = '';
   private dataLines: string[] = [];
+  private dataChars = 0;
   private lastId: string | undefined;
   private pendingCR = false;
 
   constructor(
     private readonly onEvent: (event: SseEvent) => void,
+    // Bound both a complete / partial line and the joined data of one event, in UTF-16 code units.
     private readonly maxBufferChars = 16 * 1024 * 1024,
   ) {}
 
   push(chunk: string): void {
+    // TextDecoder can emit nothing for a partial UTF-8 sequence. It must not consume a pending CRLF pair.
+    if (chunk.length === 0) return;
     if (this.pendingCR && chunk.startsWith('\n')) chunk = chunk.slice(1);
     this.pendingCR = false;
+    const offset = this.buffer.length;
     this.buffer += chunk;
 
     let start = 0;
-    for (let i = 0; i < this.buffer.length; i++) {
+    // Previously buffered text has already been checked for line endings.
+    for (let i = offset; i < this.buffer.length; i++) {
       const ch = this.buffer[i];
       if (ch !== '\n' && ch !== '\r') continue;
+      if (i - start > this.maxBufferChars) this.exceeded('line');
       this.line(this.buffer.slice(start, i));
       if (ch === '\r') {
         if (i + 1 === this.buffer.length) this.pendingCR = true;
@@ -43,10 +50,17 @@ export class SseParser {
       start = i + 1;
     }
     this.buffer = this.buffer.slice(start);
-    if (this.buffer.length > this.maxBufferChars) {
-      this.buffer = '';
-      throw new Error(`SSE line exceeded ${this.maxBufferChars} characters`);
-    }
+    if (this.buffer.length > this.maxBufferChars) this.exceeded('line');
+  }
+
+  private exceeded(kind: 'line' | 'event'): never {
+    this.buffer = '';
+    this.dataLines = [];
+    this.dataChars = 0;
+    this.eventType = '';
+    this.lastId = undefined;
+    this.pendingCR = false;
+    throw new Error(`SSE ${kind} exceeded ${this.maxBufferChars} characters`);
   }
 
   private line(line: string): void {
@@ -65,6 +79,8 @@ export class SseParser {
         this.eventType = value;
         break;
       case 'data':
+        this.dataChars += value.length + (this.dataLines.length > 0 ? 1 : 0);
+        if (this.dataChars > this.maxBufferChars) this.exceeded('event');
         this.dataLines.push(value);
         break;
       case 'id':
@@ -84,6 +100,7 @@ export class SseParser {
     if (this.lastId !== undefined) event.id = this.lastId;
     this.eventType = '';
     this.dataLines = [];
+    this.dataChars = 0;
     this.onEvent(event);
   }
 }
@@ -104,6 +121,11 @@ export async function readSseStream(
     }
     const tail = decoder.decode();
     if (tail) parser.push(tail);
+  } catch (error) {
+    // Unlocking alone leaves the upstream body active after a parser / consumer failure.
+    // Cleanup must not replace the original error if the source has already failed too.
+    await reader.cancel(error).catch(() => {});
+    throw error;
   } finally {
     reader.releaseLock();
   }
