@@ -11,13 +11,13 @@
 - 不降低覆盖率、性能和发布闸门；本机单测不能替代 Redis 多实例或官方 SDK 互通检查。
 - A（专用硬件 72 小时 soak）、B（同机性能基线）、C（独立外部安全评审）仍未完成。
   共享开发环境或内部回归通过不会改变这三项状态。
-- 一个修复主题一个 PR；通过对应 CI 后合并，npm / 镜像 / Release 另走现有发布流程。
+- 一个修复主题一个 PR；每轮必需 CI 通过且无已知重大缺陷后直接合并，按 SemVer 发布 npm / 镜像 / Release 并提供可下载包体，无需逐次确认。发布仍须满足现有 CI 闸门；外部条件阻塞时明确保留未发布状态。
 
 ## 迭代顺序与验收
 
 | 顺序 / 目标版本 | 工作项 | 优先级 | 交付与验收 | 状态 |
 | --- | --- | --- | --- | --- |
-| G17-001 / 17.0.x | SSE 单行 / 多行事件资源上限与异常清理 | P0 | 已换行和未换行的超限行都被拒绝；多行事件累计数据有界；合法多事件大 chunk 不误拒绝；CRLF 跨空 chunk 不改变事件；异常取消 reader 并释放锁；官方 SDK 传输回归通过 | [PR #249](https://github.com/HarrisonCN/mcp-gateway/pull/249) 已创建，待 CI |
+| G17-001 / 17.0.x | SSE 单行 / 多行事件资源上限与异常清理 | P0 | 已换行和未换行的超限行都被拒绝；多行事件累计数据有界；合法多事件大 chunk 不误拒绝；CRLF 跨空 chunk 不改变事件；异常取消 reader 并释放锁；官方 SDK 传输回归通过 | [PR #249](https://github.com/HarrisonCN/mcp-gateway/pull/249) 已合并；17.0.1 发布准备中 |
 | G17-002 / 17.1 | 传输生命周期、取消与重连一致性 | P1 | 对 SSE、Streamable HTTP、WebSocket、stdio 建立相同取消 / deadline / 断连语料；无悬挂 inflight；非幂等调用不因重连重复执行；两实例 Redis 故障测试通过 | 待 G17-001 通过 |
 | G17-003 / 17.2 | Motionary 17.x 互通和提案审计 | P1 | 固定双方版本；工具发现、Scene v3 校验、提案、失败回传与取消可重复；租户不混淆，requestId 可匹配 lineage，未经人确认不写入 Motionary 工程 | 待双方基础修复通过 |
 | G17-004 / 17.3 | 运维诊断与恢复证据 | P1 | 对既有健康检查 / readiness / 指标补充可复现故障场景；热重载失败保留旧配置，敏感值不进入日志；Redis 分区与恢复报告包含失败模式和恢复时间 | 待 G17-002 通过 |
@@ -33,9 +33,9 @@
 - 修复范围：内部 SSE parser / stream reader、回归测试与文档。既有构造参数仍可用；默认上限以 JavaScript 字符串长度（UTF-16 code units）计量，不能写成内存字节上限。
 - 本地验证：新增回归与官方 SDK 传输测试 **29/29 通过**；类型检查、构建及文档检查通过（0 findings）。
 - 完整覆盖率命令已执行：**1,715 通过、25 失败、34 跳过**；未取得通过的覆盖率报告。
-  失败集中在 `tsx` 子进程启动的 CLI / 模块加载检查；本地 Unix IPC 被运行环境拒绝（`listen EPERM`），这些检查仍待 CI 验证。
-  文档检查通过支持的 `node --import tsx scripts/docs-check.ts` 方式执行。真实 Redis 与完整平台检查以 PR CI 为准。
-- 合并状态：[PR #249](https://github.com/HarrisonCN/mcp-gateway/pull/249) 已创建，必需 CI 验证中；未合并、未发布。
+  失败集中在 `tsx` 子进程启动的 CLI / 模块加载检查；本地 Unix IPC 被运行环境拒绝（`listen EPERM`），这些检查已由 PR #249 的 Node 24 CI 验证通过。
+  文档检查通过支持的 `node --import tsx scripts/docs-check.ts` 方式执行。真实 Redis、兼容矩阵、部署示例、安全回归与供应链检查均已在 PR CI 通过。
+- 合并状态：[PR #249](https://github.com/HarrisonCN/mcp-gateway/pull/249) 的 16 项检查全部通过，已合并至 `869d072cd33ec7235b6be4ec12b1b82e65193e2d`；17.0.1 正在准备发布。
 
 ## 每轮完成条件
 

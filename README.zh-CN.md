@@ -9,7 +9,7 @@
 
 [English](README.md) · **简体中文**
 
-> **17.0.0 为当前版本——由项目所有者决定发布；外部安全审查与专用硬件长稳测试尚未进行。** 15.0.0 与 16.0.0 从未作为稳定版发布，因此 17.0.0 是 14.9 之后的第一个稳定大版本，包含 15.0、16.0 与 17.0 的全部不兼容变更（Node.js ≥ 24、仅支持配置 schema v13、仅支持插件 API v6、移除 inline 模块插件）。请先在预发环境验证；详见[发布门禁](docs/release-gates.md)。从 14.9 升级：[迁移到 v15](docs/migrating-to-v15.md) · [v16](docs/migrating-to-v16.md) · [v17](docs/migrating-to-v17.md)。继续使用 14.9：`npm i @winstonsayno/mcp-gateway@v14-lts`，镜像 `:14`。
+> **17.0.1 为当前版本——由项目所有者决定发布；外部安全审查与专用硬件长稳测试尚未进行。** 15.0.0 与 16.0.0 从未作为稳定版发布，因此 17.0.0 是 14.9 之后的第一个稳定大版本，包含 15.0、16.0 与 17.0 的全部不兼容变更（Node.js ≥ 24、仅支持配置 schema v13、仅支持插件 API v6、移除 inline 模块插件）。请先在预发环境验证；详见[发布门禁](docs/release-gates.md)。从 14.9 升级：[迁移到 v15](docs/migrating-to-v15.md) · [v16](docs/migrating-to-v16.md) · [v17](docs/migrating-to-v17.md)。继续使用 14.9：`npm i @winstonsayno/mcp-gateway@v14-lts`，镜像 `:14`。
 
 **在所有 MCP 服务器前面，只放一个带鉴权、可观测的入口。**
 
@@ -18,7 +18,7 @@ mcp-gateway 位于 AI 客户端（Claude Code、Cursor、自研 Agent、大模�
 Streamable HTTP，或 `/api/v1` 下的 REST API——网关负责识别调用方、判断它能做什么、把调用路由到正确的上游，并记录发生了什么。
 密钥、权限范围、限流、策略、日志和指标集中在一处管理，不必在每个客户端里各配一遍。
 
-当前版本：**17.0.0**（npm `latest`）。控制面板在线演示（模拟流量，纯浏览器运行，无需后端）：
+当前版本：**17.0.1**（npm `latest`）。控制面板在线演示（模拟流量，纯浏览器运行，无需后端）：
 <https://harrisoncn.github.io/mcp-gateway/>
 
 ## 目录
@@ -152,7 +152,7 @@ docker run -d -p 4000:4000 \
 每个镜像都用 cosign 做了无密钥签名（GitHub OIDC），并附带 SLSA 来源证明和 SBOM。部署前请先验证，并在生产清单中固定它输出的摘要：
 
 ```bash
-cosign verify ghcr.io/harrisoncn/mcp-gateway:17.0.0 \
+cosign verify ghcr.io/harrisoncn/mcp-gateway:17.0.1 \
   --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -296,7 +296,7 @@ CI 中运行 CodeQL、OpenSSF Scorecard、Trivy、`npm audit` 和属性测试；
 
 | 版本线 | 最新版本 | npm dist-tag | 镜像标签 | 状态 |
 |---|---|---|---|---|
-| 17.x | 17.0.0 | `latest`、`next` | `:17`、`:latest` | 当前版本——新功能、缺陷与安全修复。由项目所有者决定发布；外部安全审查与专用硬件长稳测试尚未进行 |
+| 17.x | 17.0.1 | `latest`、`next` | `:17`、`:latest` | 当前版本——新功能、缺陷与安全修复。由项目所有者决定发布；外部安全审查与专用硬件长稳测试尚未进行 |
 | 15.x / 16.x | — | — | — | 仅有预发布版本（15.0.0-rc.4、16.0.0-rc.1），从未作为稳定版发布——其变更已包含在 17.0.0 中 |
 | 14.x | 14.9.2 | `v14-lts` | `:14` | 维护中——为现有用户提供安全与关键缺陷修复；请升级到 17.x |
 | 13.x | 13.9.5 | `v13-lts` | `:13` | 维护中——安全与关键缺陷修复，至少持续到 15.0.0 发布且不早于 2027-04-30；请升级到 14.x |
