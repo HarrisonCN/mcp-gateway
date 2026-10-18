@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Bound complete SSE lines and cumulative multiline event data to the parser's existing character limit, including
+  newline-terminated input. Empty decoded chunks preserve split CRLF pairs. Parser or consumer failures cancel the
+  upstream reader and release its lock while retaining the original error.
+
 ## [17.0.0] - 2026-10-15
 
 **17.0.0 — stable release by owner decision** (npm dist-tags `latest` and `next`; images `:17.0.0`, `:17.0`, `:17`, `:latest`). Same code as 17.0.0-rc.1 (the frozen 17.0 list); only the version, the release documentation and the channel policy change.

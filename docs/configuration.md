@@ -79,6 +79,12 @@ servers:
 
 Changing a server (any field) reconnects it on hot reload; removing or disabling disconnects it.
 
+**Upstream SSE limits.** The `sse` and `streamable-http` readers reject a line longer than 16,777,216 UTF-16 code
+units, including a line whose terminator arrives in the same chunk. The joined `data:` payload of a single event
+(including separators between data lines) has the same limit. These are character limits, not byte or total-memory
+limits. Independent events reset the event budget; comments do not reset it. A parser or event-consumer error cancels
+the response body and releases its reader lock. These internal safeguards do not add a YAML configuration field.
+
 **Transactional reload (13.2).** A reload prepares everything aside first — new servers (connected, not yet listed or
 routable), a second session for each changed server (the current one keeps serving), plugin instances and feature
 module code — then commits, and only then publishes the next numbered **config generation**. If any step fails the
