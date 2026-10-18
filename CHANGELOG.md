@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [17.0.1] - 2026-10-18
+
+Compatible maintenance release for the 17.x line. Existing dedicated-hardware and external-review work remains open.
+
 ### Fixed
 - Bound complete SSE lines and cumulative multiline event data to the parser's existing character limit, including
   newline-terminated input. Empty decoded chunks preserve split CRLF pairs. Parser or consumer failures cancel the
