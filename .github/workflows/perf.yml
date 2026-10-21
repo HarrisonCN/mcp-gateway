@@ -67,7 +67,7 @@ jobs:
           exit ${rc:-0}
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: perf-reports
           path: |
@@ -100,7 +100,7 @@ jobs:
             const rows = r.modules.filter((m) => m.call.status === "measured").map((m) => `${m.id} +p50=${m.call.addedP50Ms} +p99=${m.call.addedP99Ms} +KiB=${m.call.addedAllocKbPerCall} import=${m.import.ms}`);
             console.log(`::notice title=module costs ${r.version} (${r.machine.platform})::baseline p50=${r.baseline?.p50Ms} p99=${r.baseline?.p99Ms} KiB=${r.baseline?.allocKbPerCall}%0A${rows.join("%0A")}`);
           ' || true
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: module-costs
