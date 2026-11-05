@@ -17,13 +17,13 @@
 
 | 顺序 / 目标版本 | 工作项 | 优先级 | 交付与验收 | 状态 |
 | --- | --- | --- | --- | --- |
-| G17-001 / 17.0.x | SSE 单行 / 多行事件资源上限与异常清理 | P0 | 已换行和未换行的超限行都被拒绝；多行事件累计数据有界；合法多事件大 chunk 不误拒绝；CRLF 跨空 chunk 不改变事件；异常取消 reader 并释放锁；官方 SDK 传输回归通过 | [PR #249](https://github.com/HarrisonCN/mcp-gateway/pull/249) 已合并；17.0.1 发布准备中 |
+| G17-001 / 17.0.x | SSE 单行 / 多行事件资源上限与异常清理 | P0 | 已换行和未换行的超限行都被拒绝；多行事件累计数据有界；合法多事件大 chunk 不误拒绝；CRLF 跨空 chunk 不改变事件；异常取消 reader 并释放锁；官方 SDK 传输回归通过 | [PR #249](https://github.com/HarrisonCN/mcp-gateway/pull/249) 已合并；随 17.0.2 发布（17.0.1 未发布） |
 | G17-002 / 17.1 | 传输生命周期、取消与重连一致性 | P1 | 对 SSE、Streamable HTTP、WebSocket、stdio 建立相同取消 / deadline / 断连语料；无悬挂 inflight；非幂等调用不因重连重复执行；两实例 Redis 故障测试通过 | 待 G17-001 通过 |
 | G17-003 / 17.2 | Motionary 17.x 互通和提案审计 | P1 | 固定双方版本；工具发现、Scene v3 校验、提案、失败回传与取消可重复；租户不混淆，requestId 可匹配 lineage，未经人确认不写入 Motionary 工程 | 待双方基础修复通过 |
 | G17-004 / 17.3 | 运维诊断与恢复证据 | P1 | 对既有健康检查 / readiness / 指标补充可复现故障场景；热重载失败保留旧配置，敏感值不进入日志；Redis 分区与恢复报告包含失败模式和恢复时间 | 待 G17-002 通过 |
 | G17-005 / 17.4（条件） | 已公布 MCP 修订与 SDK 兼容收尾 | P1 | 依据官方规范逐项核对尚未完成的 MRTR / tasks / 上游新协议支持；先列明确支持矩阵，再实现有测试的兼容增量；JS / Python / Kotlin 等客户端契约验证 | 需先做协议范围复核 |
 | 持续维护 / 17.x patch | 依赖与供应链 | P1 | 分别审查现有 Dependabot PR #236（Kotlin Gradle）与 #237（Actions），验证 runner / 构建兼容再合并；不在本轮重复修改它们；审计及包 / 镜像检查继续阻断 | 待独立审核 |
-| G17-006 / 17.0.2 | 依赖安全公告（10/21 起 PR CI 的 audit / Trivy 阻断） | P0 | undici、body-parser、qs、ip-address、fast-uri 升级；zod 3 → 4（GHSA-mrhx-c7xc-m3w5，3.x 无补丁）且配置解析结果与 zod 3 逐字节一致；`npm audit --audit-level=high` 通过；完整测试、构建、文档检查、SDK 导出面与内核基准通过 | 分支 `claude/project-maintenance-review-bs3vwf`；待 PR CI |
+| G17-006 / 17.0.2 | 依赖安全公告（10/21 起 PR CI 的 audit / Trivy 阻断） | P0 | undici、body-parser、qs、ip-address、fast-uri 升级；zod 3 → 4（GHSA-mrhx-c7xc-m3w5，3.x 无补丁）且配置解析结果与 zod 3 逐字节一致；`npm audit --audit-level=high` 通过；完整测试、构建、文档检查、SDK 导出面与内核基准通过 | [PR #258](https://github.com/HarrisonCN/mcp-gateway/pull/258) 16 项检查全部通过，已合并至 `67d73cb7efb3d6f5c35a9e8eceec6783e22f553f`；17.0.2 发布 |
 | 独立验证轨道 | A / B / C 闸门 | P0 验证债务 | 按原标准运行专用硬件长稳、同机基线和独立外部评审；记录原始证据与签字；现有 17.0 所有者发布决定不被改写 | 等待硬件与外部评审条件 |
 
 ## G17-001 验收记录
@@ -36,7 +36,7 @@
 - 完整覆盖率命令已执行：**1,715 通过、25 失败、34 跳过**；未取得通过的覆盖率报告。
   失败集中在 `tsx` 子进程启动的 CLI / 模块加载检查；本地 Unix IPC 被运行环境拒绝（`listen EPERM`），这些检查已由 PR #249 的 Node 24 CI 验证通过。
   文档检查通过支持的 `node --import tsx scripts/docs-check.ts` 方式执行。真实 Redis、兼容矩阵、部署示例、安全回归与供应链检查均已在 PR CI 通过。
-- 合并状态：[PR #249](https://github.com/HarrisonCN/mcp-gateway/pull/249) 的 16 项检查全部通过，已合并至 `869d072cd33ec7235b6be4ec12b1b82e65193e2d`；17.0.1 正在准备发布。
+- 合并状态：[PR #249](https://github.com/HarrisonCN/mcp-gateway/pull/249) 的 16 项检查全部通过，已合并至 `869d072cd33ec7235b6be4ec12b1b82e65193e2d`；17.0.1 准备后未发布（无 tag / Release / npm），随 17.0.2 发布。
 
 ## G17-006 验收记录
 
@@ -53,7 +53,7 @@
   `npm audit --audit-level=high` 通过（剩余 1 项 moderate 为 vitest 开发依赖，由 Dependabot PR #255 处理）。
 - 内核基准：zod 4 任一公开入口都加载 64 个 locale 模块，`modules` / `moduleKb` 超过 10% 门槛（+85 模块 / +699 KB）。
   经所有者决定（2026-11-05）只重录这两项基线；时间和内存基线不变，实测约 +40 ms 导入、+15 MB RSS，在既有门槛内。
-- 未在本地运行：真实 Redis 多实例、MCP 兼容矩阵、部署示例、Kotlin / Python 客户端、Trivy 镜像扫描 —— 由 PR CI 验证。
+- 真实 Redis 多实例、MCP 兼容矩阵、部署示例、Kotlin 客户端、Trivy 依赖与镜像扫描、CodeQL 均在 [PR #258](https://github.com/HarrisonCN/mcp-gateway/pull/258) CI 通过（16/16）。
 
 ## 每轮完成条件
 
