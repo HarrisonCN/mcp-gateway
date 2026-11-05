@@ -9,8 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Security maintenance for the 17.x line: dependency advisories published after 17.0.1 had turned the blocking
-`npm audit` and Trivy checks red on every pull request.
+## [17.0.2] - 2026-11-05
+
+Security maintenance release for the 17.x line: dependency advisories published after 17.0.1 had turned the blocking
+`npm audit` and Trivy checks red on every pull request. **17.0.1 was prepared but never published** (no tag, GitHub
+release, npm version or image), so 17.0.2 is the first release after 17.0.0 and also ships the 17.0.1 SSE fix below.
 
 ### Security
 - **zod 3.25 → 4.6.7** (GHSA-mrhx-c7xc-m3w5, high: memory exhaustion while validating oversized constrained
@@ -39,7 +42,7 @@ Security maintenance for the 17.x line: dependency advisories published after 17
   under zod 4 (the check runs as a refinement inside the key union; expansion runs after it) instead of a bare
   `Invalid input`.
 
-## [17.0.1] - 2026-10-18
+## [17.0.1] - 2026-10-18 (not published; shipped in 17.0.2)
 
 Compatible maintenance release for the 17.x line. Existing dedicated-hardware and external-review work remains open.
 
