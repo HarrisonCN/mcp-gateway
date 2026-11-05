@@ -10,7 +10,7 @@ import { z } from 'zod';
 export const GenaiTelemetrySchema = z
   .object({
     enabled: z.boolean().default(true),
-    systems: z.record(z.string().min(1)).default({}),
+    systems: z.record(z.string(), z.string().min(1)).prefault({}),
     modelArg: z.string().min(1).default('model'),
     captureContent: z.boolean().default(false),
     otlpEndpoint: z.string().url().optional(),

@@ -58,10 +58,10 @@ export const DurableSchema = z
             jitter: z.boolean().default(false),
           })
           .strict()
-          .default({}),
+          .prefault({}),
       })
       .strict()
-      .default({}),
+      .prefault({}),
   })
   .strict();
 
@@ -70,13 +70,13 @@ export const NodeSchema = z
     id: Id,
     tool: Target.optional(),
     remote: z.object({ gateway: z.string().min(1), skill: z.string().min(1) }).strict().optional(),
-    args: z.record(z.unknown()).default({}),
+    args: z.record(z.string(), z.unknown()).prefault({}),
     needs: z.array(Id).default([]),
     if: z.string().optional(),
-    retry: Retry.default({}),
+    retry: Retry.prefault({}),
     timeoutMs: z.number().int().min(1).max(3_600_000).optional(),
     onError: z.enum(['fail', 'continue']).default('fail'),
-    compensate: z.object({ tool: Target, args: z.record(z.unknown()).default({}), idempotencyArg: ArgName.optional() }).strict().optional(),
+    compensate: z.object({ tool: Target, args: z.record(z.string(), z.unknown()).prefault({}), idempotencyArg: ArgName.optional() }).strict().optional(),
     // 14.4.0 (durable execution): repeat-safety of the call and a human approval gate.
     idempotent: z.boolean().default(false),
     idempotencyArg: ArgName.optional(),

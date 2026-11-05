@@ -29,12 +29,12 @@ const Name = z.string().regex(/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/).max(53);
 
 export const McpGatewaySpecSchema = z
   .object({
-    config: z.record(z.unknown()).default({}),
+    config: z.record(z.string(), z.unknown()).prefault({}),
     replicas: z.number().int().min(0).max(100).default(1),
     image: z.string().min(1).optional(),
     port: z.number().int().min(1).max(65535).default(4000),
     envFromSecret: z.string().optional(),
-    resources: z.object({ requests: z.record(z.string()).optional(), limits: z.record(z.string()).optional() }).strict().default({ requests: { cpu: '100m', memory: '128Mi' }, limits: { memory: '512Mi' } }),
+    resources: z.object({ requests: z.record(z.string(), z.string()).optional(), limits: z.record(z.string(), z.string()).optional() }).strict().prefault({ requests: { cpu: '100m', memory: '128Mi' }, limits: { memory: '512Mi' } }),
     autoscaling: z.object({ minReplicas: z.number().int().min(1).default(1), maxReplicas: z.number().int().min(1).default(5), targetCPUUtilization: z.number().int().min(1).max(100).default(70) }).strict().optional(),
     serviceMonitor: z.boolean().default(false),
     pdbMinAvailable: z.number().int().min(0).optional(),

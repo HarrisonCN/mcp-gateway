@@ -1,6 +1,6 @@
 # MCP Gateway 17.x 维护计划
 
-更新时间：2026-10-18。基线：`17.0.0`，main `67adb761f11c695a255114e4fbf463ad63c023b1`。
+更新时间：2026-11-05。基线：`17.0.0`，main `67adb761f11c695a255114e4fbf463ad63c023b1`。
 以当前源码、开放 PR、CI 和 [release gates](release-gates.md) 为依据。
 目标版本是范围，不是已发布承诺；每项独立验收并更新状态。
 
@@ -23,6 +23,7 @@
 | G17-004 / 17.3 | 运维诊断与恢复证据 | P1 | 对既有健康检查 / readiness / 指标补充可复现故障场景；热重载失败保留旧配置，敏感值不进入日志；Redis 分区与恢复报告包含失败模式和恢复时间 | 待 G17-002 通过 |
 | G17-005 / 17.4（条件） | 已公布 MCP 修订与 SDK 兼容收尾 | P1 | 依据官方规范逐项核对尚未完成的 MRTR / tasks / 上游新协议支持；先列明确支持矩阵，再实现有测试的兼容增量；JS / Python / Kotlin 等客户端契约验证 | 需先做协议范围复核 |
 | 持续维护 / 17.x patch | 依赖与供应链 | P1 | 分别审查现有 Dependabot PR #236（Kotlin Gradle）与 #237（Actions），验证 runner / 构建兼容再合并；不在本轮重复修改它们；审计及包 / 镜像检查继续阻断 | 待独立审核 |
+| G17-006 / 17.0.2 | 依赖安全公告（10/21 起 PR CI 的 audit / Trivy 阻断） | P0 | undici、body-parser、qs、ip-address、fast-uri 升级；zod 3 → 4（GHSA-mrhx-c7xc-m3w5，3.x 无补丁）且配置解析结果与 zod 3 逐字节一致；`npm audit --audit-level=high` 通过；完整测试、构建、文档检查、SDK 导出面与内核基准通过 | 分支 `claude/project-maintenance-review-bs3vwf`；待 PR CI |
 | 独立验证轨道 | A / B / C 闸门 | P0 验证债务 | 按原标准运行专用硬件长稳、同机基线和独立外部评审；记录原始证据与签字；现有 17.0 所有者发布决定不被改写 | 等待硬件与外部评审条件 |
 
 ## G17-001 验收记录
@@ -36,6 +37,23 @@
   失败集中在 `tsx` 子进程启动的 CLI / 模块加载检查；本地 Unix IPC 被运行环境拒绝（`listen EPERM`），这些检查已由 PR #249 的 Node 24 CI 验证通过。
   文档检查通过支持的 `node --import tsx scripts/docs-check.ts` 方式执行。真实 Redis、兼容矩阵、部署示例、安全回归与供应链检查均已在 PR CI 通过。
 - 合并状态：[PR #249](https://github.com/HarrisonCN/mcp-gateway/pull/249) 的 16 项检查全部通过，已合并至 `869d072cd33ec7235b6be4ec12b1b82e65193e2d`；17.0.1 正在准备发布。
+
+## G17-006 验收记录
+
+- 复现：main `4e46d62` 上 `npm audit --audit-level=high` 报 3 个 high（undici、zod，以及之后披露的 body-parser）；
+  PR #252–#257 的 CI 均在 Node 24 job 的 Dependency audit 和 Supply chain 的 Trivy 步骤失败（其他 job 通过）。
+- 修复：非破坏性升级单独一个提交；zod 4 迁移：41 处单参数 `z.record()` 补 key schema；40 处对象字面量
+  `.default({…})` 改为 `.prefault({…})`（zod 4 的 `.default()` 不再解析默认值，嵌套默认值会丢失）；API key union
+  内只做 `${VAR}` 检查、展开放到 union 之后（zod 4 不选 transform 失败的分支，会把"not set"吞成 `Invalid input`）；
+  配置错误中的缺失字段保持 `Required`（单次解析的 error 参数，不改全局 `z.config`）。
+- 等价性：docs / examples / README 中 377 份配置及每个 feature 段 `{}` 在 schema v13 与 v12 迁移读取下，与 zod 3
+  输出逐字节一致；反向对照（把 `.prefault` 改回 `.default`）出现 10 处差异，说明比对有效。
+- 本地验证（Node 22，CI 为 24）：类型检查、构建通过；完整测试 **1,759 通过、19 跳过、0 失败**（与 main 基线相同）；
+  docs-check 0 findings；`sdk-surface` 0 missing；`v13-surface` 无缺失；CLI 冒烟与 `examples/*` `--strict` 校验通过；
+  `npm audit --audit-level=high` 通过（剩余 1 项 moderate 为 vitest 开发依赖，由 Dependabot PR #255 处理）。
+- 内核基准：zod 4 任一公开入口都加载 64 个 locale 模块，`modules` / `moduleKb` 超过 10% 门槛（+85 模块 / +699 KB）。
+  经所有者决定（2026-11-05）只重录这两项基线；时间和内存基线不变，实测约 +40 ms 导入、+15 MB RSS，在既有门槛内。
+- 未在本地运行：真实 Redis 多实例、MCP 兼容矩阵、部署示例、Kotlin / Python 客户端、Trivy 镜像扫描 —— 由 PR CI 验证。
 
 ## 每轮完成条件
 

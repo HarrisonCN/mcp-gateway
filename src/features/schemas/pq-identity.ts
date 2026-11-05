@@ -24,7 +24,7 @@ export const PqIdentitySchema = z
         checkpointSeconds: z.number().int().min(1).max(86_400).default(300),
       })
       .strict()
-      .default({}),
+      .prefault({}),
   })
   .strict();
 export type PqIdentityConfig = z.input<typeof PqIdentitySchema>;

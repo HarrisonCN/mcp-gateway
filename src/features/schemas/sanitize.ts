@@ -20,7 +20,7 @@ export const SanitizeSchema = z
     images: z.enum(['keep', 'strip']).default('strip'),
     allowedImageHosts: z.array(z.string().min(1)).default([]),
     maxChars: z.number().int().min(100).optional(),
-    injection: z.object({ action: z.enum(['off', 'flag', 'mark', 'block']).default('flag'), threshold: z.number().min(0).max(1).default(0.6) }).strict().default({}),
+    injection: z.object({ action: z.enum(['off', 'flag', 'mark', 'block']).default('flag'), threshold: z.number().min(0).max(1).default(0.6) }).strict().prefault({}),
     inbound: z.enum(['off', 'block']).default('off'),
     spotlight: z.boolean().default(false),
   })

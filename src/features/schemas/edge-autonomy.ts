@@ -63,7 +63,7 @@ export const EdgeAutonomySchema = z
         onExpiry: z.enum(['review', 'drop']).default('review'),
       })
       .strict()
-      .default({}),
+      .prefault({}),
     reconcile: z
       .object({
         intervalMs: z.number().int().min(100).max(3_600_000).default(5000),
@@ -75,14 +75,14 @@ export const EdgeAutonomySchema = z
         requireFreshRevocations: z.boolean().default(true),
       })
       .strict()
-      .default({}),
+      .prefault({}),
     /** 14.6.0: sealing of the persisted queue / cache (AES-256-GCM). Key: env var `keyEnv` (32 bytes, base64 or hex), else `<dir>/.seal.key`. */
     seal: z
       .object({
         keyEnv: z.string().min(1).optional(),
       })
       .strict()
-      .default({}),
+      .prefault({}),
   })
   .strict();
 export type EdgeAutonomyConfig = z.input<typeof EdgeAutonomySchema>;

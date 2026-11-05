@@ -26,7 +26,7 @@ import type { GatewayConfig } from '../utils/types.js';
 import { VERSION } from '../utils/version.js';
 import { logger } from '../utils/logger.js';
 import { configEtag } from './config-etag.js';
-import { expandCredential } from '../config/env-ref.js';
+import { credentialString } from '../config/env-ref.js';
 import { GitopsSchema, type GitopsConfig } from '../config/gitops.js';
 import { RolloutCoordinator, RolloutError, RolloutSchema, type RolloutPolicy } from './rollout.js';
 import { OpsConsoleSchema, type OpsConsoleConfig } from './ops-console.js';
@@ -38,7 +38,7 @@ export const ControlPlaneSchema = z
     dashboard: z.boolean().optional(),
     url: z.string().url().optional(),
     // 14.7.0 (MGW-2026-019): ${VAR} expanded (unset → config error), like auth.apiKeys
-    token: z.string().min(1).transform((t, ctx) => expandCredential(t, ctx)).optional(),
+    token: credentialString(z.string().min(1)).optional(),
     pullIntervalMs: z.number().int().min(1000).max(3_600_000).default(10_000),
     nodeId: z.string().min(1).max(128).optional(),
     rollout: RolloutSchema.optional(),

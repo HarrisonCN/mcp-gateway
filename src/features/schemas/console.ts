@@ -15,8 +15,8 @@ export const ConsoleSchema = z
   .object({
     enabled: z.boolean().default(true),
     defaultPlan: z.string().min(1).optional(),
-    plans: z.record(PlanSchema).default({}),
-    orgs: z.record(z.object({ plan: z.string().min(1), suspended: z.boolean().default(false) }).strict()).default({}),
+    plans: z.record(z.string(), PlanSchema).prefault({}),
+    orgs: z.record(z.string(), z.object({ plan: z.string().min(1), suspended: z.boolean().default(false) }).strict()).prefault({}),
   })
   .strict()
   .superRefine((c, ctx) => {

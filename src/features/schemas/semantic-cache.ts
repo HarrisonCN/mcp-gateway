@@ -24,7 +24,7 @@ export const SemanticCacheSchema = z
         dimensions: z.number().int().min(64).max(4096).default(512),
       })
       .strict()
-      .default({}),
+      .prefault({}),
   })
   .strict()
   .superRefine((c, ctx) => {

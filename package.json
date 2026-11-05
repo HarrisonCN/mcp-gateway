@@ -53,10 +53,10 @@
     "express": "^4.19.2",
     "express-rate-limit": "^8.7.1",
     "jose": "^5.4.0",
-    "undici": "^6.29.0",
+    "undici": "^6.29.1",
     "ws": "^8.18.0",
     "yaml": "^2.4.5",
-    "zod": "^3.23.8"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

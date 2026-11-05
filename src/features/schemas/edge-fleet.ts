@@ -12,7 +12,7 @@ export const EdgeFleetSchema = z
     pushTimeoutMs: z.number().int().min(100).default(10_000),
     offlineAfterMs: z.number().int().min(1000).default(15 * 60_000),
     nodes: z
-      .array(z.object({ id: z.string().regex(/^[A-Za-z0-9_.:-]{1,128}$/), url: z.string().url(), apiKey: z.string().optional(), labels: z.record(z.string()).default({}) }).strict())
+      .array(z.object({ id: z.string().regex(/^[A-Za-z0-9_.:-]{1,128}$/), url: z.string().url(), apiKey: z.string().optional(), labels: z.record(z.string(), z.string()).prefault({}) }).strict())
       .default([]),
   })
   .strict();

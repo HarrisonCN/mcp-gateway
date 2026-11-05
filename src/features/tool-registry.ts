@@ -44,7 +44,7 @@ export const ManifestSchema = z
     name: z.string().regex(ID),
     version: z.string().regex(SEMVER, 'version must be semver (1.2.3)'),
     description: z.string().default(''),
-    tools: z.array(z.object({ name: z.string().min(1), description: z.string().optional(), inputSchema: z.record(z.unknown()).optional() }).passthrough()).min(1),
+    tools: z.array(z.object({ name: z.string().min(1), description: z.string().optional(), inputSchema: z.record(z.string(), z.unknown()).optional() }).passthrough()).min(1),
     server: z.object({ transport: z.enum(['stdio', 'sse', 'streamable-http']), command: z.string().optional(), args: z.array(z.string()).optional(), url: z.string().optional() }).passthrough(),
     homepage: z.string().optional(),
   })
