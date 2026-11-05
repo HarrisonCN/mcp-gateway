@@ -17,8 +17,8 @@ export const Deployment = z
     green: z.string().min(1),
     active: Color.default('blue'),
     tools: z.array(z.string().min(1)).default(['*']),
-    probe: z.object({ tool: z.string().min(1), arguments: z.record(z.unknown()).default({}) }).strict().optional(),
-    verify: z.object({ seconds: z.number().int().min(0).max(86_400).default(120), maxErrorRate: z.number().min(0).max(1).default(0.1), minCalls: z.number().int().min(1).default(10) }).strict().default({}),
+    probe: z.object({ tool: z.string().min(1), arguments: z.record(z.string(), z.unknown()).prefault({}) }).strict().optional(),
+    verify: z.object({ seconds: z.number().int().min(0).max(86_400).default(120), maxErrorRate: z.number().min(0).max(1).default(0.1), minCalls: z.number().int().min(1).default(10) }).strict().prefault({}),
   })
   .strict()
   .refine((d) => d.blue !== d.green, { message: '`blue` and `green` must be different servers' });

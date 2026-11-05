@@ -15,10 +15,10 @@ export const ToolRegistrySchema = z
   .object({
     enabled: z.boolean().default(true),
     file: z.string().min(1).optional(),
-    trustedPublishers: z.record(z.string().min(1)).default({}),
+    trustedPublishers: z.record(z.string(), z.string().min(1)).prefault({}),
     requireSignature: z.boolean().default(true),
     mirrors: z.array(z.object({ url: z.string().url(), apiKey: z.string().optional(), everySeconds: z.number().int().min(60).default(3600) }).strict()).default([]),
-    pins: z.record(z.string().min(1)).default({}),
+    pins: z.record(z.string(), z.string().min(1)).prefault({}),
   })
   .strict()
   .superRefine((c, ctx) => {

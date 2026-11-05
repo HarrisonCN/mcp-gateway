@@ -18,9 +18,9 @@ export const DlpSchema = z
     enabled: z.boolean().default(true),
     scope: z.enum(['arguments', 'results', 'both']).default('results'),
     servers: z.array(z.string()).optional(),
-    default: TenantPolicy.default({}),
-    tenants: z.record(TenantPolicy).default({}),
-    levels: z.record(z.enum(LEVELS)).default({}),
+    default: TenantPolicy.prefault({}),
+    tenants: z.record(z.string(), TenantPolicy).prefault({}),
+    levels: z.record(z.string(), z.enum(LEVELS)).prefault({}),
     detectors: z
       .array(
         z

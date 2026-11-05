@@ -62,7 +62,7 @@ import { EdgeAutonomySchema } from '../features/schemas/edge-autonomy.js';
 import { PrivacySchema } from '../features/schemas/privacy.js';
 import { PqIdentitySchema } from '../features/schemas/pq-identity.js';
 import type { GatewayConfig, PolicyRule, TenancyConfig, TenantConfig, ToolPolicyConfig } from '../utils/types.js';
-import { expandCredential } from './env-ref.js';
+import { checkCredential, expandCredentialValue } from './env-ref.js';
 import { ControlPlaneSchema } from '../gateway/control-plane.js';
 import { PROTOCOL_VERSIONS, unknownVersions } from '../mcp/compat.js';
 import { validateChains, type ChainsConfig } from '../orchestration/chains.js';
@@ -119,7 +119,7 @@ const McpServerSchema = z.object({
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
   url: z.string().url().optional(),
-  env: z.record(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
   envPassthrough: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*\*?$/, 'an environment variable name or PREFIX_* glob')).optional(),
   isolation: z
     .object({
@@ -145,7 +145,7 @@ const McpServerSchema = z.object({
     })
     .strict()
     .optional(),
-  headers: z.record(z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
   subprotocol: z.string().optional(),
   reconnect: ReconnectSchema.optional(),
   tags: z.array(z.string()).optional(),
@@ -173,8 +173,8 @@ const McpServerSchema = z.object({
           url: z.string().url().optional(),
           command: z.string().optional(),
           args: z.array(z.string()).optional(),
-          env: z.record(z.string()).optional(),
-          headers: z.record(z.string()).optional(),
+          env: z.record(z.string(), z.string()).optional(),
+          headers: z.record(z.string(), z.string()).optional(),
           weight: z.number().positive().optional(),
           cost: z.number().min(0).optional(),
           enabled: z.boolean().optional(),
@@ -253,16 +253,22 @@ const RateLimitSchema = z.object({
   perKey: z.boolean().default(true),
 });
 
+/**
+ * 17.0.2 (zod 4): a missing required value keeps the 17.0.x wording ("Required") in config errors; zod 4 alone says
+ * "Invalid input: expected string, received undefined". Other messages use zod 4's defaults.
+ */
+const configIssueMessage = (iss: { code?: string; input?: unknown }): string | undefined =>
+  iss.code === 'invalid_type' && iss.input === undefined ? 'Required' : undefined;
+
+// 17.0.2: the union only validates (unset ${VAR} → refinement issue) and the expansion runs after it — zod 4 does not
+// pick a union branch whose transform failed, which would hide the "not set" diagnostic behind "Invalid input".
 const ApiKeySchema = z.union([
   // 14.7.0 (MGW-2026-019): ${VAR} references are expanded in the string form too (unset → config error)
-  z.string().transform((k, ctx) => expandCredential(k, ctx)),
+  z.string().superRefine(checkCredential),
   z
     .object({
       // ${VAR} references are expanded from the gateway's environment.
-      key: z
-        .string()
-        .min(1)
-        .transform((k, ctx) => expandCredential(k, ctx)),
+      key: z.string().min(1).superRefine(checkCredential),
       name: z
         .string()
         .regex(/^[A-Za-z0-9._-]{1,64}$/, 'letters, digits, ".", "_" or "-" (max 64)')
@@ -280,7 +286,7 @@ const ApiKeySchema = z.union([
         .optional(),
     })
     .strict(),
-]);
+]).transform((k) => (typeof k === 'string' ? expandCredentialValue(k) : { ...k, key: expandCredentialValue(k.key) }));
 
 const StringOrList = z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]);
 
@@ -400,7 +406,7 @@ const AuditExportSchema = z.discriminatedUnion('type', [
     .object({
       type: z.literal('webhook'),
       url: z.string().url(),
-      headers: z.record(z.string()).optional(),
+      headers: z.record(z.string(), z.string()).optional(),
       format: z.enum(['json', 'ndjson']).optional(),
       timeoutMs: z.number().int().positive().optional(),
       ...ExportCommon,
@@ -416,7 +422,7 @@ const PolicyTestSchema = z
         client: z.string().optional(),
         server: z.string().min(1),
         tool: z.string().min(1),
-        args: z.record(z.unknown()).optional(),
+        args: z.record(z.string(), z.unknown()).optional(),
       })
       .strict(),
     expect: z.enum(['allow', 'deny', 'approve']),
@@ -441,7 +447,7 @@ const ChainStepSchema: z.ZodType<ChainStepInput> = z.lazy(() =>
     .object({
       id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
       tool: z.string().min(3).optional(),
-      args: z.record(z.unknown()).optional(),
+      args: z.record(z.string(), z.unknown()).optional(),
       when: z.string().min(1).optional(),
       forEach: z.string().min(1).optional(),
       concurrency: z.number().int().min(1).max(64).optional(),
@@ -555,7 +561,7 @@ const GatewayConfigSchema = z.object({
         .strict()
         .optional(),
       capabilities: z
-        .record(z.object({ deny: z.array(z.enum(MODULE_CAPABILITIES)).default([]) }).strict())
+        .record(z.string(), z.object({ deny: z.array(z.enum(MODULE_CAPABILITIES)).default([]) }).strict())
         .optional()
         .superRefine((v, c) => {
           for (const id of Object.keys(v ?? {})) if (!manifestEntry(id)) c.addIssue({ code: z.ZodIssueCode.custom, message: `modules.capabilities: unknown module "${id}"` });
@@ -569,7 +575,7 @@ const GatewayConfigSchema = z.object({
     .object({
       modules: z.enum(['eager', 'lazy']).optional(),
       failurePolicy: z
-        .record(z.enum(['open', 'closed', 'degrade']))
+        .record(z.string(), z.enum(['open', 'closed', 'degrade']))
         .optional()
         .superRefine((v, c) => {
           for (const id of Object.keys(v ?? {})) {
@@ -613,7 +619,7 @@ const GatewayConfigSchema = z.object({
         .optional(),
       fairness: z
         .object({
-          weights: z.record(z.number().positive().max(1000)).optional(),
+          weights: z.record(z.string(), z.number().positive().max(1000)).optional(),
           defaultWeight: z.number().positive().max(1000).optional(),
         })
         .strict()
@@ -698,7 +704,7 @@ const GatewayConfigSchema = z.object({
       protocolVersions: z
         .array(z.string())
         .min(1)
-        .refine((l) => unknownVersions(l).length === 0, (l) => ({ message: `unknown MCP revision(s) ${unknownVersions(l).join(', ')} (supported: ${PROTOCOL_VERSIONS.join(', ')})` }))
+        .refine((l) => unknownVersions(l).length === 0, { error: (iss) => `unknown MCP revision(s) ${unknownVersions(iss.input as string[]).join(', ')} (supported: ${PROTOCOL_VERSIONS.join(', ')})` })
         .optional(),
       instructions: z.string().optional(),
       eventBufferSize: z.number().int().min(0).max(100_000).default(256),
@@ -1016,7 +1022,7 @@ const GatewayConfigSchema = z.object({
         .object({
           baseUrl: z.string().url(),
           apiKey: z.string().min(1).optional(),
-          headers: z.record(z.string()).optional(),
+          headers: z.record(z.string(), z.string()).optional(),
           timeoutMs: z.number().int().positive().optional(),
         })
         .strict()
@@ -1054,7 +1060,7 @@ const GatewayConfigSchema = z.object({
     .object({
       currency: z.string().regex(/^[A-Z]{3}$/).optional(),
       tools: z.array(z.object({ match: z.string().min(1), perCall: z.number().min(0) }).strict()).optional(),
-      models: z.record(z.object({ input: z.number().min(0), output: z.number().min(0) }).strict()).optional(),
+      models: z.record(z.string(), z.object({ input: z.number().min(0), output: z.number().min(0) }).strict()).optional(),
       budgets: z
         .array(
           z
@@ -1092,7 +1098,7 @@ const GatewayConfigSchema = z.object({
             .object({
               name: z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/),
               description: z.string().optional(),
-              inputSchema: z.record(z.unknown()).optional(),
+              inputSchema: z.record(z.string(), z.unknown()).optional(),
               steps: z.array(ChainStepSchema).min(1),
               output: z.unknown().optional(),
               timeoutMs: z.number().int().positive().max(3_600_000).optional(),
@@ -1115,8 +1121,8 @@ const GatewayConfigSchema = z.object({
           signature: z.string().min(1).optional(),
           name: z.string().min(1).optional(),
           enabled: z.boolean().optional(),
-          options: z.record(z.unknown()).optional(),
-          secrets: z.record(z.string().regex(/^secret:\/\/[A-Za-z0-9_-]+\/\S+$/, 'must be a secret://provider/path reference')).optional(),
+          options: z.record(z.string(), z.unknown()).optional(),
+          secrets: z.record(z.string(), z.string().regex(/^secret:\/\/[A-Za-z0-9_-]+\/\S+$/, 'must be a secret://provider/path reference')).optional(),
           // WASM components: sandbox granularity; 14.3.0 module plugins: alias of `runtime`
           isolation: z.enum(['tenant', 'client', 'shared', 'inline', 'worker', 'process']).optional(),
           // 14.3.0 plugin security runtime (module plugins)
@@ -1191,9 +1197,9 @@ const GatewayConfigSchema = z.object({
           enabled: z.boolean().default(false),
           exporter: z.enum(['otlp-http', 'console', 'otel-api']).default('otlp-http'),
           endpoint: z.string().url().optional(),
-          headers: z.record(z.string()).optional(),
+          headers: z.record(z.string(), z.string()).optional(),
           serviceName: z.string().min(1).optional(),
-          resourceAttributes: z.record(z.string()).optional(),
+          resourceAttributes: z.record(z.string(), z.string()).optional(),
           sampleRatio: z.number().min(0).max(1).optional(),
           flushIntervalMs: z.number().int().min(100).optional(),
         })
@@ -1203,7 +1209,7 @@ const GatewayConfigSchema = z.object({
       principal: z.object({ mode: z.enum(['hash', 'plain', 'omit']).optional(), hashKey: z.string().min(16).optional() }).strict().optional(),
       // 13.3.0: push the reliability metrics as OTLP/HTTP JSON
       metrics: z
-        .object({ otlp: z.object({ endpoint: z.string().url(), headers: z.record(z.string()).optional(), intervalMs: z.number().int().min(1000).optional() }).strict().optional() })
+        .object({ otlp: z.object({ endpoint: z.string().url(), headers: z.record(z.string(), z.string()).optional(), intervalMs: z.number().int().min(1000).optional() }).strict().optional() })
         .strict()
         .optional(),
     })
@@ -1311,7 +1317,7 @@ export const CONFIG_FILE_KEYS: readonly string[] = [
   'version',
   'features',
   'store',
-  ...Object.keys(((GatewayConfigSchema as unknown as { _def: { schema?: { shape: object } } })._def.schema ?? (GatewayConfigSchema as unknown as { shape: object })).shape),
+  ...Object.keys(GatewayConfigSchema.shape),
 ];
 
 const AUTH_KEYS = new Set(['strategy', 'apiKeys', 'jwtSecret', 'jwt', 'oauth', 'protect']);
@@ -1379,7 +1385,7 @@ function validate(raw: unknown, allowV11: boolean, allowV12 = false): GatewayCon
   if (removed.length > 0) throw new Error(`Invalid configuration:\n${removed.map((m) => `  - ${m}`).join('\n')}`);
   const authOff = authSilentlyOff(v4.raw);
   if (authOff) throw new Error(`Invalid configuration:\n  - auth: ${authOff}`);
-  const result = GatewayConfigSchema.safeParse(v4.raw);
+  const result = GatewayConfigSchema.safeParse(v4.raw, { error: configIssueMessage });
   if (!result.success) {
     // a v12 file reads its errors in v12 names
     const v12Name = (t: string) => (sv.schemaVersion === 12 ? t.replace(/\bkernel\.failurePolicy\b/g, 'modules.failurePolicy').replace(/\bkernel\.modules\b/g, 'modules.activation').replace(/^genaiTelemetry\b/, 'features.genaiOtel').replace(/^policyShadow\b/, 'features.policySim').replace(/^postQuantumTls\b/, 'features.pqTls') : t);
@@ -1435,7 +1441,7 @@ export async function loadPolicyFiles(policy: ToolPolicyConfig, baseDir: string)
     } catch (err) {
       throw new Error(`Invalid configuration: policy file ${f}: ${err instanceof Error ? err.message : String(err)}`);
     }
-    const parsed = PolicyFileSchema.safeParse(Array.isArray(raw) ? { rules: raw } : (raw ?? {}));
+    const parsed = PolicyFileSchema.safeParse(Array.isArray(raw) ? { rules: raw } : (raw ?? {}), { error: configIssueMessage });
     if (!parsed.success) {
       throw new Error(`Invalid configuration: policy file ${f}:\n${parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n')}`);
     }

@@ -26,7 +26,7 @@ export const MultimodalSchema = z
     maxTenantStoredBytes: z.number().int().min(1).default(64 * 1024 * 1024),
     storage: z
       .discriminatedUnion('type', [z.object({ type: z.literal('memory') }).strict(), z.object({ type: z.literal('filesystem'), dir: z.string().min(1) }).strict()])
-      .default({ type: 'memory' }),
+      .prefault({ type: 'memory' }),
     signedLinks: z.object({ key: z.string().min(32, 'signedLinks.key must be at least 32 characters'), ttlSeconds: z.number().int().min(10).max(86_400).default(300) }).strict().optional(),
   })
   .strict()

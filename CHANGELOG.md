@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Security maintenance for the 17.x line: dependency advisories published after 17.0.1 had turned the blocking
+`npm audit` and Trivy checks red on every pull request.
+
+### Security
+- **zod 3.25 → 4.6.7** (GHSA-mrhx-c7xc-m3w5, high: memory exhaustion while validating oversized constrained
+  collections; no 3.x release is patched). The config schemas were migrated without changing what they accept or
+  produce: every config in `docs/`, `examples/` and the READMEs, plus each feature section given as `{}`, parses to the
+  same output as under zod 3 (377 inputs, schema v13 and the v12 migration reader). Object defaults use `.prefault()`
+  so nested defaults are still applied (zod 4's `.default()` no longer parses its value), and single-argument
+  `z.record()` calls name their key schema.
+- undici 6.29.0 → 6.29.1 (GHSA-4qv8-2p9j-2685, GHSA-xjj6-f33q-929c, GHSA-2m5v-pch6-74hx, GHSA-qrxm-fqhp-jwvm,
+  GHSA-9fm3-97px-rjf6), body-parser 1.20.8 → 1.20.9 (GHSA-27r3-jxmh-p828); qs, ip-address and fast-uri lockfile
+  updates (moderate).
+
+### Changed
+- Config errors other than a missing required value ("Required", unchanged) use zod 4's wording, e.g.
+  `Invalid option: expected one of "stdio"|"sse"|…` instead of `Invalid enum value. Expected 'stdio' | …`. Exact
+  error texts are not part of the frozen surface (docs/v17/freeze.md).
+- The exported config schemas (`RegionsSchema`, `DlpSchema`, … — names unchanged, `api/exports-surface.json`) are
+  zod 4 schemas: `.parse()` / `.safeParse()` behave as before, but they can no longer be composed into a caller's own
+  zod 3 schema. Plugin `configSchema` values are still accepted from zod 3 or 4 (any object with `safeParse`).
+- `bench/baseline.json`: `modules` / `moduleKb` re-based (+85 modules, +699 KB per profile) — zod 4 evaluates its 64
+  locale modules from every public entry point. Measured on one machine against 17.0.1: about +40 ms import time and
+  +15 MB RSS. Timing and memory baselines are unchanged.
+
+### Fixed
+- An API key whose `${VAR}` reference is unset again reports `references environment variable … which is not set`
+  under zod 4 (the check runs as a refinement inside the key union; expansion runs after it) instead of a bare
+  `Invalid input`.
+
 ## [17.0.1] - 2026-10-18
 
 Compatible maintenance release for the 17.x line. Existing dedicated-hardware and external-review work remains open.

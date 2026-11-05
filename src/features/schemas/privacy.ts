@@ -17,7 +17,7 @@ export const PrivacySchema = z
     budget: z
       .object({ epsilon: z.number().positive().max(1000).default(10), windowSeconds: z.number().int().min(1).max(366 * 86_400).default(86_400) })
       .strict()
-      .default({}),
+      .prefault({}),
     peers: z.array(z.object({ id: z.string().min(1), url: z.string().url(), token: z.string().min(1).optional(), timeoutMs: z.number().int().min(100).max(120_000).default(10_000) }).strict()).default([]),
     maxRows: z.number().int().min(1).max(10_000_000).default(1_000_000),
   })

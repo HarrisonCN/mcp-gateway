@@ -42,7 +42,7 @@ export const RegionsSchema = z
       .array(z.object({ id: z.string().min(1), url: z.string().url(), apiKey: z.string().optional(), priority: z.number().int().min(0).default(100) }).strict())
       .default([]),
     /** 14.5.0: consistency boundaries (bounded staleness, clock skew, fail-closed partitions). */
-    consistency: RegionConsistencySchema.default({}),
+    consistency: RegionConsistencySchema.prefault({}),
   })
   .strict()
   .superRefine((c, ctx) => {

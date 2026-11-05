@@ -17,11 +17,11 @@ export const Tool = z
     sha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     export: z.string().min(1).default('run'),
     description: z.string().default(''),
-    inputSchema: z.record(z.unknown()).default({ type: 'object' }),
+    inputSchema: z.record(z.string(), z.unknown()).prefault({ type: 'object' }),
     limits: z
       .object({ timeoutMs: z.number().int().min(1).max(60_000).default(100), memoryMb: z.number().int().min(1).max(1024).default(16), maxConcurrent: z.number().int().min(1).max(256).default(4) })
       .strict()
-      .default({}),
+      .prefault({}),
     warm: z.number().int().min(0).max(64).default(1),
   })
   .strict()

@@ -35,7 +35,7 @@ export const AgentIdentitySchema = z
      * only) with TTL = token expiry. `failureMode: closed` (default) denies token-authenticated agent calls while the
      * store is unreachable; `open` accepts them (logged + counted).
      */
-    revocation: z.object({ failureMode: z.enum(['closed', 'open']).default('closed') }).strict().default({}),
+    revocation: z.object({ failureMode: z.enum(['closed', 'open']).default('closed') }).strict().prefault({}),
   })
   .strict()
   .superRefine((c, ctx) => {

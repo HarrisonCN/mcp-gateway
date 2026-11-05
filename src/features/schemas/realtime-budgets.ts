@@ -23,7 +23,7 @@ export const BudgetSchema = z
     warnAt: z.array(z.number().gt(0).lt(1)).default([0.8]),
     onExceed: z.enum(['reject', 'downgrade', 'warn']).default('reject'),
     downgrade: z
-      .object({ server: z.string().min(1).optional(), args: z.record(z.unknown()).optional() })
+      .object({ server: z.string().min(1).optional(), args: z.record(z.string(), z.unknown()).optional() })
       .strict()
       .refine((d) => d.server !== undefined || d.args !== undefined, 'downgrade needs "server" and / or "args"')
       .optional(),
@@ -35,7 +35,7 @@ export const BudgetSchema = z
 export const CarbonSchema = z
   .object({
     gridIntensity: z.number().min(0).max(5000).default(400),
-    servers: z.record(z.number().min(0).max(5000)).optional(),
+    servers: z.record(z.string(), z.number().min(0).max(5000)).optional(),
     perCallWh: z.number().min(0).default(0.02),
     perInputTokenWh: z.number().min(0).default(0.0003),
     perOutputTokenWh: z.number().min(0).default(0.0012),
@@ -46,7 +46,7 @@ export const CarbonSchema = z
 export const RealtimeBudgetsSchema = z
   .object({
     enabled: z.boolean().default(true),
-    carbon: CarbonSchema.default({}),
+    carbon: CarbonSchema.prefault({}),
     budgets: z.array(BudgetSchema).min(1),
   })
   .strict()

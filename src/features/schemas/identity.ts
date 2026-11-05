@@ -18,7 +18,7 @@ export const IdentitySchema = z
         scopes: z.array(z.string()).default(['openid', 'email', 'profile', 'groups']),
         groupsClaim: z.string().default('groups'),
         jwksUrl: z.string().url().optional(),
-        jwks: z.object({ keys: z.array(z.record(z.unknown())) }).optional(),
+        jwks: z.object({ keys: z.array(z.record(z.string(), z.unknown())) }).optional(),
         authorizationEndpoint: z.string().url().optional(),
       })
       .strict()

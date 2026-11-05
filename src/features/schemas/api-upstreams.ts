@@ -8,7 +8,7 @@
 import { z } from 'zod';
 
 export const Name = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
-export const Common = { id: Name, url: z.string().url(), headers: z.record(z.string()).default({}), timeoutMs: z.number().int().min(100).max(120_000).default(15_000) };
+export const Common = { id: Name, url: z.string().url(), headers: z.record(z.string(), z.string()).prefault({}), timeoutMs: z.number().int().min(100).max(120_000).default(15_000) };
 export const GraphqlUpstream = z
   .object({ ...Common, kind: z.literal('graphql'), operations: z.array(z.object({ name: Name, description: z.string().optional(), document: z.string().min(1) }).strict()).min(1) })
   .strict();
@@ -17,7 +17,7 @@ export const GrpcUpstream = z
     ...Common,
     kind: z.literal('grpc'),
     methods: z
-      .array(z.object({ name: Name, description: z.string().optional(), service: z.string().regex(/^[A-Za-z_][\w.]*$/), method: z.string().regex(/^[A-Za-z_]\w*$/), inputSchema: z.record(z.unknown()).optional() }).strict())
+      .array(z.object({ name: Name, description: z.string().optional(), service: z.string().regex(/^[A-Za-z_][\w.]*$/), method: z.string().regex(/^[A-Za-z_]\w*$/), inputSchema: z.record(z.string(), z.unknown()).optional() }).strict())
       .min(1),
   })
   .strict();

@@ -17,7 +17,7 @@ export const TestSchema = z
         tenant: z.string().optional(),
         server: z.string().min(1),
         tool: z.string().min(1),
-        args: z.record(z.unknown()).optional(),
+        args: z.record(z.string(), z.unknown()).optional(),
       })
       .strict(),
     expect: z.enum(['allow', 'deny']),
@@ -36,7 +36,7 @@ export const PolicyEngineSchema = z
         path: z.string().regex(/^[A-Za-z0-9_][A-Za-z0-9_/.-]*$/, 'a data path like mcp/gateway/allow'),
         timeoutMs: z.number().int().positive().max(30_000).default(500),
         onError: z.enum(['deny', 'allow']).default('deny'),
-        headers: z.record(z.string()).optional(),
+        headers: z.record(z.string(), z.string()).optional(),
       })
       .strict()
       .optional(),

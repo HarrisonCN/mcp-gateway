@@ -22,7 +22,7 @@ export const PqTlsSchema = z
         rejectSha1: z.boolean().default(true),
       })
       .strict()
-      .default({}),
+      .prefault({}),
   })
   .strict();
 export type PqTlsConfig = z.input<typeof PqTlsSchema>;

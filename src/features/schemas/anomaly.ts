@@ -18,10 +18,10 @@ export const AnomalySchema = z
     action: z.enum(['alert', 'quarantine']).default('alert'),
     quarantineSeconds: z.number().int().min(1).max(86_400).default(300),
     windowMinutes: z.number().int().min(1).max(60).default(5),
-    burst: z.object({ factor: z.number().min(1).default(5), min: z.number().int().min(1).default(30) }).strict().default({}),
-    errors: z.object({ ratio: z.number().min(0).max(1).default(0.5), min: z.number().int().min(1).default(20) }).strict().default({}),
-    enumeration: z.object({ distinctTools: z.number().int().min(2).default(25) }).strict().default({}),
-    injection: z.object({ threshold: z.number().min(0).max(1).default(0.6), scan: z.enum(['arguments', 'results', 'both', 'off']).default('both') }).strict().default({}),
+    burst: z.object({ factor: z.number().min(1).default(5), min: z.number().int().min(1).default(30) }).strict().prefault({}),
+    errors: z.object({ ratio: z.number().min(0).max(1).default(0.5), min: z.number().int().min(1).default(20) }).strict().prefault({}),
+    enumeration: z.object({ distinctTools: z.number().int().min(2).default(25) }).strict().prefault({}),
+    injection: z.object({ threshold: z.number().min(0).max(1).default(0.6), scan: z.enum(['arguments', 'results', 'both', 'off']).default('both') }).strict().prefault({}),
     exempt: z.array(z.string()).default([]),
   })
   .strict();
