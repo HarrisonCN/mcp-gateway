@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [17.0.3] - 2026-11-06
+
+### Fixed
+- Cancelling a queued request or reaching its deadline now frees its `maxQueue` entry immediately on stdio, SSE,
+  Streamable HTTP and WebSocket upstreams. A new call can take that place while the original in-flight call is still
+  running. Other waiters keep their FIFO order.
+- The gateway checks the remaining timeout after acquiring a concurrency slot. A tool whose deadline has already
+  passed returns the usual timeout error before any request reaches the upstream.
+
 ## [17.0.2] - 2026-11-05
 
 Security maintenance release for the 17.x line: dependency advisories published after 17.0.1 had turned the blocking

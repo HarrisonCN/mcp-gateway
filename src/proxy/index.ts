@@ -993,36 +993,22 @@ export class McpProxy extends EventEmitter {
       return { success: false, error: { code: ERR_SERVER_BUSY, message: `Server "${serverId}" is busy (${session.limiter.pending} calls queued)`, data: { queued: session.limiter.pending } }, durationMs: Date.now() - startTime };
     }
     if (limited) {
-      let queueTimer: NodeJS.Timeout | undefined;
-      let onAbort: (() => void) | undefined;
-      const slot = session.limiter.acquire();
-      const winner = await Promise.race([
-        slot.then((r) => ({ release: r })),
-        new Promise<'timeout'>((r) => (queueTimer = setTimeout(() => r('timeout'), timeout))),
-        new Promise<'aborted'>((r) => {
-          if (!signal) return;
-          onAbort = () => r('aborted');
-          signal.addEventListener('abort', onAbort, { once: true });
-        }),
-      ]);
-      clearTimeout(queueTimer);
-      if (onAbort) signal?.removeEventListener('abort', onAbort);
-      if (winner === 'timeout' || winner === 'aborted') {
-        // Give the slot back as soon as it is granted.
-        void slot.then((r) => r());
-        return winner === 'timeout' ? timedOut() : cancelled();
-      }
-      release = winner.release;
+      const slot = await session.limiter.acquire(deadline - Date.now(), signal);
+      if (slot === 'timeout') return timedOut();
+      if (slot === 'aborted') return cancelled();
+      release = slot;
     }
 
     try {
       if (session.closed) return notConnected(`Server "${serverId}" disconnected`);
 
       if (signal?.aborted) return cancelled();
+      // A slot can be granted after the deadline but before the queue timer fires.
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return timedOut();
 
       return await new Promise<ProxyResponse>((resolveRaw) => {
         const id = nextId();
-        const remaining = Math.max(0, deadline - Date.now());
         // A progress token also ties relayed sampling / elicitation requests to their caller.
         const relayed = caller !== undefined && this.relays(session).length > 0;
         const progressToken = onProgress || relayed ? `mcp-gateway-${id}` : undefined;

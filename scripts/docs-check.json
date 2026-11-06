@@ -14,7 +14,7 @@
   "prerelease": {
     "tag": "canary",
     "version": "17.0.0-rc.1",
-    "stable": "17.0.2"
+    "stable": "17.0.3"
   },
   "historical": [
     "docs/ROADMAP.md",

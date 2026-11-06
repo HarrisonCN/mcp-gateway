@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { fileURLToPath } from 'url';
 import { McpProxy, ERR_TIMEOUT, ERR_CANCELLED, ERR_NOT_CONNECTED } from '../src/proxy/index.js';
 import type { McpServerConfig } from '../src/utils/types.js';
@@ -141,6 +141,19 @@ describe('McpProxy health ping', () => {
 });
 
 describe('McpProxy cancellation', () => {
+  it('does not dispatch a side effect when the deadline passes before a granted slot resumes', async () => {
+    proxy = new McpProxy();
+    await proxy.connect(cfg());
+    const call = proxy.callTool('fake', 'crash', {}, 1000);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 1001);
+    try {
+      expect((await call).error?.code).toBe(ERR_TIMEOUT);
+    } finally {
+      clock.mockRestore();
+    }
+    expect((await proxy.callTool('fake', 'echo', {})).success).toBe(true);
+  });
+
   it('cancels an in-flight request via AbortSignal', async () => {
     proxy = new McpProxy();
     await proxy.connect(cfg({ env: { SLOW_MS: '2000' } }));
