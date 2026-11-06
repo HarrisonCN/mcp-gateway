@@ -1024,12 +1024,16 @@ export class McpProxy extends EventEmitter {
           resolveRaw(r);
         };
 
-        // Ask the server to stop working on it, then free channel resources.
+        // Start best-effort cancellation and free request resources even if delivery stalls.
         const cancelUpstream = (reason: string) => {
           void session.channel
             .send({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id, reason } })
-            .catch(() => {})
-            .finally(() => session.channel.abandon?.(id));
+            .catch(() => {});
+          try {
+            session.channel.abandon?.(id);
+          } catch (err) {
+            logger.debug(`[${serverId}] failed to abandon request: ${String(err)}`);
+          }
         };
         const onAbort = () => {
           if (!session.pendingRequests.has(id)) return;

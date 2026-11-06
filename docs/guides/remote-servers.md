@@ -15,11 +15,14 @@ Header values and URL query values are redacted in `/servers`.
 If you are unsure which HTTP transport a server speaks: servers built on a recent
 official SDK expose Streamable HTTP (usually at `/mcp`); older ones expose `/sse`.
 
-Not implemented yet for `streamable-http`: the optional standalone `GET` stream
-for unsolicited server notifications and SSE resumption (`Last-Event-ID`).
-Tool calls do not need either. Server notifications that are sent on a request's
-response stream (and every notification on `sse` / `websocket` / `stdio`) are
-handled, including `notifications/tools/list_changed`.
+Streamable HTTP opens an optional standalone `GET` stream for unsolicited server notifications. A dropped
+stream reopens with `Last-Event-ID` and bounded retries. Servers that return 405 for this optional stream are
+supported. Notifications on request response streams are also handled.
+
+Since 17.0.5, cancellation releases the abandoned request's transport resources immediately after starting the
+best-effort `notifications/cancelled` delivery. Streamable HTTP POSTs for notifications and replies are bounded by
+the upstream `timeoutMs`, including waiting for response headers and reading error bodies. A timed-out control
+POST leaves the channel available for subsequent calls.
 
 ## Automatic reconnect
 

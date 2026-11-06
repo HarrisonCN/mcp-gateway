@@ -74,7 +74,7 @@ export function toMessages(value: unknown): JsonRpcMessage[] {
 }
 
 export interface ChannelOptions {
-  /** Time allowed for `start()` (connect + handshake prerequisites). */
+  /** Time allowed for `start()` and for HTTP control POSTs (notifications and replies). */
   connectTimeoutMs: number;
   /** Grace period used by the stdio channel between stdin close / SIGTERM / SIGKILL. */
   killGraceMs: number;
