@@ -81,7 +81,11 @@ export class StreamableHttpChannel implements UpstreamChannel {
       message.method !== undefined && message.id !== undefined && message.id !== null ? message.id : Symbol('post');
     const abort = new AbortController();
     this.inflight.set(key, abort);
+    // Notifications and replies have no proxy request deadline to release their POST resources.
+    const timer = typeof key === 'symbol' ? setTimeout(() => abort.abort(), this.options.connectTimeoutMs) : undefined;
+    timer?.unref();
     const done = () => {
+      clearTimeout(timer);
       if (this.inflight.get(key) === abort) this.inflight.delete(key);
     };
 
@@ -120,9 +124,12 @@ export class StreamableHttpChannel implements UpstreamChannel {
       throw e;
     }
     if (!res.ok) {
-      done();
-      const text = (await res.text().catch(() => '')).slice(0, 200);
-      throw new Error(`MCP server returned HTTP ${res.status}${text ? `: ${text}` : ''}`);
+      try {
+        const text = (await res.text().catch(() => '')).slice(0, 200);
+        throw new Error(`MCP server returned HTTP ${res.status}${text ? `: ${text}` : ''}`);
+      } finally {
+        done();
+      }
     }
     if (res.status === 202 || !res.body) {
       done();

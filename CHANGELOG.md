@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [17.0.5] - 2026-11-06
+
+### Fixed
+- Aborted and timed-out requests release their transport resources as soon as best-effort upstream cancellation
+  starts. A stalled cancellation notification no longer holds the original Streamable HTTP response open.
+- Streamable HTTP notifications and gateway replies now have a POST deadline using the upstream connection timeout.
+  The bound covers waiting for headers and reading error bodies. These control-message timeouts preserve the channel.
+- HTTP error response bodies remain tracked until consumed or abandoned, allowing cancellation and channel close to
+  abort a stalled body reader.
+
 ## [17.0.4] - 2026-11-06
 
 ### Fixed

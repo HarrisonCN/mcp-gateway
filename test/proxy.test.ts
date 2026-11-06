@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { fileURLToPath } from 'url';
-import { McpProxy, ERR_TIMEOUT, ERR_CANCELLED, ERR_NOT_CONNECTED } from '../src/proxy/index.js';
+import { McpProxy, defaultChannelFactory, ERR_TIMEOUT, ERR_CANCELLED, ERR_NOT_CONNECTED } from '../src/proxy/index.js';
 import type { McpServerConfig } from '../src/utils/types.js';
 import { logger } from '../src/utils/logger.js';
 
@@ -141,6 +141,33 @@ describe('McpProxy health ping', () => {
 });
 
 describe('McpProxy cancellation', () => {
+  it.each(['abort', 'timeout'] as const)('abandons the request immediately on %s when cancellation delivery stalls', async (reason) => {
+    const abandon = vi.fn();
+    let requestId: string | number | null | undefined;
+    proxy = new McpProxy({
+      killGraceMs: 50,
+      channelFactory(config, options) {
+        const channel = defaultChannelFactory(config, options);
+        const send = channel.send.bind(channel);
+        channel.abandon = abandon;
+        channel.send = (message) => {
+          if (message.method === 'notifications/cancelled') return new Promise<void>(() => {});
+          if (message.method === 'tools/call') requestId = message.id;
+          return send(message);
+        };
+        return channel;
+      },
+    });
+    await proxy.connect(cfg({ env: { SLOW_MS: '5000' } }));
+    const controller = new AbortController();
+    const call = proxy.callTool('fake', 'slow', {}, reason === 'timeout' ? 500 : 5000, { signal: controller.signal });
+    await vi.waitFor(() => expect(requestId).toBeDefined());
+    if (reason === 'abort') controller.abort();
+    expect((await call).error?.code).toBe(reason === 'abort' ? ERR_CANCELLED : ERR_TIMEOUT);
+    expect(abandon).toHaveBeenCalledOnce();
+    expect(abandon).toHaveBeenCalledWith(requestId);
+  });
+
   it('does not dispatch a side effect when the deadline passes before a granted slot resumes', async () => {
     proxy = new McpProxy();
     await proxy.connect(cfg());
