@@ -45,18 +45,30 @@ export class SseChannel implements UpstreamChannel {
   }
 
   async start(): Promise<void> {
-    let timer: NodeJS.Timeout | undefined;
     let onEndpoint!: () => void;
     let onFail!: (err: Error) => void;
     const ready = new Promise<void>((resolve, reject) => {
       onEndpoint = resolve;
       onFail = reject;
-      timer = setTimeout(
-        () => reject(new Error(`SSE server did not announce an endpoint within ${this.options.connectTimeoutMs}ms`)),
-        this.options.connectTimeoutMs,
-      );
     });
+    const timer = setTimeout(
+      () => onFail(new Error(`SSE server did not announce an endpoint within ${this.options.connectTimeoutMs}ms`)),
+      this.options.connectTimeoutMs,
+    );
 
+    // Observe readiness while opening HTTP, so a stalled fetch cannot leave its timeout rejection unhandled.
+    void this.openStream(onEndpoint, onFail).catch(onFail);
+    try {
+      await ready;
+    } catch (err) {
+      this.abort.abort();
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async openStream(onEndpoint: () => void, onFail: (err: Error) => void): Promise<void> {
     let res: Response;
     try {
       res = await upstreamFetch(this.config)(this.url, {
@@ -65,17 +77,14 @@ export class SseChannel implements UpstreamChannel {
         signal: this.abort.signal,
       });
     } catch (err) {
-      clearTimeout(timer);
       throw new Error(`SSE connect to ${this.url.origin}${this.url.pathname} failed: ${errMessage(err)}`);
     }
     if (!res.ok || !res.body) {
-      clearTimeout(timer);
       await res.body?.cancel().catch(() => {});
       throw new Error(`SSE server returned HTTP ${res.status}`);
     }
     const contentType = res.headers.get('content-type') ?? '';
     if (!contentType.includes('text/event-stream')) {
-      clearTimeout(timer);
       await res.body.cancel().catch(() => {});
       throw new Error(`SSE server returned unexpected content-type "${contentType}"`);
     }
@@ -108,15 +117,6 @@ export class SseChannel implements UpstreamChannel {
       () => this.lose(new Error('SSE stream ended'), onFail),
       (err) => this.lose(new Error(`SSE stream error: ${errMessage(err)}`), onFail),
     );
-
-    try {
-      await ready;
-    } catch (err) {
-      this.abort.abort();
-      throw err;
-    } finally {
-      clearTimeout(timer);
-    }
   }
 
   private lose(err: Error, failStart: (e: Error) => void): void {

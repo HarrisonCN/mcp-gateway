@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [17.0.4] - 2026-11-06
+
+### Fixed
+- An SSE upstream that stalls before returning HTTP response headers now fails with a caught startup timeout and
+  closes its request. Previously, the separate endpoint-readiness promise could reject before it had a handler,
+  terminating a Node.js process using the default unhandled-rejection policy.
+- The same startup deadline covers opening HTTP and waiting for the endpoint event. HTTP and content-type failures
+  retain their existing errors, and an established SSE stream remains usable after the startup deadline.
+
 ## [17.0.3] - 2026-11-06
 
 ### Fixed
