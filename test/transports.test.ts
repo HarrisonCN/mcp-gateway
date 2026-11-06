@@ -1,5 +1,6 @@
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, afterEach } from 'vitest';
-import { McpProxy, ERR_TIMEOUT } from '../src/proxy/index.js';
+import { McpProxy, defaultChannelFactory, ERR_CANCELLED, ERR_TIMEOUT } from '../src/proxy/index.js';
 import type { McpServerConfig } from '../src/utils/types.js';
 import { logger } from '../src/utils/logger.js';
 import { SseParser, type SseEvent } from '../src/transport/sse-parser.js';
@@ -39,6 +40,61 @@ const waitFor = async (pred: () => boolean, ms = 3000) => {
     await new Promise((r) => setTimeout(r, 20));
   }
 };
+
+const remoteTransports = {
+  sse: startSseServer,
+  'streamable-http': startStreamableHttpServer,
+  websocket: startWebSocketServer,
+};
+
+describe.each(['stdio', 'sse', 'streamable-http', 'websocket'] as const)('%s request queue', (transport) => {
+  it.each(['abort', 'timeout'] as const)('admits the next call immediately after a queued %s', async (reason) => {
+    const sent: string[] = [];
+    proxy = new McpProxy({
+      channelFactory(config, options) {
+        const channel = defaultChannelFactory(config, options);
+        const send = channel.send.bind(channel);
+        channel.send = (message) => {
+          if (message.method === 'tools/call') sent.push((message.params as { name: string }).name);
+          return send(message);
+        };
+        return channel;
+      },
+    });
+    let server: Partial<McpServerConfig>;
+    if (transport === 'stdio') {
+      const fixture = fileURLToPath(new URL('./fixtures/fake-mcp-server.mjs', import.meta.url));
+      server = { command: process.execPath, args: [fixture], env: { SLOW_MS: '5000' } };
+    } else {
+      remote = await remoteTransports[transport]();
+      server = { url: remote.url };
+    }
+    await proxy.connect(cfg({ ...server, transport, maxConcurrency: 1, maxQueue: 1 }));
+
+    const holder = new AbortController();
+    const active = proxy.callTool('remote', 'slow', { ms: 5000 }, 10000, { signal: holder.signal });
+    try {
+      await waitFor(() => sent.includes('slow'));
+      const caller = new AbortController();
+      const queued = proxy.callTool('remote', 'add-tool', {}, reason === 'timeout' ? 40 : 5000, { signal: caller.signal });
+      expect(proxy.getLoad('remote')).toEqual({ inFlight: 1, queued: 1 });
+      if (reason === 'abort') caller.abort();
+      expect((await queued).error?.code).toBe(reason === 'abort' ? ERR_CANCELLED : ERR_TIMEOUT);
+      expect(proxy.getLoad('remote')).toEqual({ inFlight: 1, queued: 0 });
+
+      const next = proxy.callTool('remote', 'echo', { msg: 'next' });
+      expect(proxy.getLoad('remote')).toEqual({ inFlight: 1, queued: 1 });
+      holder.abort();
+      expect((await active).error?.code).toBe(ERR_CANCELLED);
+      expect((await next).success).toBe(true);
+      expect(proxy.getLoad('remote')).toEqual({ inFlight: 0, queued: 0 });
+      expect(sent).toEqual(['slow', 'echo']);
+    } finally {
+      holder.abort();
+      await active;
+    }
+  });
+});
 
 describe('SseParser', () => {
   it('handles events, comments, CRLF and chunk splits anywhere', () => {

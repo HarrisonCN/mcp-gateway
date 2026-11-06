@@ -79,6 +79,24 @@ describe('Semaphore', () => {
       expect(s.pending).toBe(0);
     }
   });
+
+  it('removes a cancelled waiter from the middle without reordering the others', async () => {
+    const semaphore = new Semaphore(1);
+    const release = await semaphore.acquire();
+    const first = semaphore.acquire();
+    const controller = new AbortController();
+    const middle = semaphore.acquire(5000, controller.signal);
+    const last = semaphore.acquire();
+    controller.abort();
+    expect(await middle).toBe('aborted');
+    expect(semaphore.pending).toBe(2);
+    release();
+    const releaseFirst = await first;
+    expect(semaphore.pending).toBe(1);
+    releaseFirst();
+    (await last)();
+    expect(semaphore.inFlight).toBe(0);
+  });
 });
 
 describe('VERSION', () => {
