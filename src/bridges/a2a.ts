@@ -14,10 +14,11 @@
  */
 
 import express, { type Request, type RequestHandler } from 'express';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { A2ABridgeConfig, ToolInfo } from '../utils/types.js';
 import { toLlmToolSchemas } from '../mcp/llm-schemas.js';
 import { filterToolsByScope, type AccessScope } from '../auth/scopes.js';
+import type { RateLimiter } from '../auth/ratelimit.js';
 import type { AuthedRequest } from '../auth/middleware.js';
 import { CapturedResponse, type ToolCallResponse } from '../gateway/api.js';
 import { VERSION } from '../utils/version.js';
@@ -30,6 +31,7 @@ export interface A2ABridgeDeps {
   naming: () => 'auto' | 'prefix';
   authenticate: RequestHandler;
   authRequired: () => boolean;
+  takeRateLimit: RateLimiter['take'];
   runToolCall: (req: Request, body: Record<string, unknown>, res: ToolCallResponse) => Promise<void>;
 }
 
@@ -44,6 +46,22 @@ interface Task {
   artifacts?: Json[];
   history?: Json[];
   metadata?: Json;
+}
+
+/** Use verified identity fields only. Subjectless tokens must not share the gateway's fallback client label. */
+function taskOwner(req: AuthedRequest, authRequired: boolean): string | undefined {
+  if (!authRequired) return 'anonymous';
+  const claims = req.jwtPayload;
+  if (req.oauth || isObj(claims)) {
+    const oauth = req.oauth;
+    if (oauth?.subject || oauth?.clientId) return JSON.stringify(['oauth', oauth.issuer, oauth.subject, oauth.clientId]);
+    if (!oauth && isObj(claims) && typeof claims.sub === 'string' && claims.sub) {
+      return JSON.stringify(['jwt', claims.iss, claims.sub, claims.client_id, claims.azp]);
+    }
+    const token = req.headers.authorization?.slice(7).trim();
+    return token ? `token:${createHash('sha256').update(token).digest('hex')}` : undefined;
+  }
+  return req.clientId;
 }
 
 function skillsFor(scope: AccessScope | undefined, deps: A2ABridgeDeps) {
@@ -67,7 +85,10 @@ function skillsFor(scope: AccessScope | undefined, deps: A2ABridgeDeps) {
 
 export function createA2ARouter(deps: A2ABridgeDeps): express.Router {
   const router = express.Router();
-  const tasks = new Map<string, { task: Task; expires: number }>();
+  const tasks = new Map<string, { owner: string; body: Buffer; expires: number }>();
+  let pending = 0;
+  let windowEnds = 0;
+  let starts = 0;
   const path = () => deps.config()?.path ?? '/a2a';
   const enabled = () => deps.config()?.enabled === true;
 
@@ -108,19 +129,21 @@ export function createA2ARouter(deps: A2ABridgeDeps): express.Router {
 
   router.post('*', (req, res, next) => {
     if (!enabled() || req.path !== path()) return next();
-    deps.authenticate(req, res, async () => {
+    deps.authenticate(req, res, async (authError?: unknown) => {
+      if (authError) return next(authError);
       const msg = (req.body ?? {}) as Json;
       const id = (msg.id ?? null) as string | number | null;
       const reply = (body: Json) => res.json({ jsonrpc: '2.0', id, ...body });
       const error = (code: number, message: string) => reply({ error: { code, message } });
       if (msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') return error(-32600, 'Invalid Request');
-      prune();
+      let reserved = false;
       try {
+        const owner = taskOwner(req as AuthedRequest, deps.authRequired());
         if (msg.method === 'tasks/get') {
           const tid = isObj(msg.params) ? msg.params.id : undefined;
           const t = typeof tid === 'string' ? tasks.get(tid) : undefined;
-          if (!t) return error(-32001, 'Task not found');
-          return reply({ result: t.task });
+          if (!t || !owner || t.owner !== owner || t.expires <= Date.now()) return error(-32001, 'Task not found');
+          return reply({ result: JSON.parse(t.body.toString('utf8')) });
         }
         if (msg.method === 'tasks/cancel') return error(-32002, 'Task cannot be canceled (tasks complete synchronously)');
         if (msg.method !== 'message/send') return error(-32601, `Method not found: ${msg.method}`);
@@ -128,6 +151,32 @@ export function createA2ARouter(deps: A2ABridgeDeps): express.Router {
         const message = isObj(params.message) ? params.message : undefined;
         const parts = message && Array.isArray(message.parts) ? (message.parts as unknown[]).filter(isObj) : [];
         if (!message || parts.length === 0) return error(-32602, 'params.message with parts is required');
+        if (!owner) {
+          res.status(403);
+          return error(-32003, 'Task owner unavailable');
+        }
+        const cfg = deps.config();
+        const busy = (reason: string, retryAfter?: number) => {
+          res.status(429);
+          if (retryAfter !== undefined) res.set('Retry-After', String(retryAfter));
+          return error(-32029, reason);
+        };
+        prune();
+        if (tasks.size + pending >= (cfg?.maxTasks ?? 256)) return busy('Task capacity reached');
+        // Reserve synchronously, before a shared rate limiter or upstream call can yield.
+        pending++;
+        reserved = true;
+        const decision = await deps.takeRateLimit(req);
+        if (decision && !decision.allowed) return busy('Client rate limit exceeded', decision.retryAfter);
+        const now = Date.now();
+        if (now >= windowEnds) {
+          windowEnds = now + 60_000;
+          starts = 0;
+        }
+        if (starts >= (cfg?.maxTasksPerMinute ?? 120)) {
+          return busy('Task creation rate exceeded', Math.ceil((windowEnds - now) / 1000));
+        }
+        starts++;
         const data = parts.find((p) => p.kind === 'data' && isObj(p.data))?.data as Json | undefined;
         const meta = isObj(message.metadata) ? message.metadata : {};
         const skillId = typeof data?.skill === 'string' ? data.skill : typeof meta.skill === 'string' ? meta.skill : undefined;
@@ -166,10 +215,18 @@ export function createA2ARouter(deps: A2ABridgeDeps): express.Router {
           }
           task.metadata = { skill: skill.id, server: skill.target.server, tool: skill.target.tool };
         }
-        tasks.set(task.id, { task, expires: Date.now() + (deps.config()?.taskRetentionSeconds ?? 600) * 1000 });
+        // Keep a byte-bounded snapshot instead of retaining the request and upstream object graphs.
+        const serialized = JSON.stringify(task);
+        if (Buffer.byteLength(serialized) <= (cfg?.maxTaskBytes ?? 256 * 1024)) {
+          tasks.set(task.id, { owner, body: Buffer.from(serialized), expires: Date.now() + (cfg?.taskRetentionSeconds ?? 600) * 1000 });
+        } else {
+          task.metadata = { ...task.metadata, retained: false };
+        }
         return reply({ result: task });
       } catch (err) {
         return error(-32603, err instanceof Error ? err.message : String(err));
+      } finally {
+        if (reserved) pending--;
       }
     });
   });
