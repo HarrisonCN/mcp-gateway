@@ -377,6 +377,12 @@ export interface A2ABridgeConfig {
   public?: boolean;
   /** How long finished tasks stay readable via `tasks/get` (default 600 s). */
   taskRetentionSeconds?: number;
+  /** Maximum in-flight plus retained tasks per bridge (default 256). */
+  maxTasks?: number;
+  /** Maximum task creation attempts per bridge per minute (default 120). */
+  maxTasksPerMinute?: number;
+  /** Largest serialized task retained for lookup (default 256 KiB). */
+  maxTaskBytes?: number;
 }
 
 /** One `plugins:` entry. */

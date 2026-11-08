@@ -676,6 +676,7 @@ export class Gateway {
       createA2ARouter({
         ...bridgeBase,
         config: () => this.config.a2a,
+        takeRateLimit: this.router.takeRateLimit,
         authRequired: () => (this.config.auth?.strategy ?? 'none') !== 'none',
       }),
     );

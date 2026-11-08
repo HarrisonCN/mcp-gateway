@@ -1,4 +1,5 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { SignJWT } from 'jose';
 import { fileURLToPath } from 'url';
 import { createServer, type Server } from 'http';
 import type { AddressInfo } from 'net';
@@ -47,6 +48,9 @@ describe('bridge config schema', () => {
     expect(() => validateConfig({ servers: [], openai: { path: '/oai', maxToolRounds: 3, upstream: { baseUrl: 'https://api.openai.com/v1' } }, a2a: { enabled: true, public: true } })).not.toThrow();
     expect(() => validateConfig({ servers: [], openai: { nope: 1 } })).toThrow();
     expect(() => validateConfig({ servers: [], a2a: { path: 'no-slash' } })).toThrow();
+    for (const field of ['maxTasks', 'maxTasksPerMinute', 'maxTaskBytes']) {
+      for (const invalid of [0, -1, 1.5]) expect(() => validateConfig({ servers: [], a2a: { [field]: invalid } })).toThrow();
+    }
     expect(() => validateConfig({ servers: [], openai: { upstream: { baseUrl: 'not a url' } } })).toThrow();
   });
 });
@@ -166,6 +170,95 @@ describe('A2A bridge', () => {
     expect(bad.error.code).toBe(-32601);
     const missing = (await (await post(`${root}/a2a`, { jsonrpc: '2.0', id: 5, method: 'tasks/get', params: { id: 'x' } })).json()) as { error: { code: number } };
     expect(missing.error.code).toBe(-32001);
+  });
+
+  const send = (skill: string, args: Record<string, unknown> = {}) =>
+    ({ jsonrpc: '2.0', id: 1, method: 'message/send', params: { message: { parts: [{ kind: 'data', data: { skill, arguments: args } }] } } });
+  const get = (id: string) => ({ jsonrpc: '2.0', id: 2, method: 'tasks/get', params: { id } });
+  const endpoint = () => `http://127.0.0.1:${gw!.address()!.port}/a2a`;
+
+  it('binds retained tasks to the authenticated creator even when the card is public', async () => {
+    gw = new Gateway(base({ a2a: { enabled: true, public: true }, auth: { strategy: 'api-key', apiKeys: ['a', 'b'] } }));
+    await gw.start();
+    const owner = { authorization: 'Bearer a' };
+    const other = { 'x-api-key': 'b' };
+    const { result } = await (await post(endpoint(), send('echo', { value: 42 }), owner)).json();
+    expect(await (await post(endpoint(), get(result.id), { 'x-api-key': 'a' })).json()).toMatchObject({ result });
+    const missing = await (await post(endpoint(), get('missing'), other)).json();
+    expect(missing).toEqual({ jsonrpc: '2.0', id: 2, error: { code: -32001, message: 'Task not found' } });
+    expect(await (await post(endpoint(), get(result.id), other)).json()).toEqual(missing);
+    expect((await post(endpoint(), get(result.id))).status).toBe(401);
+  });
+
+  it('recognizes refreshed JWTs and isolates issuers and subjectless tokens', async () => {
+    const secret = 'a-secret-for-the-bridge-jwt-tests';
+    const headers = async (jti: string, sub?: string, iss = 'issuer-a') => ({
+      authorization: `Bearer ${await new SignJWT({ jti, sub, iss }).setProtectedHeader({ alg: 'HS256' }).sign(new TextEncoder().encode(secret))}`,
+    });
+    gw = new Gateway(base({ a2a: { enabled: true }, auth: { strategy: 'jwt', jwtSecret: secret } }));
+    await gw.start();
+    const owner = await headers('first');
+    const { result } = await (await post(endpoint(), send('echo'), owner)).json();
+    expect(await (await post(endpoint(), get(result.id), owner)).json()).toMatchObject({ result });
+    expect(await (await post(endpoint(), get(result.id), await headers('second'))).json()).toHaveProperty('error.code', -32001);
+
+    const named = await (await post(endpoint(), send('echo'), await headers('old', 'alex'))).json();
+    expect(await (await post(endpoint(), get(named.result.id), await headers('new', 'alex'))).json()).toMatchObject({ result: named.result });
+    expect(await (await post(endpoint(), get(named.result.id), await headers('new', 'alex', 'issuer-b'))).json()).toHaveProperty('error.code', -32001);
+  });
+
+  it('counts in-flight calls, keeps existing tasks readable at capacity and frees expired slots', async () => {
+    const cfg = base({ a2a: { enabled: true, maxTasks: 1, taskRetentionSeconds: 1 } });
+    cfg.servers[0].env = { EXTRA_TOOLS: 'slow', SLOW_MS: '100' };
+    gw = new Gateway(cfg);
+    await gw.start();
+    const replies = await Promise.all([post(endpoint(), send('slow')), post(endpoint(), send('slow'))]);
+    expect(replies.map(r => r.status).sort()).toEqual([200, 429]);
+    const { result } = await replies.find(r => r.ok)!.json();
+    expect(result.status.state).toBe('completed');
+    expect((await post(endpoint(), send('unknown'))).status).toBe(429);
+    expect(await (await post(endpoint(), get(result.id))).json()).toMatchObject({ result });
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(Date.now() + 2000);
+      expect(await (await post(endpoint(), get(result.id))).json()).toHaveProperty('error.code', -32001);
+      expect((await post(endpoint(), send('echo'))).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('applies key and bridge rate limits to rejected skills and resets the bridge window', async () => {
+    gw = new Gateway(base({
+      a2a: { enabled: true, maxTasksPerMinute: 2 },
+      auth: { strategy: 'api-key', apiKeys: [{ key: 'a', rateLimit: { limit: 1, windowSeconds: 60 } }, 'b'] },
+    }));
+    await gw.start();
+    const a = { 'x-api-key': 'a' };
+    const b = { 'x-api-key': 'b' };
+    expect(await (await post(endpoint(), send('unknown'), a)).json()).toHaveProperty('result.status.state', 'rejected');
+    expect((await post(endpoint(), send('echo'), a)).status).toBe(429);
+    expect((await post(endpoint(), send('unknown'), b)).status).toBe(200);
+    const full = await post(endpoint(), send('echo'), b);
+    expect(full.status).toBe(429);
+    expect(Number(full.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(await full.json()).toHaveProperty('error.code', -32029);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(Date.now() + 61_000);
+      expect((await post(endpoint(), send('echo'), b)).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('returns oversized results inline and releases their storage slots', async () => {
+    gw = new Gateway(base({ a2a: { enabled: true, maxTasks: 1, maxTaskBytes: 1024 } }));
+    await gw.start();
+    const { result } = await (await post(endpoint(), send('echo', { value: '界'.repeat(400) }))).json();
+    expect(result).toMatchObject({ status: { state: 'completed' }, metadata: { retained: false } });
+    expect(await (await post(endpoint(), get(result.id))).json()).toHaveProperty('error.code', -32001);
+    expect((await post(endpoint(), send('echo'))).status).toBe(200);
   });
 
   it('is disabled by default and requires auth for the card unless public', async () => {

@@ -50,6 +50,9 @@ a2a:
   provider: { organization: Acme, url: https://acme.example }
   public: false                    # serve the card without auth
   taskRetentionSeconds: 600
+  maxTasks: 256                    # running and retained tasks combined, per gateway instance
+  maxTasksPerMinute: 120           # starts in a fixed 60-second window, across all callers
+  maxTaskBytes: 262144             # maximum UTF-8 JSON bytes retained per task
 ```
 
 - `GET /.well-known/agent-card.json`: the Agent Card (protocol `0.3.0`), one skill
@@ -69,3 +72,13 @@ Select a skill with a data part:
 
 The result is a Task: `completed` with an artifact holding the tool result (text + data parts), `failed` on tool
 errors, or `rejected` for unknown skills, policy denials (403) and quota limits (429).
+
+With authentication enabled, only the creating client can retrieve a task. Foreign, expired and
+unknown task IDs all return JSON-RPC error `-32001`. With authentication disabled, the task ID
+still grants access to an anonymous task. The `public` setting affects only the Agent Card.
+
+Every task submission, including an unknown skill, goes through admission before tool execution.
+When the bridge is full or a creation rate limit is reached, it returns HTTP 429 with JSON-RPC
+error `-32029`. Configured gateway and API-key rate limits also apply to submissions.
+Existing tasks remain readable at capacity. A result larger than `maxTaskBytes` is returned in
+full by `message/send` with `metadata.retained: false` and is unavailable for later lookup.

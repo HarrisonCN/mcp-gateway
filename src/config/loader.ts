@@ -1040,6 +1040,9 @@ const GatewayConfigSchema = z.object({
       provider: z.object({ organization: z.string().min(1), url: z.string().url().optional() }).strict().optional(),
       public: z.boolean().optional(),
       taskRetentionSeconds: z.number().int().positive().optional(),
+      maxTasks: z.number().int().positive().optional(),
+      maxTasksPerMinute: z.number().int().positive().optional(),
+      maxTaskBytes: z.number().int().positive().optional(),
     })
     .strict()
     .optional(),
