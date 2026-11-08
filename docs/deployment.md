@@ -81,7 +81,7 @@ curl -s -X POST -H "Authorization: Bearer $GATEWAY_API_KEY" -H 'content-type: ap
 ```
 
 The Compose file uses `${MGW_IMAGE:-ghcr.io/harrisoncn/mcp-gateway:17}`: set `MGW_IMAGE` to an exact release or digest
-to pin it. [`examples/docker/`](../examples/docker) has a larger setup with Prometheus and a Postgres MCP server.
+to pin it. [`examples/docker/`](../examples/docker) has a larger setup with Prometheus and a Postgres MCP server. Export a nonempty `GATEWAY_API_KEY` before starting it. Compose passes the same key to the gateway and its Prometheus scraper.
 
 ## Kubernetes
 
@@ -104,15 +104,19 @@ trusted network.
 
 ### Plain manifests
 
-[`examples/deploy/kubernetes/mcp-gateway.yaml`](../examples/deploy/kubernetes/mcp-gateway.yaml) contains a Secret
-(placeholder — create a real one), a ConfigMap with the gateway config, a hardened Deployment (non-root, read-only root
+[`examples/deploy/kubernetes/mcp-gateway.yaml`](../examples/deploy/kubernetes/mcp-gateway.yaml) contains a ConfigMap with the gateway config, a hardened Deployment (non-root, read-only root
 filesystem, no capabilities, liveness / readiness probes) and a Service:
 
 ```bash
-kubectl create secret generic mcp-gateway --from-literal=MCP_GATEWAY_API_KEYS="$(openssl rand -hex 24)"
-kubectl apply -f examples/deploy/kubernetes/mcp-gateway.yaml   # after deleting its placeholder Secret document
+# Once per namespace, unless your secret manager already provisions this Secret:
+kubectl create secret generic mcp-gateway --from-literal=MCP_GATEWAY_API_KEYS="${GATEWAY_API_KEY:?set GATEWAY_API_KEY first}"
+kubectl apply -f examples/deploy/kubernetes/mcp-gateway.yaml
 kubectl rollout status deployment/mcp-gateway
 ```
+
+Applying or reapplying the manifest leaves the existing Secret intact. If you installed an older
+example with the placeholder value, rotate that credential in your secret manager, update the
+clients, and restart the Deployment so its pods read the new value.
 
 The essential parts of the Deployment:
 

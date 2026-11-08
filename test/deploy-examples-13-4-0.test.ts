@@ -66,12 +66,26 @@ describe('deployment examples', () => {
     await boots(cfg, ex('compose/echo-server.mjs'));
   }, 30_000);
 
+  it('the Prometheus Compose example requires the same operator-supplied key for both services', () => {
+    const read = (file: string) => parseYaml(readFileSync(join(root, 'examples/docker', file), 'utf8'));
+    const { services } = read('docker-compose.yml');
+    const key = services['mcp-gateway'].environment.MCP_GATEWAY_API_KEYS;
+    expect(key).toMatch(/^\$\{GATEWAY_API_KEY:\?[^}]+\}$/);
+    expect(services.prometheus.environment.GATEWAY_API_KEY).toBe(key);
+    const { auth } = read('mcp-gateway.yml');
+    expect(auth.strategy).toBe('api-key');
+    expect(auth.apiKeys).toEqual(['${MCP_GATEWAY_API_KEYS}']);
+    expect(auth.protect.metrics).toBe(true);
+  });
+
   it('Kubernetes manifests: current image, probes on the health endpoints, ConfigMap config validates and boots', async () => {
     const docs = parseAllDocuments(readFileSync(ex('kubernetes/mcp-gateway.yaml'), 'utf8')).map((d) => d.toJS()) as Array<Record<string, any>>; // eslint-disable-line @typescript-eslint/no-explicit-any
     const kinds = docs.map((d) => d.kind);
-    expect(kinds).toEqual(expect.arrayContaining(['Secret', 'ConfigMap', 'Deployment', 'Service']));
+    expect(kinds).toEqual(expect.arrayContaining(['ConfigMap', 'Deployment', 'Service']));
+    expect(kinds).not.toContain('Secret');
     const dep = docs.find((d) => d.kind === 'Deployment')!;
     const c = dep.spec.template.spec.containers[0];
+    expect(c.envFrom).toContainEqual({ secretRef: { name: 'mcp-gateway' } });
     expect(c.image).toBe(`${IMAGE}:${MAJOR}`);
     expect(c.livenessProbe.httpGet.path).toBe('/api/v1/health/live');
     expect(c.readinessProbe.httpGet.path).toBe('/api/v1/health/ready');

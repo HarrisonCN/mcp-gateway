@@ -13,7 +13,7 @@ services:
       MCP_GATEWAY_PORT: "4000"
       MCP_GATEWAY_LOG_LEVEL: "info"
       # Same key is used by Prometheus (see prometheus.yml / the prometheus service below)
-      MCP_GATEWAY_API_KEYS: "${GATEWAY_API_KEY:-change-me}"
+      MCP_GATEWAY_API_KEYS: "${GATEWAY_API_KEY:?set GATEWAY_API_KEY before starting Compose}"
       GITHUB_TOKEN: "${GITHUB_TOKEN}"
       DATABASE_URL: "postgresql://user:pass@postgres:5432/mydb"
     volumes:
@@ -49,7 +49,7 @@ services:
       - -c
       - 'printf %s "$$GATEWAY_API_KEY" > /tmp/gateway-key && exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus'
     environment:
-      GATEWAY_API_KEY: "${GATEWAY_API_KEY:-change-me}"
+      GATEWAY_API_KEY: "${GATEWAY_API_KEY:?set GATEWAY_API_KEY before starting Compose}"
     ports:
       - "9090:9090"
     volumes:
