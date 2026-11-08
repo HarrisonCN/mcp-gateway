@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [17.0.6] - 2026-11-08
+
 ### Fixed
 - A2A task creation now enforces capacity, size and rate limits. Authenticated task lookups are
   restricted to the creating client, including when the Agent Card is public.
