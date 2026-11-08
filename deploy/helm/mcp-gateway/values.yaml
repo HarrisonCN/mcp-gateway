@@ -1,6 +1,12 @@
 # Gateway config (mcp-gateway.yml). API keys belong in the Secret below, not here.
 config:
   version: 13
+  mcp:
+    allowedOrigins: []
+  security:
+    dnsRebindingProtection: true
+    authLockout: true
+    # The chart supplies loopback and Service DNS names. Set allowedHosts to override the entire list.
   monitor: { prometheus: true }
   servers: []
 
