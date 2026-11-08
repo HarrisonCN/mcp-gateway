@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [17.0.7] - 2026-11-08
+
+### Fixed
+- Production Compose, Kubernetes and Helm examples enable DNS rebinding protection, Host checks and authentication lockout.
+- The plain Kubernetes manifest references an existing Secret. Reapplying the manifest preserves its credentials.
+- The Prometheus Compose example requires an operator-supplied key for both services. When migrating from an older example, rotate any previously used placeholder key.
+
 ## [17.0.6] - 2026-11-08
 
 ### Fixed

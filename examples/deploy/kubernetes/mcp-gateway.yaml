@@ -1,5 +1,5 @@
 # Provision the mcp-gateway Secret in the deployment namespace before applying this manifest.
-# See docs/deployment.md#plain-manifests. Pin a release in production: ghcr.io/harrisoncn/mcp-gateway:17.0.6 or @sha256:<digest>.
+# See docs/deployment.md#plain-manifests. Pin a release in production: ghcr.io/harrisoncn/mcp-gateway:17.0.7 or @sha256:<digest>.
 apiVersion: v1
 kind: ConfigMap
 metadata:
