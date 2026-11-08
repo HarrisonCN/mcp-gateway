@@ -189,12 +189,44 @@ all at once or canary first — with automatic rollback when data planes fail a 
 location / {
   proxy_pass http://127.0.0.1:4000;
   proxy_http_version 1.1;
-  proxy_set_header Host $host;
+  proxy_set_header Host $http_host;
+  # Single edge proxy: overwrite the client-supplied forwarding header.
+  proxy_set_header X-Forwarded-For $remote_addr;
   proxy_set_header Connection "";
   proxy_buffering off;          # SSE on GET /mcp
   proxy_read_timeout 1h;
 }
 ```
+
+### Production Origin, Host and authentication settings
+
+The Compose and Kubernetes examples and the Helm chart enable DNS rebinding protection and
+authentication lockout. For an existing installation, merge these fields into the gateway config
+(under `config` in Helm values). Replace the example names with the Host headers clients actually
+use and the exact browser origins you trust.
+
+```yaml
+security:
+  dnsRebindingProtection: true
+  allowedHosts: ["gateway.example.com", "localhost", "127.0.0.1", "[::1]"]
+  authLockout: true
+mcp:
+  allowedOrigins: []
+```
+
+An empty list adds no cross-site origins. In this mode the gateway still accepts same-host and
+loopback origins, and native MCP clients can omit Origin and authenticate normally. To allow a
+separate browser app, put its full origin (scheme, host and optional port) in both
+`mcp.allowedOrigins` and `cors.origins`. Keep any Service DNS names used by internal clients
+or metrics scrapers when overriding `allowedHosts`. A Prometheus ServiceMonitor that targets Pod
+IPs sends those IPs as Host headers. Include the current targets in the allowlist or configure
+the scraper to use permitted DNS names. Liveness and readiness probes are exempt from the Host check.
+
+Lockout counts failed authentications by client IP. The default is 10 failures within 300 seconds
+and a 900-second lockout. Behind a proxy, set `security.trustProxy` to the trusted proxy address
+or CIDR and verify the gateway sees distinct client IPs. Otherwise clients can share the proxy's
+lockout. After rollout, inspect `settings.dnsRebindingProtection`, `settings.allowedHosts` and
+`settings.authLockout` on `GET /api/v1/security` with an operator credential.
 
 ## Security checklist
 

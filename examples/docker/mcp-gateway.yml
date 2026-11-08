@@ -36,6 +36,9 @@ servers:
     args: ["-y", "@modelcontextprotocol/server-postgres", "${DATABASE_URL}"]
     tags: [database]
 
-# Browser clients: list the origins allowed to call /mcp (none here; non-browser MCP clients are unaffected).
 mcp:
   allowedOrigins: []
+security:
+  dnsRebindingProtection: true
+  allowedHosts: ["localhost", "127.0.0.1", "[::1]", "mcp-gateway"]
+  authLockout: true

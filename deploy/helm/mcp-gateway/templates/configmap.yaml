@@ -1,3 +1,10 @@
+{{- $config := merge (dict "port" (int .Values.port) "host" "0.0.0.0") (deepCopy .Values.config) -}}
+{{- $security := default dict $config.security -}}
+{{- if and $security.dnsRebindingProtection (not (hasKey $security "allowedHosts")) -}}
+{{- $service := include "mcp-gateway.fullname" . -}}
+{{- $qualified := printf "%s.%s" $service .Release.Namespace -}}
+{{- $_ := set $security "allowedHosts" (list "localhost" "127.0.0.1" "[::1]" $service $qualified (printf "%s.svc" $qualified) (printf "%s.svc.cluster.local" $qualified)) -}}
+{{- end -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -5,4 +12,4 @@ metadata:
   labels: {{- include "mcp-gateway.labels" . | nindent 4 }}
 data:
   mcp-gateway.yml: |
-{{ toYaml (merge (dict "port" (int .Values.port) "host" "0.0.0.0") .Values.config) | indent 4 }}
+{{ toYaml $config | indent 4 }}
