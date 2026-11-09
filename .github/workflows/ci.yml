@@ -66,7 +66,13 @@ jobs:
         run: |
           for f in examples/*/mcp-gateway.yml; do
             echo "::group::$f"
-            (cd "$(dirname "$f")" && node "$GITHUB_WORKSPACE/dist/cli.js" validate -c mcp-gateway.yml --strict)
+            (
+              cd "$(dirname "$f")"
+              if [ "$f" = examples/docker/mcp-gateway.yml ]; then
+                export MCP_GATEWAY_API_KEYS="$(openssl rand -hex 24)"
+              fi
+              node "$GITHUB_WORKSPACE/dist/cli.js" validate -c mcp-gateway.yml --strict
+            )
             echo "::endgroup::"
           done
       - name: Package contents

@@ -78,6 +78,13 @@
 - 回归检查覆盖主动取消与 deadline、SSE 与错误响应体、通知与回复、响应头阻塞与错误响应体阻塞。
   清理后同一连接仍可调用工具，已退出的工具调用只到达上游一次。
 
+## 生产部署配置与凭据
+
+- [PR #265](https://github.com/HarrisonCN/mcp-gateway/pull/265) 启用生产示例的 Host、Origin 与认证锁定配置。
+- [PR #266](https://github.com/HarrisonCN/mcp-gateway/pull/266) 将 Kubernetes Secret 交由运维侧预置，并要求带 Prometheus 的 Compose 示例显式提供密钥。
+  修复前新增的两项断言失败；修复后部署与 Service Link 两组测试共 10 项通过。部署 CI 校验空密钥会被拒绝，重复 apply 保留既有 Secret。
+- 下一项继续 G17-002 的传输断连与重连测试矩阵。
+
 ## 每轮完成条件
 
 1. 读取最新 main、开放 PR 与测试状态；记录基线 SHA 和本轮任务编号。

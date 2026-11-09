@@ -10,7 +10,7 @@ Images are published to GitHub Container Registry for every release (`linux/amd6
 cosign (keyless, GitHub Actions identity) and shipped with an SBOM:
 
 ```
-ghcr.io/harrisoncn/mcp-gateway:17.0.6   # exact release — immutable, use this (or a digest) in production
+ghcr.io/harrisoncn/mcp-gateway:17.0.7   # exact release — immutable, use this (or a digest) in production
 ghcr.io/harrisoncn/mcp-gateway:17.0     # latest patch of 17.0
 ghcr.io/harrisoncn/mcp-gateway:17       # latest 17.x (current line, config schema v13 only; `config migrate --to v13` rewrites older files)
 ghcr.io/harrisoncn/mcp-gateway:latest   # newest release of the current line
@@ -26,8 +26,8 @@ Which tag to use:
   under you even if a tag is moved:
 
   ```bash
-  docker buildx imagetools inspect ghcr.io/harrisoncn/mcp-gateway:17.0.6 --format '{{json .Manifest.Digest}}'
-  # → use ghcr.io/harrisoncn/mcp-gateway@sha256:<digest> (or 17.0.6@sha256:<digest> to keep the version readable)
+  docker buildx imagetools inspect ghcr.io/harrisoncn/mcp-gateway:17.0.7 --format '{{json .Manifest.Digest}}'
+  # → use ghcr.io/harrisoncn/mcp-gateway@sha256:<digest> (or 17.0.7@sha256:<digest> to keep the version readable)
   cosign verify ghcr.io/harrisoncn/mcp-gateway@sha256:<digest> \
     --certificate-identity-regexp '^https://github.com/HarrisonCN/mcp-gateway/.github/workflows/docker.yml@refs/tags/v' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
@@ -46,7 +46,7 @@ docker run -d --name mcp-gateway -p 4000:4000 \
   -v mcp-gateway-data:/app/data \
   -e MCP_GATEWAY_API_KEYS="$(openssl rand -hex 24)" \
   -e GITHUB_TOKEN \
-  ghcr.io/harrisoncn/mcp-gateway:17.0.6
+  ghcr.io/harrisoncn/mcp-gateway:17.0.7
 ```
 
 - The image runs as the unprivileged `node` user, listens on `4000`, and has a `HEALTHCHECK` on the always-public
@@ -56,7 +56,7 @@ docker run -d --name mcp-gateway -p 4000:4000 \
   anything else (Python, `uvx`, …) in a derived image:
 
   ```dockerfile
-  FROM ghcr.io/harrisoncn/mcp-gateway:17.0.6
+  FROM ghcr.io/harrisoncn/mcp-gateway:17.0.7
   USER root
   RUN apk add --no-cache python3 py3-pip && pip install --break-system-packages uv
   USER node
@@ -81,7 +81,7 @@ curl -s -X POST -H "Authorization: Bearer $GATEWAY_API_KEY" -H 'content-type: ap
 ```
 
 The Compose file uses `${MGW_IMAGE:-ghcr.io/harrisoncn/mcp-gateway:17}`: set `MGW_IMAGE` to an exact release or digest
-to pin it. [`examples/docker/`](../examples/docker) has a larger setup with Prometheus and a Postgres MCP server.
+to pin it. [`examples/docker/`](../examples/docker) has a larger setup with Prometheus and a Postgres MCP server. Export a nonempty `GATEWAY_API_KEY` before starting it. Compose passes the same key to the gateway and its Prometheus scraper.
 
 ## Kubernetes
 
@@ -104,22 +104,26 @@ trusted network.
 
 ### Plain manifests
 
-[`examples/deploy/kubernetes/mcp-gateway.yaml`](../examples/deploy/kubernetes/mcp-gateway.yaml) contains a Secret
-(placeholder — create a real one), a ConfigMap with the gateway config, a hardened Deployment (non-root, read-only root
+[`examples/deploy/kubernetes/mcp-gateway.yaml`](../examples/deploy/kubernetes/mcp-gateway.yaml) contains a ConfigMap with the gateway config, a hardened Deployment (non-root, read-only root
 filesystem, no capabilities, liveness / readiness probes) and a Service:
 
 ```bash
-kubectl create secret generic mcp-gateway --from-literal=MCP_GATEWAY_API_KEYS="$(openssl rand -hex 24)"
-kubectl apply -f examples/deploy/kubernetes/mcp-gateway.yaml   # after deleting its placeholder Secret document
+# Once per namespace, unless your secret manager already provisions this Secret:
+kubectl create secret generic mcp-gateway --from-literal=MCP_GATEWAY_API_KEYS="${GATEWAY_API_KEY:?set GATEWAY_API_KEY first}"
+kubectl apply -f examples/deploy/kubernetes/mcp-gateway.yaml
 kubectl rollout status deployment/mcp-gateway
 ```
+
+Applying or reapplying the manifest leaves the existing Secret intact. If you installed an older
+example with the placeholder value, rotate that credential in your secret manager, update the
+clients, and restart the Deployment so its pods read the new value.
 
 The essential parts of the Deployment:
 
 ```yaml
 containers:
   - name: mcp-gateway
-    image: ghcr.io/harrisoncn/mcp-gateway:17.0.6   # or @sha256:<digest>
+    image: ghcr.io/harrisoncn/mcp-gateway:17.0.7   # or @sha256:<digest>
     args: ["start", "-c", "/config/mcp-gateway.yml", "--no-watch"]
     ports: [{ name: http, containerPort: 4000 }]
     envFrom: [{ secretRef: { name: mcp-gateway } }]

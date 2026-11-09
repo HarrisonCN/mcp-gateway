@@ -6,9 +6,9 @@ name: Deployment examples
 on:
   push:
     branches: [main]
-    paths: ['examples/deploy/**', 'docs/deployment.md', 'deploy/**', 'Dockerfile', 'src/**', 'package-lock.json', '.github/workflows/deploy-examples.yml']
+    paths: ['examples/deploy/**', 'examples/docker/**', 'docs/deployment.md', 'deploy/**', 'Dockerfile', 'src/**', 'package-lock.json', '.github/workflows/deploy-examples.yml']
   pull_request:
-    paths: ['examples/deploy/**', 'docs/deployment.md', 'deploy/**', 'Dockerfile', 'src/**', 'package-lock.json', '.github/workflows/deploy-examples.yml']
+    paths: ['examples/deploy/**', 'examples/docker/**', 'docs/deployment.md', 'deploy/**', 'Dockerfile', 'src/**', 'package-lock.json', '.github/workflows/deploy-examples.yml']
 
 permissions:
   contents: read
@@ -27,6 +27,14 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      - name: Prometheus Compose credentials are required
+        working-directory: examples/docker
+        run: |
+          if GATEWAY_API_KEY= docker compose --env-file /dev/null config --quiet; then
+            echo "::error::Compose accepted an empty gateway key"
+            exit 1
+          fi
+          GATEWAY_API_KEY="$KEY" docker compose --env-file /dev/null config --quiet
       - name: Build the image from this commit
         # 15.3: public.ecr.aws answers 429 "Data limit exceeded" under load — retry once, then fall back to the same
         # official image on Docker Hub (identical tags; the Dockerfile's NODE_IMAGE build arg)
@@ -102,8 +110,12 @@ jobs:
         run: |
           set -euo pipefail
           kubectl create namespace plain
-          sed -E 's#ghcr.io/harrisoncn/mcp-gateway:[0-9][0-9.]*#mcp-gateway:ci#' examples/deploy/kubernetes/mcp-gateway.yaml \
-            | sed "s#change-me-to-a-long-random-key#$KEY#" | kubectl -n plain apply -f -
+          kubectl -n plain create secret generic mcp-gateway --from-literal=MCP_GATEWAY_API_KEYS="$KEY"
+          secret_version=$(kubectl -n plain get secret mcp-gateway -o jsonpath='{.metadata.resourceVersion}')
+          sed -E 's#ghcr.io/harrisoncn/mcp-gateway:[0-9][0-9.]*#mcp-gateway:ci#' examples/deploy/kubernetes/mcp-gateway.yaml > /tmp/plain-gateway.yaml
+          kubectl -n plain apply -f /tmp/plain-gateway.yaml
+          kubectl -n plain apply -f /tmp/plain-gateway.yaml
+          test "$(kubectl -n plain get secret mcp-gateway -o jsonpath='{.metadata.resourceVersion}')" = "$secret_version"
           kubectl -n plain rollout status deployment/mcp-gateway --timeout=180s || { kubectl -n plain describe pods; kubectl -n plain logs deploy/mcp-gateway; exit 1; }
           kubectl -n plain port-forward svc/mcp-gateway 18080:80 >/dev/null 2>&1 &
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/api/v1/health/ready >/dev/null && break; sleep 1; done
