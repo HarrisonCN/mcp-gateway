@@ -7,6 +7,7 @@
 import { describe, it, expect, afterEach, vi, beforeAll } from 'vitest';
 import { readFileSync, readdirSync, statSync, existsSync, mkdtempSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
+import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'os';
 import { createServer } from 'http';
 import { spawnSync } from 'child_process';
@@ -161,7 +162,9 @@ describe('deprecation inventory → runtime warnings', () => {
 
 describe('migration preview: v11 → v12', () => {
   const schema = () => compile(readJson('schema/v12/config.schema.json'));
-  it('round-trips every example config: v12 output validates against the draft, downgrades to the same v11 config', () => {
+  it('round-trips every example config: v12 output validates against the draft, downgrades to the same v11 config', ({ onTestFinished }) => {
+    vi.stubEnv('MCP_GATEWAY_API_KEYS', randomBytes(24).toString('hex'));
+    onTestFinished(() => vi.unstubAllEnvs());
     const validate = schema();
     const list = exampleConfigs();
     expect(list.length).toBeGreaterThanOrEqual(8);

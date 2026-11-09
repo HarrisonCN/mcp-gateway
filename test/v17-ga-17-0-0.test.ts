@@ -60,7 +60,8 @@ describe.runIf(isGa17)('17.0.0 GA (owner decision)', () => {
 
   it('G4 channels: 17.x latest, 14.9.x pinned as v14-lts', () => {
     const readme = read('README.md');
-    expect(readme).toMatch(/Current release: \*\*17\.0\.\d+\*\* \(npm `latest`\)/);
+    expect(readme).toContain('Current GitHub release: **' + pkg.version + '**');
+    expect(readme).toContain('| 17.x | ' + pkg.version + ' | `latest`, `next` |');
     expect(readme).toMatch(/\| 14\.x \| 14\.9\.2 \| `v14-lts` \| `:14` \|/);
     const versions = read('docs/versions.md');
     expect(versions).toMatch(/\| 17\.x \| current \| `latest`, `next` \|/);
