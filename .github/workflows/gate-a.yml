@@ -67,7 +67,7 @@ jobs:
             '| RSS window (h) | slope MB/h | first → last MB |', '|---|---|---|',
             ...r.memory.windows.map((w) => '| ' + w.fromH + '–' + w.toH + ' | ' + w.slopeMbPerHour + ' | ' + w.firstMb + ' → ' + w.lastMb + ' |')];
           require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, s.join('\n') + '\n');"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: gate-a-${{ github.run_id }}
