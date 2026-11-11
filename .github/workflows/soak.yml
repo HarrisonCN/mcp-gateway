@@ -63,7 +63,7 @@ jobs:
         run: |
           [ -f soak-report.json ] || exit 0
           node -e "const r=require('./soak-report.json'); const s=['## Soak '+r.impl+' — '+(r.pass?'PASS':'FAIL'), '', '| | p50 | p95 | p99 | ok/s | RSS growth MB/h |', '|---|---|---|---|---|---|', '| run | '+r.latencyMs.steady.p50+' | '+r.latencyMs.steady.p95+' | '+r.latencyMs.steady.p99+' | '+r.throughput.steadyOkPerSecond+' | '+(r.memory.growthMbPerHour??'-')+' |', '', 'violations: '+r.violations.length, '', '\`\`\`json', JSON.stringify({vsBaseline:r.vsBaseline, recoveryMs:r.recoveryMs, invariants:r.invariants}, null, 2), '\`\`\`']; require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, s.join('\n'))"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: soak-${{ github.run_id }}
