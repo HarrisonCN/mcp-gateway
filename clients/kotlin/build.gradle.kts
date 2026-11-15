@@ -13,11 +13,11 @@ group = "io.github.harrisoncn"
 version = (findProperty("releaseVersion") as String?) ?: "2.0.0"
 
 dependencies {
-    api("com.squareup.okhttp3:okhttp:4.12.0")
+    api("com.squareup.okhttp3:okhttp:4.12.1")
     api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
     testImplementation(kotlin("test"))
-    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.1")
 }
 
 java {
